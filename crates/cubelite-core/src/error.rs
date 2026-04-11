@@ -11,11 +11,14 @@ pub enum ConfigError {
         source: serde_yaml::Error,
     },
 
-    #[error("context not found: {name}")]
+    #[error("context '{name}' not found in kubeconfig")]
     ContextNotFound { name: String },
 
-    #[error("failed to merge kubeconfig files: {reason}")]
+    #[error("failed to merge or load kubeconfig: {reason}")]
     MergeError { reason: String },
+
+    #[error("kubernetes client error: {reason}")]
+    ClientError { reason: String },
 
     #[error("I/O error: {source}")]
     Io {
