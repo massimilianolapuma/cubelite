@@ -20,14 +20,11 @@ CubeLite gives developers and platform engineers a fast, native-quality view of 
 
 ```
 cubelite/
-├── Cargo.toml          # Cargo workspace root
+├── Cargo.toml          # Cargo workspace root (crates added in subsequent PRs)
 ├── package.json        # pnpm workspace root
 ├── pnpm-workspace.yaml
-├── crates/
-│   └── cubelite-core/  # Rust library crate
-├── apps/
-│   ├── desktop/        # Tauri v2 + Svelte 5
-│   └── macos/          # Swift 6 / SwiftUI
+├── crates/             # Rust crates (scaffolded in subsequent PRs)
+├── apps/               # Desktop + macOS apps (scaffolded in subsequent PRs)
 ├── packages/           # Shared JS/TS packages
 ├── design/             # Design tokens + Figma exports
 └── docs/               # Documentation
@@ -46,11 +43,11 @@ cubelite/
 **Prerequisites:** Rust 1.82+, Node.js ≥ 22, pnpm ≥ 9, Xcode 16+ (macOS app), Docker (integration tests)
 
 ```sh
-# Rust core
-cargo build -p cubelite-core
-cargo test -p cubelite-core
+# Rust core (available once crates/cubelite-core is scaffolded)
+cargo build
+cargo test
 
-# Desktop app
+# Desktop app (available once apps/desktop is scaffolded)
 pnpm install
 pnpm dev
 ```

@@ -4,11 +4,11 @@
   "private": true,
   "packageManager": "pnpm@9",
   "scripts": {
-    "dev": "pnpm --filter desktop dev",
-    "build": "pnpm --filter desktop build",
-    "test": "pnpm --filter desktop test",
-    "lint": "pnpm --filter desktop lint",
-    "typecheck": "pnpm --filter desktop typecheck"
+    "dev": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
+    "build": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
+    "test": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
+    "lint": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
+    "typecheck": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\""
   },
   "engines": { "node": ">=22", "pnpm": ">=9" }
 }
