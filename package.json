@@ -1,0 +1,14 @@
+{
+  "name": "cubelite",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9",
+  "scripts": {
+    "dev": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
+    "build": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
+    "test": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
+    "lint": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
+    "typecheck": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\""
+  },
+  "engines": { "node": ">=22", "pnpm": ">=9" }
+}
