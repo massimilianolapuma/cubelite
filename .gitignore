@@ -1,0 +1,35 @@
+# Rust
+target/
+**/*.rs.bk
+
+# Node / pnpm
+node_modules/
+dist/
+.pnpm-store/
+
+# Tauri
+apps/desktop/src-tauri/target/
+
+# macOS
+.DS_Store
+**/.DS_Store
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+DerivedData/
+
+# Swift Package Manager
+.build/
+*.resolved
+
+# IDE
+.idea/
+.vscode/settings.json
+*.swp
+
+# Env
+.env.local
+.env.*.local
+
+# Coverage
+coverage/
+lcov.info

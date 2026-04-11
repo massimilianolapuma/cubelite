@@ -1,0 +1,14 @@
+{
+  "name": "cubelite",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9",
+  "scripts": {
+    "dev": "pnpm --filter desktop dev",
+    "build": "pnpm --filter desktop build",
+    "test": "pnpm --filter desktop test",
+    "lint": "pnpm --filter desktop lint",
+    "typecheck": "pnpm --filter desktop typecheck"
+  },
+  "engines": { "node": ">=22", "pnpm": ">=9" }
+}
