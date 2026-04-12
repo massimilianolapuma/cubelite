@@ -38,6 +38,8 @@ struct ContentView: View {
     private var statusBody: some View {
         if let errorMessage = clusterState.errorMessage {
             errorView(errorMessage)
+        } else if clusterState.noConfig {
+            noConfigView
         } else {
             contextInfoView
         }
@@ -47,6 +49,21 @@ struct ContentView: View {
         Label(message, systemImage: "exclamationmark.triangle")
             .foregroundStyle(.red)
             .padding()
+    }
+
+    private var noConfigView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "doc.badge.questionmark")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+            Text("No kubeconfig found")
+                .font(.headline)
+            Text("Place your config at ~/.kube/config or set the KUBECONFIG environment variable.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
     }
 
     private var contextInfoView: some View {

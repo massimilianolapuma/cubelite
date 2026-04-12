@@ -27,6 +27,10 @@ final class ClusterState {
     /// Whether data is currently being loaded.
     var isLoading = false
 
+    /// Whether no kubeconfig file was found at any of the searched paths.
+    /// When `true`, the app is healthy but has no cluster configuration yet.
+    var noConfig = false
+
     /// Last error message, if any.
     var errorMessage: String?
 }

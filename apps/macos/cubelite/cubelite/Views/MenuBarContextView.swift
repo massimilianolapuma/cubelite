@@ -36,9 +36,16 @@ struct MenuBarContextView: View {
             Text("Active Context")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(clusterState.currentContext ?? "None")
-                .font(.body.bold())
-                .lineLimit(1)
+            if clusterState.noConfig {
+                Text("No kubeconfig found")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .italic()
+            } else {
+                Text(clusterState.currentContext ?? "None")
+                    .font(.body.bold())
+                    .lineLimit(1)
+            }
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 4)

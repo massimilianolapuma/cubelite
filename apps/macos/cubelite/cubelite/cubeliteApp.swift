@@ -31,8 +31,13 @@ struct cubeliteApp: App {
         defer { clusterState.isLoading = false }
         do {
             let config = try await kubeconfigService.load()
+            clusterState.noConfig = false
             clusterState.contexts = config.contexts
             clusterState.currentContext = config.currentContext
+        } catch CubeliteError.fileNotFound {
+            // No kubeconfig present — normal state for a fresh install.
+            // The app remains functional; the user will be prompted to configure.
+            clusterState.noConfig = true
         } catch {
             clusterState.errorMessage = error.localizedDescription
         }

@@ -18,8 +18,21 @@ actor KubeconfigService {
                 .split(separator: ":")
                 .map { URL(fileURLWithPath: String($0)) }
         }
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return [home.appendingPathComponent(".kube/config")]
+        return [realHomeDirectory().appendingPathComponent(".kube/config")]
+    }
+
+    /// Returns the user's real home directory, bypassing sandbox container redirection.
+    ///
+    /// `FileManager.default.homeDirectoryForCurrentUser` returns the sandboxed container
+    /// (`~/Library/Containers/<bundle-id>/Data`) when `ENABLE_APP_SANDBOX = YES`.
+    /// `getpwuid(getuid())` reads from the system user database and always returns the
+    /// real home path (e.g. `/Users/alice`), unaffected by the sandbox.
+    private static func realHomeDirectory() -> URL {
+        if let pw = getpwuid(getuid()), let dir = pw.pointee.pw_dir {
+            return URL(fileURLWithPath: String(cString: dir))
+        }
+        // Unreachable in practice; the user always has a passwd entry.
+        return FileManager.default.homeDirectoryForCurrentUser
     }
 
     // MARK: - Load
