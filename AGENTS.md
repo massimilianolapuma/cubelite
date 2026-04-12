@@ -8,14 +8,15 @@ use the inter-agent protocol described below.
 
 ## Agent Roster
 
-| Agent | Scope | Primary Tools |
-|---|---|---|
-| `core-agent` | `crates/**` | `cargo test`, `cargo clippy --deny warnings`, `cargo build` |
-| `desktop-agent` | `apps/desktop/**` | `pnpm --filter desktop test`, Vitest, Playwright |
-| `macos-agent` | `apps/macos/**` | `swift build`, `swift test`, Xcode |
-| `design-agent` | `apps/desktop/**` (UI only) | Figma MCP, shadcn-svelte, Tailwind tokens |
-| `devops-agent` | `.github/**` | GitHub Actions, secret scanning, YAML lint |
-| `ai-agent` | Any | Architecture, cross-cutting concerns, ADRs |
+| Agent | Scope | Model | Primary Tools |
+|---|---|---|---|
+| `coordinator` | Any / cross-cutting | Claude Opus 4.6 | Issue triage, milestone planning, inter-agent routing |
+| `core-agent` | `crates/**` | Claude Sonnet 4.5 | `cargo test`, `cargo clippy --deny warnings`, `cargo build` |
+| `desktop-agent` | `apps/desktop/**` | Claude Sonnet 4.5 | `pnpm --filter desktop test`, Vitest, Playwright |
+| `macos-agent` | `apps/macos/**` | Claude Sonnet 4.5 | `xcodebuild build`, `xcodebuild test`, Xcode |
+| `design-agent` | `apps/desktop/**` (UI only) | Claude Sonnet 4.5 | Figma MCP, shadcn-svelte, Tailwind tokens |
+| `devops-agent` | `.github/**` | Claude Sonnet 4.5 | GitHub Actions, secret scanning, YAML lint |
+| `qa-agent` | Any / quality | Claude Sonnet 4.5 | Test coverage, CI validation, security review |
 
 ---
 
@@ -32,11 +33,12 @@ cubelite/
 │       └── AGENTS.md          → (see apps/macos/AGENTS.md)
 ├── .github/
 │   ├── workflows/             → devops-agent
+│   ├── agents/                → devops-agent
 │   └── instructions/          → devops-agent
 ├── Cargo.toml                 → core-agent (workspace manifest)
 ├── package.json               → desktop-agent (workspace scripts)
 ├── Makefile                   → devops-agent
-└── AGENTS.md                  → ai-agent (this file)
+└── AGENTS.md                  → coordinator (this file)
 ```
 
 ---
@@ -83,6 +85,8 @@ When a task spans multiple subtrees:
 | Rust lint | `cargo clippy --deny warnings` |
 | Rust tests | `cargo test --workspace` |
 | Rust format | `cargo fmt --check` |
+| Desktop lint | `pnpm --filter desktop lint` |
 | Desktop tests | `pnpm --filter desktop test` |
-| macOS tests | `swift test` |
+| macOS build | `xcodebuild build -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite` |
+| macOS tests | `xcodebuild test -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite` |
 | Secret scan | `gh secret-scanning run` |
