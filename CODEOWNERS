@@ -1,20 +1,17 @@
-# CODEOWNERS
-# Each line maps a path glob to one or more GitHub usernames or teams.
-# The listed owners are automatically requested for review on PRs that touch
-# files matching the pattern.
+# CubeLite Code Owners
 # See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
-# Default owners for everything not matched by a more specific pattern
+# Default owner for everything
 * @massimilianolapuma
 
-# Rust core library — core-agent owner
-crates/ @massimilianolapuma
+# Rust core library
+/crates/ @massimilianolapuma
 
-# Desktop app (Tauri + Svelte) — desktop-agent owner
-apps/desktop/ @massimilianolapuma
+# Desktop app (Tauri + Svelte)
+/apps/desktop/ @massimilianolapuma
 
-# macOS app (Swift + SwiftUI) — macos-agent owner
-apps/macos/ @massimilianolapuma
+# macOS native app (Swift + SwiftUI)
+/apps/macos/ @massimilianolapuma
 
-# CI/CD and DevOps — devops-agent owner
-.github/ @massimilianolapuma
+# CI/CD and GitHub config
+/.github/ @massimilianolapuma

@@ -1,95 +1,83 @@
 # Contributing to CubeLite
 
-Thank you for contributing! Please follow these guidelines to keep the project consistent and maintainable.
+Thank you for your interest in contributing to CubeLite!
 
----
+## Getting Started
 
-## Getting started
-
-1. Fork the repository and clone your fork.
+1. Fork and clone the repo
 2. Install prerequisites:
-   - [Rust 1.82+](https://rustup.rs/)
-   - [Node.js 20+](https://nodejs.org/) & [pnpm 9.15+](https://pnpm.io/)
-   - [Xcode 15+](https://developer.apple.com/xcode/) (macOS app only)
-   - [Tauri prerequisites](https://tauri.app/start/prerequisites/)
-
----
-
-## Branch naming
-
-All work must be done on a feature branch — **never commit directly to `main`**.
-
-| Type | Pattern | Example |
-|---|---|---|
-| Feature | `feat/<issue>-<slug>` | `feat/5-tauri-scaffold` |
-| Bug fix | `fix/<issue>-<slug>` | `fix/42-kubeconfig-parse` |
-| Hotfix | `hotfix/<issue>-<slug>` | `hotfix/99-crash-on-launch` |
-| Chore | `chore/<issue>-<slug>` | `chore/8-branch-protection` |
-| CI/DevOps | `ci/<issue>-<slug>` | `ci/8-add-codeowners` |
-
----
-
-## Workflow
-
-1. Pick up (or create) a GitHub Issue.
-2. Create a branch from `main`.
-3. Implement your changes.
-4. Run local quality gates:
-   ```sh
-   cargo clippy --deny warnings
+   - **Rust** 1.82+ via [rustup](https://rustup.rs/)
+   - **Node.js** 22+ and **pnpm** 10+ (for `apps/desktop/`)
+   - **Xcode** 16+ (for `apps/macos/`)
+3. Run initial checks:
+   ```bash
    cargo test --workspace
-   pnpm --filter desktop lint
-   pnpm --filter desktop test
+   cargo clippy --deny warnings
    ```
-5. Push the branch and open a Pull Request.
-6. Fill in the PR template — link the issue with `Closes #<number>`.
-7. Wait for CI to pass and at least one approving review.
-8. A maintainer will squash-merge the PR.
 
----
+## Branch Naming
 
-## Commit messages
+All branches must follow this pattern:
+
+| Prefix | Use |
+|---|---|
+| `feat/<N>-<slug>` | New feature (N = issue number) |
+| `fix/<N>-<slug>` | Bug fix |
+| `chore/<N>-<slug>` | Maintenance / tooling |
+| `hotfix/<N>-<slug>` | Urgent production fix |
+
+Examples: `feat/42-context-switcher`, `fix/57-crash-on-empty-kubeconfig`
+
+## Commit Messages
 
 Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-<type>(<scope>): <short description>
+type(scope): description
+
+[optional body]
+
+[optional footer(s)]
 ```
 
-Examples: `feat(core): add kubeconfig parser`, `fix(desktop): handle empty context list`
+**Types:** `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`, `style`
 
-Allowed types: `feat`, `fix`, `chore`, `ci`, `docs`, `test`, `refactor`, `style`, `perf`.
+**Scopes:** `core`, `desktop`, `macos`, `ci`, `repo`
 
----
+Examples:
+- `feat(core): add namespace filtering to context list`
+- `fix(macos): resolve menu bar icon rendering on Retina`
+- `chore(ci): pin actions/checkout to SHA`
 
-## Code standards
+## Pull Requests
+
+1. **Never commit directly to `main`** — all changes via PR
+2. Open a PR with `Closes #N` in the body
+3. Fill in the PR template checklist
+4. Wait for CI checks to pass and at least one approval
+5. **Squash merge only** — no merge commits, no rebase-merge
+
+## Code Standards
 
 ### Rust (`crates/`)
-- No `unwrap()` or `expect()` in production code — use `?`, `thiserror`, or `anyhow::Context`.
-- No `unsafe` blocks without an explicit justification comment.
-- All public APIs must have `/// doc comments`.
-- Run `cargo fmt` before pushing.
+- No `unwrap()` or `expect()` in production code — use `?` and `thiserror`
+- No `unsafe` without a `// SAFETY:` justification
+- All public APIs require `/// doc comments`
+- Run `cargo clippy --deny warnings` and `cargo fmt --check`
 
 ### TypeScript / Svelte (`apps/desktop/`)
-- Components: `PascalCase.svelte`; stores/composables: `camelCase`.
-- No `any` type without a comment explaining why.
-- Tailwind v4 CSS-only — no `tailwind.config.ts`.
+- Svelte 5 runes (`$state`, `$derived`, `$effect`) — no legacy stores
+- Components in `PascalCase.svelte`
+- Run `pnpm --filter desktop test`
 
 ### Swift (`apps/macos/`)
-- Types/protocols: `PascalCase`; properties/methods: `camelCase`.
-- Use Swift 6 concurrency (`async/await`, `@MainActor`).
-
----
+- Swift 6 strict concurrency (`@Sendable`, `actor`, `@MainActor`)
+- `@Observable` — not `ObservableObject`
+- No `try!` or force-unwrap (`!`) in production code
+- Run tests via Xcode or `xcodebuild test`
 
 ## Security
 
-- **No plaintext secrets** in code or config.
-- Credentials via OS keychain only (Keychain on macOS, SecretService on Linux).
-- No telemetry without explicit user opt-in.
-- CI secrets via `${{ secrets.* }}` only.
-
----
-
-## Questions?
-
-Open a [Discussion](https://github.com/massimilianolapuma/cubelite/discussions) or ping on the issue.
+- **No plaintext secrets** anywhere in code or config
+- Credentials must use the OS keychain
+- Report vulnerabilities via GitHub Security Advisories (do not open a public issue)
