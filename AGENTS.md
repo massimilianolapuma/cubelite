@@ -11,12 +11,12 @@ use the inter-agent protocol described below.
 | Agent | Scope | Model | Primary Tools |
 |---|---|---|---|
 | `coordinator` | Any / cross-cutting | Claude Opus 4.6 | Issue triage, milestone planning, inter-agent routing |
-| `core-agent` | `crates/**` | Claude Sonnet 4.5 | `cargo test`, `cargo clippy --deny warnings`, `cargo build` |
-| `desktop-agent` | `apps/desktop/**` | Claude Sonnet 4.5 | `pnpm --filter desktop test`, Vitest, Playwright |
-| `macos-agent` | `apps/macos/**` | Claude Sonnet 4.5 | `xcodebuild build`, `xcodebuild test`, Xcode |
-| `design-agent` | `apps/desktop/**` (UI only) | Claude Sonnet 4.5 | Figma MCP, shadcn-svelte, Tailwind tokens |
-| `devops-agent` | `.github/**` | Claude Sonnet 4.5 | GitHub Actions, secret scanning, YAML lint |
-| `qa-agent` | Any / quality | Claude Sonnet 4.5 | Test coverage, CI validation, security review |
+| `core-agent` | `crates/**` | Claude Sonnet 4.6 | `cargo test`, `cargo clippy --deny warnings`, `cargo build` |
+| `desktop-agent` | `apps/desktop/**` | Claude Sonnet 4.6 | `pnpm --filter desktop test`, Vitest, Playwright |
+| `macos-agent` | `apps/macos/**` | Claude Sonnet 4.6 | `xcodebuild build`, `xcodebuild test`, Xcode |
+| `design-agent` | `apps/desktop/**` (UI only) | Claude Sonnet 4.6 | Figma MCP, shadcn-svelte, Tailwind tokens |
+| `devops-agent` | `.github/**` | Claude Sonnet 4.6 | GitHub Actions, secret scanning, YAML lint |
+| `qa-agent` | Any / quality | Claude Sonnet 4.6 | Test coverage, CI validation, security review |
 
 ---
 
