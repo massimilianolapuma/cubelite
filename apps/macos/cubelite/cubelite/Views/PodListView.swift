@@ -92,7 +92,7 @@ struct PodListView: View {
             TableColumn("Status") { pod in
                 Text(pod.phase ?? "—")
                     .font(.callout)
-                    .foregroundStyle(phaseColor(pod.phase))
+                    .foregroundStyle(Color.podPhase(pod.phase))
             }
             .width(min: 60, ideal: 90)
 
@@ -104,7 +104,7 @@ struct PodListView: View {
             .width(ideal: 70)
 
             TableColumn("Age") { pod in
-                Text(ageString(from: pod.creationTimestamp))
+                Text(pod.creationTimestamp.k8sAge)
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -112,30 +112,6 @@ struct PodListView: View {
         }
     }
 
-    // MARK: - Helpers
-
-    private func phaseColor(_ phase: String?) -> Color {
-        switch phase {
-        case "Running": return .green
-        case "Pending": return .orange
-        case "Succeeded": return .secondary
-        case "Failed": return .red
-        default: return .secondary
-        }
-    }
-
-    private func ageString(from isoTimestamp: String?) -> String {
-        guard let iso = isoTimestamp else { return "—" }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = formatter.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
-        guard let createdAt = date else { return "—" }
-        let elapsed = Int(Date().timeIntervalSince(createdAt))
-        if elapsed < 60 { return "\(elapsed)s" }
-        if elapsed < 3_600 { return "\(elapsed / 60)m" }
-        if elapsed < 86_400 { return "\(elapsed / 3_600)h" }
-        return "\(elapsed / 86_400)d"
-    }
 }
 
 // MARK: - Pod Status Dot
@@ -151,15 +127,7 @@ private struct PodStatusDot: View {
             .help(phase ?? "Unknown")
     }
 
-    private var color: Color {
-        switch phase {
-        case "Running": return .green
-        case "Pending": return .orange
-        case "Succeeded": return .blue
-        case "Failed": return .red
-        default: return .secondary
-        }
-    }
+    private var color: Color { Color.podPhase(phase) }
 }
 
 // MARK: - Preview

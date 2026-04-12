@@ -83,14 +83,14 @@ struct ResourceDetailView: View {
             DetailRow(label: "Phase") {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(podPhaseColor(pod.phase))
+                        .fill(Color.podPhase(pod.phase))
                         .frame(width: 8, height: 8)
                     Text(pod.phase ?? "Unknown")
                 }
             }
             DetailRow(label: "Ready", value: pod.ready ? "Yes" : "No")
             DetailRow(label: "Restarts", value: "\(pod.restarts)")
-            DetailRow(label: "Age", value: ageString(from: pod.creationTimestamp))
+            DetailRow(label: "Age", value: pod.creationTimestamp.k8sAge)
             if let ts = pod.creationTimestamp {
                 DetailRow(label: "Created", value: friendlyDate(ts))
             }
@@ -116,29 +116,6 @@ struct ResourceDetailView: View {
     }
 
     // MARK: - Helpers
-
-    private func podPhaseColor(_ phase: String?) -> Color {
-        switch phase {
-        case "Running": return .green
-        case "Pending": return .orange
-        case "Succeeded": return .blue
-        case "Failed": return .red
-        default: return .secondary
-        }
-    }
-
-    private func ageString(from isoTimestamp: String?) -> String {
-        guard let iso = isoTimestamp else { return "—" }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = formatter.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
-        guard let createdAt = date else { return "—" }
-        let elapsed = Int(Date().timeIntervalSince(createdAt))
-        if elapsed < 60 { return "\(elapsed)s" }
-        if elapsed < 3_600 { return "\(elapsed / 60)m" }
-        if elapsed < 86_400 { return "\(elapsed / 3_600)h" }
-        return "\(elapsed / 86_400)d"
-    }
 
     private func friendlyDate(_ iso: String) -> String {
         let formatter = ISO8601DateFormatter()
