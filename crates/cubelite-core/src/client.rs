@@ -1,3 +1,8 @@
+//! Async Kubernetes client wrapper built on top of `kube-rs`.
+//!
+//! [`KubeClient`] wraps a configured `kube::Client` and exposes high-level
+//! methods for listing the most common Kubernetes resources.
+
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{Namespace, Pod};
 use kube::{
@@ -7,11 +12,14 @@ use kube::{
 use std::path::Path;
 
 use crate::{
-    error::ConfigError,
+    error::KubeconfigError,
     resources::{DeploymentInfo, NamespaceInfo, PodInfo},
 };
 
-/// Async Kubernetes client wrapper pre-configured from a kubeconfig file.
+/// An async Kubernetes client pre-configured from a kubeconfig file.
+///
+/// Use [`KubeClient::new`] to construct an instance, then call the async
+/// `list_*` methods to query cluster resources.
 pub struct KubeClient {
     inner: Client,
 }
@@ -19,14 +27,20 @@ pub struct KubeClient {
 impl KubeClient {
     /// Build a [`KubeClient`] from the kubeconfig at `path`.
     ///
-    /// `context` selects a named context; if `None` the file's `current-context` is used.
-    pub async fn new(path: &Path, context: Option<&str>) -> Result<Self, ConfigError> {
+    /// `context` selects a named context; when `None` the file's
+    /// `current-context` is used.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError`] when the file cannot be read, parsed, or
+    /// when the client cannot be initialised from the resulting config.
+    pub async fn new(path: &Path, context: Option<&str>) -> Result<Self, KubeconfigError> {
         let raw = tokio::fs::read_to_string(path)
             .await
-            .map_err(|source| ConfigError::Io { source })?;
+            .map_err(|source| KubeconfigError::Io { source })?;
 
         let kubeconfig: Kubeconfig =
-            serde_yaml::from_str(&raw).map_err(|source| ConfigError::ParseError { source })?;
+            serde_yaml::from_str(&raw).map_err(|source| KubeconfigError::ParseError { source })?;
 
         let options = KubeConfigOptions {
             context: context.map(str::to_string),
@@ -35,19 +49,27 @@ impl KubeClient {
 
         let config = Config::from_custom_kubeconfig(kubeconfig, &options)
             .await
-            .map_err(|e| ConfigError::MergeError {
+            .map_err(|e| KubeconfigError::MergeError {
                 reason: e.to_string(),
             })?;
 
-        let inner = Client::try_from(config).map_err(|e| ConfigError::ClientError {
+        let inner = Client::try_from(config).map_err(|e| KubeconfigError::ClientError {
             reason: e.to_string(),
         })?;
 
         Ok(Self { inner })
     }
 
-    /// List pods in `namespace`, or across all namespaces when `namespace` is `None`.
-    pub async fn list_pods(&self, namespace: Option<&str>) -> Result<Vec<PodInfo>, ConfigError> {
+    /// List pods in `namespace`, or across all namespaces when `namespace` is
+    /// `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_pods(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<PodInfo>, KubeconfigError> {
         let api: Api<Pod> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -56,7 +78,7 @@ impl KubeClient {
         let pod_list =
             api.list(&Default::default())
                 .await
-                .map_err(|e| ConfigError::ClientError {
+                .map_err(|e| KubeconfigError::ClientError {
                     reason: e.to_string(),
                 })?;
 
@@ -87,14 +109,18 @@ impl KubeClient {
         Ok(pods)
     }
 
-    /// List all namespaces.
-    pub async fn list_namespaces(&self) -> Result<Vec<NamespaceInfo>, ConfigError> {
+    /// List all namespaces visible to the authenticated user.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_namespaces(&self) -> Result<Vec<NamespaceInfo>, KubeconfigError> {
         let api: Api<Namespace> = Api::all(self.inner.clone());
 
         let ns_list =
             api.list(&Default::default())
                 .await
-                .map_err(|e| ConfigError::ClientError {
+                .map_err(|e| KubeconfigError::ClientError {
                     reason: e.to_string(),
                 })?;
 
@@ -111,17 +137,21 @@ impl KubeClient {
         Ok(namespaces)
     }
 
-    /// List all deployments in `namespace`.
+    /// List all deployments in the given `namespace`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
     pub async fn list_deployments(
         &self,
         namespace: &str,
-    ) -> Result<Vec<DeploymentInfo>, ConfigError> {
+    ) -> Result<Vec<DeploymentInfo>, KubeconfigError> {
         let api: Api<Deployment> = Api::namespaced(self.inner.clone(), namespace);
 
         let deploy_list =
             api.list(&Default::default())
                 .await
-                .map_err(|e| ConfigError::ClientError {
+                .map_err(|e| KubeconfigError::ClientError {
                     reason: e.to_string(),
                 })?;
 
