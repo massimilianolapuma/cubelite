@@ -13,7 +13,7 @@ tauri = { version = "2", features = [] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-cubelite-core = { path = "../../crates/cubelite-core" }
+cubelite-core = { path = "../../../crates/cubelite-core" }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -5,5 +5,5 @@ pub mod resources;
 
 pub use client::KubeClient;
 pub use error::ConfigError;
-pub use kubeconfig::{KubeConfig, list_contexts, set_active_context};
+pub use kubeconfig::{list_contexts, set_active_context, KubeConfig};
 pub use resources::{DeploymentInfo, NamespaceInfo, PodInfo};
