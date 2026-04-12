@@ -1,15 +1,23 @@
 {
   "name": "cubelite",
-  "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "packageManager": "pnpm@9",
+  "version": "0.1.0",
+  "description": "Kubernetes context aggregator — discover, switch, and manage k8s contexts",
   "scripts": {
-    "dev": "pnpm --filter desktop tauri:dev",
-    "build": "pnpm --filter desktop tauri:build",
+    "dev": "pnpm --filter desktop dev",
+    "build": "pnpm --filter desktop build",
     "test": "pnpm --filter desktop test",
     "lint": "pnpm --filter desktop lint",
     "typecheck": "pnpm --filter desktop typecheck",
     "design:tokens": "tsx design/export-tokens.ts"
-  }
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0"
 }
