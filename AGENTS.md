@@ -81,7 +81,8 @@ When a task spans multiple subtrees:
 3. Implement → run local checks (lint, test, coverage)
 4. Push branch → open PR with `Closes #N` in body
 5. Add `status:review` label while PR is open
-6. Squash-merge only → post closing comment → add `status:done` label → close issue
+6. **ALL CI checks MUST pass** before merge (tests, lint, Sonar, build) — no exceptions
+7. Squash-merge only → post closing comment → add `status:done` label → close issue
 
 ---
 

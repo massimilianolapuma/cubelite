@@ -103,6 +103,9 @@ cubelite/
 ### General
 - No direct commits to `main` — all changes via feature branch → PR → squash-merge
 - Commit messages follow Conventional Commits: `type(scope): description`
+- **PRs are mergeable only when ALL CI checks pass** (tests, lint, Sonar, build)
+  - A PR that fails any check MUST NOT be merged — fix the failures first
+  - No exceptions, no manual overrides
 
 ---
 
