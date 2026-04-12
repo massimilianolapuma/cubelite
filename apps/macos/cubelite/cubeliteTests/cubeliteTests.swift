@@ -281,7 +281,7 @@ final class ResourceModelTests: XCTestCase {
 
     func testK8sPod_toPodInfo_allContainersReady() {
         let pod = K8sPod(
-            metadata: K8sObjectMeta(name: "nginx-abc", namespace: "production"),
+            metadata: K8sObjectMeta(name: "nginx-abc", namespace: "production", creationTimestamp: nil),
             status: K8sPodStatus(
                 phase: "Running",
                 containerStatuses: [
@@ -302,7 +302,7 @@ final class ResourceModelTests: XCTestCase {
 
     func testK8sPod_toPodInfo_oneContainerNotReady_isNotReady() {
         let pod = K8sPod(
-            metadata: K8sObjectMeta(name: "app", namespace: "default"),
+            metadata: K8sObjectMeta(name: "app", namespace: "default", creationTimestamp: nil),
             status: K8sPodStatus(
                 phase: "Running",
                 containerStatuses: [
@@ -320,7 +320,7 @@ final class ResourceModelTests: XCTestCase {
 
     func testK8sPod_toPodInfo_noContainers_isNotReady() {
         let pod = K8sPod(
-            metadata: K8sObjectMeta(name: "pending", namespace: "kube-system"),
+            metadata: K8sObjectMeta(name: "pending", namespace: "kube-system", creationTimestamp: nil),
             status: K8sPodStatus(phase: "Pending", containerStatuses: [])
         )
 
@@ -340,7 +340,7 @@ final class ResourceModelTests: XCTestCase {
 
     func testK8sNamespace_toNamespaceInfo_mapsCorrectly() {
         let ns = K8sNamespace(
-            metadata: K8sObjectMeta(name: "kube-system", namespace: nil),
+            metadata: K8sObjectMeta(name: "kube-system", namespace: nil, creationTimestamp: nil),
             status: K8sNamespaceStatus(phase: "Active")
         )
 
@@ -352,7 +352,7 @@ final class ResourceModelTests: XCTestCase {
     }
 
     func testPodInfo_id_combinesNamespaceAndName() {
-        let pod = PodInfo(name: "my-app", namespace: "staging", phase: "Running", ready: true, restarts: 0)
+        let pod = PodInfo(name: "my-app", namespace: "staging", phase: "Running", ready: true, restarts: 0, creationTimestamp: nil)
         XCTAssertEqual(pod.id, "staging/my-app")
     }
 
