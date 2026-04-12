@@ -8,6 +8,7 @@ struct MenuBarContextView: View {
 
     let clusterState: ClusterState
     let kubeconfigService: KubeconfigService
+    var onShowDetails: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -17,6 +18,15 @@ struct MenuBarContextView: View {
                 contextRows
             }
             Divider()
+            if onShowDetails != nil {
+                Button("Show Details…") {
+                    onShowDetails?()
+                }
+                .keyboardShortcut("d")
+                .padding(.top, 4)
+                .padding(.horizontal, 4)
+                Divider()
+            }
             Button("Quit CubeLite") {
                 NSApplication.shared.terminate(nil)
             }
@@ -41,6 +51,9 @@ struct MenuBarContextView: View {
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .italic()
+                Text("Place config at ~/.kube/config")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             } else {
                 Text(clusterState.currentContext ?? "None")
                     .font(.body.bold())

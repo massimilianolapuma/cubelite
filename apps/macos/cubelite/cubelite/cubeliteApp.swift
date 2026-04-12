@@ -5,22 +5,26 @@ struct cubeliteApp: App {
 
     @State private var clusterState = ClusterState()
     private let kubeconfigService = KubeconfigService()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .environment(clusterState)
-                .task {
-                    await loadKubeconfig()
-                }
-        }
-
         MenuBarExtra("CubeLite", systemImage: "square.3.layers.3d") {
             MenuBarContextView(
                 clusterState: clusterState,
-                kubeconfigService: kubeconfigService
+                kubeconfigService: kubeconfigService,
+                onShowDetails: { openWindow(id: "details") }
             )
+            .task {
+                await loadKubeconfig()
+            }
         }
+
+        Window("CubeLite Details", id: "details") {
+            ContentView()
+                .environment(clusterState)
+        }
+        .defaultPosition(.center)
+        .defaultSize(width: 520, height: 340)
     }
 
     // MARK: - Private
