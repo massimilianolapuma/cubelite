@@ -97,8 +97,9 @@ struct K8sObjectMeta: Codable, Sendable {
 extension K8sPod {
     /// Converts a raw Kubernetes pod to a ``PodInfo`` domain model.
     func toPodInfo() -> PodInfo {
-        let allReady = status?.containerStatuses?.allSatisfy { $0.ready == true } ?? false
-        let totalRestarts = status?.containerStatuses?.reduce(0) { $0 + ($1.restartCount ?? 0) } ?? 0
+        let containers = status?.containerStatuses ?? []
+        let allReady = !containers.isEmpty && containers.allSatisfy { $0.ready == true }
+        let totalRestarts = containers.reduce(0) { $0 + ($1.restartCount ?? 0) }
         return PodInfo(
             name: metadata?.name ?? "",
             namespace: metadata?.namespace ?? "",
