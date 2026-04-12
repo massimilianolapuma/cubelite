@@ -1,60 +1,112 @@
 # CubeLite
 
-> Lightweight Kubernetes dashboard — local-first, privacy-respecting, cross-platform.
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-## Overview
+> Discover, switch, and manage Kubernetes contexts from a unified interface — fast, local-first, and privacy-respecting.
 
-CubeLite gives developers and platform engineers a fast, native-quality view of their Kubernetes clusters without sending data to any cloud service.
+<!-- screenshot coming soon -->
 
-| Layer | Technology |
-|---|---|
-| Rust core | `cubelite-core` — kubeconfig parsing, kube-rs client, resource models, watch streams |
-| Desktop | Tauri v2 + Svelte 5 + shadcn-svelte + Tailwind CSS v4 |
-| macOS native | Swift 6, SwiftUI, macOS 14+, local HTTP/IPC bridge to Rust core |
-| AI layer | Ollama (local) + cloud via Vercel AI SDK — post-MVP, feature-flagged |
-| Design | Figma → design tokens → Tailwind v4 config |
-| Build | Cargo workspace (`resolver = "2"`) + pnpm workspaces |
-| CI | GitHub Actions — Vitest, Playwright, Swift Testing, kind/k3d |
+## What is CubeLite?
 
-## Monorepo Layout
+CubeLite is a Kubernetes context aggregator for developers and platform engineers. It gives you a native-quality view of your clusters without sending data to any external service.
+
+Unlike Lens (Electron-based, cloud account required) or k9s (terminal-only), CubeLite is:
+
+- **Native** — a real macOS app built with SwiftUI, plus a cross-platform desktop app via Tauri
+- **Local-first** — reads your existing `~/.kube/config`; no setup, no cloud account
+- **Privacy-respecting** — no telemetry, no analytics, no call-home
+
+## Features
+
+- **Kubeconfig merge** — resolves `KUBECONFIG` env paths, merges multiple files, first file's `current-context` wins
+- **Context switch** — switch active context and persist the change to disk
+- **Menu bar quick-switch** — click the status-bar icon to switch context without opening the main window
+- **Lens-like GUI** — `NavigationSplitView` sidebar listing all contexts, detail pane for cluster resources
+- **Kubernetes resources** — Pods, Namespaces, Deployments (Pods: name, namespace, phase, ready, restarts)
+- **Secure credential storage** — bearer tokens and client certificates stored in the OS Keychain
+- **Graceful no-config state** — informative UI when no kubeconfig is found
+
+## Architecture
+
+CubeLite is a monorepo with three independent layers that share no runtime dependency on each other:
 
 ```
 cubelite/
-├── Cargo.toml          # Cargo workspace root (crates added in subsequent PRs)
-├── package.json        # pnpm workspace root
-├── pnpm-workspace.yaml
-├── crates/             # Rust crates (scaffolded in subsequent PRs)
-├── apps/               # Desktop + macOS apps (scaffolded in subsequent PRs)
-├── packages/           # Shared JS/TS packages
-├── design/             # Design tokens + Figma exports
-└── docs/               # Documentation
+├── crates/
+│   └── cubelite-core/      ← Rust library: kubeconfig parsing, kube-rs client, resource types
+├── apps/
+│   ├── desktop/            ← Cross-platform: Tauri v2 + Svelte 5 + TypeScript
+│   └── macos/              ← Native macOS: Swift 6 + SwiftUI (menu-bar + main window)
+├── design/                 ← Design tokens (JSON → Tailwind CSS v4)
+└── docs/                   ← Architecture docs
 ```
 
-## Privacy & Security
+| Layer | Language | Key Libraries |
+|---|---|---|
+| `crates/cubelite-core` | Rust 1.82+ | kube-rs 0.97, tokio, thiserror, anyhow |
+| `apps/desktop` | TypeScript + Svelte 5 | Tauri v2, shadcn-svelte, Tailwind v4, Vitest |
+| `apps/macos` | Swift 6 | SwiftUI, macOS 14+, Observation framework, Yams |
 
-- No telemetry, no analytics, no call-home
-- No user accounts required
-- Kubernetes secrets masked in the UI by default
-- OS keychain used for credential storage
-- Content Security Policy enforced in all web views
+The macOS app communicates with the Kubernetes API server directly via `URLSession` — no FFI bridge to the Rust core. The Rust core is used by the Tauri desktop backend via Cargo dependency.
+
+See [docs/architecture.md](docs/architecture.md) for a full diagram.
+
+## Getting Started
+
+### Prerequisites
+
+| Tool | Version |
+|---|---|
+| Rust | 1.82+ |
+| Xcode | 16+ (macOS app) |
+| Node.js | 20+ |
+| pnpm | 9+ |
+
+### Build the Rust core
+
+```sh
+cargo build --workspace
+cargo test --workspace
+```
+
+### Build the macOS app
+
+```sh
+xcodebuild build \
+  -project apps/macos/cubelite/cubelite.xcodeproj \
+  -scheme cubelite \
+  -destination 'platform=macOS'
+```
+
+Or open `apps/macos/cubelite/cubelite.xcodeproj` in Xcode and press ⌘R.
+
+### Build the desktop app
+
+```sh
+pnpm install
+pnpm --filter desktop dev
+```
 
 ## Development
 
-**Prerequisites:** Rust 1.82+, Node.js ≥ 22, pnpm ≥ 9, Xcode 16+ (macOS app), Docker (integration tests)
+Common commands are available via `make`. Run `make help` to list all targets.
 
 ```sh
-# Rust core (available once crates/cubelite-core is scaffolded)
-cargo build
-cargo test
+# Lint and test everything
+cargo clippy --deny warnings
+cargo test --workspace
+pnpm --filter desktop test
 
-# Desktop app (available once apps/desktop is scaffolded)
-pnpm install
-pnpm dev
+# Format Rust code
+cargo fmt
+
+# Check macOS build
+xcodebuild build -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite
 ```
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) (coming soon). All PRs must pass CI and include tests.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branch naming conventions, commit format, and code standards. All changes go through a feature branch → PR → squash-merge flow; no direct commits to `main`.
 
 ## License
 

@@ -11,12 +11,15 @@ use the inter-agent protocol described below.
 | Agent | Scope | Model | Primary Tools |
 |---|---|---|---|
 | `coordinator` | Any / cross-cutting | Claude Opus 4.6 | Issue triage, milestone planning, inter-agent routing |
-| `core-agent` | `crates/**` | Claude Sonnet 4.5 | `cargo test`, `cargo clippy --deny warnings`, `cargo build` |
-| `desktop-agent` | `apps/desktop/**` | Claude Sonnet 4.5 | `pnpm --filter desktop test`, Vitest, Playwright |
-| `macos-agent` | `apps/macos/**` | Claude Sonnet 4.5 | `xcodebuild build`, `xcodebuild test`, Xcode |
-| `design-agent` | `apps/desktop/**` (UI only) | Claude Sonnet 4.5 | Figma MCP, shadcn-svelte, Tailwind tokens |
-| `devops-agent` | `.github/**` | Claude Sonnet 4.5 | GitHub Actions, secret scanning, YAML lint |
-| `qa-agent` | Any / quality | Claude Sonnet 4.5 | Test coverage, CI validation, security review |
+| `core-agent` | `crates/**` | Claude Sonnet 4.6 | `cargo test`, `cargo clippy --deny warnings`, `cargo build` |
+| `desktop-agent` | `apps/desktop/**` | Claude Sonnet 4.6 | `pnpm --filter desktop test`, Vitest, Playwright |
+| `macos-agent` | `apps/macos/**` | Claude Sonnet 4.6 | `xcodebuild build`, `xcodebuild test`, Xcode |
+| `design-agent` | `apps/desktop/**` (UI only) | Claude Sonnet 4.6 | Figma MCP, shadcn-svelte, Tailwind tokens |
+| `devops-agent` | `.github/**` | Claude Sonnet 4.6 | GitHub Actions, secret scanning, YAML lint |
+| `qa-agent` | Any / quality | Claude Sonnet 4.6 | Test coverage, CI validation, security review |
+| `docs-agent` | `docs/`, README, CHANGELOG | Claude Sonnet 4.6 | `cargo doc`, documentation generation, Mermaid diagrams |
+| `pages-agent` | `site/`, GitHub Pages | Claude Sonnet 4.6 | Static site build, GitHub Pages deployment, Lighthouse |
+| `security-agent` | Any / security | Claude Sonnet 4.6 | `cargo audit`, `pnpm audit`, secret scanning, OWASP review |
 
 ---
 
@@ -35,9 +38,13 @@ cubelite/
 │   ├── workflows/             → devops-agent
 │   ├── agents/                → devops-agent
 │   └── instructions/          → devops-agent
+├── docs/                      → docs-agent
+├── site/                      → pages-agent
 ├── Cargo.toml                 → core-agent (workspace manifest)
 ├── package.json               → desktop-agent (workspace scripts)
 ├── Makefile                   → devops-agent
+├── README.md                  → docs-agent
+├── CHANGELOG.md               → docs-agent
 └── AGENTS.md                  → coordinator (this file)
 ```
 
@@ -70,11 +77,28 @@ When a task spans multiple subtrees:
 ## Global Workflow
 
 1. Pick up issue → add `status:in-progress` label + tracking comment
-2. Create branch `feat/<N>-<slug>` or `fix/<N>-<slug>` from `main`
+2. Create branch `feat/<N>-<slug>` or `fix/<N>-<slug>` following the **Branching Base Rule** below
 3. Implement → run local checks (lint, test, coverage)
 4. Push branch → open PR with `Closes #N` in body
 5. Add `status:review` label while PR is open
-6. Squash-merge only → post closing comment → add `status:done` label → close issue
+6. **ALL CI checks MUST pass** before merge (tests, lint, Sonar, build) — no exceptions
+7. Squash-merge only → post closing comment → add `status:done` label → close issue
+
+---
+
+## Branching Base Rule
+
+- **Default**: create feature branches from `main`
+- **Exception**: if shared configuration changes (`.github/agents/`, `.github/copilot-instructions.md`,
+  `AGENTS.md`, `.github/instructions/`) exist on an open PR branch **not yet merged to `main`**,
+  new feature branches **MUST** branch from that PR branch to inherit the latest config
+- Before creating a branch, **always check** for unmerged shared config:
+  ```bash
+  git log --oneline main..<config-pr-branch> -- .github/ AGENTS.md
+  ```
+- Once the config PR is merged to `main`, resume branching from `main`
+- **Never overwrite** `.github/agents/*.agent.md` files — if your branch is missing
+  them, rebase onto the config branch instead of recreating them
 
 ---
 
@@ -90,3 +114,6 @@ When a task spans multiple subtrees:
 | macOS build | `xcodebuild build -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite` |
 | macOS tests | `xcodebuild test -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite` |
 | Secret scan | `gh secret-scanning run` |
+| Rust docs | `cargo doc --workspace --no-deps` |
+| Dependency audit (Rust) | `cargo audit` |
+| Dependency audit (npm) | `pnpm audit` |

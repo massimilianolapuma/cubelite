@@ -119,10 +119,14 @@ impl KubeConfig {
     /// Persist the (potentially modified) merged config back to the **first**
     /// path in `paths`.  This mirrors how `kubectl` behaves.
     pub fn save(&self) -> Result<(), ConfigError> {
-        let primary = self.paths.first().ok_or_else(|| ConfigError::FileNotFound {
-            path: "(no kubeconfig paths)".to_string(),
-        })?;
-        let yaml = serde_yaml::to_string(&self.raw).map_err(|e| ConfigError::ParseError { source: e })?;
+        let primary = self
+            .paths
+            .first()
+            .ok_or_else(|| ConfigError::FileNotFound {
+                path: "(no kubeconfig paths)".to_string(),
+            })?;
+        let yaml =
+            serde_yaml::to_string(&self.raw).map_err(|e| ConfigError::ParseError { source: e })?;
         std::fs::write(primary, yaml)?;
         Ok(())
     }
@@ -152,7 +156,11 @@ pub fn set_active_context(name: &str) -> Result<(), ConfigError> {
 fn resolve_kubeconfig_paths() -> Result<Vec<PathBuf>, ConfigError> {
     if let Ok(val) = env::var("KUBECONFIG") {
         if !val.trim().is_empty() {
-            return Ok(val.split(':').filter(|s| !s.is_empty()).map(PathBuf::from).collect());
+            return Ok(val
+                .split(':')
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from)
+                .collect());
         }
     }
 
@@ -206,8 +214,7 @@ contexts:
       user: dev-user
 "#;
         let f = write_temp(yaml);
-        let cfg = KubeConfig::load_from_paths(&[f.path().to_path_buf()])
-            .expect("should load");
+        let cfg = KubeConfig::load_from_paths(&[f.path().to_path_buf()]).expect("should load");
         assert_eq!(cfg.list_contexts(), &["dev".to_string()]);
         assert_eq!(cfg.current_context.as_deref(), Some("dev"));
     }
@@ -234,11 +241,8 @@ contexts:
 "#;
         let fa = write_temp(yaml_a);
         let fb = write_temp(yaml_b);
-        let cfg = KubeConfig::load_from_paths(&[
-            fa.path().to_path_buf(),
-            fb.path().to_path_buf(),
-        ])
-        .expect("should merge");
+        let cfg = KubeConfig::load_from_paths(&[fa.path().to_path_buf(), fb.path().to_path_buf()])
+            .expect("should merge");
 
         let mut names = cfg.list_contexts().to_vec();
         names.sort();

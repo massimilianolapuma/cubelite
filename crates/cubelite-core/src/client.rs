@@ -25,8 +25,8 @@ impl KubeClient {
             .await
             .map_err(|source| ConfigError::Io { source })?;
 
-        let kubeconfig: Kubeconfig = serde_yaml::from_str(&raw)
-            .map_err(|source| ConfigError::ParseError { source })?;
+        let kubeconfig: Kubeconfig =
+            serde_yaml::from_str(&raw).map_err(|source| ConfigError::ParseError { source })?;
 
         let options = KubeConfigOptions {
             context: context.map(str::to_string),
@@ -53,12 +53,12 @@ impl KubeClient {
             None => Api::all(self.inner.clone()),
         };
 
-        let pod_list = api
-            .list(&Default::default())
-            .await
-            .map_err(|e| ConfigError::ClientError {
-                reason: e.to_string(),
-            })?;
+        let pod_list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| ConfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
 
         let pods = pod_list
             .items
@@ -91,12 +91,12 @@ impl KubeClient {
     pub async fn list_namespaces(&self) -> Result<Vec<NamespaceInfo>, ConfigError> {
         let api: Api<Namespace> = Api::all(self.inner.clone());
 
-        let ns_list = api
-            .list(&Default::default())
-            .await
-            .map_err(|e| ConfigError::ClientError {
-                reason: e.to_string(),
-            })?;
+        let ns_list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| ConfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
 
         let namespaces = ns_list
             .items
@@ -118,12 +118,12 @@ impl KubeClient {
     ) -> Result<Vec<DeploymentInfo>, ConfigError> {
         let api: Api<Deployment> = Api::namespaced(self.inner.clone(), namespace);
 
-        let deploy_list = api
-            .list(&Default::default())
-            .await
-            .map_err(|e| ConfigError::ClientError {
-                reason: e.to_string(),
-            })?;
+        let deploy_list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| ConfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
 
         let deployments = deploy_list
             .items
