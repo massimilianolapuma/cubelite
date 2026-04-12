@@ -107,6 +107,13 @@ cubelite/
   - A PR that fails any check MUST NOT be merged — fix the failures first
   - No exceptions, no manual overrides
 
+### Branching Base Rule
+- **Default**: branch from `main`
+- **Exception**: if shared config changes (`.github/agents/`, `AGENTS.md`, instructions)
+  exist on an open PR branch not yet merged to `main`, branch from that PR branch instead
+- Once the config PR is merged, resume branching from `main`
+- **Never overwrite** `.github/agents/*.agent.md` — rebase onto the config branch if missing
+
 ---
 
 ## Agent Routing Table

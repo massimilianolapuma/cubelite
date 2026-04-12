@@ -77,12 +77,28 @@ When a task spans multiple subtrees:
 ## Global Workflow
 
 1. Pick up issue → add `status:in-progress` label + tracking comment
-2. Create branch `feat/<N>-<slug>` or `fix/<N>-<slug>` from `main`
+2. Create branch `feat/<N>-<slug>` or `fix/<N>-<slug>` following the **Branching Base Rule** below
 3. Implement → run local checks (lint, test, coverage)
 4. Push branch → open PR with `Closes #N` in body
 5. Add `status:review` label while PR is open
 6. **ALL CI checks MUST pass** before merge (tests, lint, Sonar, build) — no exceptions
 7. Squash-merge only → post closing comment → add `status:done` label → close issue
+
+---
+
+## Branching Base Rule
+
+- **Default**: create feature branches from `main`
+- **Exception**: if shared configuration changes (`.github/agents/`, `.github/copilot-instructions.md`,
+  `AGENTS.md`, `.github/instructions/`) exist on an open PR branch **not yet merged to `main`**,
+  new feature branches **MUST** branch from that PR branch to inherit the latest config
+- Before creating a branch, **always check** for unmerged shared config:
+  ```bash
+  git log --oneline main..<config-pr-branch> -- .github/ AGENTS.md
+  ```
+- Once the config PR is merged to `main`, resume branching from `main`
+- **Never overwrite** `.github/agents/*.agent.md` files — if your branch is missing
+  them, rebase onto the config branch instead of recreating them
 
 ---
 
