@@ -2,39 +2,62 @@ import SwiftUI
 
 /// Primary application window — Lens-like Kubernetes IDE layout.
 ///
-/// Uses a ``NavigationSplitView`` with a sidebar listing all kubeconfig contexts,
-/// and a detail pane that shows information about the selected context.
-/// Future iterations will replace the detail placeholder with resource views
-/// (Pods, Deployments, Services, etc.).
+/// Uses a two-column ``NavigationSplitView``:
+/// - **Sidebar** (left): kubeconfig contexts with expandable namespace browsers.
+/// - **Detail** (right): resource browse pane (Pods / Deployments tabs) and,
+///   when a resource is selected, a trailing detail panel.
 ///
 /// Layout:
 /// ```
-/// ┌──────────────────────────────────────────────┐
-/// │  Toolbar: CubeLite logo + status + reload     │
-/// ├────────────┬─────────────────────────────────┤
-/// │  Sidebar   │  Detail area                     │
-/// │            │                                  │
-/// │  Contexts: │  (context info / placeholder)   │
-/// │  · ctx-1 ✓ │                                  │
-/// │  · ctx-2   │  "Select a context to begin"    │
-/// │  · ctx-3   │                                  │
-/// └────────────┴─────────────────────────────────┘
+/// ┌──────────────────────────────────────────────────────────┐
+/// │  Toolbar: CubeLite logo + status + reload                │
+/// ├──────────────────┬───────────────────────┬───────────────┤
+/// │  Sidebar         │  Resource list        │  Detail panel │
+/// │                  │                       │               │
+/// │  ▼ my-cluster ✓  │  [Pods|Deployments]   │  name: …      │
+/// │      All NS      │  ┌────────────────┐   │  namespace: … │
+/// │    • default ←   │  │ nginx    Run   │   │  phase: …     │
+/// │    • kube-sys    │  │ worker   Pend  │   │  restarts: …  │
+/// │  ▶ dev-cluster   │  └────────────────┘   │               │
+/// └──────────────────┴───────────────────────┴───────────────┘
 /// ```
 struct MainView: View {
 
     let kubeconfigService: KubeconfigService
+    let kubeAPIService: KubeAPIService
 
     @Environment(ClusterState.self) private var clusterState
-    @State private var selectedContext: String?
+
+    // MARK: - Sidebar State
+
+    /// Which context is currently expanded to show its namespace list.
+    @State private var expandedContext: String?
+    /// The (context, namespace) pair the user has selected in the sidebar.
+    @State private var sidebarSelection: SidebarSelection?
+    /// Whether namespaces for `expandedContext` are currently being fetched.
+    @State private var isLoadingNamespaces: Bool = false
+    /// Namespace fetch error, if any.
+    @State private var namespaceError: String?
+
+    // MARK: - Resource Browse State
+
+    /// Active resource tab: Pods or Deployments.
+    @State private var selectedResourceType: ResourceType = .pods
+    /// Row ID of the selected pod.
+    @State private var selectedPodID: PodInfo.ID?
+    /// Row ID of the selected deployment.
+    @State private var selectedDeploymentID: DeploymentInfo.ID?
+
+    // MARK: - Body
 
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
         } detail: {
-            detailPane
+            detailArea
         }
-        .frame(minWidth: 800, minHeight: 500)
+        .frame(minWidth: 900, minHeight: 550)
         .toolbar { toolbarContent }
         .task { await loadKubeconfig() }
     }
@@ -52,17 +75,25 @@ struct MainView: View {
             }
         }
         ToolbarItem(placement: .primaryAction) {
-            if clusterState.isLoading {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Button {
-                    Task { await loadKubeconfig() }
-                } label: {
+            Button {
+                Task {
+                    await loadKubeconfig()
+                    if let ctx = expandedContext {
+                        await loadNamespaces(for: ctx)
+                    }
+                    if let sel = sidebarSelection {
+                        await loadResources(context: sel.context, namespace: sel.namespace)
+                    }
+                }
+            } label: {
+                if clusterState.isLoading || clusterState.isLoadingResources || isLoadingNamespaces {
+                    ProgressView().controlSize(.small)
+                } else {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Reload kubeconfig")
             }
+            .help("Refresh all")
+            .disabled(clusterState.isLoading || clusterState.isLoadingResources)
         }
         if let error = clusterState.errorMessage {
             ToolbarItem(placement: .status) {
@@ -104,11 +135,51 @@ struct MainView: View {
     }
 
     private var contextList: some View {
-        List(clusterState.contexts, id: \.self, selection: $selectedContext) { context in
-            contextRow(for: context)
-                .tag(context)
+        List {
+            ForEach(clusterState.contexts, id: \.self) { context in
+                contextSection(context)
+            }
         }
-        .navigationTitle("Contexts")
+        .listStyle(.sidebar)
+        .navigationTitle("Clusters")
+    }
+
+    // MARK: - Context DisclosureGroup
+
+    private func contextSection(_ context: String) -> some View {
+        DisclosureGroup(
+            isExpanded: expandedBinding(for: context),
+            content: {
+                NamespaceListView(
+                    contextName: context,
+                    namespaces: context == expandedContext ? clusterState.namespaces : [],
+                    isLoading: context == expandedContext && isLoadingNamespaces,
+                    error: context == expandedContext ? namespaceError : nil,
+                    selection: $sidebarSelection
+                )
+            },
+            label: {
+                contextRow(for: context)
+            }
+        )
+    }
+
+    private func expandedBinding(for context: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedContext == context },
+            set: { isExpanded in
+                if isExpanded {
+                    if expandedContext != context {
+                        expandedContext = context
+                        clusterState.namespaces = []
+                        namespaceError = nil
+                        Task { await loadNamespaces(for: context) }
+                    }
+                } else if expandedContext == context {
+                    expandedContext = nil
+                }
+            }
+        )
     }
 
     private func contextRow(for context: String) -> some View {
@@ -129,15 +200,38 @@ struct MainView: View {
         .contentShape(Rectangle())
     }
 
-    // MARK: - Detail
+    // MARK: - Detail Area
 
     @ViewBuilder
-    private var detailPane: some View {
-        if let context = selectedContext {
-            contextDetail(for: context)
+    private var detailArea: some View {
+        if let sel = sidebarSelection {
+            resourceBrowserView(context: sel.context, namespace: sel.namespace)
+                .task(id: selectionKey) { @MainActor in
+                    selectedPodID = nil
+                    selectedDeploymentID = nil
+                    await loadResources(context: sel.context, namespace: sel.namespace)
+                }
+        } else if expandedContext != nil {
+            selectNamespacePlaceholder
         } else {
             emptyDetail
         }
+    }
+
+    private var selectNamespacePlaceholder: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "tray.2")
+                .font(.system(size: 48))
+                .foregroundStyle(.quinary)
+            Text("Select a namespace")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text("Choose a namespace from the sidebar to browse resources.")
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyDetail: some View {
@@ -148,61 +242,7 @@ struct MainView: View {
             Text("Select a context to begin")
                 .font(.title2)
                 .foregroundStyle(.secondary)
-            Text("Choose a Kubernetes context from the sidebar.")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func contextDetail(for context: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            contextDetailHeader(context)
-            Divider()
-            resourcePlaceholder
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .navigationTitle(context)
-    }
-
-    private func contextDetailHeader(_ context: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "server.rack")
-                .font(.largeTitle)
-                .foregroundStyle(.tint)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(context)
-                    .font(.title2.bold())
-                if context == clusterState.currentContext {
-                    Label("Active context", systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
-            }
-
-            Spacer()
-
-            if context != clusterState.currentContext {
-                Button("Switch to this context") {
-                    Task { await switchContext(to: context) }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-            }
-        }
-        .padding(20)
-    }
-
-    private var resourcePlaceholder: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "square.grid.2x2")
-                .font(.system(size: 40))
-                .foregroundStyle(.quinary)
-            Text("Resource views coming soon")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("Pods, Deployments, Services, ConfigMaps and more will appear here.")
+            Text("Expand a cluster in the sidebar to browse its namespaces.")
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
@@ -210,20 +250,119 @@ struct MainView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Actions
+    // MARK: - Resource Browser
+
+    private var selectionKey: String {
+        guard let sel = sidebarSelection else { return "" }
+        return "\(sel.context)/\(sel.namespace ?? "*")"
+    }
+
+    private func resourceBrowserView(context: String, namespace: String?) -> some View {
+        HStack(spacing: 0) {
+            // Left column: resource type picker + resource list
+            VStack(spacing: 0) {
+                resourceBrowserHeader(context: context, namespace: namespace)
+                Divider()
+                resourceList
+            }
+
+            // Right column: detail panel (shown when a resource is selected)
+            if let detail = currentSelectedResource {
+                Divider()
+                ResourceDetailView(resource: detail)
+                    .frame(minWidth: 260, idealWidth: 340, maxWidth: 420)
+            }
+        }
+    }
+
+    private func resourceBrowserHeader(context: String, namespace: String?) -> some View {
+        HStack(spacing: 12) {
+            Label {
+                HStack(spacing: 4) {
+                    Text(context)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let ns = namespace {
+                        Image(systemName: "chevron.compact.right")
+                            .imageScale(.small)
+                            .foregroundStyle(.tertiary)
+                        Text(ns)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    } else {
+                        Image(systemName: "chevron.compact.right")
+                            .imageScale(.small)
+                            .foregroundStyle(.tertiary)
+                        Text("All Namespaces")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } icon: {
+                Image(systemName: "server.rack")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.callout)
+
+            Spacer()
+
+            Picker("Resource type", selection: $selectedResourceType) {
+                ForEach(ResourceType.allCases) { type in
+                    Label(type.rawValue, systemImage: type.systemImage)
+                        .tag(type)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 220)
+            .labelsHidden()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var resourceList: some View {
+        switch selectedResourceType {
+        case .pods:
+            PodListView(selectedPodID: $selectedPodID)
+                .onChange(of: selectedPodID) { _, _ in
+                    selectedDeploymentID = nil
+                }
+        case .deployments:
+            DeploymentListView(selectedDeploymentID: $selectedDeploymentID)
+                .onChange(of: selectedDeploymentID) { _, _ in
+                    selectedPodID = nil
+                }
+        }
+    }
+
+    private var currentSelectedResource: SelectedResource? {
+        if let podID = selectedPodID,
+           let pod = clusterState.pods.first(where: { $0.id == podID }) {
+            return .pod(pod)
+        }
+        if let depID = selectedDeploymentID,
+           let dep = clusterState.deployments.first(where: { $0.id == depID }) {
+            return .deployment(dep)
+        }
+        return nil
+    }
+
+    // MARK: - Data Loading
 
     @MainActor
     private func loadKubeconfig() async {
         clusterState.isLoading = true
+        clusterState.errorMessage = nil
         defer { clusterState.isLoading = false }
         do {
             let config = try await kubeconfigService.load()
             clusterState.noConfig = false
             clusterState.contexts = config.contexts
             clusterState.currentContext = config.currentContext
-            // Auto-select the active context on first load
-            if selectedContext == nil {
-                selectedContext = config.currentContext
+            // Auto-expand the active context on first load
+            if expandedContext == nil, let active = config.currentContext {
+                expandedContext = active
+                Task { await loadNamespaces(for: active) }
             }
         } catch CubeliteError.fileNotFound {
             clusterState.noConfig = true
@@ -233,14 +372,37 @@ struct MainView: View {
     }
 
     @MainActor
-    private func switchContext(to context: String) async {
+    private func loadNamespaces(for context: String) async {
+        isLoadingNamespaces = true
+        namespaceError = nil
+        defer { isLoadingNamespaces = false }
         do {
-            var config = try await kubeconfigService.load()
-            try await kubeconfigService.setActiveContext(context, in: &config)
-            try await kubeconfigService.save(config)
-            clusterState.currentContext = context
+            let namespaces = try await kubeAPIService.listNamespaces(inContext: context)
+            clusterState.namespaces = namespaces.sorted { $0.name < $1.name }
         } catch {
-            clusterState.errorMessage = error.localizedDescription
+            namespaceError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func loadResources(context: String, namespace: String?) async {
+        clusterState.isLoadingResources = true
+        clusterState.resourceError = nil
+        defer { clusterState.isLoadingResources = false }
+        do {
+            let pods = try await kubeAPIService.listPods(
+                namespace: namespace,
+                inContext: context
+            )
+            clusterState.pods = pods
+            let deployments = try await kubeAPIService.listDeployments(
+                namespace: namespace,
+                inContext: context
+            )
+            clusterState.deployments = deployments
+            clusterState.selectedNamespace = namespace
+        } catch {
+            clusterState.resourceError = error.localizedDescription
         }
     }
 }
@@ -251,13 +413,25 @@ struct MainView: View {
     let state = ClusterState()
     state.contexts = ["prod-us-east", "staging-eu", "dev-local"]
     state.currentContext = "staging-eu"
-    return MainView(kubeconfigService: KubeconfigService())
+    state.namespaces = [
+        NamespaceInfo(name: "default", phase: "Active"),
+        NamespaceInfo(name: "kube-system", phase: "Active"),
+    ]
+    state.pods = [
+        PodInfo(name: "nginx-abc", namespace: "default", phase: "Running",
+                ready: true, restarts: 0, creationTimestamp: nil),
+        PodInfo(name: "api-xyz", namespace: "default", phase: "Pending",
+                ready: false, restarts: 1, creationTimestamp: nil),
+    ]
+    let ks = KubeconfigService()
+    return MainView(kubeconfigService: ks, kubeAPIService: KubeAPIService(kubeconfigService: ks))
         .environment(state)
 }
 
 #Preview("No kubeconfig") {
     let state = ClusterState()
     state.noConfig = true
-    return MainView(kubeconfigService: KubeconfigService())
+    let ks = KubeconfigService()
+    return MainView(kubeconfigService: ks, kubeAPIService: KubeAPIService(kubeconfigService: ks))
         .environment(state)
 }

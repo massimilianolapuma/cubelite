@@ -25,17 +25,22 @@ actor KubeAPIService {
 
     // MARK: - Public API
 
-    /// Lists all namespaces visible to the current context.
-    func listNamespaces() async throws -> [NamespaceInfo] {
-        let response: K8sListResponse<K8sNamespace> = try await fetch(path: "/api/v1/namespaces")
+    /// Lists all namespaces visible to the given context (or the active context when `nil`).
+    func listNamespaces(inContext contextName: String? = nil) async throws -> [NamespaceInfo] {
+        let response: K8sListResponse<K8sNamespace> = try await fetch(
+            path: "/api/v1/namespaces",
+            contextName: contextName
+        )
         return response.items.map { $0.toNamespaceInfo() }
     }
 
-    /// Lists pods, optionally scoped to a specific namespace.
+    /// Lists pods, optionally scoped to a namespace and/or context.
     ///
-    /// - Parameter namespace: If provided, only pods in this namespace are returned.
-    ///   When `nil`, pods across all namespaces are listed.
-    func listPods(namespace: String? = nil) async throws -> [PodInfo] {
+    /// - Parameters:
+    ///   - namespace: If provided, only pods in this namespace are returned.
+    ///     Passing `nil` lists pods across all namespaces.
+    ///   - contextName: Kubeconfig context to use; defaults to the active context.
+    func listPods(namespace: String? = nil, inContext contextName: String? = nil) async throws -> [PodInfo] {
         let path: String
         if let ns = namespace {
             let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
@@ -43,26 +48,37 @@ actor KubeAPIService {
         } else {
             path = "/api/v1/pods"
         }
-        let response: K8sListResponse<K8sPod> = try await fetch(path: path)
+        let response: K8sListResponse<K8sPod> = try await fetch(path: path, contextName: contextName)
         return response.items.map { $0.toPodInfo() }
     }
 
-    /// Lists deployments in a given namespace.
+    /// Lists deployments, optionally scoped to a namespace and/or context.
     ///
-    /// - Parameter namespace: The namespace to query.
-    func listDeployments(namespace: String) async throws -> [DeploymentInfo] {
-        let encoded = namespace.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? namespace
-        let path = "/apis/apps/v1/namespaces/\(encoded)/deployments"
-        let response: K8sListResponse<K8sDeployment> = try await fetch(path: path)
+    /// - Parameters:
+    ///   - namespace: Namespace to query. Passing `nil` lists across all namespaces.
+    ///   - contextName: Kubeconfig context to use; defaults to the active context.
+    func listDeployments(namespace: String? = nil, inContext contextName: String? = nil) async throws -> [DeploymentInfo] {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/apis/apps/v1/namespaces/\(encoded)/deployments"
+        } else {
+            path = "/apis/apps/v1/deployments"
+        }
+        let response: K8sListResponse<K8sDeployment> = try await fetch(path: path, contextName: contextName)
         return response.items.map { $0.toDeploymentInfo() }
     }
 
     // MARK: - Internal Networking
 
     /// Fetches and decodes a JSON response from the Kubernetes API.
-    private func fetch<T: Codable & Sendable>(path: String) async throws -> T {
+    ///
+    /// - Parameters:
+    ///   - path: API path to request.
+    ///   - contextName: Override which kubeconfig context is used.
+    private func fetch<T: Codable & Sendable>(path: String, contextName: String? = nil) async throws -> T {
         let config = try await kubeconfigService.load()
-        let (cluster, user) = try resolveConnectionInfo(from: config)
+        let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
 
         guard let serverString = cluster.server, !serverString.isEmpty else {
             throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
@@ -115,24 +131,34 @@ actor KubeAPIService {
 
     // MARK: - Connection Resolution
 
-    /// Resolves the cluster and user details for the active context.
+    /// Resolves the cluster and user details for the given or active context.
+    ///
+    /// - Parameters:
+    ///   - config: Parsed kubeconfig.
+    ///   - contextName: Override which context to resolve. Defaults to `config.currentContext`.
     private func resolveConnectionInfo(
-        from config: KubeConfig
+        from config: KubeConfig,
+        contextName: String? = nil
     ) throws -> (ClusterDetails, UserDetails) {
-        guard let contextName = config.currentContext else {
+        let resolvedContext: String
+        if let name = contextName {
+            resolvedContext = name
+        } else if let name = config.currentContext {
+            resolvedContext = name
+        } else {
             throw CubeliteError.contextNotFound(name: "<none> — no active context set")
         }
 
-        guard let namedContext = config.raw.contexts?.first(where: { $0.name == contextName }),
+        guard let namedContext = config.raw.contexts?.first(where: { $0.name == resolvedContext }),
               let contextDetails = namedContext.context else {
-            throw CubeliteError.contextNotFound(name: contextName)
+            throw CubeliteError.contextNotFound(name: resolvedContext)
         }
 
         guard let clusterName = contextDetails.cluster,
               let namedCluster = config.raw.clusters?.first(where: { $0.name == clusterName }),
               let cluster = namedCluster.cluster else {
             throw CubeliteError.clientError(
-                reason: "Cluster definition not found for context '\(contextName)'"
+                reason: "Cluster definition not found for context '\(resolvedContext)'"
             )
         }
 
@@ -140,7 +166,7 @@ actor KubeAPIService {
               let namedUser = config.raw.users?.first(where: { $0.name == userName }),
               let user = namedUser.user else {
             throw CubeliteError.clientError(
-                reason: "User definition not found for context '\(contextName)'"
+                reason: "User definition not found for context '\(resolvedContext)'"
             )
         }
 

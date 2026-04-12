@@ -11,6 +11,8 @@ struct PodInfo: Codable, Sendable, Identifiable {
     let phase: String?
     let ready: Bool
     let restarts: Int
+    /// ISO 8601 creation timestamp, used to compute pod age.
+    let creationTimestamp: String?
 }
 
 /// Information about a Kubernetes namespace.
@@ -90,6 +92,7 @@ struct K8sDeploymentStatus: Codable, Sendable {
 struct K8sObjectMeta: Codable, Sendable {
     let name: String?
     let namespace: String?
+    let creationTimestamp: String?
 }
 
 // MARK: - Mapping Extensions
@@ -105,7 +108,8 @@ extension K8sPod {
             namespace: metadata?.namespace ?? "",
             phase: status?.phase,
             ready: allReady,
-            restarts: totalRestarts
+            restarts: totalRestarts,
+            creationTimestamp: metadata?.creationTimestamp
         )
     }
 }
