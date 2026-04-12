@@ -1,0 +1,45 @@
+name: CI macOS
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**", "chore/**"]
+    paths:
+      - "apps/macos/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/macos/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos:
+    name: Build & Test macOS
+    runs-on: macos-15
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/macos/cubelite
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build
+        run: |
+          xcodebuild build \
+            -project cubelite.xcodeproj \
+            -scheme cubelite \
+            -destination 'platform=macOS' \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project cubelite.xcodeproj \
+            -scheme cubelite \
+            -destination 'platform=macOS' \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_ALLOWED=NO
