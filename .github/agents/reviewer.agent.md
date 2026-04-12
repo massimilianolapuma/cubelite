@@ -5,7 +5,7 @@ description: >
   PR reviewer agent for the CubeLite monorepo. Reviews pull requests by
   analyzing diffs, checking compliance with project conventions, evaluating
   Copilot suggestions, and posting structured review comments via GitHub MCP.
-model: ["Claude Opus 4.6", "Claude Sonnet 4.6"]
+model: ["Claude Sonnet 4.6", "Claude Opus 4.6"]
 tools:
   [
     vscode/extensions,
