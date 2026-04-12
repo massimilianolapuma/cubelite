@@ -138,29 +138,7 @@ actor KeychainService {
         keyDER: Data,
         account: String
     ) throws -> SecIdentity {
-        var importedItems: CFArray?
-        let options: [CFString: Any] = [
-            kSecImportExportPassphrase: "",
-            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock
-        ]
-
-        // Build a minimal PKCS#12 bundle; real implementation requires
-        // wrapping cert + key in PKCS#12 format (planned for M2).
-        let status = SecPKCS12Import(
-            certificateDER as CFData,
-            options as CFDictionary,
-            &importedItems
-        )
-
-        guard status == errSecSuccess, let items = importedItems as? [[CFString: Any]],
-              let first = items.first,
-              let identity = first[kSecImportItemIdentity] as! SecIdentity? else {
-            throw CubeliteError.keychainError(
-                reason: "Failed to import client identity: OSStatus \(status)"
-            )
-        }
-
-        return identity
+        throw CubeliteError.keychainError(reason: "PKCS#12 import not yet implemented")
     }
 
     // MARK: - Private Helpers

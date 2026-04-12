@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct cubeliteApp: App {
+struct CubeliteApp: App {
 
     @State private var clusterState = ClusterState()
     private let kubeconfigService = KubeconfigService()
