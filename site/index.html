@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="CubeLite — Discover, switch, and manage Kubernetes contexts from a unified interface. Native, local-first, privacy-respecting.">
+  <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <title>CubeLite — Kubernetes Context Aggregator</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⎈</text></svg>">
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+
+  <header class="site-header">
+    <nav aria-label="Main navigation">
+      <a href="#" class="logo" aria-label="CubeLite home">⎈ CubeLite</a>
+      <ul role="list">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#get-started">Get Started</a></li>
+        <li><a href="https://github.com/massimilianolapuma/cubelite" class="btn btn-sm" rel="noopener noreferrer">GitHub</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="container">
+        <h1 id="hero-title">CubeLite</h1>
+        <p class="tagline">Kubernetes Context Aggregator</p>
+        <p class="subtitle">Discover, switch, and manage Kubernetes contexts from a unified interface&nbsp;— fast, local&#8209;first, and privacy&#8209;respecting.</p>
+        <div class="hero-actions">
+          <a href="#get-started" class="btn btn-primary">Get Started</a>
+          <a href="https://github.com/massimilianolapuma/cubelite" class="btn btn-outline" rel="noopener noreferrer">View on GitHub</a>
+        </div>
+        <div class="screenshot-placeholder" role="img" aria-label="Application screenshot coming soon">
+          <span>📸 Screenshot coming soon</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="features" aria-labelledby="features-title">
+      <div class="container">
+        <h2 id="features-title">Features</h2>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🔀</div>
+            <h3>Context Switching</h3>
+            <p>Switch active Kubernetes context with a single click and persist the change to disk automatically.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">📂</div>
+            <h3>Multi-Kubeconfig</h3>
+            <p>Resolves <code>KUBECONFIG</code> env paths, merges multiple files, and picks the first file's <code>current-context</code>.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🖥️</div>
+            <h3>Lens-like GUI</h3>
+            <p>NavigationSplitView sidebar listing all contexts with a detail pane for Pods, Namespaces, and Deployments.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">📌</div>
+            <h3>Menu Bar Quick-Switch</h3>
+            <p>Click the status-bar icon to switch context without opening the main window — perfect for fast workflows.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🔒</div>
+            <h3>Secure Credentials</h3>
+            <p>Bearer tokens and client certificates stored in the OS Keychain — never in plain text config files.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🚫</div>
+            <h3>No Telemetry</h3>
+            <p>Zero analytics, zero call-home, zero cloud accounts. Your cluster data stays on your machine.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture -->
+    <section id="architecture" class="architecture" aria-labelledby="arch-title">
+      <div class="container">
+        <h2 id="arch-title">Architecture</h2>
+        <p>CubeLite is a monorepo with three independent layers — no runtime dependency between them.</p>
+        <div class="arch-grid">
+          <article class="arch-card">
+            <h3>🦀 Rust Core</h3>
+            <p class="arch-path"><code>crates/cubelite-core</code></p>
+            <p>Kubeconfig parsing, kube-rs client, resource types. Rust&nbsp;1.82+, tokio, thiserror, anyhow.</p>
+          </article>
+          <article class="arch-card">
+            <h3>🍎 macOS App</h3>
+            <p class="arch-path"><code>apps/macos</code></p>
+            <p>Native Swift&nbsp;6 + SwiftUI menu-bar and main window. macOS&nbsp;14+, Observation framework, direct URLSession to k8s API.</p>
+          </article>
+          <article class="arch-card">
+            <h3>🖥️ Desktop App</h3>
+            <p class="arch-path"><code>apps/desktop</code></p>
+            <p>Cross-platform via Tauri&nbsp;v2 + Svelte&nbsp;5 + TypeScript. shadcn-svelte, Tailwind&nbsp;v4, Vitest, Playwright.</p>
+          </article>
+        </div>
+        <pre class="arch-tree" aria-label="Project directory structure"><code>cubelite/
+├── crates/
+│   └── cubelite-core/      ← Rust library
+├── apps/
+│   ├── desktop/            ← Tauri v2 + Svelte 5
+│   └── macos/              ← Swift 6 + SwiftUI
+├── design/                 ← Design tokens
+└── docs/                   ← Architecture docs</code></pre>
+      </div>
+    </section>
+
+    <!-- Getting Started -->
+    <section id="get-started" class="get-started" aria-labelledby="start-title">
+      <div class="container">
+        <h2 id="start-title">Getting Started</h2>
+
+        <div class="prereq">
+          <h3>Prerequisites</h3>
+          <table>
+            <thead>
+              <tr><th scope="col">Tool</th><th scope="col">Version</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Rust</td><td>1.82+</td></tr>
+              <tr><td>Xcode</td><td>16+ (macOS app)</td></tr>
+              <tr><td>Node.js</td><td>20+</td></tr>
+              <tr><td>pnpm</td><td>9+</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="build-steps">
+          <article class="build-card">
+            <h3>Rust Core</h3>
+            <pre><code>cargo build --workspace
+cargo test  --workspace</code></pre>
+          </article>
+          <article class="build-card">
+            <h3>macOS App</h3>
+            <pre><code>xcodebuild build \
+  -project apps/macos/cubelite/cubelite.xcodeproj \
+  -scheme cubelite \
+  -destination 'platform=macOS'</code></pre>
+            <p>Or open in Xcode and press <kbd>⌘R</kbd>.</p>
+          </article>
+          <article class="build-card">
+            <h3>Desktop App</h3>
+            <pre><code>pnpm install
+pnpm --filter desktop dev</code></pre>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>
+        <a href="https://github.com/massimilianolapuma/cubelite/blob/main/LICENSE" rel="noopener noreferrer">Apache 2.0 License</a>
+        ·
+        <a href="https://github.com/massimilianolapuma/cubelite" rel="noopener noreferrer">GitHub</a>
+        ·
+        <a href="https://github.com/massimilianolapuma/cubelite/blob/main/CONTRIBUTING.md" rel="noopener noreferrer">Contributing</a>
+      </p>
+      <p class="copyright">© 2025 CubeLite contributors</p>
+    </div>
+  </footer>
+</body>
+</html>
