@@ -2,13 +2,14 @@
   "name": "cubelite",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@9",
   "scripts": {
-    "dev": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
-    "build": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
-    "test": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
-    "lint": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\"",
-    "typecheck": "node -e \"console.error('apps/desktop not yet scaffolded'); process.exit(1)\""
-  },
-  "engines": { "node": ">=22", "pnpm": ">=9" }
+    "dev": "pnpm --filter desktop tauri:dev",
+    "build": "pnpm --filter desktop tauri:build",
+    "test": "pnpm --filter desktop test",
+    "lint": "pnpm --filter desktop lint",
+    "typecheck": "pnpm --filter desktop typecheck",
+    "design:tokens": "tsx design/export-tokens.ts"
+  }
 }
