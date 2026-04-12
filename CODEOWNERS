@@ -1,0 +1,20 @@
+# CODEOWNERS
+# Each line maps a path glob to one or more GitHub usernames or teams.
+# The listed owners are automatically requested for review on PRs that touch
+# files matching the pattern.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything not matched by a more specific pattern
+* @massimilianolapuma
+
+# Rust core library — core-agent owner
+crates/ @massimilianolapuma
+
+# Desktop app (Tauri + Svelte) — desktop-agent owner
+apps/desktop/ @massimilianolapuma
+
+# macOS app (Swift + SwiftUI) — macos-agent owner
+apps/macos/ @massimilianolapuma
+
+# CI/CD and DevOps — devops-agent owner
+.github/ @massimilianolapuma
