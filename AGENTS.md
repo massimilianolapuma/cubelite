@@ -17,6 +17,9 @@ use the inter-agent protocol described below.
 | `design-agent` | `apps/desktop/**` (UI only) | Claude Sonnet 4.6 | Figma MCP, shadcn-svelte, Tailwind tokens |
 | `devops-agent` | `.github/**` | Claude Sonnet 4.6 | GitHub Actions, secret scanning, YAML lint |
 | `qa-agent` | Any / quality | Claude Sonnet 4.6 | Test coverage, CI validation, security review |
+| `docs-agent` | `docs/`, README, CHANGELOG | Claude Sonnet 4.6 | `cargo doc`, documentation generation, Mermaid diagrams |
+| `pages-agent` | `site/`, GitHub Pages | Claude Sonnet 4.6 | Static site build, GitHub Pages deployment, Lighthouse |
+| `security-agent` | Any / security | Claude Sonnet 4.6 | `cargo audit`, `pnpm audit`, secret scanning, OWASP review |
 
 ---
 
@@ -35,9 +38,13 @@ cubelite/
 │   ├── workflows/             → devops-agent
 │   ├── agents/                → devops-agent
 │   └── instructions/          → devops-agent
+├── docs/                      → docs-agent
+├── site/                      → pages-agent
 ├── Cargo.toml                 → core-agent (workspace manifest)
 ├── package.json               → desktop-agent (workspace scripts)
 ├── Makefile                   → devops-agent
+├── README.md                  → docs-agent
+├── CHANGELOG.md               → docs-agent
 └── AGENTS.md                  → coordinator (this file)
 ```
 
@@ -90,3 +97,6 @@ When a task spans multiple subtrees:
 | macOS build | `xcodebuild build -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite` |
 | macOS tests | `xcodebuild test -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite` |
 | Secret scan | `gh secret-scanning run` |
+| Rust docs | `cargo doc --workspace --no-deps` |
+| Dependency audit (Rust) | `cargo audit` |
+| Dependency audit (npm) | `pnpm audit` |
