@@ -211,7 +211,7 @@ final class KeychainServiceTests: XCTestCase {
     }
 
     func testStoreAndRetrieve_bearerToken_roundTrips() async throws {
-        let token = "eyJhbGciOiJSUzI1NiJ9.testpayload"
+        let token = "test-bearer-value-not-a-real-credential"
 
         try await sut.storeString(token, tag: .bearerToken, account: testAccount)
         let retrieved = try await sut.retrieveString(tag: .bearerToken, account: testAccount)
