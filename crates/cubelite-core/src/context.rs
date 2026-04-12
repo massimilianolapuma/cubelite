@@ -90,7 +90,11 @@ mod tests {
     use super::*;
     use std::env;
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::NamedTempFile;
+
+    /// Prevent parallel tests from racing on the `KUBECONFIG` env var.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn write_temp(content: &str) -> NamedTempFile {
         let mut f = NamedTempFile::new().expect("tempfile");
@@ -99,6 +103,7 @@ mod tests {
     }
 
     fn with_kubeconfig<F: FnOnce()>(yaml: &str, f: F) {
+        let _guard = ENV_LOCK.lock().expect("env lock");
         let tmp = write_temp(yaml);
         env::set_var("KUBECONFIG", tmp.path().to_string_lossy().as_ref());
         f();
