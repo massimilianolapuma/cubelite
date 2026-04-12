@@ -48,8 +48,8 @@ final class KubeconfigServiceTests: XCTestCase {
     }
 
     func testLoadFromPaths_multipleFiles_mergesContextsAndFirstCurrentContextWins() async throws {
-        let yaml1 = minimalYAML(context: "ctx-a", cluster: "cluster-a", server: "https://10.0.0.1")
-        let yaml2 = minimalYAML(context: "ctx-b", cluster: "cluster-b", server: "https://10.0.0.2")
+        let yaml1 = minimalYAML(context: "ctx-a", cluster: "cluster-a", server: "https://k8s-test-a.example")
+        let yaml2 = minimalYAML(context: "ctx-b", cluster: "cluster-b", server: "https://k8s-test-b.example")
 
         let url1 = try temporaryFile(contents: yaml1)
         let url2 = try temporaryFile(contents: yaml2)
@@ -67,7 +67,7 @@ final class KubeconfigServiceTests: XCTestCase {
     }
 
     func testLoadFromPaths_duplicateContextNames_deduplicates() async throws {
-        let yaml = minimalYAML(context: "shared-ctx", cluster: "cluster-a", server: "https://10.0.0.1")
+        let yaml = minimalYAML(context: "shared-ctx", cluster: "cluster-a", server: "https://k8s-test-a.example")
         let url1 = try temporaryFile(contents: yaml)
         let url2 = try temporaryFile(contents: yaml)
         defer {
@@ -100,7 +100,7 @@ final class KubeconfigServiceTests: XCTestCase {
     }
 
     func testSetActiveContext_unknownName_throwsContextNotFound() async throws {
-        let yaml = minimalYAML(context: "ctx-a", cluster: "cluster-a", server: "https://10.0.0.1")
+        let yaml = minimalYAML(context: "ctx-a", cluster: "cluster-a", server: "https://k8s-test-a.example")
         let url = try temporaryFile(contents: yaml)
         defer { try? FileManager.default.removeItem(at: url) }
 
@@ -181,10 +181,10 @@ final class KubeconfigServiceTests: XCTestCase {
         clusters:
         - name: cluster-a
           cluster:
-            server: https://10.0.0.1
+            server: https://k8s-test-a.example
         - name: cluster-b
           cluster:
-            server: https://10.0.0.2
+            server: https://k8s-test-b.example
         users:
         - name: user-a
           user:
