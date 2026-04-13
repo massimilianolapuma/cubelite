@@ -23,7 +23,7 @@ Unlike Lens (Electron-based, cloud account required) or k9s (terminal-only), Cub
 - **Menu bar quick-switch** — click the status-bar icon to switch context without opening the main window
 - **Lens-like GUI** — `NavigationSplitView` sidebar listing all contexts, detail pane for cluster resources
 - **Kubernetes resources** — Pods, Namespaces, Deployments (Pods: name, namespace, phase, ready, restarts)
-- **Secure credential storage** — bearer tokens and client certificates stored in the OS Keychain
+- **Secure credential storage** — OS Keychain integration for bearer tokens and client certificates (planned)
 - **Graceful no-config state** — informative UI when no kubeconfig is found
 
 ## Architecture

@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - macOS native app: `KubeconfigService`, `KubeAPIService`, `KeychainService` actors
-  - `KubeconfigService`: resolves `KUBECONFIG` env paths, merges multiple configs, sandboxbox-safe home directory resolution via `getpwuid`
+  - `KubeconfigService`: resolves `KUBECONFIG` env paths, merges multiple configs, sandbox-safe home directory resolution via `getpwuid`
   - `KubeAPIService`: typed access to Kubernetes REST API via `URLSession` (namespaces, pods, deployments); bearer token and custom CA trust
   - `KeychainService`: generic password items tagged by service + account; store, retrieve, delete, and update via Security framework
 - macOS GUI: `NavigationSplitView` Lens-like layout with sidebar context list and detail pane
@@ -30,4 +30,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Agent roster: coordinator, core, desktop, macos, design, devops, qa, docs, pages, security
 - Repository governance: `CONTRIBUTING.md`, `CODEOWNERS`, branch protection rules, PR template
 
-[Unreleased]: https://github.com/massimilianolapuma/cubelite/compare/HEAD...HEAD
+[Unreleased]: https://github.com/massimilianolapuma/cubelite/compare/main...HEAD
