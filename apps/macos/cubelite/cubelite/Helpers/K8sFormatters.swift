@@ -2,6 +2,18 @@ import SwiftUI
 
 // MARK: - Age Formatting
 
+private enum K8sDateFormatters {
+    nonisolated(unsafe) static let fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    nonisolated(unsafe) static let standard: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        return f
+    }()
+}
+
 extension Optional where Wrapped == String {
     /// Converts an optional ISO 8601 timestamp to a human-readable Kubernetes age string.
     ///
@@ -9,9 +21,7 @@ extension Optional where Wrapped == String {
     /// the value is `nil` or cannot be parsed as a valid ISO 8601 date.
     var k8sAge: String {
         guard let iso = self else { return "—" }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = formatter.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        let date = K8sDateFormatters.fractional.date(from: iso) ?? K8sDateFormatters.standard.date(from: iso)
         guard let createdAt = date else { return "—" }
         let elapsed = Int(Date().timeIntervalSince(createdAt))
         if elapsed < 60 { return "\(elapsed)s" }
