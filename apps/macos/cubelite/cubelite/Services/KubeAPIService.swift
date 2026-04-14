@@ -104,6 +104,10 @@ actor KubeAPIService {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await session.data(for: request)
+        } catch let urlError as URLError where Self.isTLSError(urlError) {
+            throw CubeliteError.tlsError(
+                reason: "Certificate validation failed for the cluster API server"
+            )
         } catch let urlError as URLError where Self.isConnectionError(urlError) {
             throw CubeliteError.clusterUnreachable
         } catch {
@@ -132,13 +136,27 @@ actor KubeAPIService {
     }
 
     /// URL error codes that indicate the cluster server is unreachable.
-    private static func isConnectionError(_ error: URLError) -> Bool {
+    static func isConnectionError(_ error: URLError) -> Bool {
         switch error.code {
         case .cannotConnectToHost,     // -1004: connection refused
              .timedOut,                // -1001: timeout
              .cannotFindHost,          // -1003: DNS failure
              .networkConnectionLost,   // -1005: connection dropped
              .notConnectedToInternet:  // -1009: no network
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// URL error codes that indicate TLS certificate validation failure.
+    static func isTLSError(_ error: URLError) -> Bool {
+        switch error.code {
+        case .serverCertificateUntrusted,
+             .serverCertificateHasBadDate,
+             .serverCertificateHasUnknownRoot,
+             .serverCertificateNotYetValid,
+             .clientCertificateRejected:
             return true
         default:
             return false
@@ -219,21 +237,46 @@ actor KubeAPIService {
 
     // MARK: - TLS Helpers
 
-    /// Loads the CA certificate from base64-encoded DER data in the cluster config.
-    private static func loadCACertificate(from cluster: ClusterDetails) throws -> SecCertificate? {
-        guard let b64 = cluster.certificateAuthorityData, !b64.isEmpty else {
-            return nil
+    /// Loads the CA certificate from the cluster config.
+    ///
+    /// Tries inline base64 (`certificate-authority-data`) first, then falls back
+    /// to reading the PEM file at `certificate-authority`.
+    static func loadCACertificate(from cluster: ClusterDetails) throws -> SecCertificate? {
+        // Try inline base64 data first
+        if let b64 = cluster.certificateAuthorityData, !b64.isEmpty {
+            guard let derData = Data(base64Encoded: b64) else {
+                throw CubeliteError.clientError(reason: "Invalid base64 in certificate-authority-data")
+            }
+            guard let certificate = SecCertificateCreateWithData(nil, derData as CFData) else {
+                throw CubeliteError.clientError(reason: "Failed to create CA certificate from DER data")
+            }
+            return certificate
         }
 
-        guard let derData = Data(base64Encoded: b64) else {
-            throw CubeliteError.clientError(reason: "Invalid base64 in certificate-authority-data")
+        // Fall back to certificate-authority file path
+        if let path = cluster.certificateAuthority, !path.isEmpty {
+            let expandedPath = NSString(string: path).expandingTildeInPath
+            let url = URL(fileURLWithPath: expandedPath)
+
+            let pemData: Data
+            do {
+                pemData = try Data(contentsOf: url)
+            } catch {
+                throw CubeliteError.clientError(
+                    reason: "Cannot read CA certificate file: \(path)"
+                )
+            }
+
+            let derData = try pemToDER(pemData)
+            guard let certificate = SecCertificateCreateWithData(nil, derData as CFData) else {
+                throw CubeliteError.clientError(
+                    reason: "Failed to create CA certificate from file: \(path)"
+                )
+            }
+            return certificate
         }
 
-        guard let certificate = SecCertificateCreateWithData(nil, derData as CFData) else {
-            throw CubeliteError.clientError(reason: "Failed to create CA certificate from DER data")
-        }
-
-        return certificate
+        return nil
     }
 
     /// Attempts to load a client identity from base64-encoded certificate and key data.
@@ -263,6 +306,28 @@ actor KubeAPIService {
         // Creating a SecIdentity from raw cert + key data requires importing
         // both into the Keychain. This will be enabled in M2 via KeychainService.
         return nil
+    }
+
+    /// Converts PEM-encoded certificate data to DER format.
+    ///
+    /// Strips the `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----`
+    /// markers and decodes the base64 content.
+    static func pemToDER(_ pemData: Data) throws -> Data {
+        guard let pemString = String(data: pemData, encoding: .utf8) else {
+            throw CubeliteError.clientError(reason: "CA certificate file is not valid UTF-8")
+        }
+
+        let base64Content = pemString
+            .replacingOccurrences(of: "\r", with: "")
+            .split(separator: "\n")
+            .filter { !$0.hasPrefix("-----") }
+            .joined()
+
+        guard let derData = Data(base64Encoded: base64Content) else {
+            throw CubeliteError.clientError(reason: "Failed to decode PEM certificate content")
+        }
+
+        return derData
     }
 }
 
@@ -313,7 +378,13 @@ private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, @unche
             if let ca = trustedCertificate {
                 SecTrustSetAnchorCertificates(trust, [ca] as CFArray)
                 SecTrustSetAnchorCertificatesOnly(trust, true)
-                return (.performDefaultHandling, nil)
+
+                var error: CFError?
+                if SecTrustEvaluateWithError(trust, &error) {
+                    return (.useCredential, URLCredential(trust: trust))
+                } else {
+                    return (.cancelAuthenticationChallenge, nil)
+                }
             }
         }
 

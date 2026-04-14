@@ -17,5 +17,12 @@
     <array>
         <string>/.kube/</string>
     </array>
+    <!--
+        Read-only access to ~/.minikube/ for CA certificates used by minikube clusters.
+    -->
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+    <array>
+        <string>/.minikube/</string>
+    </array>
 </dict>
 </plist>
