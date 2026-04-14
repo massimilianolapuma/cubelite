@@ -27,6 +27,8 @@ cubelite/
 │   ├── copilot-instructions.md
 │   ├── instructions/        ← Path-scoped Copilot instructions
 │   └── workflows/           ← GitHub Actions CI/CD
+├── .vscode/
+│   └── mcp.json             ← MCP server config (Penpot)
 ├── AGENTS.md                ← Root agent routing table
 └── Makefile                 ← Dev task shortcuts
 ```
@@ -123,7 +125,7 @@ cubelite/
 | `core-agent` | `crates/**` | Rust logic, k8s API, domain models, error types |
 | `desktop-agent` | `apps/desktop/**` | Svelte components, Tauri commands, frontend tests |
 | `macos-agent` | `apps/macos/**` | Swift/SwiftUI, menu-bar, macOS APIs |
-| `design-agent` | `apps/desktop/**` UI only | Design tokens, shadcn-svelte, Tailwind, accessibility |
+| `design-agent` | `apps/desktop/**` UI only | Design tokens, shadcn-svelte, Tailwind, accessibility, Penpot MCP |
 | `devops-agent` | `.github/**` | GitHub Actions, CI/CD workflows, secret handling |
 | `ai-agent` | Any | Cross-cutting AI assistance, architecture decisions |
 
