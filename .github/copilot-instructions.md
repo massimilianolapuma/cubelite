@@ -118,6 +118,20 @@ cubelite/
 
 ---
 
+## Agent Pre-Work Rule
+
+Every agent **MUST** read its path-scoped instructions from `.github/instructions/`
+and this file before starting any task. No exceptions.
+
+## Design-First Rule
+
+New UI sections, views, or panels (in `apps/desktop/` or `apps/macos/`) **MUST** go
+through Penpot design + user approval before code implementation begins. The coordinator
+delegates to `design-agent` first, presents the board for review, and only then
+dispatches the implementation.
+
+---
+
 ## Agent Routing Table
 
 | Agent | Scope | Activate When |
