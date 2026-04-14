@@ -5,6 +5,7 @@ import AppKit
 struct CubeliteApp: App {
 
     @State private var clusterState = ClusterState()
+    @State private var appSettings = AppSettings()
     private let kubeconfigService: KubeconfigService
     private let kubeAPIService: KubeAPIService
 
@@ -18,6 +19,7 @@ struct CubeliteApp: App {
         WindowGroup("CubeLite") {
             MainView(kubeconfigService: kubeconfigService, kubeAPIService: kubeAPIService)
                 .environment(clusterState)
+                .environment(appSettings)
         }
         .defaultSize(width: 1200, height: 700)
 
@@ -29,6 +31,11 @@ struct CubeliteApp: App {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
             )
+        }
+
+        Settings {
+            PreferencesView()
+                .environment(appSettings)
         }
     }
 }
