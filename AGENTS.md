@@ -20,6 +20,7 @@ use the inter-agent protocol described below.
 | `docs-agent` | `docs/`, README, CHANGELOG | Claude Sonnet 4.6 | `cargo doc`, documentation generation, Mermaid diagrams |
 | `pages-agent` | `site/`, GitHub Pages | Claude Sonnet 4.6 | Static site build, GitHub Pages deployment, Lighthouse |
 | `security-agent` | Any / security | Claude Sonnet 4.6 | `cargo audit`, `pnpm audit`, secret scanning, OWASP review |
+| `reviewer` | Any / PR review | Claude Opus 4.6 | GitHub MCP PR read/write, diff analysis, Copilot triage |
 
 ---
 
