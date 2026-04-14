@@ -52,4 +52,19 @@ extension Color {
         default:          return .secondary
         }
     }
+
+    /// Returns the display colour for a Kubernetes deployment condition status string.
+    ///
+    /// | Status    | Color     |
+    /// |-----------|-----------|
+    /// | `True`    | `.green`  |
+    /// | `False`   | `.red`    |
+    /// | *(other)* | `.orange` |
+    static func conditionStatus(_ status: String) -> Color {
+        switch status {
+        case "True":  return .green
+        case "False": return .red
+        default:      return .orange
+        }
+    }
 }

@@ -135,15 +135,30 @@ private struct DeploymentStatusDot: View {
 // MARK: - Preview
 
 #Preview {
-    @Previewable @State var selectedID: DeploymentInfo.ID? = nil
-    let state = ClusterState()
-    state.deployments = [
-        DeploymentInfo(name: "nginx", namespace: "default", replicas: 3, readyReplicas: 3),
-        DeploymentInfo(name: "api-server", namespace: "backend", replicas: 2, readyReplicas: 1),
-        DeploymentInfo(name: "worker", namespace: "jobs", replicas: 5, readyReplicas: 5),
-        DeploymentInfo(name: "pending-dep", namespace: "default", replicas: 1, readyReplicas: 0),
-    ]
-    return DeploymentListView(selectedDeploymentID: $selectedID)
-        .environment(state)
+    DeploymentListPreview()
         .frame(width: 600, height: 260)
+}
+
+@MainActor
+private struct DeploymentListPreview: View {
+    @State private var selectedID: String?
+    @State private var state = ClusterState()
+
+    var body: some View {
+        DeploymentListView(selectedDeploymentID: $selectedID)
+            .environment(state)
+            .task {
+                guard state.deployments.isEmpty else { return }
+                state.deployments = previewDeployments()
+            }
+    }
+
+    private func previewDeployments() -> [DeploymentInfo] {
+        [
+            DeploymentInfo(name: "nginx", namespace: "default", replicas: 3, readyReplicas: 3),
+            DeploymentInfo(name: "api-server", namespace: "backend", replicas: 2, readyReplicas: 1),
+            DeploymentInfo(name: "worker", namespace: "jobs", replicas: 5, readyReplicas: 5),
+            DeploymentInfo(name: "pending-dep", namespace: "default", replicas: 1, readyReplicas: 0),
+        ]
+    }
 }
