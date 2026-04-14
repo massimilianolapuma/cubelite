@@ -1,28 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-    <!-- Sandbox enabled — required -->
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <!-- Outbound network connections (K8s API calls via URLSession) -->
-    <key>com.apple.security.network.client</key>
-    <true/>
-    <!--
+    <dict>
+        <!-- Sandbox enabled — required -->
+        <key>com.apple.security.app-sandbox</key>
+        <true/>
+        <!-- Outbound network connections (K8s API calls via URLSession) -->
+        <key>com.apple.security.network.client</key>
+        <true/>
+        <!--
         Temporary exception: read/write access to ~/.kube/ outside the sandbox container.
         Required because FileManager.homeDirectoryForCurrentUser is redirected to the
         container path; the real path is obtained via getpwuid(getuid()).
     -->
-    <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
-    <array>
-        <string>/.kube/</string>
-    </array>
-    <!--
+        <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+        <array>
+            <string>/.kube/</string>
+        </array>
+        <!--
         Read-only access to ~/.minikube/ for CA certificates used by minikube clusters.
     -->
-    <key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
-    <array>
-        <string>/.minikube/</string>
-    </array>
-</dict>
+        <key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
+        <array>
+            <string>/.minikube/</string>
+        </array>
+    </dict>
 </plist>

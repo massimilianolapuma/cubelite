@@ -11,6 +11,7 @@ struct CubeliteApp: App {
 
     /// Persists whether the user has completed the first-launch onboarding flow.
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var logStore = LogStore()
 
     init() {
         let ks = KubeconfigService()
@@ -24,6 +25,7 @@ struct CubeliteApp: App {
                 MainView(kubeconfigService: kubeconfigService, kubeAPIService: kubeAPIService)
                     .environment(clusterState)
                     .environment(appSettings)
+                    .environment(logStore)
             } else {
                 FirstLaunchView(
                     kubeconfigService: kubeconfigService,

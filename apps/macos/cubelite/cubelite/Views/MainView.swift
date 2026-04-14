@@ -27,6 +27,7 @@ struct MainView: View {
     let kubeAPIService: KubeAPIService
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(LogStore.self) private var logStore
 
     // MARK: - Sidebar State
 
@@ -38,6 +39,8 @@ struct MainView: View {
     @State private var isLoadingNamespaces: Bool = false
     /// Namespace fetch error, if any.
     @State private var namespaceError: String?
+    /// Whether the Logs & Errors sheet is presented.
+    @State private var showingLogs = false
 
     // MARK: - Resource Browse State
 
@@ -58,7 +61,12 @@ struct MainView: View {
             detailArea
         }
         .frame(minWidth: 900, minHeight: 550)
+        .safeAreaInset(edge: .top, spacing: 0) { errorBannerInset }
         .toolbar { toolbarContent }
+        .sheet(isPresented: $showingLogs) {
+            LogsView()
+                .environment(logStore)
+        }
         .task { await loadKubeconfig() }
     }
 
@@ -101,14 +109,41 @@ struct MainView: View {
                     .foregroundStyle(.secondary)
                     .font(.caption)
             }
-        } else if let error = clusterState.errorMessage {
-            ToolbarItem(placement: .status) {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-                    .lineLimit(1)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            logsButton
+        }
+    }
+
+    // MARK: - Banner & Logs Button
+
+    /// Inline error banner shown below the toolbar when unread errors exist.
+    @ViewBuilder
+    private var errorBannerInset: some View {
+        if logStore.unreadErrorCount > 0 {
+            let message = clusterState.errorMessage
+                ?? clusterState.resourceError
+                ?? "Application errors occurred."
+            ErrorBannerView(message: message) { showingLogs = true }
+        }
+    }
+
+    /// Toolbar button that opens the Logs panel, with a badge for unread errors.
+    private var logsButton: some View {
+        Button { showingLogs = true } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "bell")
+                if logStore.unreadErrorCount > 0 {
+                    Text(logStore.unreadErrorCount < 100 ? "\(logStore.unreadErrorCount)" : "99+")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(2)
+                        .background(Color.red, in: Circle())
+                        .offset(x: 5, y: -5)
+                }
             }
         }
+        .help("View logs and errors")
     }
 
     // MARK: - Sidebar
@@ -376,6 +411,13 @@ struct MainView: View {
             clusterState.noConfig = true
         } catch {
             clusterState.errorMessage = error.localizedDescription
+            logStore.append(LogEntry(
+                severity: .error,
+                source: "Config",
+                message: error.localizedDescription,
+                details: String(describing: error),
+                suggestedAction: "Check your kubeconfig file for syntax errors."
+            ))
         }
     }
 
@@ -391,8 +433,20 @@ struct MainView: View {
         } catch CubeliteError.clusterUnreachable {
             clusterState.clusterReachable = false
             namespaceError = CubeliteError.clusterUnreachable.localizedDescription
+            logStore.append(LogEntry(
+                severity: .warning,
+                source: "KubeAPI",
+                message: CubeliteError.clusterUnreachable.localizedDescription,
+                suggestedAction: "Check cluster connectivity and VPN/network settings."
+            ))
         } catch {
             namespaceError = error.localizedDescription
+            logStore.append(LogEntry(
+                severity: .error,
+                source: "KubeAPI",
+                message: error.localizedDescription,
+                details: String(describing: error)
+            ))
         }
     }
 
@@ -417,8 +471,20 @@ struct MainView: View {
         } catch CubeliteError.clusterUnreachable {
             clusterState.clusterReachable = false
             clusterState.resourceError = CubeliteError.clusterUnreachable.localizedDescription
+            logStore.append(LogEntry(
+                severity: .warning,
+                source: "KubeAPI",
+                message: CubeliteError.clusterUnreachable.localizedDescription,
+                suggestedAction: "Check cluster connectivity and VPN/network settings."
+            ))
         } catch {
             clusterState.resourceError = error.localizedDescription
+            logStore.append(LogEntry(
+                severity: .error,
+                source: "KubeAPI",
+                message: error.localizedDescription,
+                details: String(describing: error)
+            ))
         }
     }
 }
@@ -442,6 +508,7 @@ struct MainView: View {
     let ks = KubeconfigService()
     return MainView(kubeconfigService: ks, kubeAPIService: KubeAPIService(kubeconfigService: ks))
         .environment(state)
+        .environment(LogStore())
 }
 
 #Preview("No kubeconfig") {
@@ -450,4 +517,5 @@ struct MainView: View {
     let ks = KubeconfigService()
     return MainView(kubeconfigService: ks, kubeAPIService: KubeAPIService(kubeconfigService: ks))
         .environment(state)
+        .environment(LogStore())
 }
