@@ -4,7 +4,7 @@ persona: Simone
 description: >
   Cross-cutting security agent. Performs dependency audits, secret scanning,
   OWASP compliance checks, and security reviews across all stacks.
-model: ["Claude Sonnet 4.6", "Claude Opus 4.6"]
+model: ["Claude Opus 4.6", "Claude Sonnet 4.6"]
 tools:
   [
     vscode/extensions,

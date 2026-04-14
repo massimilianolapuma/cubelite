@@ -5,14 +5,21 @@ import AppKit
 struct CubeliteApp: App {
 
     @State private var clusterState = ClusterState()
-    private let kubeconfigService = KubeconfigService()
+    private let kubeconfigService: KubeconfigService
+    private let kubeAPIService: KubeAPIService
+
+    init() {
+        let ks = KubeconfigService()
+        self.kubeconfigService = ks
+        self.kubeAPIService = KubeAPIService(kubeconfigService: ks)
+    }
 
     var body: some Scene {
         WindowGroup("CubeLite") {
-            MainView(kubeconfigService: kubeconfigService)
+            MainView(kubeconfigService: kubeconfigService, kubeAPIService: kubeAPIService)
                 .environment(clusterState)
         }
-        .defaultSize(width: 1000, height: 600)
+        .defaultSize(width: 1200, height: 700)
 
         MenuBarExtra("CubeLite", systemImage: "square.3.layers.3d") {
             MenuBarContextView(

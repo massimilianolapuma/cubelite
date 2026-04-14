@@ -15,7 +15,7 @@ final class ClusterState {
     /// Pods in the selected namespace (or all namespaces).
     var pods: [PodInfo] = []
 
-    /// Available namespaces.
+    /// Available namespaces for the currently browsed context.
     var namespaces: [NamespaceInfo] = []
 
     /// Deployments in the selected namespace.
@@ -24,13 +24,36 @@ final class ClusterState {
     /// Selected namespace filter (`nil` means all namespaces).
     var selectedNamespace: String?
 
-    /// Whether data is currently being loaded.
+    /// Whether kubeconfig is currently being loaded.
     var isLoading = false
+
+    /// Whether K8s resources (pods/deployments) are being fetched.
+    var isLoadingResources = false
 
     /// Whether no kubeconfig file was found at any of the searched paths.
     /// When `true`, the app is healthy but has no cluster configuration yet.
     var noConfig = false
 
-    /// Last error message, if any.
+    /// Last kubeconfig load error message, if any.
     var errorMessage: String?
+
+    /// Last resource fetch error message, if any.
+    var resourceError: String?
+}
+
+// MARK: - Resource Type
+
+/// Resource categories available in the browse pane.
+enum ResourceType: String, CaseIterable, Identifiable {
+    case pods = "Pods"
+    case deployments = "Deployments"
+
+    var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .pods: "cube.box"
+        case .deployments: "arrow.triangle.2.circlepath"
+        }
+    }
 }
