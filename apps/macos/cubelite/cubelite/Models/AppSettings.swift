@@ -51,6 +51,13 @@ final class AppSettings {
         didSet { UserDefaults.standard.set(apiTimeout, forKey: Keys.apiTimeout) }
     }
 
+    /// Whether to skip TLS certificate verification for all clusters.
+    /// When enabled, self-signed certificates (e.g., minikube) are accepted.
+    /// ⚠️ Security risk — only enable for local development clusters.
+    var skipTLSVerification: Bool = false {
+        didSet { UserDefaults.standard.set(skipTLSVerification, forKey: Keys.skipTLSVerification) }
+    }
+
     // MARK: - Init
 
     init() {
@@ -65,6 +72,7 @@ final class AppSettings {
            let style = MenuBarIconStyle(rawValue: raw) { menuBarIconStyle = style }
         kubeconfigPath = d.string(forKey: Keys.kubeconfigPath) ?? ""
         if let v = d.object(forKey: Keys.apiTimeout) as? Int { apiTimeout = min(120, max(5, v)) }
+        skipTLSVerification = d.bool(forKey: Keys.skipTLSVerification)
     }
 
     // MARK: - Nested Types
@@ -107,5 +115,6 @@ final class AppSettings {
         static let menuBarIconStyle = "menuBarIconStyle"
         static let kubeconfigPath = "kubeconfigPath"
         static let apiTimeout = "apiTimeout"
+        static let skipTLSVerification = "skipTLSVerification"
     }
 }

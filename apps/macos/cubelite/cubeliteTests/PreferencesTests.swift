@@ -19,7 +19,8 @@ final class PreferencesTests: XCTestCase {
          Keys.appearanceMode,
          Keys.menuBarIconStyle,
          Keys.kubeconfigPath,
-         Keys.apiTimeout].forEach { d.removeObject(forKey: $0) }
+         Keys.apiTimeout,
+         Keys.skipTLSVerification].forEach { d.removeObject(forKey: $0) }
     }
 
     override func setUp() async throws {
@@ -146,6 +147,25 @@ final class PreferencesTests: XCTestCase {
         let sut = AppSettings()
         XCTAssertLessThanOrEqual(sut.apiTimeout, 120,
                                   "Timeout above maximum should be clamped to 120 on load")
+    }
+
+    // MARK: - Skip TLS Verification
+
+    func testSkipTLSVerificationDefault() {
+        let sut = AppSettings()
+        XCTAssertFalse(sut.skipTLSVerification)
+    }
+
+    func testSkipTLSVerificationPersistence() {
+        let sut = AppSettings()
+        sut.skipTLSVerification = true
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: Keys.skipTLSVerification))
+    }
+
+    func testSkipTLSVerificationLoadFromDefaults() {
+        UserDefaults.standard.set(true, forKey: Keys.skipTLSVerification)
+        let sut = AppSettings()
+        XCTAssertTrue(sut.skipTLSVerification)
     }
 
     func testApiTimeoutAtBoundaries() {

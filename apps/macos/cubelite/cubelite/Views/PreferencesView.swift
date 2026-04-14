@@ -95,6 +95,12 @@ private struct AdvancedPreferencesTab: View {
                 Button("Choose…") { pickKubeconfigFile(binding: $s.kubeconfigPath) }
             }
             Stepper("API timeout: \(s.apiTimeout) s", value: $s.apiTimeout, in: 5...120, step: 5)
+            Section {
+                Toggle("Skip TLS certificate verification", isOn: $s.skipTLSVerification)
+                Text("⚠️ Accepts self-signed certificates from all clusters. Only enable for local development (e.g., minikube).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .padding()

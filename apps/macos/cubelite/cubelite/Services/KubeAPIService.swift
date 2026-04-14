@@ -216,7 +216,8 @@ actor KubeAPIService {
     ) throws -> URLSession {
         let caCertificate = try Self.loadCACertificate(from: cluster)
         let clientIdentity = try Self.loadClientIdentity(from: user)
-        let insecureSkip = cluster.insecureSkipTlsVerify ?? false
+        let globalSkip = UserDefaults.standard.bool(forKey: "skipTLSVerification")
+        let insecureSkip = globalSkip || (cluster.insecureSkipTlsVerify ?? false)
 
         let delegate = KubeURLSessionDelegate(
             trustedCertificate: caCertificate,
