@@ -19,12 +19,21 @@ use crate::{
 /// An async Kubernetes client pre-configured from a kubeconfig file.
 ///
 /// Use [`KubeClient::new`] to construct an instance, then call the async
-/// `list_*` methods to query cluster resources.
+/// `list_*` methods to query cluster resources.  Use [`KubeClient::client`]
+/// to obtain the underlying [`Client`] for use with [`crate::ResourceWatcher`].
 pub struct KubeClient {
     inner: Client,
 }
 
 impl KubeClient {
+    /// Return a clone of the underlying [`kube::Client`].
+    ///
+    /// The returned client shares the same connection pool and configuration.
+    /// Use it to construct a [`crate::ResourceWatcher`].
+    pub fn client(&self) -> Client {
+        self.inner.clone()
+    }
+
     /// Build a [`KubeClient`] from the kubeconfig at `path`.
     ///
     /// `context` selects a named context; when `None` the file's

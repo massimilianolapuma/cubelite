@@ -12,6 +12,7 @@
 //! | [`resources`]  | Lightweight resource info types |
 //! | [`types`]      | Domain types mirroring the kubeconfig spec |
 //! | [`error`]      | Error types: [`KubeconfigError`], [`ContextError`] |
+//! | [`watcher`]    | Watch streaming for Kubernetes resources |
 //!
 //! ## Quick Start
 //!
@@ -33,6 +34,7 @@ pub mod error;
 pub mod kubeconfig;
 pub mod resources;
 pub mod types;
+pub mod watcher;
 
 // Re-export the most commonly used items at the crate root.
 pub use client::KubeClient;
@@ -43,3 +45,4 @@ pub use types::{
     ClusterDetails, ContextDetails, ContextInfo, KubeConfigFile, NamedCluster, NamedContext,
     NamedUser, UserDetails,
 };
+pub use watcher::{ResourceInfo, ResourceType, ResourceWatcher, WatchEvent};
