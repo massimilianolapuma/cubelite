@@ -148,7 +148,7 @@ pub struct UserDetails {
 ///
 /// Unlike [`NamedContext`], this struct includes the cluster server URL and
 /// namespace so callers can display or filter contexts without extra lookups.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContextInfo {
     /// The unique name of this context.
     pub name: String,

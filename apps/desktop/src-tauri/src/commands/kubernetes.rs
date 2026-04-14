@@ -138,3 +138,33 @@ pub async fn unwatch_resources(app: AppHandle, watch_id: String) -> Result<(), S
     }
     Ok(())
 }
+
+/// List all contexts from the kubeconfig.
+#[tauri::command]
+pub async fn list_contexts() -> Result<Vec<cubelite_core::ContextInfo>, String> {
+    tokio::task::spawn_blocking(|| {
+        cubelite_core::context::list_context_infos().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Get the name of the currently active context.
+#[tauri::command]
+pub async fn get_current_context() -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(|| {
+        cubelite_core::context::current_context().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Switch to a different kubeconfig context (persists to disk).
+#[tauri::command]
+pub async fn set_context(context_name: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        cubelite_core::context::set_active_context(&context_name).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
