@@ -39,6 +39,10 @@ final class ClusterState {
 
     /// Last resource fetch error message, if any.
     var resourceError: String?
+
+    /// Whether the active cluster's API server is reachable.
+    /// `nil` means not yet checked, `true` = connected, `false` = unreachable.
+    var clusterReachable: Bool?
 }
 
 // MARK: - Resource Type

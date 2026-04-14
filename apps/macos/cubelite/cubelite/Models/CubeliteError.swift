@@ -24,6 +24,9 @@ enum CubeliteError: LocalizedError, Sendable {
     /// Keychain operation failed.
     case keychainError(reason: String)
 
+    /// The cluster API server could not be reached (connection refused, timeout, DNS).
+    case clusterUnreachable
+
     var errorDescription: String? {
         switch self {
         case .fileNotFound(let path):
@@ -40,6 +43,8 @@ enum CubeliteError: LocalizedError, Sendable {
             "I/O error: \(reason)"
         case .keychainError(let reason):
             "Keychain error: \(reason)"
+        case .clusterUnreachable:
+            "Cluster not reachable"
         }
     }
 }
