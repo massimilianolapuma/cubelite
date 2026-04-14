@@ -88,13 +88,10 @@ pub fn context_exists(name: &str) -> Result<bool, ContextError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::env;
     use std::io::Write;
-    use std::sync::Mutex;
     use tempfile::NamedTempFile;
-
-    /// Prevent parallel tests from racing on the `KUBECONFIG` env var.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn write_temp(content: &str) -> NamedTempFile {
         let mut f = NamedTempFile::new().expect("tempfile");
@@ -103,16 +100,15 @@ mod tests {
     }
 
     fn with_kubeconfig<F: FnOnce()>(yaml: &str, f: F) {
-        let _guard = ENV_LOCK.lock().expect("env lock");
         let tmp = write_temp(yaml);
         env::set_var("KUBECONFIG", tmp.path().to_string_lossy().as_ref());
         f();
         env::remove_var("KUBECONFIG");
-        // Keep `tmp` alive until here so the file is not deleted before use.
         drop(tmp);
     }
 
     #[test]
+    #[serial]
     fn list_contexts_returns_all_names() {
         let yaml = r#"
 apiVersion: v1
@@ -132,6 +128,7 @@ contexts:
     }
 
     #[test]
+    #[serial]
     fn current_context_returns_active() {
         let yaml = r#"
 apiVersion: v1
@@ -148,6 +145,7 @@ contexts:
     }
 
     #[test]
+    #[serial]
     fn current_context_none_when_unset() {
         let yaml = r#"
 apiVersion: v1
@@ -163,6 +161,7 @@ contexts:
     }
 
     #[test]
+    #[serial]
     fn context_exists_true_for_known_name() {
         let yaml = r#"
 apiVersion: v1
@@ -177,6 +176,7 @@ contexts:
     }
 
     #[test]
+    #[serial]
     fn context_exists_false_for_unknown_name() {
         let yaml = r#"
 apiVersion: v1
@@ -191,6 +191,7 @@ contexts:
     }
 
     #[test]
+    #[serial]
     fn set_active_context_unknown_name_returns_not_found() {
         let yaml = r#"
 apiVersion: v1
@@ -212,6 +213,7 @@ contexts:
     }
 
     #[test]
+    #[serial]
     fn set_active_context_and_persists() {
         let yaml = r#"
 apiVersion: v1
@@ -235,6 +237,7 @@ contexts:
     }
 
     #[test]
+    #[serial]
     fn list_context_infos_includes_active_flag() {
         let yaml = r#"
 apiVersion: v1

@@ -541,6 +541,7 @@ contexts:
     // -- KUBECONFIG env var --------------------------------------------------
 
     #[test]
+    #[serial_test::serial]
     fn kubeconfig_env_var_single_path() {
         let yaml = r#"
 apiVersion: v1
@@ -561,6 +562,7 @@ contexts:
     }
 
     #[test]
+    #[serial_test::serial]
     fn kubeconfig_env_var_multiple_paths() {
         let yaml_a = r#"
 apiVersion: v1

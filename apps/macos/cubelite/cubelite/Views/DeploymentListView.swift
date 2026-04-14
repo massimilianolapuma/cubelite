@@ -93,12 +93,6 @@ struct DeploymentListView: View {
             }
             .width(ideal: 80)
 
-            TableColumn("Available") { dep in
-                Text("\(dep.readyReplicas)")
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            .width(ideal: 72)
         }
     }
 
