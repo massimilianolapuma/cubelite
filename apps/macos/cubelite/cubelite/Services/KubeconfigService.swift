@@ -55,8 +55,12 @@ actor KubeconfigService {
         let fileManager = FileManager.default
         let decoder = YAMLDecoder()
 
-        var mergedContextNames: [String] = []
-        var seenNames: Set<String> = []
+        var mergedContexts: [NamedContext] = []
+        var seenContextNames: Set<String> = []
+        var mergedClusters: [NamedCluster] = []
+        var seenClusterNames: Set<String> = []
+        var mergedUsers: [NamedUser] = []
+        var seenUserNames: Set<String> = []
         var currentContext: String?
         var mergedRaw: RawKubeConfig?
 
@@ -75,9 +79,23 @@ actor KubeconfigService {
 
             // Merge contexts, skip duplicates
             for named in raw.contexts ?? [] {
-                guard !seenNames.contains(named.name) else { continue }
-                seenNames.insert(named.name)
-                mergedContextNames.append(named.name)
+                guard !seenContextNames.contains(named.name) else { continue }
+                seenContextNames.insert(named.name)
+                mergedContexts.append(named)
+            }
+
+            // Merge clusters, skip duplicates
+            for named in raw.clusters ?? [] {
+                guard !seenClusterNames.contains(named.name) else { continue }
+                seenClusterNames.insert(named.name)
+                mergedClusters.append(named)
+            }
+
+            // Merge users, skip duplicates
+            for named in raw.users ?? [] {
+                guard !seenUserNames.contains(named.name) else { continue }
+                seenUserNames.insert(named.name)
+                mergedUsers.append(named)
             }
 
             if mergedRaw == nil {
@@ -85,14 +103,20 @@ actor KubeconfigService {
             }
         }
 
-        guard let raw = mergedRaw else {
+        guard var raw = mergedRaw else {
             throw CubeliteError.fileNotFound(
                 path: paths.map(\.path).joined(separator: ":")
             )
         }
 
+        // Store the fully merged collections into the raw config
+        raw.contexts = mergedContexts
+        raw.clusters = mergedClusters
+        raw.users = mergedUsers
+        raw.currentContext = currentContext
+
         return KubeConfig(
-            contexts: mergedContextNames,
+            contexts: mergedContexts.map(\.name),
             currentContext: currentContext,
             raw: raw,
             paths: paths
