@@ -161,6 +161,7 @@ struct MainView: View {
                     namespaces: context == expandedContext ? clusterState.namespaces : [],
                     isLoading: context == expandedContext && isLoadingNamespaces,
                     error: context == expandedContext ? namespaceError : nil,
+                    namespacePodCounts: clusterState.namespacePodCounts,
                     selection: $sidebarSelection
                 )
             },
@@ -407,6 +408,10 @@ struct MainView: View {
                 inContext: context
             )
             clusterState.pods = pods
+            clusterState.namespacePodCounts = Dictionary(
+                grouping: pods,
+                by: { $0.namespace }
+            ).mapValues { $0.count }
             let deployments = try await kubeAPIService.listDeployments(
                 namespace: namespace,
                 inContext: context

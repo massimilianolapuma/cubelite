@@ -1,12 +1,8 @@
 {
   "servers": {
     "penpot": {
-      "type": "sse",
-      "url": "http://localhost:4401/sse",
-      "environmentVariables": {
-        "PENPOT_MCP_SERVER_PORT": "4401",
-        "PENPOT_MCP_WEBSOCKET_PORT": "4402"
-      }
+      "type": "http",
+      "url": "http://localhost:4401/mcp"
     }
   }
 }

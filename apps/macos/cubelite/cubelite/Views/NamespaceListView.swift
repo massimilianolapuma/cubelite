@@ -23,6 +23,8 @@ struct NamespaceListView: View {
     let namespaces: [NamespaceInfo]
     let isLoading: Bool
     let error: String?
+    /// Pod count per namespace name, used to render count badges.
+    var namespacePodCounts: [String: Int] = [:]
 
     @Binding var selection: SidebarSelection?
 
@@ -65,15 +67,20 @@ struct NamespaceListView: View {
     }
 
     private var allNamespacesRow: some View {
-        namespaceRowView(namespace: nil, label: "All Namespaces", icon: "tray.2")
+        namespaceRowView(
+            namespace: nil,
+            label: "All Namespaces",
+            icon: "tray.2",
+            count: namespacePodCounts.values.reduce(0, +)
+        )
     }
 
     private func namespaceRow(_ name: String) -> some View {
-        namespaceRowView(namespace: name, label: name, icon: "square.dashed")
+        namespaceRowView(namespace: name, label: name, icon: "square.dashed", count: namespacePodCounts[name])
     }
 
     @ViewBuilder
-    private func namespaceRowView(namespace: String?, label: String, icon: String) -> some View {
+    private func namespaceRowView(namespace: String?, label: String, icon: String, count: Int? = nil) -> some View {
         let item = SidebarSelection(context: contextName, namespace: namespace)
         let isSelected = selection == item
 
@@ -89,6 +96,9 @@ struct NamespaceListView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 0)
+                if let count, count > 0 {
+                    PodCountBadge(count: count)
+                }
             }
             .contentShape(Rectangle())
         }
@@ -101,6 +111,22 @@ struct NamespaceListView: View {
                 : nil
         )
         .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+    }
+}
+
+// MARK: - Pod Count Badge
+
+/// Small pill showing the number of pods in a namespace.
+private struct PodCountBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text("\(count)")
+            .font(.caption2.monospacedDigit())
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.secondary.opacity(0.15)))
+            .foregroundStyle(.secondary)
     }
 }
 
@@ -120,6 +146,7 @@ struct NamespaceListView: View {
             namespaces: state.namespaces,
             isLoading: false,
             error: nil,
+            namespacePodCounts: ["default": 5, "kube-system": 12, "monitoring": 3],
             selection: $selection
         )
     }
