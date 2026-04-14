@@ -28,6 +28,10 @@ pub enum KubeconfigError {
         #[from]
         source: std::io::Error,
     },
+
+    /// An error was returned from a Kubernetes watch stream.
+    #[error("watch error: {reason}")]
+    WatchError { reason: String },
 }
 
 /// Errors that can occur during context selection or switching operations.

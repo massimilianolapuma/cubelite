@@ -570,9 +570,11 @@ name = "cubelite-core"
 version = "0.1.0"
 dependencies = [
  "dirs 5.0.1",
+ "futures",
  "k8s-openapi",
  "kube",
  "serde",
+ "serde_json",
  "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
@@ -584,6 +586,7 @@ name = "cubelite-desktop"
 version = "0.1.0"
 dependencies = [
  "cubelite-core",
+ "futures",
  "serde",
  "serde_json",
  "tauri",
@@ -1072,6 +1075,7 @@ checksum = "8b147ee9d1f6d097cef9ce628cd2ee62288d963e16fb287bd9286455b241382d"
 dependencies = [
  "futures-channel",
  "futures-core",
+ "futures-executor",
  "futures-io",
  "futures-sink",
  "futures-task",
