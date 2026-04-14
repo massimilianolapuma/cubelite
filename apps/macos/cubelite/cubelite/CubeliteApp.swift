@@ -8,6 +8,9 @@ struct CubeliteApp: App {
     private let kubeconfigService: KubeconfigService
     private let kubeAPIService: KubeAPIService
 
+    /// Persists whether the user has completed the first-launch onboarding flow.
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+
     init() {
         let ks = KubeconfigService()
         self.kubeconfigService = ks
@@ -16,10 +19,20 @@ struct CubeliteApp: App {
 
     var body: some Scene {
         WindowGroup("CubeLite") {
-            MainView(kubeconfigService: kubeconfigService, kubeAPIService: kubeAPIService)
-                .environment(clusterState)
+            if hasCompletedOnboarding {
+                MainView(kubeconfigService: kubeconfigService, kubeAPIService: kubeAPIService)
+                    .environment(clusterState)
+            } else {
+                FirstLaunchView(
+                    kubeconfigService: kubeconfigService,
+                    onComplete: { hasCompletedOnboarding = true }
+                )
+            }
         }
-        .defaultSize(width: 1200, height: 700)
+        .defaultSize(
+            width: hasCompletedOnboarding ? 1200 : 600,
+            height: hasCompletedOnboarding ? 700 : 400
+        )
 
         MenuBarExtra("CubeLite", systemImage: "square.3.layers.3d") {
             MenuBarContextView(
