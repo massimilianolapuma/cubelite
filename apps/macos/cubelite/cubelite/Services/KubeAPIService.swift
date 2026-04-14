@@ -104,6 +104,8 @@ actor KubeAPIService {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await session.data(for: request)
+        } catch let urlError as URLError where Self.isConnectionError(urlError) {
+            throw CubeliteError.clusterUnreachable
         } catch {
             throw CubeliteError.clientError(reason: "Network request failed: \(error.localizedDescription)")
         }
@@ -126,6 +128,20 @@ actor KubeAPIService {
             throw CubeliteError.clientError(
                 reason: "Failed to decode API response: \(error.localizedDescription)"
             )
+        }
+    }
+
+    /// URL error codes that indicate the cluster server is unreachable.
+    private static func isConnectionError(_ error: URLError) -> Bool {
+        switch error.code {
+        case .cannotConnectToHost,     // -1004: connection refused
+             .timedOut,                // -1001: timeout
+             .cannotFindHost,          // -1003: DNS failure
+             .networkConnectionLost,   // -1005: connection dropped
+             .notConnectedToInternet:  // -1009: no network
+            return true
+        default:
+            return false
         }
     }
 

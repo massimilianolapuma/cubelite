@@ -95,7 +95,13 @@ struct MainView: View {
             .help("Refresh all")
             .disabled(clusterState.isLoading || clusterState.isLoadingResources)
         }
-        if let error = clusterState.errorMessage {
+        if clusterState.clusterReachable == false {
+            ToolbarItem(placement: .status) {
+                Label("Cluster not reachable", systemImage: "network.slash")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+        } else if let error = clusterState.errorMessage {
             ToolbarItem(placement: .status) {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
@@ -192,9 +198,10 @@ struct MainView: View {
                 .truncationMode(.middle)
             Spacer(minLength: 4)
             if context == clusterState.currentContext {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .imageScale(.small)
+                Circle()
+                    .fill(clusterState.clusterReachable == true ? Color.green : Color.gray)
+                    .frame(width: 8, height: 8)
+                    .help(clusterState.clusterReachable == true ? "Connected" : "Not reachable")
             }
         }
         .contentShape(Rectangle())
@@ -353,6 +360,7 @@ struct MainView: View {
     private func loadKubeconfig() async {
         clusterState.isLoading = true
         clusterState.errorMessage = nil
+        clusterState.clusterReachable = nil
         defer { clusterState.isLoading = false }
         do {
             let config = try await kubeconfigService.load()
@@ -379,6 +387,10 @@ struct MainView: View {
         do {
             let namespaces = try await kubeAPIService.listNamespaces(inContext: context)
             clusterState.namespaces = namespaces.sorted { $0.name < $1.name }
+            clusterState.clusterReachable = true
+        } catch CubeliteError.clusterUnreachable {
+            clusterState.clusterReachable = false
+            namespaceError = CubeliteError.clusterUnreachable.localizedDescription
         } catch {
             namespaceError = error.localizedDescription
         }
@@ -401,6 +413,10 @@ struct MainView: View {
             )
             clusterState.deployments = deployments
             clusterState.selectedNamespace = namespace
+            clusterState.clusterReachable = true
+        } catch CubeliteError.clusterUnreachable {
+            clusterState.clusterReachable = false
+            clusterState.resourceError = CubeliteError.clusterUnreachable.localizedDescription
         } catch {
             clusterState.resourceError = error.localizedDescription
         }
