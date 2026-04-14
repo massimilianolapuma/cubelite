@@ -5,6 +5,7 @@ import AppKit
 struct CubeliteApp: App {
 
     @State private var clusterState = ClusterState()
+    @State private var appSettings = AppSettings()
     private let kubeconfigService: KubeconfigService
     private let kubeAPIService: KubeAPIService
 
@@ -22,6 +23,7 @@ struct CubeliteApp: App {
             if hasCompletedOnboarding {
                 MainView(kubeconfigService: kubeconfigService, kubeAPIService: kubeAPIService)
                     .environment(clusterState)
+                    .environment(appSettings)
             } else {
                 FirstLaunchView(
                     kubeconfigService: kubeconfigService,
@@ -42,6 +44,11 @@ struct CubeliteApp: App {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
             )
+        }
+
+        Settings {
+            PreferencesView()
+                .environment(appSettings)
         }
     }
 }
