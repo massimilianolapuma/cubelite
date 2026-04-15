@@ -280,72 +280,131 @@ actor KubeAPIService {
         return nil
     }
 
-    /// Loads a client `SecIdentity` from base64-encoded certificate and key data in the kubeconfig.
+    /// Loads a client `SecIdentity` from the kubeconfig user entry.
     ///
-    /// `client-certificate-data` is expected to be base64-encoded DER. `client-key-data` is
-    /// expected to be base64-encoded PEM (the full PEM file content including `-----BEGIN...-----`
-    /// headers). Both are imported into the keychain and the resulting `SecIdentity` is returned
-    /// for use in TLS mutual authentication.
+    /// Tries inline base64 (`client-certificate-data` / `client-key-data`) first, then falls
+    /// back to reading PEM files at `client-certificate` / `client-key` when inline data is
+    /// absent — the pattern used by minikube and many local clusters.
     ///
     /// - Returns: A `SecIdentity`, or `nil` when no client certificate is configured.
-    /// - Throws: `CubeliteError.clientError` on any decode or keychain failure.
+    /// - Throws: `CubeliteError.clientError` on any decode, read, or keychain failure.
     private static func loadClientIdentity(from user: UserDetails) throws -> SecIdentity? {
-        guard let certB64 = user.clientCertificateData, !certB64.isEmpty,
-              let keyB64 = user.clientKeyData, !keyB64.isEmpty else {
-            return nil
-        }
+        // --- Path 1: inline base64 data (client-certificate-data / client-key-data) ---
+        if let certB64 = user.clientCertificateData, !certB64.isEmpty,
+           let keyB64 = user.clientKeyData, !keyB64.isEmpty {
+            // Decode cert: base64 → DER (kubeconfig inline format).
+            // Fall back to PEM stripping if the decoded bytes appear to be PEM-wrapped.
+            guard let certDecoded = Data(base64Encoded: certB64) else {
+                throw CubeliteError.clientError(reason: "Invalid base64 in client-certificate-data")
+            }
+            var certificate: SecCertificate? = SecCertificateCreateWithData(nil, certDecoded as CFData)
+            if certificate == nil, let certDERFromPEM = try? pemToDER(certDecoded) {
+                certificate = SecCertificateCreateWithData(nil, certDERFromPEM as CFData)
+            }
+            guard let certificate else {
+                throw CubeliteError.clientError(reason: "Failed to parse client certificate from client-certificate-data")
+            }
 
-        // Decode cert: base64 → DER (kubeconfig inline format).
-        // Fall back to PEM stripping if the decoded bytes appear to be PEM-wrapped.
-        guard let certDecoded = Data(base64Encoded: certB64) else {
-            throw CubeliteError.clientError(reason: "Invalid base64 in client-certificate-data")
-        }
-        var certificate: SecCertificate? = SecCertificateCreateWithData(nil, certDecoded as CFData)
-        if certificate == nil, let certDERFromPEM = try? pemToDER(certDecoded) {
-            certificate = SecCertificateCreateWithData(nil, certDERFromPEM as CFData)
-        }
-        guard let certificate else {
-            throw CubeliteError.clientError(reason: "Failed to parse client certificate from client-certificate-data")
-        }
+            // Decode key: base64 → PEM text.
+            guard let keyDecoded = Data(base64Encoded: keyB64) else {
+                throw CubeliteError.clientError(reason: "Invalid base64 in client-key-data")
+            }
+            guard let keyPEMString = String(data: keyDecoded, encoding: .utf8) else {
+                throw CubeliteError.clientError(reason: "client-key-data is not valid UTF-8 after base64 decode")
+            }
 
-        // Decode key: base64 → PEM text.
-        guard let keyDecoded = Data(base64Encoded: keyB64) else {
-            throw CubeliteError.clientError(reason: "Invalid base64 in client-key-data")
-        }
-        guard let keyPEMString = String(data: keyDecoded, encoding: .utf8) else {
-            throw CubeliteError.clientError(reason: "client-key-data is not valid UTF-8 after base64 decode")
-        }
+            // Detect key type from PEM headers (used when removing old keychain items).
+            let isEC = keyPEMString.contains("BEGIN EC PRIVATE KEY")
+            let isRSA = keyPEMString.contains("BEGIN RSA PRIVATE KEY") || keyPEMString.contains("BEGIN PRIVATE KEY")
+            guard isEC || isRSA else {
+                throw CubeliteError.clientError(reason: "Unsupported private key type in client-key-data")
+            }
 
-        // Detect key type from PEM headers (used when removing old keychain items).
-        let isEC = keyPEMString.contains("BEGIN EC PRIVATE KEY")
-        let isRSA = keyPEMString.contains("BEGIN RSA PRIVATE KEY") || keyPEMString.contains("BEGIN PRIVATE KEY")
-        guard isEC || isRSA else {
-            throw CubeliteError.clientError(reason: "Unsupported private key type in client-key-data")
-        }
-
-        // Import the PEM key in memory using SecItemImport, which handles SEC1, PKCS#1, and PKCS#8
-        // formats correctly — unlike SecKeyCreateWithData which only accepts X9.63 raw bytes.
-        var importFormat = SecExternalFormat.formatOpenSSL
-        var importItemType = SecExternalItemType.itemTypePrivateKey
-        var importParams = SecItemImportExportKeyParameters()
-        importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
-        var importedItems: CFArray?
-        let importStatus = SecItemImport(
-            keyDecoded as CFData, nil, &importFormat, &importItemType,
-            SecItemImportExportFlags(), &importParams, nil, &importedItems
-        )
-        guard importStatus == errSecSuccess,
-              let privateKey = (importedItems as? [SecKey])?.first else {
-            throw CubeliteError.clientError(
-                reason: "Failed to import private key from PEM: OSStatus \(importStatus)"
+            // Import the PEM key in memory using SecItemImport, which handles SEC1, PKCS#1, and PKCS#8
+            // formats correctly — unlike SecKeyCreateWithData which only accepts X9.63 raw bytes.
+            var importFormat = SecExternalFormat.formatOpenSSL
+            var importItemType = SecExternalItemType.itemTypePrivateKey
+            var importParams = SecItemImportExportKeyParameters()
+            importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
+            var importedItems: CFArray?
+            let importStatus = SecItemImport(
+                keyDecoded as CFData, nil, &importFormat, &importItemType,
+                SecItemImportExportFlags(), &importParams, nil, &importedItems
             )
+            guard importStatus == errSecSuccess,
+                  let privateKey = (importedItems as? [SecKey])?.first else {
+                throw CubeliteError.clientError(
+                    reason: "Failed to import private key from PEM: OSStatus \(importStatus)"
+                )
+            }
+
+            return try Self.storeAndFindIdentity(certificate: certificate, privateKey: privateKey)
         }
 
-        // Import key + cert into the keychain and return the matching SecIdentity.
-        return try Self.storeAndFindIdentity(
-            certificate: certificate,
-            privateKey: privateKey
-        )
+        // --- Path 2: file paths (client-certificate / client-key) ---
+        if let certPath = user.clientCertificate, !certPath.isEmpty,
+           let keyPath = user.clientKey, !keyPath.isEmpty {
+            let expandedCertPath = NSString(string: certPath).expandingTildeInPath
+            let expandedKeyPath = NSString(string: keyPath).expandingTildeInPath
+
+            // Read the certificate PEM file.
+            let certPEM: Data
+            do {
+                certPEM = try Data(contentsOf: URL(fileURLWithPath: expandedCertPath))
+            } catch {
+                throw CubeliteError.clientError(reason: "Cannot read client certificate file: \(certPath)")
+            }
+
+            // Convert PEM → DER and create a SecCertificate.
+            let certDER: Data
+            do {
+                certDER = try pemToDER(certPEM)
+            } catch {
+                throw CubeliteError.clientError(reason: "Failed to parse PEM certificate from file: \(certPath)")
+            }
+            guard let certificate = SecCertificateCreateWithData(nil, certDER as CFData) else {
+                throw CubeliteError.clientError(reason: "Failed to create certificate from file: \(certPath)")
+            }
+
+            // Read the private key PEM file.
+            let keyPEM: Data
+            do {
+                keyPEM = try Data(contentsOf: URL(fileURLWithPath: expandedKeyPath))
+            } catch {
+                throw CubeliteError.clientError(reason: "Cannot read client key file: \(keyPath)")
+            }
+
+            // Validate key type from PEM headers.
+            guard let keyPEMString = String(data: keyPEM, encoding: .utf8) else {
+                throw CubeliteError.clientError(reason: "Client key file is not valid UTF-8: \(keyPath)")
+            }
+            let isEC = keyPEMString.contains("BEGIN EC PRIVATE KEY")
+            let isRSA = keyPEMString.contains("BEGIN RSA PRIVATE KEY") || keyPEMString.contains("BEGIN PRIVATE KEY")
+            guard isEC || isRSA else {
+                throw CubeliteError.clientError(reason: "Unsupported private key type in file: \(keyPath)")
+            }
+
+            // Import the PEM key using SecItemImport.
+            var importFormat = SecExternalFormat.formatOpenSSL
+            var importItemType = SecExternalItemType.itemTypePrivateKey
+            var importParams = SecItemImportExportKeyParameters()
+            importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
+            var importedItems: CFArray?
+            let importStatus = SecItemImport(
+                keyPEM as CFData, nil, &importFormat, &importItemType,
+                SecItemImportExportFlags(), &importParams, nil, &importedItems
+            )
+            guard importStatus == errSecSuccess,
+                  let privateKey = (importedItems as? [SecKey])?.first else {
+                throw CubeliteError.clientError(
+                    reason: "Failed to import private key from file: \(keyPath) (OSStatus \(importStatus))"
+                )
+            }
+
+            return try Self.storeAndFindIdentity(certificate: certificate, privateKey: privateKey)
+        }
+
+        return nil
     }
 
     /// Imports a certificate and private key into the keychain and returns the resulting `SecIdentity`.
