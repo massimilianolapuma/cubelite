@@ -69,7 +69,7 @@ struct LogsView: View {
         List(Array(filteredEntries.enumerated()), id: \.element.id, selection: $selectedEntryID) { item in
             LogRowView(entry: item.element, index: item.offset, isSelected: selectedEntryID == item.element.id)
         }
-        .listStyle(.plain)
+        .listStyle(.inset(alternatesRowBackgrounds: true))
     }
 
     // MARK: - Detail column
@@ -143,12 +143,6 @@ private struct LogRowView: View {
         return fmt
     }()
 
-    private static let oddRowBackground = Color(.sRGB, red: 0.973, green: 0.973, blue: 0.973)
-
-    private var rowBackground: Color {
-        index.isMultiple(of: 2) ? .white : Self.oddRowBackground
-    }
-
     var body: some View {
         HStack(spacing: 8) {
             timestampLabel
@@ -165,7 +159,7 @@ private struct LogRowView: View {
                     .frame(width: 3)
             }
         }
-        .listRowBackground(isSelected ? Color.accentColor.opacity(0.15) : rowBackground)
+        .listRowBackground(isSelected ? Color.accentColor.opacity(0.15) : nil)
     }
 
     private var timestampLabel: some View {
