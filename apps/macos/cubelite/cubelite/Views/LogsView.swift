@@ -16,8 +16,8 @@ struct LogsView: View {
             logListColumn
             logDetailColumn
         }
-        .frame(minWidth: 700, minHeight: 400)
-        .onAppear { logStore.markErrorsRead() }
+        .frame(minWidth: 800, minHeight: 520)
+        .task { logStore.markErrorsRead() }
     }
 
     // MARK: - List column
@@ -30,7 +30,7 @@ struct LogsView: View {
             Divider()
             logEntryList
         }
-        .frame(minWidth: 420)
+        .frame(minWidth: 460)
     }
 
     private var logListHeader: some View {
@@ -38,7 +38,9 @@ struct LogsView: View {
             Text("Logs").font(.headline)
             entryCountBadge
             Spacer()
-            Button("Clear") { logStore.clear() }.buttonStyle(.borderless)
+            Button("Clear All") { logStore.clear() }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.red)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -64,8 +66,8 @@ struct LogsView: View {
     }
 
     private var logEntryList: some View {
-        List(filteredEntries, id: \.id, selection: $selectedEntryID) { entry in
-            LogRowView(entry: entry)
+        List(Array(filteredEntries.enumerated()), id: \.element.id, selection: $selectedEntryID) { item in
+            LogRowView(entry: item.element, index: item.offset, isSelected: selectedEntryID == item.element.id)
         }
         .listStyle(.plain)
     }
@@ -80,7 +82,7 @@ struct LogsView: View {
                 noSelectionPlaceholder
             }
         }
-        .frame(minWidth: 260)
+        .frame(minWidth: 300)
     }
 
     private var noSelectionPlaceholder: some View {
@@ -132,12 +134,20 @@ private enum LogFilter: String, CaseIterable, Identifiable {
 private struct LogRowView: View {
 
     let entry: LogEntry
+    let index: Int
+    let isSelected: Bool
 
     private static let timestampFormatter: DateFormatter = {
         let fmt = DateFormatter()
         fmt.dateFormat = "HH:mm:ss"
         return fmt
     }()
+
+    private static let oddRowBackground = Color(.sRGB, red: 0.973, green: 0.973, blue: 0.973)
+
+    private var rowBackground: Color {
+        index.isMultiple(of: 2) ? .white : Self.oddRowBackground
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -147,6 +157,15 @@ private struct LogRowView: View {
             messageLabel
         }
         .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .leading) {
+            if isSelected {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: 3)
+            }
+        }
+        .listRowBackground(isSelected ? Color.accentColor.opacity(0.15) : rowBackground)
     }
 
     private var timestampLabel: some View {
