@@ -58,10 +58,12 @@ struct MainView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
         } detail: {
-            detailArea
+            VStack(spacing: 0) {
+                errorBannerInset
+                detailArea
+            }
         }
         .frame(minWidth: 900, minHeight: 550)
-        .safeAreaInset(edge: .top, spacing: 0) { errorBannerInset }
         .toolbar { toolbarContent }
         .sheet(isPresented: $showingLogs) {
             LogsView()
@@ -75,12 +77,8 @@ struct MainView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            HStack(spacing: 6) {
-                Image(systemName: "square.3.layers.3d")
-                    .foregroundStyle(.tint)
-                Text("CubeLite")
-                    .font(.headline)
-            }
+            Image(systemName: "square.3.layers.3d")
+                .foregroundStyle(.tint)
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
