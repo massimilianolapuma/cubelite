@@ -11,6 +11,8 @@ struct ErrorBannerView: View {
     /// Called when the user taps the "View Logs" button.
     let onViewLogs: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         HStack(spacing: 8) {
             bannerIcon
@@ -22,8 +24,10 @@ struct ErrorBannerView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(minHeight: 44)
-        .background(Color.red.opacity(0.10))
-        .overlay(alignment: .bottom) { Divider() }
+        .background(Color.red.opacity(colorScheme == .dark ? 0.08 : 0.06))
+        .overlay(alignment: .bottom) {
+            Color.red.opacity(0.35).frame(height: 1)
+        }
     }
 
     // MARK: - Sub-views
@@ -37,13 +41,13 @@ struct ErrorBannerView: View {
         Text(message)
             .lineLimit(1)
             .truncationMode(.tail)
-            .foregroundStyle(.primary)
+            .foregroundStyle(.red)
     }
 
     private var viewLogsButton: some View {
         Button("View Logs →", action: onViewLogs)
             .buttonStyle(.borderless)
-            .foregroundStyle(.red)
+            .foregroundStyle(.tint)
     }
 }
 

@@ -56,7 +56,7 @@ struct MainView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
         } detail: {
             VStack(spacing: 0) {
                 errorBannerInset
@@ -232,11 +232,19 @@ struct MainView: View {
             Spacer(minLength: 4)
             if context == clusterState.currentContext {
                 Circle()
-                    .fill(clusterState.clusterReachable == true ? Color.green : Color.gray)
+                    .fill(clusterState.clusterReachable == true ? Color.green : Color.secondary)
                     .frame(width: 8, height: 8)
                     .help(clusterState.clusterReachable == true ? "Connected" : "Not reachable")
             }
         }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+        .background(
+            expandedContext == context
+                ? Color.accentColor.opacity(0.12)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 5)
+        )
         .contentShape(Rectangle())
     }
 
@@ -259,32 +267,32 @@ struct MainView: View {
     }
 
     private var selectNamespacePlaceholder: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             Image(systemName: "tray.2")
-                .font(.system(size: 48))
+                .font(.system(size: 40))
                 .foregroundStyle(.quinary)
             Text("Select a namespace")
                 .font(.title2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             Text("Choose a namespace from the sidebar to browse resources.")
                 .font(.subheadline)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyDetail: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             Image(systemName: "square.3.layers.3d")
-                .font(.system(size: 56))
+                .font(.system(size: 40))
                 .foregroundStyle(.quinary)
             Text("Select a context to begin")
                 .font(.title2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             Text("Expand a cluster in the sidebar to browse its namespaces.")
                 .font(.subheadline)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
