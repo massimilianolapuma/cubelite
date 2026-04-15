@@ -175,6 +175,7 @@ You are the coordinator for the CubeLite monorepo. Your responsibilities:
 ## Mandatory: Check Instructions
 
 Before delegating ANY task to a sub-agent, remind it to read:
+
 - `.github/copilot-instructions.md` (project-wide)
 - Its path-scoped instructions in `.github/instructions/`
 - The relevant `AGENTS.md`
