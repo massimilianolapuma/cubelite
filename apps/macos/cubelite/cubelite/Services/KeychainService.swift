@@ -125,20 +125,108 @@ actor KeychainService {
 
     // MARK: - Identity Import (prepared for M2)
 
-    /// Imports a PEM-encoded client certificate and private key into the Keychain,
+    /// Imports DER-encoded client certificate and private key data into the Keychain,
     /// constructing a `SecIdentity` usable for mutual TLS authentication.
+    ///
+    /// The key PEM data is imported via `SecItemImport` which handles SEC1, PKCS#1, and PKCS#8
+    /// DER formats transparently. The `kSecAttrApplicationLabel` (public-key hash) is preserved
+    /// so the Security framework can correlate the private key with the certificate.
     ///
     /// - Parameters:
     ///   - certificateDER: DER-encoded client certificate data.
-    ///   - keyDER:         DER-encoded private key data (PKCS#8 or SEC1).
-    ///   - account:        The account identifier (Kubernetes context name).
+    ///   - keyDER:         PEM-encoded private key data (SEC1, PKCS#1, or PKCS#8 payload).
+    ///   - account:        The account identifier used to tag keychain items (e.g. context name).
     /// - Returns: A `SecIdentity` that bundles the certificate and its private key.
+    /// - Throws: `CubeliteError.keychainError` on any Security framework failure.
     func importIdentity(
         certificateDER: Data,
         keyDER: Data,
         account: String
     ) throws -> SecIdentity {
-        throw CubeliteError.keychainError(reason: "PKCS#12 import not yet implemented")
+        guard let certificate = SecCertificateCreateWithData(nil, certificateDER as CFData) else {
+            throw CubeliteError.keychainError(reason: "Failed to create certificate from DER data")
+        }
+
+        // Import the PEM key into memory; SecItemImport handles SEC1, PKCS#1, and PKCS#8.
+        var importFormat = SecExternalFormat.formatOpenSSL
+        var importItemType = SecExternalItemType.itemTypePrivateKey
+        var importParams = SecItemImportExportKeyParameters()
+        importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
+        var importedItems: CFArray?
+        let importStatus = SecItemImport(
+            keyDER as CFData, nil, &importFormat, &importItemType,
+            SecItemImportExportFlags(), &importParams, nil, &importedItems
+        )
+        guard importStatus == errSecSuccess,
+              let privateKey = (importedItems as? [SecKey])?.first else {
+            throw CubeliteError.keychainError(
+                reason: "Failed to import private key from PEM: OSStatus \(importStatus)"
+            )
+        }
+
+        // Preserve the application label (SHA-1 of the public key) from the imported key.
+        let importedKeyAttrs = SecKeyCopyAttributes(privateKey) as? [CFString: Any]
+        let applicationLabel = importedKeyAttrs?[kSecAttrApplicationLabel] as? Data
+
+        let keyTag = Data("it.lapuma.cubelite.client-key.\(account)".utf8)
+
+        // Replace any existing key with this tag.
+        let keySearchQuery: [CFString: Any] = [
+            kSecClass: kSecClassKey,
+            kSecAttrApplicationTag: keyTag,
+            kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+        ]
+        SecItemDelete(keySearchQuery as CFDictionary)
+
+        var addKeyQuery: [CFString: Any] = [
+            kSecClass: kSecClassKey,
+            kSecAttrApplicationTag: keyTag,
+            kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+            kSecValueRef: privateKey,
+            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        if let label = applicationLabel {
+            addKeyQuery[kSecAttrApplicationLabel] = label
+        }
+        let keyStatus = SecItemAdd(addKeyQuery as CFDictionary, nil)
+        guard keyStatus == errSecSuccess else {
+            throw CubeliteError.keychainError(reason: "Failed to add private key: OSStatus \(keyStatus)")
+        }
+
+        let addCertQuery: [CFString: Any] = [
+            kSecClass: kSecClassCertificate,
+            kSecValueRef: certificate,
+        ]
+        let certStatus = SecItemAdd(addCertQuery as CFDictionary, nil)
+        guard certStatus == errSecSuccess || certStatus == errSecDuplicateItem else {
+            SecItemDelete(keySearchQuery as CFDictionary)
+            throw CubeliteError.keychainError(reason: "Failed to add certificate: OSStatus \(certStatus)")
+        }
+
+        // Find the identity by matching certificate DER content.
+        let identityQuery: [CFString: Any] = [
+            kSecClass: kSecClassIdentity,
+            kSecReturnRef: true,
+            kSecMatchLimit: kSecMatchLimitAll,
+        ]
+        var identityRefs: CFTypeRef?
+        let queryStatus = SecItemCopyMatching(identityQuery as CFDictionary, &identityRefs)
+        guard queryStatus == errSecSuccess, let refs = identityRefs as? [SecIdentity] else {
+            throw CubeliteError.keychainError(reason: "Failed to enumerate identities: OSStatus \(queryStatus)")
+        }
+
+        let expectedCertData = SecCertificateCopyData(certificate) as Data
+        for candidateIdentity in refs {
+            var candidateCert: SecCertificate?
+            guard SecIdentityCopyCertificate(candidateIdentity, &candidateCert) == errSecSuccess,
+                  let candidateCert,
+                  (SecCertificateCopyData(candidateCert) as Data) == expectedCertData else {
+                continue
+            }
+            return candidateIdentity
+        }
+
+        throw CubeliteError.keychainError(reason: "Identity not found in keychain after import")
     }
 
     // MARK: - Private Helpers
@@ -148,7 +236,7 @@ actor KeychainService {
             kSecClass as String:      kSecClassGenericPassword,
             kSecAttrService as String: tag.rawValue,
             kSecAttrAccount as String: account,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
     }
 }

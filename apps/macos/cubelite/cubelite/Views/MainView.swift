@@ -27,6 +27,7 @@ struct MainView: View {
     let kubeAPIService: KubeAPIService
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(LogStore.self) private var logStore
 
     // MARK: - Sidebar State
 
@@ -38,6 +39,8 @@ struct MainView: View {
     @State private var isLoadingNamespaces: Bool = false
     /// Namespace fetch error, if any.
     @State private var namespaceError: String?
+    /// Whether the Logs & Errors sheet is presented.
+    @State private var showingLogs = false
 
     // MARK: - Resource Browse State
 
@@ -53,12 +56,19 @@ struct MainView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             sidebar
-                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
         } detail: {
-            detailArea
+            VStack(spacing: 0) {
+                errorBannerInset
+                detailArea
+            }
         }
         .frame(minWidth: 900, minHeight: 550)
         .toolbar { toolbarContent }
+        .sheet(isPresented: $showingLogs) {
+            LogsView()
+                .environment(logStore)
+        }
         .task { await loadKubeconfig() }
     }
 
@@ -67,12 +77,8 @@ struct MainView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
-            HStack(spacing: 6) {
-                Image(systemName: "square.3.layers.3d")
-                    .foregroundStyle(.tint)
-                Text("CubeLite")
-                    .font(.headline)
-            }
+            Image(systemName: "square.3.layers.3d")
+                .foregroundStyle(.tint)
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
@@ -101,14 +107,41 @@ struct MainView: View {
                     .foregroundStyle(.secondary)
                     .font(.caption)
             }
-        } else if let error = clusterState.errorMessage {
-            ToolbarItem(placement: .status) {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .font(.caption)
-                    .lineLimit(1)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            logsButton
+        }
+    }
+
+    // MARK: - Banner & Logs Button
+
+    /// Inline error banner shown below the toolbar when unread errors exist.
+    @ViewBuilder
+    private var errorBannerInset: some View {
+        if logStore.unreadErrorCount > 0 {
+            let message = clusterState.errorMessage
+                ?? clusterState.resourceError
+                ?? "Application errors occurred."
+            ErrorBannerView(message: message) { showingLogs = true }
+        }
+    }
+
+    /// Toolbar button that opens the Logs panel, with a badge for unread errors.
+    private var logsButton: some View {
+        Button { showingLogs = true } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "bell")
+                if logStore.unreadErrorCount > 0 {
+                    Text(logStore.unreadErrorCount < 100 ? "\(logStore.unreadErrorCount)" : "99+")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(2)
+                        .background(Color.red, in: Circle())
+                        .offset(x: 5, y: -5)
+                }
             }
         }
+        .help("View logs and errors")
     }
 
     // MARK: - Sidebar
@@ -199,11 +232,19 @@ struct MainView: View {
             Spacer(minLength: 4)
             if context == clusterState.currentContext {
                 Circle()
-                    .fill(clusterState.clusterReachable == true ? Color.green : Color.gray)
+                    .fill(clusterState.clusterReachable == true ? Color.green : Color.secondary)
                     .frame(width: 8, height: 8)
                     .help(clusterState.clusterReachable == true ? "Connected" : "Not reachable")
             }
         }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+        .background(
+            expandedContext == context
+                ? Color.accentColor.opacity(0.12)
+                : Color.clear,
+            in: RoundedRectangle(cornerRadius: 5)
+        )
         .contentShape(Rectangle())
     }
 
@@ -226,32 +267,32 @@ struct MainView: View {
     }
 
     private var selectNamespacePlaceholder: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             Image(systemName: "tray.2")
-                .font(.system(size: 48))
+                .font(.system(size: 40))
                 .foregroundStyle(.quinary)
             Text("Select a namespace")
                 .font(.title2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             Text("Choose a namespace from the sidebar to browse resources.")
                 .font(.subheadline)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyDetail: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             Image(systemName: "square.3.layers.3d")
-                .font(.system(size: 56))
+                .font(.system(size: 40))
                 .foregroundStyle(.quinary)
             Text("Select a context to begin")
                 .font(.title2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary)
             Text("Expand a cluster in the sidebar to browse its namespaces.")
                 .font(.subheadline)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -389,6 +430,13 @@ struct MainView: View {
             clusterState.noConfig = true
         } catch {
             clusterState.errorMessage = error.localizedDescription
+            logStore.append(LogEntry(
+                severity: .error,
+                source: "Config",
+                message: error.localizedDescription,
+                details: String(describing: error),
+                suggestedAction: "Check your kubeconfig file for syntax errors."
+            ))
         }
     }
 
@@ -404,8 +452,20 @@ struct MainView: View {
         } catch CubeliteError.clusterUnreachable {
             clusterState.clusterReachable = false
             namespaceError = CubeliteError.clusterUnreachable.localizedDescription
+            logStore.append(LogEntry(
+                severity: .warning,
+                source: "KubeAPI",
+                message: CubeliteError.clusterUnreachable.localizedDescription,
+                suggestedAction: "Check cluster connectivity and VPN/network settings."
+            ))
         } catch {
             namespaceError = error.localizedDescription
+            logStore.append(LogEntry(
+                severity: .error,
+                source: "KubeAPI",
+                message: error.localizedDescription,
+                details: String(describing: error)
+            ))
         }
     }
 
@@ -430,8 +490,20 @@ struct MainView: View {
         } catch CubeliteError.clusterUnreachable {
             clusterState.clusterReachable = false
             clusterState.resourceError = CubeliteError.clusterUnreachable.localizedDescription
+            logStore.append(LogEntry(
+                severity: .warning,
+                source: "KubeAPI",
+                message: CubeliteError.clusterUnreachable.localizedDescription,
+                suggestedAction: "Check cluster connectivity and VPN/network settings."
+            ))
         } catch {
             clusterState.resourceError = error.localizedDescription
+            logStore.append(LogEntry(
+                severity: .error,
+                source: "KubeAPI",
+                message: error.localizedDescription,
+                details: String(describing: error)
+            ))
         }
     }
 }
@@ -455,6 +527,7 @@ struct MainView: View {
     let ks = KubeconfigService()
     return MainView(kubeconfigService: ks, kubeAPIService: KubeAPIService(kubeconfigService: ks))
         .environment(state)
+        .environment(LogStore())
 }
 
 #Preview("No kubeconfig") {
@@ -463,4 +536,5 @@ struct MainView: View {
     let ks = KubeconfigService()
     return MainView(kubeconfigService: ks, kubeAPIService: KubeAPIService(kubeconfigService: ks))
         .environment(state)
+        .environment(LogStore())
 }

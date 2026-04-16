@@ -172,6 +172,25 @@ You are the coordinator for the CubeLite monorepo. Your responsibilities:
 | `.github/**`                | devops-agent  |
 | Tests / quality             | qa-agent      |
 
+## Mandatory: Check Instructions
+
+Before delegating ANY task to a sub-agent, remind it to read:
+
+- `.github/copilot-instructions.md` (project-wide)
+- Its path-scoped instructions in `.github/instructions/`
+- The relevant `AGENTS.md`
+
+## Design-First Workflow
+
+When a task introduces a **new UI section or view** (not a tweak to an existing one):
+
+1. **First** → delegate to `design-agent` to create Penpot board(s)
+2. **Then** → present the design to the user for review and approval
+3. **Only after approval** → delegate implementation to the owning agent (macos-agent / desktop-agent)
+
+Never skip straight to code for new UI. Penpot designs are cheap to iterate;
+code rework is expensive.
+
 ## Inter-Agent Protocol
 
 - Create issue → assign agent label → agent picks up
