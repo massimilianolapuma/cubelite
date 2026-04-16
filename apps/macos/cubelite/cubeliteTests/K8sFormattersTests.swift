@@ -1,6 +1,7 @@
-import XCTest
-@testable import cubelite
 import SwiftUI
+import XCTest
+
+@testable import cubelite
 
 // MARK: - K8s Age Formatting Tests
 
@@ -48,7 +49,7 @@ final class K8sFormattersTests: XCTestCase {
     // MARK: k8sAge — minutes
 
     func testK8sAge_fewMinutesAgo_returnsMSuffix() {
-        let date = Date().addingTimeInterval(-300) // 5 min
+        let date = Date().addingTimeInterval(-300)  // 5 min
         let iso = ISO8601DateFormatter().string(from: date)
         let result: String? = iso
         let age = result.k8sAge
@@ -56,7 +57,7 @@ final class K8sFormattersTests: XCTestCase {
     }
 
     func testK8sAge_59MinutesAgo_returns59m() {
-        let date = Date().addingTimeInterval(-59 * 60) // 59 min
+        let date = Date().addingTimeInterval(-59 * 60)  // 59 min
         let iso = ISO8601DateFormatter().string(from: date)
         let result: String? = iso
         let age = result.k8sAge

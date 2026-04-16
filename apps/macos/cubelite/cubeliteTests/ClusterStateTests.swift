@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import cubelite
 
 // MARK: - ClusterState Tests
@@ -111,7 +112,7 @@ final class ClusterStateTests: XCTestCase {
         sut.namespacePodCounts = [
             "default": 5,
             "kube-system": 12,
-            "monitoring": 3
+            "monitoring": 3,
         ]
         XCTAssertEqual(sut.namespacePodCounts["default"], 5)
         XCTAssertEqual(sut.namespacePodCounts["kube-system"], 12)
