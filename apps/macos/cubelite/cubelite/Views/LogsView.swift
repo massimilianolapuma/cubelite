@@ -8,15 +8,24 @@ import SwiftUI
 struct LogsView: View {
 
     @Environment(LogStore.self) private var logStore
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedEntryID: UUID?
     @State private var filter: LogFilter = .all
 
     var body: some View {
-        HSplitView {
-            logListColumn
-            logDetailColumn
+        NavigationStack {
+            HSplitView {
+                logListColumn
+                logDetailColumn
+            }
+            .frame(minWidth: 800, minHeight: 520)
+            .navigationTitle("Logs & Errors")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
         }
-        .frame(minWidth: 800, minHeight: 520)
         .task { logStore.markErrorsRead() }
     }
 
