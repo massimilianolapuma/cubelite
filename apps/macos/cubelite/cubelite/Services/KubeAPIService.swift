@@ -571,9 +571,25 @@ private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, @unche
                 var error: CFError?
                 if SecTrustEvaluateWithError(trust, &error) {
                     return (.useCredential, URLCredential(trust: trust))
-                } else {
-                    return (.cancelAuthenticationChallenge, nil)
                 }
+
+                // macOS rejects server certificates whose validity period exceeds
+                // 398 days (errSecCertificateValidityPeriodTooLong, OSStatus -67901).
+                // Local/dev clusters (minikube, k3s, kind) commonly generate long-lived
+                // certificates signed by a private CA. Since we already pinned that CA
+                // as the sole trust anchor, fall back to a basic X.509 chain-only
+                // evaluation which verifies the signature chain without enforcing
+                // Apple's temporal-compliance policy.
+                if (error.map { ($0 as Error as NSError).code }) == -67901 {
+                    let chainOnlyPolicy = SecPolicyCreateBasicX509()
+                    SecTrustSetPolicies(trust, chainOnlyPolicy)
+                    var chainError: CFError?
+                    if SecTrustEvaluateWithError(trust, &chainError) {
+                        return (.useCredential, URLCredential(trust: trust))
+                    }
+                }
+
+                return (.cancelAuthenticationChallenge, nil)
             }
         }
 
