@@ -24,13 +24,11 @@ final class PreferencesTests: XCTestCase {
     }
 
     override func setUp() async throws {
-        try await super.setUp()
         resetDefaults()
     }
 
     override func tearDown() async throws {
         resetDefaults()
-        try await super.tearDown()
     }
 
     // MARK: - Default Values
