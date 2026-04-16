@@ -7,29 +7,29 @@ final class PreferencesTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Keys used by AppSettings in UserDefaults.
-    private typealias Keys = AppSettings.Keys
-
     /// Removes all AppSettings keys from UserDefaults so each test starts clean.
-    private func resetDefaults() {
+    ///
+    /// Declared `nonisolated` so it can be called from XCTest's non-isolated
+    /// `setUp()` / `tearDown()` without triggering Swift 6 sendability errors.
+    private nonisolated func resetDefaults() {
         let d = UserDefaults.standard
-        [Keys.autoRefreshInterval,
-         Keys.launchAtLogin,
-         Keys.showSystemNamespaces,
-         Keys.appearanceMode,
-         Keys.menuBarIconStyle,
-         Keys.kubeconfigPath,
-         Keys.apiTimeout].forEach { d.removeObject(forKey: $0) }
+        [AppSettings.Keys.autoRefreshInterval,
+         AppSettings.Keys.launchAtLogin,
+         AppSettings.Keys.showSystemNamespaces,
+         AppSettings.Keys.appearanceMode,
+         AppSettings.Keys.menuBarIconStyle,
+         AppSettings.Keys.kubeconfigPath,
+         AppSettings.Keys.apiTimeout].forEach { d.removeObject(forKey: $0) }
     }
 
-    override func setUp() async throws {
-        try await super.setUp()
+    override func setUp() {
+        super.setUp()
         resetDefaults()
     }
 
-    override func tearDown() async throws {
+    override func tearDown() {
         resetDefaults()
-        try await super.tearDown()
+        super.tearDown()
     }
 
     // MARK: - Default Values
@@ -135,14 +135,14 @@ final class PreferencesTests: XCTestCase {
     // MARK: - API Timeout Range
 
     func testApiTimeoutBelowMinimumClampsOnLoad() {
-        UserDefaults.standard.set(1, forKey: Keys.apiTimeout)
+        UserDefaults.standard.set(1, forKey: AppSettings.Keys.apiTimeout)
         let sut = AppSettings()
         XCTAssertGreaterThanOrEqual(sut.apiTimeout, 5,
                                     "Timeout below minimum should be clamped to 5 on load")
     }
 
     func testApiTimeoutAboveMaximumClampsOnLoad() {
-        UserDefaults.standard.set(999, forKey: Keys.apiTimeout)
+        UserDefaults.standard.set(999, forKey: AppSettings.Keys.apiTimeout)
         let sut = AppSettings()
         XCTAssertLessThanOrEqual(sut.apiTimeout, 120,
                                   "Timeout above maximum should be clamped to 120 on load")
