@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 /// Persistent app-wide settings backed by UserDefaults.
 ///
@@ -32,6 +33,18 @@ final class AppSettings {
     /// Preferred color scheme.
     var appearanceMode: AppearanceMode = .system {
         didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: Keys.appearanceMode) }
+    }
+
+    /// The SwiftUI `ColorScheme` corresponding to the current `appearanceMode`.
+    ///
+    /// Returns `nil` when the mode is `.system`, which defers colour scheme
+    /// selection to the operating system.
+    var colorScheme: ColorScheme? {
+        switch appearanceMode {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
     }
 
     /// Menu bar icon style.

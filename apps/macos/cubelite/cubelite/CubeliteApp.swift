@@ -26,6 +26,13 @@ struct CubeliteApp: App {
                     .environment(clusterState)
                     .environment(appSettings)
                     .environment(logStore)
+                    .preferredColorScheme(appSettings.colorScheme)
+                    .onChange(of: appSettings.appearanceMode) { _, newMode in
+                        applyNSAppearance(newMode)
+                    }
+                    .task {
+                        applyNSAppearance(appSettings.appearanceMode)
+                    }
             } else {
                 FirstLaunchView(
                     kubeconfigService: kubeconfigService,
@@ -51,6 +58,22 @@ struct CubeliteApp: App {
         Settings {
             PreferencesView()
                 .environment(appSettings)
+        }
+    }
+
+    /// Applies `NSAppearance` to the whole application so that window chrome,
+    /// menus, and AppKit elements match the user's selected theme.
+    ///
+    /// - Parameter mode: The `AppearanceMode` selected in Preferences.
+    @MainActor
+    private func applyNSAppearance(_ mode: AppSettings.AppearanceMode) {
+        switch mode {
+        case .system:
+            NSApp.appearance = nil
+        case .light:
+            NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark:
+            NSApp.appearance = NSAppearance(named: .darkAqua)
         }
     }
 }
