@@ -560,3 +560,143 @@ final class LoadClientIdentityTests: XCTestCase {
         XCTAssertFalse(keyDER.isEmpty, "pemToDER must return non-empty DER for valid EC key PEM")
     }
 }
+
+// MARK: - TLS Temporal Validity Fallback Tests
+
+/// Tests for the errSecCertificateValidityPeriodTooLong (-67901) fallback.
+///
+/// macOS rejects server certificates whose validity period exceeds 398 days when
+/// evaluated with the standard SSL policy. Local/dev clusters (minikube, k3s, kind)
+/// commonly issue long-lived certificates. The `KubeURLSessionDelegate` falls back
+/// to `SecPolicyCreateBasicX509()` which verifies chain-of-trust without enforcing
+/// the temporal-compliance policy.
+///
+/// These tests exercise the Security framework primitives that the delegate relies on.
+final class TLSTemporalValidityFallbackTests: XCTestCase {
+
+    // The self-signed test certificate has 100-year validity (2026 → 2126),
+    // exceeding Apple's 398-day limit.
+    private let testCertPEM = """
+        -----BEGIN CERTIFICATE-----
+        MIICtDCCAZwCCQDkh6vhWkfH9zANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBD
+        dWJlTGl0ZSBUZXN0IENBMCAXDTI2MDQxNDE3NDMyMFoYDzIxMjYwMzIxMTc0MzIw
+        WjAbMRkwFwYDVQQDDBBDdWJlTGl0ZSBUZXN0IENBMIIBIjANBgkqhkiG9w0BAQEF
+        AAOCAQ8AMIIBCgKCAQEA11mwQJCp09PhtrVNUe0QDftklf7sAfCwDpKx0wsT04gX
+        EZkaKIdnl3XIKjpqCu2BY5SWRu7yCtfMyVK46E6Wfe/HA/q/RA2oIz3iz5PImSF4
+        4e/TIQaOuTBSOMmg7OraOHT50HM0b6vlzphDqWSHnsCnkjhL3athyyTcwJKGgQnj
+        YhO97WWM5DDG2C6NViKDXE4p6Me0PmZHbG/bnI5ZbD1pvcnKos5PY+Q9k0ixV7qG
+        Zck+dxy5FDMteBp7zDweSlKbsN1O3AJdEIjgMywGuVUbx4szsho/adBT1v4QMgIV
+        DWP+iKfDYArZrexVfJwvDhNrOg1dLw1RPj8SOMx2rQIDAQABMA0GCSqGSIb3DQEB
+        CwUAA4IBAQAYpCSSUJYmYYxDtYCRD7j/ukJuogW2ZzwrO+HV/KtKZDTkBzYRy/lU
+        aNjoq5RG7sj+jiAim8H+e/QlXu6Wc0QQiRCoL0n7M720kbSUZP9I048wBimLMPbl
+        J+/Feubt9NCxVD+HCw+S1OAA9su4tYWj2iVZ+VdSB5xy0uzSNvfdhUa9l9uNU61F
+        mYFfxePXwUH6Wm4Jw3QLlbIXDBo9VOgQbMA4U0CyQ0LRrvdaaN6BaPex4Ofx3BCU
+        AchgiojvOyMgLQ+ORgQk8BXnq+pZ1enpQYmaS+6nytdr9d491dhL1CsVWtB0bSGV
+        gqza/S8l+R8G0r3CFIZk1edLnbpEGjv+
+        -----END CERTIFICATE-----
+        """
+
+    private func loadTestCertificate() throws -> SecCertificate {
+        let derData = try KubeAPIService.pemToDER(Data(testCertPEM.utf8))
+        guard let cert = SecCertificateCreateWithData(nil, derData as CFData) else {
+            throw CubeliteError.clientError(reason: "Failed to create SecCertificate from test PEM")
+        }
+        return cert
+    }
+
+    /// Verifies that the long-lived test certificate fails standard SSL trust evaluation
+    /// with error code -67901 (errSecCertificateValidityPeriodTooLong).
+    func testSSLPolicy_rejectsLongLivedCertificate_withTemporalValidityError() throws {
+        let cert = try loadTestCertificate()
+
+        // Create a trust object with the standard SSL policy
+        let sslPolicy = SecPolicyCreateSSL(true, nil)
+        var trust: SecTrust?
+        let status = SecTrustCreateWithCertificates(cert as CFTypeRef, sslPolicy, &trust)
+        XCTAssertEqual(status, errSecSuccess, "SecTrustCreateWithCertificates failed")
+        guard let trust else {
+            XCTFail("Trust object is nil")
+            return
+        }
+
+        // Self-signed: pin the cert as its own anchor
+        SecTrustSetAnchorCertificates(trust, [cert] as CFArray)
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+
+        var error: CFError?
+        let result = SecTrustEvaluateWithError(trust, &error)
+
+        XCTAssertFalse(result, "SSL policy must reject a certificate with >398-day validity")
+        let nsError = error.map { $0 as Error as NSError }
+        XCTAssertEqual(
+            nsError?.code, -67901,
+            "Expected errSecCertificateValidityPeriodTooLong (-67901), got \(nsError?.code ?? 0)"
+        )
+    }
+
+    /// Verifies that the same long-lived certificate passes BasicX509 evaluation
+    /// (chain-only, no temporal-compliance enforcement).
+    func testBasicX509Policy_acceptsLongLivedCertificate() throws {
+        let cert = try loadTestCertificate()
+
+        // Create a trust object with BasicX509 policy (the fallback used in our fix)
+        let basicPolicy = SecPolicyCreateBasicX509()
+        var trust: SecTrust?
+        let status = SecTrustCreateWithCertificates(cert as CFTypeRef, basicPolicy, &trust)
+        XCTAssertEqual(status, errSecSuccess, "SecTrustCreateWithCertificates failed")
+        guard let trust else {
+            XCTFail("Trust object is nil")
+            return
+        }
+
+        // Pin the cert as its own anchor (same as our delegate does with the custom CA)
+        SecTrustSetAnchorCertificates(trust, [cert] as CFArray)
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+
+        var error: CFError?
+        let result = SecTrustEvaluateWithError(trust, &error)
+
+        XCTAssertTrue(
+            result,
+            "BasicX509 policy must accept a long-lived certificate; error: \(error.map { $0 as Error } ?? "none" as Any)"
+        )
+    }
+
+    /// Verifies the full fallback sequence: SSL fails → switch to BasicX509 → succeeds.
+    /// This mirrors the exact logic in `KubeURLSessionDelegate.urlSession(_:didReceive:)`.
+    func testFallbackSequence_SSLFailsThenBasicX509Succeeds() throws {
+        let cert = try loadTestCertificate()
+
+        // Step 1: Create trust with SSL policy (same as delegate does initially)
+        let sslPolicy = SecPolicyCreateSSL(true, nil)
+        var trust: SecTrust?
+        let createStatus = SecTrustCreateWithCertificates(cert as CFTypeRef, sslPolicy, &trust)
+        XCTAssertEqual(createStatus, errSecSuccess)
+        guard let trust else {
+            XCTFail("Trust object is nil")
+            return
+        }
+
+        SecTrustSetAnchorCertificates(trust, [cert] as CFArray)
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+
+        // Step 2: First evaluation should fail with -67901
+        var sslError: CFError?
+        let sslResult = SecTrustEvaluateWithError(trust, &sslError)
+        XCTAssertFalse(sslResult)
+        let errorCode = sslError.map { ($0 as Error as NSError).code }
+        XCTAssertEqual(errorCode, -67901)
+
+        // Step 3: Apply the fallback — replace policy with BasicX509
+        let chainOnlyPolicy = SecPolicyCreateBasicX509()
+        SecTrustSetPolicies(trust, chainOnlyPolicy)
+
+        // Step 4: Re-evaluate — should now succeed
+        var chainError: CFError?
+        let chainResult = SecTrustEvaluateWithError(trust, &chainError)
+        XCTAssertTrue(
+            chainResult,
+            "Fallback to BasicX509 must succeed after SSL rejection; error: \(chainError.map { $0 as Error } ?? "none" as Any)"
+        )
+    }
+}
