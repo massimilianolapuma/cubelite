@@ -61,6 +61,7 @@ struct FirstLaunchView: View {
             KubeconfigStatusCard(status: status)
             FeatureListSection(items: Self.featureHighlights)
             Spacer(minLength: 0)
+            StepIndicatorDots()
             GetStartedButton(action: onComplete)
         }
         .padding(.horizontal, 48)
@@ -212,6 +213,26 @@ private struct GetStartedButton: View {
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
-        .controlSize(.large)
+        .controlSize(.regular)
+    }
+}
+
+// MARK: - StepIndicatorDots
+
+/// Three-dot step indicator. Visual-only; the first dot is always active
+/// since FirstLaunchView is a single-screen onboarding flow.
+private struct StepIndicatorDots: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(.tint)
+                .frame(width: 12, height: 12)
+            Circle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(width: 8, height: 8)
+            Circle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(width: 8, height: 8)
+        }
     }
 }
