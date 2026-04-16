@@ -198,6 +198,6 @@ private extension DetailRow where Value == Text {
         replicas: 3,
         readyReplicas: 2
     )
-    return ResourceDetailView(resource: .deployment(dep))
+    ResourceDetailView(resource: .deployment(dep))
         .frame(width: 340, height: 300)
 }

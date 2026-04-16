@@ -317,9 +317,22 @@ struct MainView: View {
             // Right column: detail panel (shown when a resource is selected)
             if let detail = currentSelectedResource {
                 Divider()
-                ResourceDetailView(resource: detail)
-                    .frame(minWidth: 260, idealWidth: 340, maxWidth: 420)
+                detailPanel(for: detail)
             }
+        }
+    }
+
+    /// Selects between the narrow ``ResourceDetailView`` (pods) and the
+    /// full ``DeploymentDetailView`` based on the selected resource type.
+    @ViewBuilder
+    private func detailPanel(for resource: SelectedResource) -> some View {
+        switch resource {
+        case .deployment(let dep):
+            DeploymentDetailView(deployment: dep)
+                .frame(minWidth: 320, idealWidth: 460, maxWidth: 600)
+        case .pod:
+            ResourceDetailView(resource: resource)
+                .frame(minWidth: 260, idealWidth: 340, maxWidth: 420)
         }
     }
 
