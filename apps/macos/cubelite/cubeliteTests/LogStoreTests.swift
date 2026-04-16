@@ -6,14 +6,12 @@ final class LogStoreTests: XCTestCase {
 
     private var sut: LogStore!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
         sut = LogStore()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         sut = nil
-        super.tearDown()
     }
 
     // MARK: - append
