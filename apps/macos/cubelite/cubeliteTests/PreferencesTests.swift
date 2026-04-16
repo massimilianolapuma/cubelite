@@ -55,7 +55,7 @@ final class PreferencesTests: XCTestCase {
 
     func testDefaultMenuBarIconStyle() {
         let sut = AppSettings()
-        XCTAssertEqual(sut.menuBarIconStyle, .default)
+        XCTAssertEqual(sut.menuBarIconStyle, .standard)
     }
 
     func testDefaultKubeconfigPath() {

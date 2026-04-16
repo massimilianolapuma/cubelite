@@ -183,7 +183,7 @@ actor KeychainService {
             kSecAttrApplicationTag: keyTag,
             kSecAttrKeyClass: kSecAttrKeyClassPrivate,
             kSecValueRef: privateKey,
-            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
         if let label = applicationLabel {
             addKeyQuery[kSecAttrApplicationLabel] = label
@@ -236,7 +236,7 @@ actor KeychainService {
             kSecClass as String:      kSecClassGenericPassword,
             kSecAttrService as String: tag.rawValue,
             kSecAttrAccount as String: account,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         ]
     }
 }

@@ -35,7 +35,7 @@ final class AppSettings {
     }
 
     /// Menu bar icon style.
-    var menuBarIconStyle: MenuBarIconStyle = .default {
+    var menuBarIconStyle: MenuBarIconStyle = .standard {
         didSet { UserDefaults.standard.set(menuBarIconStyle.rawValue, forKey: Keys.menuBarIconStyle) }
     }
 
@@ -93,12 +93,13 @@ final class AppSettings {
 
     /// Menu bar icon style.
     enum MenuBarIconStyle: String, CaseIterable {
-        case `default`, monochrome
+        /// Standard full-colour icon. Raw value kept as "default" for UserDefaults back-compat.
+        case standard = "default", monochrome
 
         /// Human-readable label for display in UI.
         var label: String {
             switch self {
-            case .default: "Default"
+            case .standard: "Default"
             case .monochrome: "Monochrome"
             }
         }

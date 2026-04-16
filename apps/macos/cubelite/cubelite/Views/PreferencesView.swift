@@ -36,15 +36,14 @@ private struct GeneralPreferencesTab: View {
     ]
 
     var body: some View {
-        @Bindable var s = settings
         Form {
-            Picker("Auto-refresh:", selection: $s.autoRefreshInterval) {
+            Picker("Auto-refresh:", selection: Bindable(settings).autoRefreshInterval) {
                 ForEach(Self.refreshOptions, id: \.value) { option in
                     Text(option.label).tag(option.value)
                 }
             }
-            Toggle("Launch at login", isOn: $s.launchAtLogin)
-            Toggle("Show system namespaces", isOn: $s.showSystemNamespaces)
+            Toggle("Launch at login", isOn: Bindable(settings).launchAtLogin)
+            Toggle("Show system namespaces", isOn: Bindable(settings).showSystemNamespaces)
         }
         .formStyle(.grouped)
         .padding()
@@ -59,16 +58,15 @@ private struct AppearancePreferencesTab: View {
     @Environment(AppSettings.self) private var settings
 
     var body: some View {
-        @Bindable var s = settings
         Form {
-            Picker("Theme:", selection: $s.appearanceMode) {
+            Picker("Theme:", selection: Bindable(settings).appearanceMode) {
                 ForEach(AppSettings.AppearanceMode.allCases, id: \.self) { mode in
                     Text(mode.label).tag(mode)
                 }
             }
             .pickerStyle(.radioGroup)
 
-            Picker("Menu bar icon:", selection: $s.menuBarIconStyle) {
+            Picker("Menu bar icon:", selection: Bindable(settings).menuBarIconStyle) {
                 ForEach(AppSettings.MenuBarIconStyle.allCases, id: \.self) { style in
                     Text(style.label).tag(style)
                 }
@@ -87,11 +85,14 @@ private struct AdvancedPreferencesTab: View {
 
     @Environment(AppSettings.self) private var settings
 
+    /// Default kubeconfig file path shown as placeholder text.
+    private static let defaultKubeconfigPrompt = "~/.kube/config"
+
     var body: some View {
         @Bindable var s = settings
         Form {
             HStack {
-                TextField("Kubeconfig path:", text: $s.kubeconfigPath, prompt: Text("~/.kube/config"))
+                TextField("Kubeconfig path:", text: $s.kubeconfigPath, prompt: Text(Self.defaultKubeconfigPrompt))
                 Button("Choose…") { pickKubeconfigFile(binding: $s.kubeconfigPath) }
             }
             Stepper("API timeout: \(s.apiTimeout) s", value: $s.apiTimeout, in: 5...120, step: 5)
