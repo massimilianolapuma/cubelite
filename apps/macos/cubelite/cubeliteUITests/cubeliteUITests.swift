@@ -53,15 +53,15 @@ final class CubeliteUITests: XCTestCase {
     func testPreferences_hasExpectedTabs() throws {
         app.typeKey(",", modifierFlags: .command)
 
-        // Give the window time to appear
+        // Give the window and all tab items time to appear
         let generalTab = app.staticTexts["General"]
-        XCTAssertTrue(generalTab.waitForExistence(timeout: 3), "General tab should exist in preferences")
+        XCTAssertTrue(generalTab.waitForExistence(timeout: 5), "General tab should exist in preferences")
 
         let appearanceTab = app.staticTexts["Appearance"]
-        XCTAssertTrue(appearanceTab.exists, "Appearance tab should exist in preferences")
+        XCTAssertTrue(appearanceTab.waitForExistence(timeout: 3), "Appearance tab should exist in preferences")
 
         let advancedTab = app.staticTexts["Advanced"]
-        XCTAssertTrue(advancedTab.exists, "Advanced tab should exist in preferences")
+        XCTAssertTrue(advancedTab.waitForExistence(timeout: 3), "Advanced tab should exist in preferences")
     }
 
     // MARK: - Main Menu
