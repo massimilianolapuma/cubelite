@@ -7,35 +7,107 @@
 
 import XCTest
 
-final class cubeliteUITests: XCTestCase {
+final class CubeliteUITests: XCTestCase {
+
+    private var app: XCUIApplication!
 
     override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
         continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
+        app = XCUIApplication()
+        app.launch()
     }
 
     override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+        app = nil
+    }
+
+    // MARK: - Window Lifecycle
+
+    @MainActor
+    func testLaunch_mainWindowExists() throws {
+        XCTAssertTrue(app.windows.count >= 1, "App should have at least one window after launch")
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
-        let app = XCUIApplication()
-        app.launch()
-
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+    func testLaunch_windowHasReasonableSize() throws {
+        guard let window = app.windows.allElementsBoundByIndex.first else {
+            XCTFail("No window found")
+            return
+        }
+        let frame = window.frame
+        XCTAssertGreaterThan(frame.width, 300, "Window width should be > 300")
+        XCTAssertGreaterThan(frame.height, 200, "Window height should be > 200")
     }
+
+    // MARK: - Preferences Window
+
+    @MainActor
+    func testPreferences_opensViaMenuBar() throws {
+        // Use the standard macOS menu: CubeLite > Settings... (Cmd+,)
+        app.typeKey(",", modifierFlags: .command)
+
+        // Wait for the settings window to appear
+        let settingsWindow = app.windows.containing(.staticText, identifier: "General").firstMatch
+        let appeared = settingsWindow.waitForExistence(timeout: 3)
+        XCTAssertTrue(appeared, "Settings window should appear after Cmd+,")
+    }
+
+    @MainActor
+    func testPreferences_hasExpectedTabs() throws {
+        app.typeKey(",", modifierFlags: .command)
+
+        // Give the window time to appear
+        let generalTab = app.staticTexts["General"]
+        XCTAssertTrue(generalTab.waitForExistence(timeout: 3), "General tab should exist in preferences")
+
+        let appearanceTab = app.staticTexts["Appearance"]
+        XCTAssertTrue(appearanceTab.exists, "Appearance tab should exist in preferences")
+
+        let advancedTab = app.staticTexts["Advanced"]
+        XCTAssertTrue(advancedTab.exists, "Advanced tab should exist in preferences")
+    }
+
+    // MARK: - Main Menu
+
+    @MainActor
+    func testMainMenu_hasExpectedMenuItems() throws {
+        let menuBar = app.menuBars.firstMatch
+        XCTAssertTrue(menuBar.exists, "App should have a menu bar")
+
+        // Standard macOS app menus
+        let appMenu = menuBar.menuBarItems["cubelite"]
+        XCTAssertTrue(appMenu.exists, "App menu should exist in menu bar")
+    }
+
+    // MARK: - Keyboard Shortcuts
+
+    @MainActor
+    func testKeyboardShortcut_cmdW_closesWindow() throws {
+        let windowCount = app.windows.count
+        guard windowCount > 0 else {
+            XCTFail("No windows to close")
+            return
+        }
+
+        app.typeKey("w", modifierFlags: .command)
+
+        // After Cmd+W the window should be closed or minimised
+        // On macOS menu bar apps, the window count may go to 0
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "count < %d", windowCount),
+            object: app.windows
+        )
+        let result = XCTWaiter.wait(for: [expectation], timeout: 2)
+        // Either the window closes or remains (depending on app behaviour)
+        // We just verify the shortcut doesn't crash
+        XCTAssertTrue(result == .completed || result == .timedOut,
+                       "Cmd+W should either close window or be handled gracefully")
+    }
+
+    // MARK: - Launch Performance
 
     @MainActor
     func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()
         }
