@@ -7,6 +7,7 @@
 
 import XCTest
 
+@MainActor
 final class CubeliteUITests: XCTestCase {
 
     private var app: XCUIApplication!
@@ -23,12 +24,10 @@ final class CubeliteUITests: XCTestCase {
 
     // MARK: - Window Lifecycle
 
-    @MainActor
     func testLaunch_mainWindowExists() throws {
         XCTAssertTrue(app.windows.count >= 1, "App should have at least one window after launch")
     }
 
-    @MainActor
     func testLaunch_windowHasReasonableSize() throws {
         guard let window = app.windows.allElementsBoundByIndex.first else {
             XCTFail("No window found")
@@ -41,7 +40,6 @@ final class CubeliteUITests: XCTestCase {
 
     // MARK: - Preferences Window
 
-    @MainActor
     func testPreferences_opensViaMenuBar() throws {
         // Use the standard macOS menu: CubeLite > Settings... (Cmd+,)
         app.typeKey(",", modifierFlags: .command)
@@ -52,7 +50,6 @@ final class CubeliteUITests: XCTestCase {
         XCTAssertTrue(appeared, "Settings window should appear after Cmd+,")
     }
 
-    @MainActor
     func testPreferences_hasExpectedTabs() throws {
         app.typeKey(",", modifierFlags: .command)
 
@@ -69,7 +66,6 @@ final class CubeliteUITests: XCTestCase {
 
     // MARK: - Main Menu
 
-    @MainActor
     func testMainMenu_hasExpectedMenuItems() throws {
         let menuBar = app.menuBars.firstMatch
         XCTAssertTrue(menuBar.exists, "App should have a menu bar")
@@ -81,7 +77,6 @@ final class CubeliteUITests: XCTestCase {
 
     // MARK: - Keyboard Shortcuts
 
-    @MainActor
     func testKeyboardShortcut_cmdW_closesWindow() throws {
         let windowCount = app.windows.count
         guard windowCount > 0 else {
@@ -106,7 +101,6 @@ final class CubeliteUITests: XCTestCase {
 
     // MARK: - Launch Performance
 
-    @MainActor
     func testLaunchPerformance() throws {
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()

@@ -1,7 +1,7 @@
 //! Integration tests for resource info types and error formatting.
 
-use cubelite_core::{DeploymentInfo, NamespaceInfo, PodInfo};
 use cubelite_core::error::{ContextError, KubeconfigError};
+use cubelite_core::{DeploymentInfo, NamespaceInfo, PodInfo};
 
 // ---------------------------------------------------------------------------
 // PodInfo

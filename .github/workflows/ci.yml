@@ -108,6 +108,9 @@ jobs:
       - name: Install dependencies
         if: steps.check.outputs.has_fe == 'true'
         run: pnpm install --frozen-lockfile
+      - name: Generate SvelteKit files
+        if: steps.check.outputs.has_fe == 'true'
+        run: pnpm --filter desktop exec svelte-kit sync
       - name: Check for test files
         if: steps.check.outputs.has_fe == 'true'
         id: check_tests
