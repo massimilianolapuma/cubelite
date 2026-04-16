@@ -104,11 +104,13 @@ final class FirstLaunchTests: XCTestCase {
     // MARK: - Feature Highlights Content
 
     /// Verifies that the features list always contains exactly three items.
+    @MainActor
     func testFeatureHighlights_hasThreeItems() {
         XCTAssertEqual(FirstLaunchView.featureHighlights.count, 3)
     }
 
     /// Verifies that context discovery is mentioned in the feature highlights.
+    @MainActor
     func testFeatureHighlights_mentionsContextDiscovery() {
         let labels = FirstLaunchView.featureHighlights.map(\.label)
 
@@ -119,6 +121,7 @@ final class FirstLaunchTests: XCTestCase {
     }
 
     /// Verifies that menu bar integration is mentioned in the feature highlights.
+    @MainActor
     func testFeatureHighlights_mentionsMenuBar() {
         let labels = FirstLaunchView.featureHighlights.map(\.label)
 
@@ -129,6 +132,7 @@ final class FirstLaunchTests: XCTestCase {
     }
 
     /// Verifies that monitoring (pods/deployments) is mentioned in the feature highlights.
+    @MainActor
     func testFeatureHighlights_mentionsMonitoring() {
         let labels = FirstLaunchView.featureHighlights.map(\.label)
 
@@ -143,6 +147,7 @@ final class FirstLaunchTests: XCTestCase {
     }
 
     /// Verifies every FeatureItem has a non-empty icon and label.
+    @MainActor
     func testFeatureHighlights_allItemsHaveIconAndLabel() {
         for item in FirstLaunchView.featureHighlights {
             XCTAssertFalse(item.icon.isEmpty, "Feature icon should not be empty")

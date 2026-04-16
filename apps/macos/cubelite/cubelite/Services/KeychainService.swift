@@ -168,7 +168,7 @@ actor KeychainService {
         let importedKeyAttrs = SecKeyCopyAttributes(privateKey) as? [CFString: Any]
         let applicationLabel = importedKeyAttrs?[kSecAttrApplicationLabel] as? Data
 
-        let keyTag = "it.lapuma.cubelite.client-key.\(account)".data(using: .utf8)!
+        let keyTag = Data("it.lapuma.cubelite.client-key.\(account)".utf8)
 
         // Replace any existing key with this tag.
         let keySearchQuery: [CFString: Any] = [

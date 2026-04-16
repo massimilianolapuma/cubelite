@@ -43,7 +43,7 @@ struct CubeliteApp: App {
                 clusterState: clusterState,
                 kubeconfigService: kubeconfigService,
                 onShowDetails: {
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    NSApplication.shared.activate()
                 }
             )
         }

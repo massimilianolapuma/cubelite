@@ -30,7 +30,7 @@ struct MenuBarContextView: View {
             }
             Button("Preferences…") {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                NSApplication.shared.activate(ignoringOtherApps: true)
+                NSApplication.shared.activate()
             }
             .keyboardShortcut(",")
             .padding(.top, 4)

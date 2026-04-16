@@ -216,7 +216,7 @@ actor KubeAPIService {
     ) throws -> URLSession {
         let caCertificate = try Self.loadCACertificate(from: cluster)
         let clientIdentity = try Self.loadClientIdentity(from: user)
-        let globalSkip = UserDefaults.standard.bool(forKey: "skipTLSVerification")
+        let globalSkip = UserDefaults.standard.bool(forKey: AppSettings.Keys.skipTLSVerification)
         let insecureSkip = globalSkip || (cluster.insecureSkipTlsVerify ?? false)
 
         let delegate = KubeURLSessionDelegate(
@@ -422,7 +422,7 @@ actor KubeAPIService {
         certificate: SecCertificate,
         privateKey: SecKey
     ) throws -> SecIdentity {
-        let keyTag = "it.lapuma.cubelite.client-key".data(using: .utf8)!
+        let keyTag = Data("it.lapuma.cubelite.client-key".utf8)
 
         // Preserve the application label (SHA-1 of the public key) from the imported key so
         // that the Security framework can correlate the private key with the certificate.
