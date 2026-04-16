@@ -94,6 +94,11 @@ tools:
     github/update_pull_request_branch,
     browser/openBrowserPage,
     ms-vscode.vscode-websearchforcopilot/websearch,
+    penpot/execute_code,
+    penpot/export_shape,
+    penpot/high_level_overview,
+    penpot/import_image,
+    penpot/penpot_api_info,
     todo,
   ]
 ---

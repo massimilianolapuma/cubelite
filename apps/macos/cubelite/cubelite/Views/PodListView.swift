@@ -109,6 +109,27 @@ struct PodListView: View {
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
+
+            TableColumn("CPU") { pod in
+                Text(pod.cpuRequest ?? "—")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .width(ideal: 60)
+
+            TableColumn("Memory") { pod in
+                Text(pod.memoryRequest ?? "—")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .width(ideal: 70)
+
+            TableColumn("IP") { pod in
+                Text(pod.podIP ?? "—")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .width(ideal: 90)
         }
     }
 

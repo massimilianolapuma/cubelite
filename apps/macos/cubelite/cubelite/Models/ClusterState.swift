@@ -40,6 +40,9 @@ final class ClusterState {
     /// Last resource fetch error message, if any.
     var resourceError: String?
 
+    /// Pod count keyed by namespace name, derived from the most recent pod fetch.
+    var namespacePodCounts: [String: Int] = [:]
+
     /// Whether the active cluster's API server is reachable.
     /// `nil` means not yet checked, `true` = connected, `false` = unreachable.
     var clusterReachable: Bool?
