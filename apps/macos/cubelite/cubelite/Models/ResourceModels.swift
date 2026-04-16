@@ -22,21 +22,18 @@ struct PodInfo: Codable, Sendable, Identifiable {
     /// Memory resource request from the first container (e.g. `"128Mi"`).
     var memoryRequest: String?
 
-    /// Creates a ``PodInfo`` with the given values.
+    /// Creates a ``PodInfo`` with core scheduling fields.
     ///
-    /// The `nodeName`, `podIP`, `cpuRequest`, and `memoryRequest` parameters default to `nil`
-    /// so that existing call sites that predate those fields continue to compile without changes.
+    /// The extended fields (`nodeName`, `podIP`, `cpuRequest`, `memoryRequest`) are `var`
+    /// properties and default to `nil`; callers may set them after construction when the
+    /// source data is available (e.g. from ``K8sPod/toPodInfo()``).
     init(
         name: String,
         namespace: String,
         phase: String?,
         ready: Bool,
         restarts: Int,
-        creationTimestamp: String?,
-        nodeName: String? = nil,
-        podIP: String? = nil,
-        cpuRequest: String? = nil,
-        memoryRequest: String? = nil
+        creationTimestamp: String?
     ) {
         self.name = name
         self.namespace = namespace
@@ -44,10 +41,6 @@ struct PodInfo: Codable, Sendable, Identifiable {
         self.ready = ready
         self.restarts = restarts
         self.creationTimestamp = creationTimestamp
-        self.nodeName = nodeName
-        self.podIP = podIP
-        self.cpuRequest = cpuRequest
-        self.memoryRequest = memoryRequest
     }
 }
 
@@ -181,18 +174,19 @@ extension K8sPod {
         let allReady = !containerStatuses.isEmpty && containerStatuses.allSatisfy { $0.ready == true }
         let totalRestarts = containerStatuses.reduce(0) { $0 + ($1.restartCount ?? 0) }
         let firstContainer = spec?.containers?.first
-        return PodInfo(
+        var info = PodInfo(
             name: metadata?.name ?? "",
             namespace: metadata?.namespace ?? "",
             phase: status?.phase,
             ready: allReady,
             restarts: totalRestarts,
-            creationTimestamp: metadata?.creationTimestamp,
-            nodeName: spec?.nodeName,
-            podIP: status?.podIP,
-            cpuRequest: firstContainer?.resources?.requests?["cpu"],
-            memoryRequest: firstContainer?.resources?.requests?["memory"]
+            creationTimestamp: metadata?.creationTimestamp
         )
+        info.nodeName = spec?.nodeName
+        info.podIP = status?.podIP
+        info.cpuRequest = firstContainer?.resources?.requests?["cpu"]
+        info.memoryRequest = firstContainer?.resources?.requests?["memory"]
+        return info
     }
 }
 

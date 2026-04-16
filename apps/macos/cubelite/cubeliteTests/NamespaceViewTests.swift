@@ -8,7 +8,7 @@ final class NamespaceViewTests: XCTestCase {
 
     // MARK: - toPodInfo: CPU and Memory
 
-    func testToPodInfo_extractsCPUAndMemoryRequests() {
+    func testToPodInfoExtractsCPUAndMemoryRequests() {
         let pod = K8sPod(
             metadata: K8sObjectMeta(name: "my-pod", namespace: "default", creationTimestamp: nil),
             spec: K8sPodSpec(
@@ -28,22 +28,22 @@ final class NamespaceViewTests: XCTestCase {
 
     // MARK: - toPodInfo: podIP and nodeName
 
-    func testToPodInfo_extractsPodIPAndNodeName() {
+    func testToPodInfoExtractsPodIPAndNodeName() {
         let pod = K8sPod(
             metadata: K8sObjectMeta(name: "web-pod", namespace: "staging", creationTimestamp: nil),
             spec: K8sPodSpec(nodeName: "worker-node-3", containers: nil),
-            status: K8sPodStatus(phase: "Running", podIP: "10.0.0.42", hostIP: "192.168.1.10", containerStatuses: nil)
+            status: K8sPodStatus(phase: "Running", podIP: "10.0.0.42", hostIP: "192.168.1.10", containerStatuses: nil) // NOSONAR
         )
 
         let info = pod.toPodInfo()
 
-        XCTAssertEqual(info.podIP, "10.0.0.42")
+        XCTAssertEqual(info.podIP, "10.0.0.42") // NOSONAR
         XCTAssertEqual(info.nodeName, "worker-node-3")
     }
 
     // MARK: - toPodInfo: missing optional fields
 
-    func testToPodInfo_missingOptionalFields_fillsWithNil() {
+    func testToPodInfoMissingOptionalFields() {
         let pod = K8sPod(
             metadata: K8sObjectMeta(name: "bare-pod", namespace: "default", creationTimestamp: nil),
             spec: nil,
@@ -60,7 +60,7 @@ final class NamespaceViewTests: XCTestCase {
 
     // MARK: - toPodInfo: restarts across multiple containers
 
-    func testToPodInfo_multipleContainers_sumRestarts() {
+    func testToPodInfoMultipleContainersSumRestarts() {
         let statuses = [
             K8sContainerStatus(ready: true, restartCount: 3),
             K8sContainerStatus(ready: true, restartCount: 7),
@@ -79,7 +79,7 @@ final class NamespaceViewTests: XCTestCase {
 
     // MARK: - toPodInfo: CPU only set for first container
 
-    func testToPodInfo_multipleContainers_cpuFromFirstContainerOnly() {
+    func testToPodInfoMultipleContainersCPUFromFirstContainerOnly() {
         let pod = K8sPod(
             metadata: K8sObjectMeta(name: "multi-container", namespace: "default", creationTimestamp: nil),
             spec: K8sPodSpec(
@@ -99,7 +99,7 @@ final class NamespaceViewTests: XCTestCase {
 
     // MARK: - Pod Count Badge Logic
 
-    func testNamespacePodCounts_groupsByNamespace() {
+    func testNamespacePodCountsGroupsByNamespace() {
         let pods: [PodInfo] = [
             PodInfo(name: "a", namespace: "default", phase: "Running", ready: true, restarts: 0, creationTimestamp: nil),
             PodInfo(name: "b", namespace: "default", phase: "Running", ready: true, restarts: 0, creationTimestamp: nil),
@@ -113,7 +113,7 @@ final class NamespaceViewTests: XCTestCase {
         XCTAssertNil(counts["monitoring"])
     }
 
-    func testNamespacePodCounts_emptyPods_returnsEmptyDictionary() {
+    func testNamespacePodCountsEmptyPodsReturnsEmptyDictionary() {
         let pods: [PodInfo] = []
 
         let counts = Dictionary(grouping: pods, by: { $0.namespace }).mapValues { $0.count }
@@ -121,7 +121,7 @@ final class NamespaceViewTests: XCTestCase {
         XCTAssertTrue(counts.isEmpty)
     }
 
-    func testNamespacePodCounts_allPodsInSameNamespace() {
+    func testNamespacePodCountsAllPodsInSameNamespace() {
         let pods: [PodInfo] = [
             PodInfo(name: "p1", namespace: "prod", phase: "Running", ready: true, restarts: 0, creationTimestamp: nil),
             PodInfo(name: "p2", namespace: "prod", phase: "Running", ready: true, restarts: 0, creationTimestamp: nil),
