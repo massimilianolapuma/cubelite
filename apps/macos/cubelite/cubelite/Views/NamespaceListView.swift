@@ -36,6 +36,10 @@ struct NamespaceListView: View {
                 errorRow(error)
             } else {
                 allNamespacesRow
+                if !namespaces.isEmpty {
+                    Divider()
+                        .padding(.leading, 4)
+                }
                 ForEach(namespaces) { ns in
                     namespaceRow(ns.name)
                 }
@@ -70,9 +74,10 @@ struct NamespaceListView: View {
         namespaceRowView(
             namespace: nil,
             label: "All Namespaces",
-            icon: "tray.2",
+            icon: "square.grid.2x2",
             count: namespacePodCounts.values.reduce(0, +)
         )
+        .fontWeight(.semibold)
     }
 
     private func namespaceRow(_ name: String) -> some View {
