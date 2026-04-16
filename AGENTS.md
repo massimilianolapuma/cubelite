@@ -64,6 +64,34 @@ When a task spans multiple subtrees:
 
 ---
 
+## Mandatory Pre-Work Checklist (All Agents)
+
+Before starting ANY task, every agent **MUST**:
+
+1. **Read its own path-scoped instructions** from `.github/instructions/` (e.g., `swift-macos.instructions.md` for macos-agent)
+2. **Read `.github/copilot-instructions.md`** for project-wide conventions
+3. **Read the relevant `AGENTS.md`** (root or subtree) for ownership and protocol rules
+
+Skipping this step is a violation — instructions contain critical conventions that
+change over time and must be respected on every task.
+
+---
+
+## Design-First Workflow (New UI Sections)
+
+When a task involves **creating a new UI section, view, or panel** (not a minor tweak to an existing view):
+
+1. **Design first** — delegate to `design-agent` to create the Penpot board(s) with layout, colors, typography, and component specs
+2. **Review** — the coordinator presents the design to the user for approval
+3. **Implement only after approval** — the implementing agent (macos-agent, desktop-agent) receives the approved design as reference
+
+This applies to both `apps/desktop/` and `apps/macos/` UI work. Bug fixes, refactors,
+and modifications to existing views that don't introduce new sections are exempt.
+
+**Rationale**: code-first UI leads to rework; Penpot designs are cheap to iterate on.
+
+---
+
 ## Prohibited Actions (All Agents)
 
 - Do NOT commit directly to `main`
@@ -72,6 +100,7 @@ When a task spans multiple subtrees:
 - Do NOT call `unwrap()` or `expect()` in production Rust code (outside `tests/`)
 - Do NOT install telemetry or tracking without explicit user opt-in
 - Do NOT modify another agent's owned files without coordination
+- Do NOT implement new UI sections without an approved Penpot design (see Design-First Workflow)
 
 ---
 

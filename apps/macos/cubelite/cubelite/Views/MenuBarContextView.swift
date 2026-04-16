@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Menu bar dropdown displaying the active context and a quick-switch list.
 ///
@@ -27,6 +28,13 @@ struct MenuBarContextView: View {
                 .padding(.horizontal, 4)
                 Divider()
             }
+            Button("Preferences…") {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                NSApplication.shared.activate()
+            }
+            .keyboardShortcut(",")
+            .padding(.top, 4)
+            .padding(.horizontal, 4)
             Button("Quit CubeLite") {
                 NSApplication.shared.terminate(nil)
             }

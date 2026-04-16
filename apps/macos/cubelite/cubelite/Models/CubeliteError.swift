@@ -27,6 +27,9 @@ enum CubeliteError: LocalizedError, Sendable {
     /// The cluster API server could not be reached (connection refused, timeout, DNS).
     case clusterUnreachable
 
+    /// TLS certificate validation failed (self-signed, expired, untrusted CA).
+    case tlsError(reason: String)
+
     var errorDescription: String? {
         switch self {
         case .fileNotFound(let path):
@@ -45,6 +48,8 @@ enum CubeliteError: LocalizedError, Sendable {
             "Keychain error: \(reason)"
         case .clusterUnreachable:
             "Cluster not reachable"
+        case .tlsError(let reason):
+            "TLS certificate error: \(reason)"
         }
     }
 }

@@ -5,8 +5,13 @@ import AppKit
 struct CubeliteApp: App {
 
     @State private var clusterState = ClusterState()
+    @State private var appSettings = AppSettings()
     private let kubeconfigService: KubeconfigService
     private let kubeAPIService: KubeAPIService
+
+    /// Persists whether the user has completed the first-launch onboarding flow.
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @State private var logStore = LogStore()
 
     init() {
         let ks = KubeconfigService()
@@ -16,19 +21,36 @@ struct CubeliteApp: App {
 
     var body: some Scene {
         WindowGroup("CubeLite") {
-            MainView(kubeconfigService: kubeconfigService, kubeAPIService: kubeAPIService)
-                .environment(clusterState)
+            if hasCompletedOnboarding {
+                MainView(kubeconfigService: kubeconfigService, kubeAPIService: kubeAPIService)
+                    .environment(clusterState)
+                    .environment(appSettings)
+                    .environment(logStore)
+            } else {
+                FirstLaunchView(
+                    kubeconfigService: kubeconfigService,
+                    onComplete: { hasCompletedOnboarding = true }
+                )
+            }
         }
-        .defaultSize(width: 1200, height: 700)
+        .defaultSize(
+            width: hasCompletedOnboarding ? 1200 : 600,
+            height: hasCompletedOnboarding ? 700 : 400
+        )
 
         MenuBarExtra("CubeLite", systemImage: "square.3.layers.3d") {
             MenuBarContextView(
                 clusterState: clusterState,
                 kubeconfigService: kubeconfigService,
                 onShowDetails: {
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    NSApplication.shared.activate()
                 }
             )
+        }
+
+        Settings {
+            PreferencesView()
+                .environment(appSettings)
         }
     }
 }
