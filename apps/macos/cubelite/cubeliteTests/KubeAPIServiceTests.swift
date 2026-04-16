@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import cubelite
 
 // MARK: - KubeAPIService Tests
@@ -42,24 +43,24 @@ final class PemToDERTests: XCTestCase {
         // This test uses a real self-signed test certificate generated for this test suite.
         // The PEM was generated with: openssl req -x509 -newkey rsa:2048 -days 36500 -nodes -subj '/CN=CubeLite Test CA'
         let pemString = """
-        -----BEGIN CERTIFICATE-----
-        MIICtDCCAZwCCQDkh6vhWkfH9zANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBD
-        dWJlTGl0ZSBUZXN0IENBMCAXDTI2MDQxNDE3NDMyMFoYDzIxMjYwMzIxMTc0MzIw
-        WjAbMRkwFwYDVQQDDBBDdWJlTGl0ZSBUZXN0IENBMIIBIjANBgkqhkiG9w0BAQEF
-        AAOCAQ8AMIIBCgKCAQEA11mwQJCp09PhtrVNUe0QDftklf7sAfCwDpKx0wsT04gX
-        EZkaKIdnl3XIKjpqCu2BY5SWRu7yCtfMyVK46E6Wfe/HA/q/RA2oIz3iz5PImSF4
-        4e/TIQaOuTBSOMmg7OraOHT50HM0b6vlzphDqWSHnsCnkjhL3athyyTcwJKGgQnj
-        YhO97WWM5DDG2C6NViKDXE4p6Me0PmZHbG/bnI5ZbD1pvcnKos5PY+Q9k0ixV7qG
-        Zck+dxy5FDMteBp7zDweSlKbsN1O3AJdEIjgMywGuVUbx4szsho/adBT1v4QMgIV
-        DWP+iKfDYArZrexVfJwvDhNrOg1dLw1RPj8SOMx2rQIDAQABMA0GCSqGSIb3DQEB
-        CwUAA4IBAQAYpCSSUJYmYYxDtYCRD7j/ukJuogW2ZzwrO+HV/KtKZDTkBzYRy/lU
-        aNjoq5RG7sj+jiAim8H+e/QlXu6Wc0QQiRCoL0n7M720kbSUZP9I048wBimLMPbl
-        J+/Feubt9NCxVD+HCw+S1OAA9su4tYWj2iVZ+VdSB5xy0uzSNvfdhUa9l9uNU61F
-        mYFfxePXwUH6Wm4Jw3QLlbIXDBo9VOgQbMA4U0CyQ0LRrvdaaN6BaPex4Ofx3BCU
-        AchgiojvOyMgLQ+ORgQk8BXnq+pZ1enpQYmaS+6nytdr9d491dhL1CsVWtB0bSGV
-        gqza/S8l+R8G0r3CFIZk1edLnbpEGjv+
-        -----END CERTIFICATE-----
-        """
+            -----BEGIN CERTIFICATE-----
+            MIICtDCCAZwCCQDkh6vhWkfH9zANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBD
+            dWJlTGl0ZSBUZXN0IENBMCAXDTI2MDQxNDE3NDMyMFoYDzIxMjYwMzIxMTc0MzIw
+            WjAbMRkwFwYDVQQDDBBDdWJlTGl0ZSBUZXN0IENBMIIBIjANBgkqhkiG9w0BAQEF
+            AAOCAQ8AMIIBCgKCAQEA11mwQJCp09PhtrVNUe0QDftklf7sAfCwDpKx0wsT04gX
+            EZkaKIdnl3XIKjpqCu2BY5SWRu7yCtfMyVK46E6Wfe/HA/q/RA2oIz3iz5PImSF4
+            4e/TIQaOuTBSOMmg7OraOHT50HM0b6vlzphDqWSHnsCnkjhL3athyyTcwJKGgQnj
+            YhO97WWM5DDG2C6NViKDXE4p6Me0PmZHbG/bnI5ZbD1pvcnKos5PY+Q9k0ixV7qG
+            Zck+dxy5FDMteBp7zDweSlKbsN1O3AJdEIjgMywGuVUbx4szsho/adBT1v4QMgIV
+            DWP+iKfDYArZrexVfJwvDhNrOg1dLw1RPj8SOMx2rQIDAQABMA0GCSqGSIb3DQEB
+            CwUAA4IBAQAYpCSSUJYmYYxDtYCRD7j/ukJuogW2ZzwrO+HV/KtKZDTkBzYRy/lU
+            aNjoq5RG7sj+jiAim8H+e/QlXu6Wc0QQiRCoL0n7M720kbSUZP9I048wBimLMPbl
+            J+/Feubt9NCxVD+HCw+S1OAA9su4tYWj2iVZ+VdSB5xy0uzSNvfdhUa9l9uNU61F
+            mYFfxePXwUH6Wm4Jw3QLlbIXDBo9VOgQbMA4U0CyQ0LRrvdaaN6BaPex4Ofx3BCU
+            AchgiojvOyMgLQ+ORgQk8BXnq+pZ1enpQYmaS+6nytdr9d491dhL1CsVWtB0bSGV
+            gqza/S8l+R8G0r3CFIZk1edLnbpEGjv+
+            -----END CERTIFICATE-----
+            """
 
         let derData = try KubeAPIService.pemToDER(Data(pemString.utf8))
 
@@ -75,7 +76,8 @@ final class PemToDERTests: XCTestCase {
 
         XCTAssertThrowsError(try KubeAPIService.pemToDER(Data(pem.utf8))) { error in
             guard let cubeliteError = error as? CubeliteError,
-                  case .clientError(let reason) = cubeliteError else {
+                case .clientError(let reason) = cubeliteError
+            else {
                 XCTFail("Expected CubeliteError.clientError, got \(error)")
                 return
             }
@@ -89,7 +91,8 @@ final class PemToDERTests: XCTestCase {
 
         XCTAssertThrowsError(try KubeAPIService.pemToDER(invalidData)) { error in
             guard let cubeliteError = error as? CubeliteError,
-                  case .clientError(let reason) = cubeliteError else {
+                case .clientError(let reason) = cubeliteError
+            else {
                 XCTFail("Expected CubeliteError.clientError, got \(error)")
                 return
             }
@@ -103,7 +106,8 @@ final class PemToDERTests: XCTestCase {
 final class LoadCACertificateTests: XCTestCase {
 
     // Inline DER base64 for the test self-signed certificate above.
-    private let testCertDERBase64 = "MIICtDCCAZwCCQDkh6vhWkfH9zANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBDdWJlTGl0ZSBUZXN0IENBMCAXDTI2MDQxNDE3NDMyMFoYDzIxMjYwMzIxMTc0MzIwWjAbMRkwFwYDVQQDDBBDdWJlTGl0ZSBUZXN0IENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA11mwQJCp09PhtrVNUe0QDftklf7sAfCwDpKx0wsT04gXEZkaKIdnl3XIKjpqCu2BY5SWRu7yCtfMyVK46E6Wfe/HA/q/RA2oIz3iz5PImSF44e/TIQaOuTBSOMmg7OraOHT50HM0b6vlzphDqWSHnsCnkjhL3athyyTcwJKGgQnjYhO97WWM5DDG2C6NViKDXE4p6Me0PmZHbG/bnI5ZbD1pvcnKos5PY+Q9k0ixV7qGZck+dxy5FDMteBp7zDweSlKbsN1O3AJdEIjgMywGuVUbx4szsho/adBT1v4QMgIVDWP+iKfDYArZrexVfJwvDhNrOg1dLw1RPj8SOMx2rQIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQAYpCSSUJYmYYxDtYCRD7j/ukJuogW2ZzwrO+HV/KtKZDTkBzYRy/lUaNjoq5RG7sj+jiAim8H+e/QlXu6Wc0QQiRCoL0n7M720kbSUZP9I048wBimLMPblJ+/Feubt9NCxVD+HCw+S1OAA9su4tYWj2iVZ+VdSB5xy0uzSNvfdhUa9l9uNU61FmYFfxePXwUH6Wm4Jw3QLlbIXDBo9VOgQbMA4U0CyQ0LRrvdaaN6BaPex4Ofx3BCUAchgiojvOyMgLQ+ORgQk8BXnq+pZ1enpQYmaS+6nytdr9d491dhL1CsVWtB0bSGVgqza/S8l+R8G0r3CFIZk1edLnbpEGjv+"
+    private let testCertDERBase64 =
+        "MIICtDCCAZwCCQDkh6vhWkfH9zANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBDdWJlTGl0ZSBUZXN0IENBMCAXDTI2MDQxNDE3NDMyMFoYDzIxMjYwMzIxMTc0MzIwWjAbMRkwFwYDVQQDDBBDdWJlTGl0ZSBUZXN0IENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA11mwQJCp09PhtrVNUe0QDftklf7sAfCwDpKx0wsT04gXEZkaKIdnl3XIKjpqCu2BY5SWRu7yCtfMyVK46E6Wfe/HA/q/RA2oIz3iz5PImSF44e/TIQaOuTBSOMmg7OraOHT50HM0b6vlzphDqWSHnsCnkjhL3athyyTcwJKGgQnjYhO97WWM5DDG2C6NViKDXE4p6Me0PmZHbG/bnI5ZbD1pvcnKos5PY+Q9k0ixV7qGZck+dxy5FDMteBp7zDweSlKbsN1O3AJdEIjgMywGuVUbx4szsho/adBT1v4QMgIVDWP+iKfDYArZrexVfJwvDhNrOg1dLw1RPj8SOMx2rQIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQAYpCSSUJYmYYxDtYCRD7j/ukJuogW2ZzwrO+HV/KtKZDTkBzYRy/lUaNjoq5RG7sj+jiAim8H+e/QlXu6Wc0QQiRCoL0n7M720kbSUZP9I048wBimLMPblJ+/Feubt9NCxVD+HCw+S1OAA9su4tYWj2iVZ+VdSB5xy0uzSNvfdhUa9l9uNU61FmYFfxePXwUH6Wm4Jw3QLlbIXDBo9VOgQbMA4U0CyQ0LRrvdaaN6BaPex4Ofx3BCUAchgiojvOyMgLQ+ORgQk8BXnq+pZ1enpQYmaS+6nytdr9d491dhL1CsVWtB0bSGVgqza/S8l+R8G0r3CFIZk1edLnbpEGjv+"
 
     // MARK: Nil / Empty → nil
 
@@ -151,7 +155,8 @@ final class LoadCACertificateTests: XCTestCase {
         )
         XCTAssertThrowsError(try KubeAPIService.loadCACertificate(from: details)) { error in
             guard let cubeliteError = error as? CubeliteError,
-                  case .clientError = cubeliteError else {
+                case .clientError = cubeliteError
+            else {
                 XCTFail("Expected CubeliteError.clientError, got \(error)")
                 return
             }
@@ -168,31 +173,32 @@ final class LoadCACertificateTests: XCTestCase {
             insecureSkipTlsVerify: nil
         )
         let cert = try KubeAPIService.loadCACertificate(from: details)
-        XCTAssertNotNil(cert, "Inline certificateAuthorityData must be used; file path must be ignored")
+        XCTAssertNotNil(
+            cert, "Inline certificateAuthorityData must be used; file path must be ignored")
     }
 
     // MARK: File path
 
     func testLoadCACertificate_validPEMFilePath_returnsNonNilCertificate() throws {
         let pemContent = """
-        -----BEGIN CERTIFICATE-----
-        MIICtDCCAZwCCQDkh6vhWkfH9zANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBD
-        dWJlTGl0ZSBUZXN0IENBMCAXDTI2MDQxNDE3NDMyMFoYDzIxMjYwMzIxMTc0MzIw
-        WjAbMRkwFwYDVQQDDBBDdWJlTGl0ZSBUZXN0IENBMIIBIjANBgkqhkiG9w0BAQEF
-        AAOCAQ8AMIIBCgKCAQEA11mwQJCp09PhtrVNUe0QDftklf7sAfCwDpKx0wsT04gX
-        EZkaKIdnl3XIKjpqCu2BY5SWRu7yCtfMyVK46E6Wfe/HA/q/RA2oIz3iz5PImSF4
-        4e/TIQaOuTBSOMmg7OraOHT50HM0b6vlzphDqWSHnsCnkjhL3athyyTcwJKGgQnj
-        YhO97WWM5DDG2C6NViKDXE4p6Me0PmZHbG/bnI5ZbD1pvcnKos5PY+Q9k0ixV7qG
-        Zck+dxy5FDMteBp7zDweSlKbsN1O3AJdEIjgMywGuVUbx4szsho/adBT1v4QMgIV
-        DWP+iKfDYArZrexVfJwvDhNrOg1dLw1RPj8SOMx2rQIDAQABMA0GCSqGSIb3DQEB
-        CwUAA4IBAQAYpCSSUJYmYYxDtYCRD7j/ukJuogW2ZzwrO+HV/KtKZDTkBzYRy/lU
-        aNjoq5RG7sj+jiAim8H+e/QlXu6Wc0QQiRCoL0n7M720kbSUZP9I048wBimLMPbl
-        J+/Feubt9NCxVD+HCw+S1OAA9su4tYWj2iVZ+VdSB5xy0uzSNvfdhUa9l9uNU61F
-        mYFfxePXwUH6Wm4Jw3QLlbIXDBo9VOgQbMA4U0CyQ0LRrvdaaN6BaPex4Ofx3BCU
-        AchgiojvOyMgLQ+ORgQk8BXnq+pZ1enpQYmaS+6nytdr9d491dhL1CsVWtB0bSGV
-        gqza/S8l+R8G0r3CFIZk1edLnbpEGjv+
-        -----END CERTIFICATE-----
-        """
+            -----BEGIN CERTIFICATE-----
+            MIICtDCCAZwCCQDkh6vhWkfH9zANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBD
+            dWJlTGl0ZSBUZXN0IENBMCAXDTI2MDQxNDE3NDMyMFoYDzIxMjYwMzIxMTc0MzIw
+            WjAbMRkwFwYDVQQDDBBDdWJlTGl0ZSBUZXN0IENBMIIBIjANBgkqhkiG9w0BAQEF
+            AAOCAQ8AMIIBCgKCAQEA11mwQJCp09PhtrVNUe0QDftklf7sAfCwDpKx0wsT04gX
+            EZkaKIdnl3XIKjpqCu2BY5SWRu7yCtfMyVK46E6Wfe/HA/q/RA2oIz3iz5PImSF4
+            4e/TIQaOuTBSOMmg7OraOHT50HM0b6vlzphDqWSHnsCnkjhL3athyyTcwJKGgQnj
+            YhO97WWM5DDG2C6NViKDXE4p6Me0PmZHbG/bnI5ZbD1pvcnKos5PY+Q9k0ixV7qG
+            Zck+dxy5FDMteBp7zDweSlKbsN1O3AJdEIjgMywGuVUbx4szsho/adBT1v4QMgIV
+            DWP+iKfDYArZrexVfJwvDhNrOg1dLw1RPj8SOMx2rQIDAQABMA0GCSqGSIb3DQEB
+            CwUAA4IBAQAYpCSSUJYmYYxDtYCRD7j/ukJuogW2ZzwrO+HV/KtKZDTkBzYRy/lU
+            aNjoq5RG7sj+jiAim8H+e/QlXu6Wc0QQiRCoL0n7M720kbSUZP9I048wBimLMPbl
+            J+/Feubt9NCxVD+HCw+S1OAA9su4tYWj2iVZ+VdSB5xy0uzSNvfdhUa9l9uNU61F
+            mYFfxePXwUH6Wm4Jw3QLlbIXDBo9VOgQbMA4U0CyQ0LRrvdaaN6BaPex4Ofx3BCU
+            AchgiojvOyMgLQ+ORgQk8BXnq+pZ1enpQYmaS+6nytdr9d491dhL1CsVWtB0bSGV
+            gqza/S8l+R8G0r3CFIZk1edLnbpEGjv+
+            -----END CERTIFICATE-----
+            """
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("cubelite-test-ca-\(UUID().uuidString).crt")
         try pemContent.write(to: url, atomically: true, encoding: .utf8)
@@ -217,11 +223,13 @@ final class LoadCACertificateTests: XCTestCase {
         )
         XCTAssertThrowsError(try KubeAPIService.loadCACertificate(from: details)) { error in
             guard let cubeliteError = error as? CubeliteError,
-                  case .clientError(let reason) = cubeliteError else {
+                case .clientError(let reason) = cubeliteError
+            else {
                 XCTFail("Expected CubeliteError.clientError, got \(error)")
                 return
             }
-            XCTAssertTrue(reason.contains("Cannot read CA certificate file"), "Reason was: \(reason)")
+            XCTAssertTrue(
+                reason.contains("Cannot read CA certificate file"), "Reason was: \(reason)")
         }
     }
 }
@@ -344,21 +352,20 @@ final class LoadClientIdentityTests: XCTestCase {
 
     /// Base64-encoded DER of the test EC client certificate (matches `testKeyPEMBase64` private key).
     private let testCertDERBase64 =
-        "MIIBNTCB3AIJAMbdm7Kpo+zpMAoGCCqGSM49BAMCMCIxIDAeBgNVBAMMF0N1YmVMaXRl" +
-        "IFRlc3QgQ2xpZW50IEVDMCAXDTI2MDQxNDE4MzcyMFoYDzIxMjYwMzIxMTgzNzIwWjAi" +
-        "MSAwHgYDVQQDDBdDdWJlTGl0ZSBUZXN0IENsaWVudCBFQzBZMBMGByqGSM49AgEGCCqG" +
-        "SM49AwEHA0IABAbXMvB33HPyQ70GHzGb5q9Yn+bRLsyD7udy7cqGmHEADsVob0EXwDVU" +
-        "OxPwphMQAoXusECO4/Yll8mu0TLwAg8wCgYIKoZIzj0EAwIDSAAwRQIgFPajzLfg/6F0" +
-        "aT3ZRO0svicpixE7DEzPyhtceYRVG6gCIQCPurypJ1NGN7r/mJW+Nh0MEY3N3e30FB+9" +
-        "qRQ7wgfsgQ=="
+        "MIIBNTCB3AIJAMbdm7Kpo+zpMAoGCCqGSM49BAMCMCIxIDAeBgNVBAMMF0N1YmVMaXRl"
+        + "IFRlc3QgQ2xpZW50IEVDMCAXDTI2MDQxNDE4MzcyMFoYDzIxMjYwMzIxMTgzNzIwWjAi"
+        + "MSAwHgYDVQQDDBdDdWJlTGl0ZSBUZXN0IENsaWVudCBFQzBZMBMGByqGSM49AgEGCCqG"
+        + "SM49AwEHA0IABAbXMvB33HPyQ70GHzGb5q9Yn+bRLsyD7udy7cqGmHEADsVob0EXwDVU"
+        + "OxPwphMQAoXusECO4/Yll8mu0TLwAg8wCgYIKoZIzj0EAwIDSAAwRQIgFPajzLfg/6F0"
+        + "aT3ZRO0svicpixE7DEzPyhtceYRVG6gCIQCPurypJ1NGN7r/mJW+Nh0MEY3N3e30FB+9" + "qRQ7wgfsgQ=="
 
     /// Base64-encoded PEM of the matching EC private key (SEC1, P-256).
     private let testKeyPEMBase64 =
-        "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUJHV0FRUURQdmtn" +
-        "YjR5aThHYmN6STJWK21NSW1KeHV3ck50WUhGU2swNmFvQW9HQ0NxR1NNNDkKQXdFSG9V" +
-        "UURRZ0FFQnRjeThIZmNjL0pEdlFZZk1adm1yMWlmNXRFdXpJUHU1M0x0eW9hWWNRQU94" +
-        "V2h2UVJmQQpOVlE3RS9DbUV4QUNoZTZ3UUk3ajlpV1h5YTdSTXZBQ0R3PT0KLS0tLS1F" +
-        "TkQgRUMgUFJJVkFURSBLRVktLS0tLQo="
+        "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUJHV0FRUURQdmtn"
+        + "YjR5aThHYmN6STJWK21NSW1KeHV3ck50WUhGU2swNmFvQW9HQ0NxR1NNNDkKQXdFSG9V"
+        + "UURRZ0FFQnRjeThIZmNjL0pEdlFZZk1adm1yMWlmNXRFdXpJUHU1M0x0eW9hWWNRQU94"
+        + "V2h2UVJmQQpOVlE3RS9DbUV4QUNoZTZ3UUk3ajlpV1h5YTdSTXZBQ0R3PT0KLS0tLS1F"
+        + "TkQgRUMgUFJJVkFURSBLRVktLS0tLQo="
 
     // MARK: - Keychain Cleanup
 
@@ -375,7 +382,8 @@ final class LoadClientIdentityTests: XCTestCase {
 
         // Remove test certificate if it was added.
         if let certDER = Data(base64Encoded: testCertDERBase64),
-           let cert = SecCertificateCreateWithData(nil, certDER as CFData) {
+            let cert = SecCertificateCreateWithData(nil, certDER as CFData)
+        {
             let deleteCert: [CFString: Any] = [
                 kSecClass: kSecClassCertificate,
                 kSecValueRef: cert,
@@ -402,7 +410,7 @@ final class LoadClientIdentityTests: XCTestCase {
         // We verify that the static behaviour is nil by inspecting indirectly through a sub-call.
         // Since we can't call private static directly, we rely on the integration test below
         // and separately test the no-op case by confirming no throw on the full path.
-        _ = sut // actor referenced for isolation checks
+        _ = sut  // actor referenced for isolation checks
         // Simply construct — this exercises the guard path without calling the private static.
         XCTAssertNil(user.clientCertificateData)
         XCTAssertNil(user.clientKeyData)
@@ -421,14 +429,16 @@ final class LoadClientIdentityTests: XCTestCase {
         // Verify that Data(base64Encoded:) correctly rejects invalid base64 —
         // which is the first guard in loadClientIdentity.
         let invalid = "!!! not valid base64 !!!"
-        XCTAssertNil(Data(base64Encoded: invalid), "Expected base64 decode to fail for invalid input")
+        XCTAssertNil(
+            Data(base64Encoded: invalid), "Expected base64 decode to fail for invalid input")
     }
 
     // MARK: - Throws on invalid base64 key
 
     func testLoadClientIdentity_invalidBase64Key_throws() throws {
         let invalid = "!!! not valid base64 !!!"
-        XCTAssertNil(Data(base64Encoded: invalid), "Expected base64 decode to fail for invalid key input")
+        XCTAssertNil(
+            Data(base64Encoded: invalid), "Expected base64 decode to fail for invalid key input")
     }
 
     // MARK: - Integration: valid EC cert + key produces SecIdentity
@@ -441,8 +451,9 @@ final class LoadClientIdentityTests: XCTestCase {
         }
         // Decode key PEM
         guard let keyPEMData = Data(base64Encoded: testKeyPEMBase64),
-              let keyPEMString = String(data: keyPEMData, encoding: .utf8),
-              keyPEMString.contains("BEGIN EC PRIVATE KEY") else {
+            let keyPEMString = String(data: keyPEMData, encoding: .utf8),
+            keyPEMString.contains("BEGIN EC PRIVATE KEY")
+        else {
             XCTFail("testKeyPEMBase64 does not decode to an EC PEM key")
             return
         }
@@ -464,7 +475,8 @@ final class LoadClientIdentityTests: XCTestCase {
             SecItemImportExportFlags(), &importParams, nil, &importedItems
         )
         guard importStatus == errSecSuccess,
-              let privateKey = (importedItems as? [SecKey])?.first else {
+            let privateKey = (importedItems as? [SecKey])?.first
+        else {
             XCTFail("SecItemImport failed: OSStatus \(importStatus)")
             return
         }
@@ -495,7 +507,9 @@ final class LoadClientIdentityTests: XCTestCase {
             addKeyQuery[kSecAttrApplicationLabel] = label
         }
         let keyStatus = SecItemAdd(addKeyQuery as CFDictionary, nil)
-        XCTAssertEqual(keyStatus, errSecSuccess, "Failed to add test private key to keychain; OSStatus \(keyStatus)")
+        XCTAssertEqual(
+            keyStatus, errSecSuccess,
+            "Failed to add test private key to keychain; OSStatus \(keyStatus)")
         guard keyStatus == errSecSuccess else { return }
 
         let addCertQuery: [CFString: Any] = [
@@ -517,7 +531,9 @@ final class LoadClientIdentityTests: XCTestCase {
         ]
         var identityRefs: CFTypeRef?
         let queryStatus = SecItemCopyMatching(identityQuery as CFDictionary, &identityRefs)
-        XCTAssertEqual(queryStatus, errSecSuccess, "SecItemCopyMatching for identity failed; OSStatus \(queryStatus)")
+        XCTAssertEqual(
+            queryStatus, errSecSuccess,
+            "SecItemCopyMatching for identity failed; OSStatus \(queryStatus)")
 
         guard let refs = identityRefs as? [SecIdentity] else {
             XCTFail("Identity query did not return [SecIdentity]")
@@ -528,7 +544,8 @@ final class LoadClientIdentityTests: XCTestCase {
         let found = refs.contains { candidateIdentity in
             var candidateCert: SecCertificate?
             guard SecIdentityCopyCertificate(candidateIdentity, &candidateCert) == errSecSuccess,
-                  let candidateCert else { return false }
+                let candidateCert
+            else { return false }
             return (SecCertificateCopyData(candidateCert) as Data) == expectedCertDER
         }
         XCTAssertTrue(found, "Expected to find an identity matching the test certificate")
@@ -554,7 +571,8 @@ final class LoadClientIdentityTests: XCTestCase {
             XCTFail("Decoded key PEM data is not valid UTF-8")
             return
         }
-        XCTAssertTrue(pemString.contains("BEGIN EC PRIVATE KEY"), "Key fixture must contain EC PEM header")
+        XCTAssertTrue(
+            pemString.contains("BEGIN EC PRIVATE KEY"), "Key fixture must contain EC PEM header")
 
         let keyDER = try KubeAPIService.pemToDER(keyPEMData)
         XCTAssertFalse(keyDER.isEmpty, "pemToDER must return non-empty DER for valid EC key PEM")

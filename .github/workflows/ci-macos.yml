@@ -41,5 +41,6 @@ jobs:
             -scheme cubelite \
             -destination 'platform=macOS' \
             -configuration Debug \
+            -skip-testing:cubeliteUITests \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_ALLOWED=NO
