@@ -30,6 +30,9 @@ enum CubeliteError: LocalizedError, Sendable {
     /// TLS certificate validation failed (self-signed, expired, untrusted CA).
     case tlsError(reason: String)
 
+    /// Kubernetes API returned 403 Forbidden — RBAC insufficient.
+    case forbidden(resource: String, reason: String)
+
     var errorDescription: String? {
         switch self {
         case .fileNotFound(let path):
@@ -50,6 +53,8 @@ enum CubeliteError: LocalizedError, Sendable {
             "Cluster not reachable"
         case .tlsError(let reason):
             "TLS certificate error: \(reason)"
+        case .forbidden(let resource, _):
+            "Access denied: insufficient permissions to list \(resource). Select a specific namespace."
         }
     }
 }

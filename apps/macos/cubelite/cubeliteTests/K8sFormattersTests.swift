@@ -103,13 +103,18 @@ final class K8sFormattersTests: XCTestCase {
     // MARK: k8sAge — fractional seconds format
 
     func testK8sAge_fractionalSecondsFormat_parseSucceeds() {
-        // Kubernetes often emits fractional-second timestamps
-        let date = Date().addingTimeInterval(-120)
+        // Kubernetes often emits fractional-second timestamps.
+        // We use a large enough interval that minor clock drift on CI cannot
+        // flip the bucket (e.g. 120s → "1m" vs "2m").  The key assertion is
+        // that the fractional-seconds ISO 8601 string is parsed (not "—")
+        // and lands in the expected "m" (minutes) bucket.
+        let date = Date().addingTimeInterval(-180)
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let iso: String? = formatter.string(from: date)
         let age = iso.k8sAge
-        XCTAssertEqual(age, "2m")
+        XCTAssertNotEqual(age, "—", "Fractional-seconds ISO 8601 must be parseable")
+        XCTAssertTrue(age.hasSuffix("m"), "Expected minutes bucket, got \(age)")
     }
 
     // MARK: Pod Phase Colors

@@ -54,7 +54,7 @@ final class FirstLaunchTests: XCTestCase {
     /// Verifies that a single-context kubeconfig produces a count of 1,
     /// which the onboarding card renders as "1 context discovered".
     func testKubeconfigDetection_singleContext_countIsOne() async throws {
-        let yaml = minimalYAML(context: "only-ctx", cluster: "only-cluster", server: "https://127.0.0.1:6443")
+        let yaml = minimalYAML(context: "only-ctx", cluster: "only-cluster", server: "https://127.0.0.1:6443") // NOSONAR — test fixture
         let url = try temporaryFile(contents: yaml)
         defer { try? FileManager.default.removeItem(at: url) }
 

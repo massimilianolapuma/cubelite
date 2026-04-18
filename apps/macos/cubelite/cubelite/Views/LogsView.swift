@@ -13,19 +13,23 @@ struct LogsView: View {
     @State private var filter: LogFilter = .all
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Logs & Errors")
+                    .font(.headline)
+                Spacer()
+                Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            Divider()
             HSplitView {
                 logListColumn
                 logDetailColumn
             }
-            .frame(minWidth: 800, minHeight: 520)
-            .navigationTitle("Logs & Errors")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                }
-            }
         }
+        .frame(minWidth: 800, minHeight: 520)
         .task { logStore.markErrorsRead() }
     }
 
@@ -75,8 +79,11 @@ struct LogsView: View {
     }
 
     private var logEntryList: some View {
-        List(Array(filteredEntries.enumerated()), id: \.element.id, selection: $selectedEntryID) { item in
-            LogRowView(entry: item.element, index: item.offset, isSelected: selectedEntryID == item.element.id)
+        List(Array(filteredEntries.enumerated()), id: \.element.id, selection: $selectedEntryID) {
+            item in
+            LogRowView(
+                entry: item.element, index: item.offset,
+                isSelected: selectedEntryID == item.element.id)
         }
         .listStyle(.inset(alternatesRowBackgrounds: true))
     }
@@ -114,10 +121,10 @@ struct LogsView: View {
 
     private var filteredEntries: [LogEntry] {
         switch filter {
-        case .all:      logStore.entries
-        case .errors:   logStore.entries.filter { $0.severity == .error }
+        case .all: logStore.entries
+        case .errors: logStore.entries.filter { $0.severity == .error }
         case .warnings: logStore.entries.filter { $0.severity == .warning }
-        case .info:     logStore.entries.filter { $0.severity == .info }
+        case .info: logStore.entries.filter { $0.severity == .info }
         }
     }
 }
@@ -130,10 +137,10 @@ private enum LogFilter: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .all:      "All"
-        case .errors:   "Errors"
+        case .all: "All"
+        case .errors: "Errors"
         case .warnings: "Warnings"
-        case .info:     "Info"
+        case .info: "Info"
         }
     }
 }
@@ -210,9 +217,9 @@ private struct SeverityBadgeView: View {
 
     private var badgeColor: Color {
         switch severity {
-        case .error:   .red
+        case .error: .red
         case .warning: .orange
-        case .info:    .blue
+        case .info: .blue
         }
     }
 }
@@ -291,9 +298,16 @@ private struct LogDetailView: View {
 
 #Preview {
     let store = LogStore()
-    store.append(LogEntry(severity: .error, source: "KubeAPI", message: "Connection refused", details: "dial tcp: connect: connection refused", suggestedAction: "Check VPN and cluster status."))
-    store.append(LogEntry(severity: .warning, source: "TLS", message: "Certificate expires in 7 days"))
-    store.append(LogEntry(severity: .info, source: "Config", message: "Loaded kubeconfig from ~/.kube/config"))
+    store.append(
+        LogEntry(
+            severity: .error, source: "KubeAPI", message: "Connection refused",
+            details: "dial tcp: connect: connection refused",
+            suggestedAction: "Check VPN and cluster status."))
+    store.append(
+        LogEntry(severity: .warning, source: "TLS", message: "Certificate expires in 7 days"))
+    store.append(
+        LogEntry(
+            severity: .info, source: "Config", message: "Loaded kubeconfig from ~/.kube/config"))
     return LogsView()
         .environment(store)
 }

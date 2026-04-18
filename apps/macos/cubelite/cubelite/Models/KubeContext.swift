@@ -96,4 +96,12 @@ struct KubeConfig: Sendable {
 
     /// File paths that were merged to produce this config.
     let paths: [URL]
+
+    /// Returns the default namespace for the given context, if set in the kubeconfig.
+    func defaultNamespace(for contextName: String) -> String? {
+        raw.contexts?
+            .first(where: { $0.name == contextName })?
+            .context?
+            .namespace
+    }
 }
