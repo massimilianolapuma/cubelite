@@ -292,6 +292,11 @@ final class TLSErrorDescriptionTests: XCTestCase {
 
 final class IsTLSErrorTests: XCTestCase {
 
+    func testIsTLSError_secureConnectionFailed_returnsTrue() {
+        let error = URLError(.secureConnectionFailed)
+        XCTAssertTrue(KubeAPIService.isTLSError(error))
+    }
+
     func testIsTLSError_serverCertificateUntrusted_returnsTrue() {
         let error = URLError(.serverCertificateUntrusted)
         XCTAssertTrue(KubeAPIService.isTLSError(error))
