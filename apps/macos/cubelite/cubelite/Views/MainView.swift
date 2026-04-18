@@ -928,9 +928,9 @@ struct MainView: View {
         var fatalError: (any Error)?
 
         // Helper: attempt a single resource fetch, returning nil on 403.
-        func fetchResource<T>(
+        func fetchResource<T: Sendable>(
             _ kind: String,
-            _ fetch: () async throws -> [T]
+            _ fetch: @Sendable () async throws -> [T]
         ) async -> [T]? {
             do {
                 return try await fetch()
