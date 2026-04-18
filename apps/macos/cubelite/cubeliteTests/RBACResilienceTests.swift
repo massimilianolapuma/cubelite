@@ -240,3 +240,49 @@ final class AppSettingsContextNamespacesTests: XCTestCase {
         XCTAssertNil(reloaded.contextNamespaces["prod"])
     }
 }
+
+// MARK: - AppSettings Skip TLS Verification Persistence
+
+@MainActor
+final class AppSettingsSkipTLSTests: XCTestCase {
+
+    override func setUp() {
+        super.setUp()
+        UserDefaults.standard.removeObject(forKey: AppSettings.Keys.skipTLSVerification)
+    }
+
+    override func tearDown() {
+        UserDefaults.standard.removeObject(forKey: AppSettings.Keys.skipTLSVerification)
+        super.tearDown()
+    }
+
+    func testSkipTLS_defaultIsFalse() {
+        let sut = AppSettings()
+        XCTAssertFalse(sut.skipTLSVerification)
+    }
+
+    func testSkipTLS_enablePersistsAcrossInstances() {
+        let sut = AppSettings()
+        sut.skipTLSVerification = true
+
+        let reloaded = AppSettings()
+        XCTAssertTrue(reloaded.skipTLSVerification, "skipTLSVerification must survive a fresh AppSettings init")
+    }
+
+    func testSkipTLS_disablePersistsAcrossInstances() {
+        let sut = AppSettings()
+        sut.skipTLSVerification = true
+        sut.skipTLSVerification = false
+
+        let reloaded = AppSettings()
+        XCTAssertFalse(reloaded.skipTLSVerification)
+    }
+
+    func testSkipTLS_userDefaultsRawValue_matchesProperty() {
+        let sut = AppSettings()
+        sut.skipTLSVerification = true
+
+        let raw = UserDefaults.standard.bool(forKey: AppSettings.Keys.skipTLSVerification)
+        XCTAssertTrue(raw, "UserDefaults must contain the updated value")
+    }
+}
