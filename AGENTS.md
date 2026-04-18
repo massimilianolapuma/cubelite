@@ -116,6 +116,43 @@ and modifications to existing views that don't introduce new sections are exempt
 
 ---
 
+## Bug Discovery Workflow (All Agents)
+
+When an agent **discovers a bug or problem during work** (not a pre-existing issue), it
+**MUST NOT** fix it on the current branch. Instead, follow this mandatory workflow:
+
+1. **Stop** — do not apply the fix on the current feature/fix branch
+2. **Create a GitHub issue** — use `gh issue create` with:
+   - Clear title: `fix(<scope>): <description>`
+   - Body with: Bug description, Root cause (if known), Acceptance criteria, Affected files
+   - Appropriate labels (e.g., `bug`, `macos`, `desktop`, `core`)
+3. **Create a dedicated branch** from `main` (or config branch per Branching Base Rule):
+   ```bash
+   git checkout -b fix/<N>-<slug> origin/main
+   ```
+4. **Delegate to the correct agent** based on the ownership map:
+   - `crates/**` → `core-agent`
+   - `apps/desktop/**` → `desktop-agent`
+   - `apps/macos/**` → `macos-agent`
+   - `.github/**` → `devops-agent`
+5. **Implement the fix** — the owning agent:
+   - Reads its path-scoped instructions (mandatory pre-work)
+   - Implements the fix with tests
+   - Runs local quality checks (lint, test, build)
+6. **Commit + Push + PR**:
+   - Commit with Conventional Commits: `fix(<scope>): <description>`
+   - Push the branch: `git push -u origin fix/<N>-<slug>`
+   - Open PR with `Closes #<N>` in body
+7. **Return** to the original branch and resume previous work
+
+**Rationale**: fixing bugs on unrelated branches creates tangled PRs, harder reviews,
+and risk of regressions. Each fix gets its own issue, branch, and PR for clean tracking.
+
+**Exception**: if the bug is a direct consequence of changes on the current branch
+(e.g., a test you just wrote is failing), fix it in-place on the current branch.
+
+---
+
 ## Branching Base Rule
 
 - **Default**: create feature branches from `main`
@@ -132,6 +169,20 @@ and modifications to existing views that don't introduce new sections are exempt
 
 ---
 
+## Pre-Commit Rule (All Agents)
+
+Every agent **MUST** build and run tests locally **before every commit**. No exceptions.
+
+1. **Build** the affected stack to verify compilation
+2. **Run tests** for the affected stack to verify no regressions
+3. **Only commit** after both build and tests succeed
+
+Do NOT commit code that has not been built and tested. Pushing untested code
+wastes CI cycles and blocks other agents. Use the Quality Gates table below
+for the correct commands per stack.
+
+---
+
 ## Quality Gates (All Agents)
 
 | Gate | Command |
@@ -141,8 +192,8 @@ and modifications to existing views that don't introduce new sections are exempt
 | Rust format | `cargo fmt --check` |
 | Desktop lint | `pnpm --filter desktop lint` |
 | Desktop tests | `pnpm --filter desktop test` |
-| macOS build | `xcodebuild build -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite` |
-| macOS tests | `xcodebuild test -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite` |
+| macOS build | `xcodebuild build-for-testing -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite -destination 'platform=macOS' -derivedDataPath /tmp/cubelite-build` |
+| macOS tests | `xcodebuild test-without-building -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite -destination 'platform=macOS' -derivedDataPath /tmp/cubelite-build -skip-testing cubeliteUITests` |
 | Secret scan | `gh secret-scanning run` |
 | Rust docs | `cargo doc --workspace --no-deps` |
 | Dependency audit (Rust) | `cargo audit` |
