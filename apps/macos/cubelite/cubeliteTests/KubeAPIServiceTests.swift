@@ -2,6 +2,13 @@ import XCTest
 
 @testable import cubelite
 
+/// Thread-safe wrapper for SecCertificate used in test `Task.detached` closures.
+/// SecCertificate is an immutable, thread-safe CF type; this wrapper satisfies
+/// the Swift 6 strict-concurrency `sending` parameter check.
+private struct SendableSecCertificate: @unchecked Sendable {
+    let value: SecCertificate
+}
+
 // MARK: - KubeAPIService Tests
 //
 // Tests for the SSL/TLS helpers in KubeAPIService:
@@ -492,9 +499,7 @@ final class LoadClientIdentityTests: XCTestCase {
             return
         }
 
-        // SecCertificate is a thread-safe immutable CF type; nonisolated(unsafe) suppresses
-        // the Swift 6 sending parameter error for this test-only Task.detached capture.
-        nonisolated(unsafe) let sendableCertificate = certificate
+        let wrappedCertificate = SendableSecCertificate(value: certificate)
 
         // Run Security framework calls off the main thread to avoid
         // "should not be called on the main thread" warnings.
@@ -549,7 +554,7 @@ final class LoadClientIdentityTests: XCTestCase {
 
             let addCertQuery: [CFString: Any] = [
                 kSecClass: kSecClassCertificate,
-                kSecValueRef: sendableCertificate,
+                kSecValueRef: wrappedCertificate.value,
             ]
             let certStatus = SecItemAdd(addCertQuery as CFDictionary, nil)
             XCTAssertTrue(
@@ -577,7 +582,7 @@ final class LoadClientIdentityTests: XCTestCase {
                 return false
             }
 
-            let expectedCertDER = SecCertificateCopyData(sendableCertificate) as Data
+            let expectedCertDER = SecCertificateCopyData(wrappedCertificate.value) as Data
             return refs.contains { candidateIdentity in
                 var candidateCert: SecCertificate?
                 guard
@@ -695,9 +700,7 @@ final class TLSTemporalValidityFallbackTests: XCTestCase {
     /// (chain-only, no temporal-compliance enforcement).
     func testBasicX509Policy_acceptsLongLivedCertificate() async throws {
         let cert = try loadTestCertificate()
-        // SecCertificate is a thread-safe immutable CF type; nonisolated(unsafe) suppresses
-        // the Swift 6 sending parameter error for this test-only Task.detached capture.
-        nonisolated(unsafe) let sendableCert = cert
+        let wrappedCert = SendableSecCertificate(value: cert)
 
         // Run Security framework calls off the main thread to avoid
         // "should not be called on the main thread" warnings.
@@ -705,7 +708,7 @@ final class TLSTemporalValidityFallbackTests: XCTestCase {
             // Create a trust object with BasicX509 policy (the fallback used in our fix)
             let basicPolicy = SecPolicyCreateBasicX509()
             var trust: SecTrust?
-            let status = SecTrustCreateWithCertificates(sendableCert as CFTypeRef, basicPolicy, &trust)
+            let status = SecTrustCreateWithCertificates(wrappedCert.value as CFTypeRef, basicPolicy, &trust)
             XCTAssertEqual(status, errSecSuccess, "SecTrustCreateWithCertificates failed")
             guard let trust else {
                 XCTFail("Trust object is nil")
@@ -713,7 +716,7 @@ final class TLSTemporalValidityFallbackTests: XCTestCase {
             }
 
             // Pin the cert as its own anchor (same as our delegate does with the custom CA)
-            SecTrustSetAnchorCertificates(trust, [sendableCert] as CFArray)
+            SecTrustSetAnchorCertificates(trust, [wrappedCert.value] as CFArray)
             SecTrustSetAnchorCertificatesOnly(trust, true)
 
             var error: CFError?
