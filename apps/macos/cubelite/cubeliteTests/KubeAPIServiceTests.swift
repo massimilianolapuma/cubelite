@@ -492,6 +492,10 @@ final class LoadClientIdentityTests: XCTestCase {
             return
         }
 
+        // SecCertificate is a thread-safe immutable CF type; nonisolated(unsafe) suppresses
+        // the Swift 6 sending parameter error for this test-only Task.detached capture.
+        nonisolated(unsafe) let sendableCertificate = certificate
+
         // Run Security framework calls off the main thread to avoid
         // "should not be called on the main thread" warnings.
         let found = try await Task.detached {
@@ -545,7 +549,7 @@ final class LoadClientIdentityTests: XCTestCase {
 
             let addCertQuery: [CFString: Any] = [
                 kSecClass: kSecClassCertificate,
-                kSecValueRef: certificate,
+                kSecValueRef: sendableCertificate,
             ]
             let certStatus = SecItemAdd(addCertQuery as CFDictionary, nil)
             XCTAssertTrue(
@@ -573,7 +577,7 @@ final class LoadClientIdentityTests: XCTestCase {
                 return false
             }
 
-            let expectedCertDER = SecCertificateCopyData(certificate) as Data
+            let expectedCertDER = SecCertificateCopyData(sendableCertificate) as Data
             return refs.contains { candidateIdentity in
                 var candidateCert: SecCertificate?
                 guard
@@ -691,6 +695,9 @@ final class TLSTemporalValidityFallbackTests: XCTestCase {
     /// (chain-only, no temporal-compliance enforcement).
     func testBasicX509Policy_acceptsLongLivedCertificate() async throws {
         let cert = try loadTestCertificate()
+        // SecCertificate is a thread-safe immutable CF type; nonisolated(unsafe) suppresses
+        // the Swift 6 sending parameter error for this test-only Task.detached capture.
+        nonisolated(unsafe) let sendableCert = cert
 
         // Run Security framework calls off the main thread to avoid
         // "should not be called on the main thread" warnings.
@@ -698,7 +705,7 @@ final class TLSTemporalValidityFallbackTests: XCTestCase {
             // Create a trust object with BasicX509 policy (the fallback used in our fix)
             let basicPolicy = SecPolicyCreateBasicX509()
             var trust: SecTrust?
-            let status = SecTrustCreateWithCertificates(cert as CFTypeRef, basicPolicy, &trust)
+            let status = SecTrustCreateWithCertificates(sendableCert as CFTypeRef, basicPolicy, &trust)
             XCTAssertEqual(status, errSecSuccess, "SecTrustCreateWithCertificates failed")
             guard let trust else {
                 XCTFail("Trust object is nil")
@@ -706,7 +713,7 @@ final class TLSTemporalValidityFallbackTests: XCTestCase {
             }
 
             // Pin the cert as its own anchor (same as our delegate does with the custom CA)
-            SecTrustSetAnchorCertificates(trust, [cert] as CFArray)
+            SecTrustSetAnchorCertificates(trust, [sendableCert] as CFArray)
             SecTrustSetAnchorCertificatesOnly(trust, true)
 
             var error: CFError?
