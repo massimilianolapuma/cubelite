@@ -41,10 +41,14 @@ struct CubeliteApp: App {
                         // Defensive: persist explicitly in case @Observable didSet
                         // does not fire for all binding paths.
                         UserDefaults.standard.set(newValue, forKey: AppSettings.Keys.skipTLSVerification)
-                        Task { await kubeAPIService.invalidateSession() }
+                        Task { await kubeAPIService.updateSkipTLS(newValue) }
                     }
                     .task {
                         applyNSAppearance(appSettings.appearanceMode)
+                        // Sync the TLS-skip flag into the API service before any
+                        // network calls happen. This is the authoritative hand-off
+                        // from the persisted setting to the in-memory actor state.
+                        await kubeAPIService.updateSkipTLS(appSettings.skipTLSVerification)
                         let urls = appSettings.kubeconfigPaths.map { URL(fileURLWithPath: $0) }
                         await kubeconfigService.configure(paths: urls)
                     }
