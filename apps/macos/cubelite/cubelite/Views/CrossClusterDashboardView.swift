@@ -117,7 +117,7 @@ struct CrossClusterDashboardView: View {
 
     private var clusterEmptyState: some View {
         ContentUnavailableView {
-            Label("No Data", systemImage: "cloud.slash")
+            Label("No Data", systemImage: "icloud.slash")
         } description: {
             Text("Tap refresh to load cluster data.")
         }
