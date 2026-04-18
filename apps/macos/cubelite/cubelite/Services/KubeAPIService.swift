@@ -639,6 +639,11 @@ actor KubeAPIService {
     /// explicitly propagated to the stored keychain item so the Security framework can correlate
     /// the private key with the certificate for identity matching.
     ///
+    /// Uses `SecIdentityCreateWithCertificate` to locate the identity because the
+    /// `SecItemCopyMatching`-based enumeration approach (`kSecClassIdentity` +
+    /// `kSecMatchLimitAll`) does not reliably find freshly-imported items —
+    /// particularly in sandboxed apps.
+    ///
     /// - Parameters:
     ///   - certificate: The client certificate.
     ///   - privateKey:  The matching private key (created via `SecItemImport`).
@@ -694,35 +699,17 @@ actor KubeAPIService {
             )
         }
 
-        // Find the identity by enumerating all accessible identities and matching
-        // the certificate by its DER representation.
-        let identityQuery: [CFString: Any] = [
-            kSecClass: kSecClassIdentity,
-            kSecReturnRef: true,
-            kSecMatchLimit: kSecMatchLimitAll,
-        ]
-        var identityRefs: CFTypeRef?
-        let queryStatus = SecItemCopyMatching(identityQuery as CFDictionary, &identityRefs)
-        guard queryStatus == errSecSuccess, let refs = identityRefs as? [SecIdentity] else {
+        // Find the identity using SecIdentityCreateWithCertificate which searches
+        // the default keychain list for a private key matching the certificate.
+        var identity: SecIdentity?
+        let identityStatus = SecIdentityCreateWithCertificate(nil, certificate, &identity)
+        guard identityStatus == errSecSuccess, let identity else {
             throw CubeliteError.clientError(
-                reason: "Failed to enumerate keychain identities: OSStatus \(queryStatus)"
+                reason:
+                    "Client identity not found in keychain after import (OSStatus \(identityStatus))"
             )
         }
-
-        let expectedCertData = SecCertificateCopyData(certificate) as Data
-        for candidateIdentity in refs {
-            var candidateCert: SecCertificate?
-            guard SecIdentityCopyCertificate(candidateIdentity, &candidateCert) == errSecSuccess,
-                let candidateCert,
-                (SecCertificateCopyData(candidateCert) as Data) == expectedCertData
-            else {
-                continue
-            }
-            return candidateIdentity
-        }
-
-        throw CubeliteError.clientError(
-            reason: "Client identity not found in keychain after import")
+        return identity
     }
 
     /// Converts PEM-encoded certificate data to DER format.

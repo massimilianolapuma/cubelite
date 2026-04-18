@@ -570,32 +570,12 @@ final class LoadClientIdentityTests: XCTestCase {
                 return false
             }
 
-            // Query for the resulting identity
-            let identityQuery: [CFString: Any] = [
-                kSecClass: kSecClassIdentity,
-                kSecReturnRef: true,
-                kSecMatchLimit: kSecMatchLimitAll,
-            ]
-            var identityRefs: CFTypeRef?
-            let queryStatus = SecItemCopyMatching(identityQuery as CFDictionary, &identityRefs)
-            XCTAssertEqual(
-                queryStatus, errSecSuccess,
-                "SecItemCopyMatching for identity failed; OSStatus \(queryStatus)")
-
-            guard let refs = identityRefs as? [SecIdentity] else {
-                XCTFail("Identity query did not return [SecIdentity]")
-                return false
-            }
-
-            let expectedCertDER = SecCertificateCopyData(wrappedCertificate.value) as Data
-            return refs.contains { candidateIdentity in
-                var candidateCert: SecCertificate?
-                guard
-                    SecIdentityCopyCertificate(candidateIdentity, &candidateCert) == errSecSuccess,
-                    let candidateCert
-                else { return false }
-                return (SecCertificateCopyData(candidateCert) as Data) == expectedCertDER
-            }
+            // Find the identity using SecIdentityCreateWithCertificate (matches the
+            // production code path after the storeAndFindIdentity refactor).
+            var identity: SecIdentity?
+            let identityStatus = SecIdentityCreateWithCertificate(
+                nil, wrappedCertificate.value, &identity)
+            return identityStatus == errSecSuccess && identity != nil
         }.value
         XCTAssertTrue(found, "Expected to find an identity matching the test certificate")
     }
