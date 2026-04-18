@@ -331,7 +331,8 @@ actor KubeAPIService {
     /// URL error codes that indicate TLS certificate validation failure.
     static func isTLSError(_ error: URLError) -> Bool {
         switch error.code {
-        case .serverCertificateUntrusted,
+        case .secureConnectionFailed,
+            .serverCertificateUntrusted,
             .serverCertificateHasBadDate,
             .serverCertificateHasUnknownRoot,
             .serverCertificateNotYetValid,
@@ -741,7 +742,9 @@ actor KubeAPIService {
 /// - `SecCertificate` and `SecIdentity` are immutable Core Foundation objects
 /// - `Bool` is a value type
 /// - No mutable state exists after initialization
-private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
+    @unchecked Sendable
+{
 
     let trustedCertificate: SecCertificate?
     let clientIdentity: SecIdentity?
@@ -817,5 +820,20 @@ private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, @unche
         }
 
         return (.performDefaultHandling, nil)
+    }
+
+    // MARK: - URLSessionTaskDelegate
+
+    /// Task-level authentication challenge handler.
+    ///
+    /// `session.data(for:)` delivers challenges through the task delegate first.
+    /// Forward to the session-level handler so TLS skip and CA pinning work for
+    /// every data task.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        await urlSession(session, didReceive: challenge)
     }
 }
