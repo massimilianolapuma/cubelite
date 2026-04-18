@@ -232,6 +232,34 @@ final class LoadCACertificateTests: XCTestCase {
                 reason.contains("Cannot read CA certificate file"), "Reason was: \(reason)")
         }
     }
+
+    // MARK: PEM-wrapped-in-base64 (k3s / dynamiclistener pattern)
+
+    /// Some kubeconfig generators (k3s, dynamiclistener) store PEM-encoded certificates
+    /// inside `certificate-authority-data` as base64(PEM) instead of base64(DER).
+    /// The loader must handle this gracefully.
+    func testLoadCACertificate_pemWrappedInBase64_returnsNonNilCertificate() throws {
+        // Build PEM text from the known DER base64
+        let pemText = """
+            -----BEGIN CERTIFICATE-----
+            \(testCertDERBase64)
+            -----END CERTIFICATE-----
+            """
+        // Encode the entire PEM as base64 — this is what k3s puts in certificate-authority-data
+        let pemBase64 = Data(pemText.utf8).base64EncodedString()
+
+        let details = ClusterDetails(
+            server: "https://example.com",
+            certificateAuthorityData: pemBase64,
+            certificateAuthority: nil,
+            insecureSkipTlsVerify: nil
+        )
+        let cert = try KubeAPIService.loadCACertificate(from: details)
+        XCTAssertNotNil(
+            cert,
+            "PEM-wrapped-in-base64 certificate-authority-data must be parsed successfully"
+        )
+    }
 }
 
 // MARK: - CubeliteError.tlsError Tests
@@ -443,7 +471,7 @@ final class LoadClientIdentityTests: XCTestCase {
 
     // MARK: - Integration: valid EC cert + key produces SecIdentity
 
-    func testLoadClientIdentity_validECCertAndKey_returnsIdentity() throws {
+    func testLoadClientIdentity_validECCertAndKey_returnsIdentity() async throws {
         // Decode cert DER
         guard let certDER = Data(base64Encoded: testCertDERBase64) else {
             XCTFail("testCertDERBase64 is not valid base64")
@@ -464,90 +492,97 @@ final class LoadClientIdentityTests: XCTestCase {
             return
         }
 
-        // Import key via SecItemImport (supports SEC1 PEM — SecKeyCreateWithData fails for EC SEC1).
-        var importFormat = SecExternalFormat.formatOpenSSL
-        var importItemType = SecExternalItemType.itemTypePrivateKey
-        var importParams = SecItemImportExportKeyParameters()
-        importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
-        var importedItems: CFArray?
-        let importStatus = SecItemImport(
-            keyPEMData as CFData, nil, &importFormat, &importItemType,
-            SecItemImportExportFlags(), &importParams, nil, &importedItems
-        )
-        guard importStatus == errSecSuccess,
-            let privateKey = (importedItems as? [SecKey])?.first
-        else {
-            XCTFail("SecItemImport failed: OSStatus \(importStatus)")
-            return
-        }
+        // Run Security framework calls off the main thread to avoid
+        // "should not be called on the main thread" warnings.
+        let found = try await Task.detached {
+            // Import key via SecItemImport (supports SEC1 PEM — SecKeyCreateWithData fails for EC SEC1).
+            var importFormat = SecExternalFormat.formatOpenSSL
+            var importItemType = SecExternalItemType.itemTypePrivateKey
+            var importParams = SecItemImportExportKeyParameters()
+            importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
+            var importedItems: CFArray?
+            let importStatus = SecItemImport(
+                keyPEMData as CFData, nil, &importFormat, &importItemType,
+                SecItemImportExportFlags(), &importParams, nil, &importedItems
+            )
+            guard importStatus == errSecSuccess,
+                let privateKey = (importedItems as? [SecKey])?.first
+            else {
+                XCTFail("SecItemImport failed: OSStatus \(importStatus)")
+                return false
+            }
 
-        // Preserve the application label (SHA-1 of public key) so the Security framework
-        // can correlate the key with the certificate for identity matching.
-        let importedKeyAttrs = SecKeyCopyAttributes(privateKey) as? [CFString: Any]
-        let applicationLabel = importedKeyAttrs?[kSecAttrApplicationLabel] as? Data
+            // Preserve the application label (SHA-1 of public key) so the Security framework
+            // can correlate the key with the certificate for identity matching.
+            let importedKeyAttrs = SecKeyCopyAttributes(privateKey) as? [CFString: Any]
+            let applicationLabel = importedKeyAttrs?[kSecAttrApplicationLabel] as? Data
 
-        // Exercise storeAndFindIdentity through the public static surface
-        // by calling the underlying Security APIs directly here.
-        let keyTag = "it.lapuma.cubelite.client-key".data(using: .utf8)!
-        let deleteKeyQuery: [CFString: Any] = [
-            kSecClass: kSecClassKey,
-            kSecAttrApplicationTag: keyTag,
-            kSecAttrKeyClass: kSecAttrKeyClassPrivate,
-        ]
-        SecItemDelete(deleteKeyQuery as CFDictionary)
+            // Exercise storeAndFindIdentity through the public static surface
+            // by calling the underlying Security APIs directly here.
+            let keyTag = "it.lapuma.cubelite.client-key".data(using: .utf8)!
+            let deleteKeyQuery: [CFString: Any] = [
+                kSecClass: kSecClassKey,
+                kSecAttrApplicationTag: keyTag,
+                kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+            ]
+            SecItemDelete(deleteKeyQuery as CFDictionary)
 
-        var addKeyQuery: [CFString: Any] = [
-            kSecClass: kSecClassKey,
-            kSecAttrApplicationTag: keyTag,
-            kSecAttrKeyClass: kSecAttrKeyClassPrivate,
-            kSecValueRef: privateKey,
-            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
-        ]
-        if let label = applicationLabel {
-            addKeyQuery[kSecAttrApplicationLabel] = label
-        }
-        let keyStatus = SecItemAdd(addKeyQuery as CFDictionary, nil)
-        XCTAssertEqual(
-            keyStatus, errSecSuccess,
-            "Failed to add test private key to keychain; OSStatus \(keyStatus)")
-        guard keyStatus == errSecSuccess else { return }
+            var addKeyQuery: [CFString: Any] = [
+                kSecClass: kSecClassKey,
+                kSecAttrApplicationTag: keyTag,
+                kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+                kSecValueRef: privateKey,
+                kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+            ]
+            if let label = applicationLabel {
+                addKeyQuery[kSecAttrApplicationLabel] = label
+            }
+            let keyStatus = SecItemAdd(addKeyQuery as CFDictionary, nil)
+            XCTAssertEqual(
+                keyStatus, errSecSuccess,
+                "Failed to add test private key to keychain; OSStatus \(keyStatus)")
+            guard keyStatus == errSecSuccess else { return false }
 
-        let addCertQuery: [CFString: Any] = [
-            kSecClass: kSecClassCertificate,
-            kSecValueRef: certificate,
-        ]
-        let certStatus = SecItemAdd(addCertQuery as CFDictionary, nil)
-        XCTAssertTrue(
-            certStatus == errSecSuccess || certStatus == errSecDuplicateItem,
-            "Failed to add test certificate: OSStatus \(certStatus)"
-        )
-        guard certStatus == errSecSuccess || certStatus == errSecDuplicateItem else { return }
+            let addCertQuery: [CFString: Any] = [
+                kSecClass: kSecClassCertificate,
+                kSecValueRef: certificate,
+            ]
+            let certStatus = SecItemAdd(addCertQuery as CFDictionary, nil)
+            XCTAssertTrue(
+                certStatus == errSecSuccess || certStatus == errSecDuplicateItem,
+                "Failed to add test certificate: OSStatus \(certStatus)"
+            )
+            guard certStatus == errSecSuccess || certStatus == errSecDuplicateItem else {
+                return false
+            }
 
-        // Query for the resulting identity
-        let identityQuery: [CFString: Any] = [
-            kSecClass: kSecClassIdentity,
-            kSecReturnRef: true,
-            kSecMatchLimit: kSecMatchLimitAll,
-        ]
-        var identityRefs: CFTypeRef?
-        let queryStatus = SecItemCopyMatching(identityQuery as CFDictionary, &identityRefs)
-        XCTAssertEqual(
-            queryStatus, errSecSuccess,
-            "SecItemCopyMatching for identity failed; OSStatus \(queryStatus)")
+            // Query for the resulting identity
+            let identityQuery: [CFString: Any] = [
+                kSecClass: kSecClassIdentity,
+                kSecReturnRef: true,
+                kSecMatchLimit: kSecMatchLimitAll,
+            ]
+            var identityRefs: CFTypeRef?
+            let queryStatus = SecItemCopyMatching(identityQuery as CFDictionary, &identityRefs)
+            XCTAssertEqual(
+                queryStatus, errSecSuccess,
+                "SecItemCopyMatching for identity failed; OSStatus \(queryStatus)")
 
-        guard let refs = identityRefs as? [SecIdentity] else {
-            XCTFail("Identity query did not return [SecIdentity]")
-            return
-        }
+            guard let refs = identityRefs as? [SecIdentity] else {
+                XCTFail("Identity query did not return [SecIdentity]")
+                return false
+            }
 
-        let expectedCertDER = SecCertificateCopyData(certificate) as Data
-        let found = refs.contains { candidateIdentity in
-            var candidateCert: SecCertificate?
-            guard SecIdentityCopyCertificate(candidateIdentity, &candidateCert) == errSecSuccess,
-                let candidateCert
-            else { return false }
-            return (SecCertificateCopyData(candidateCert) as Data) == expectedCertDER
-        }
+            let expectedCertDER = SecCertificateCopyData(certificate) as Data
+            return refs.contains { candidateIdentity in
+                var candidateCert: SecCertificate?
+                guard
+                    SecIdentityCopyCertificate(candidateIdentity, &candidateCert) == errSecSuccess,
+                    let candidateCert
+                else { return false }
+                return (SecCertificateCopyData(candidateCert) as Data) == expectedCertDER
+            }
+        }.value
         XCTAssertTrue(found, "Expected to find an identity matching the test certificate")
     }
 
@@ -654,30 +689,36 @@ final class TLSTemporalValidityFallbackTests: XCTestCase {
 
     /// Verifies that the same long-lived certificate passes BasicX509 evaluation
     /// (chain-only, no temporal-compliance enforcement).
-    func testBasicX509Policy_acceptsLongLivedCertificate() throws {
+    func testBasicX509Policy_acceptsLongLivedCertificate() async throws {
         let cert = try loadTestCertificate()
 
-        // Create a trust object with BasicX509 policy (the fallback used in our fix)
-        let basicPolicy = SecPolicyCreateBasicX509()
-        var trust: SecTrust?
-        let status = SecTrustCreateWithCertificates(cert as CFTypeRef, basicPolicy, &trust)
-        XCTAssertEqual(status, errSecSuccess, "SecTrustCreateWithCertificates failed")
-        guard let trust else {
-            XCTFail("Trust object is nil")
-            return
-        }
+        // Run Security framework calls off the main thread to avoid
+        // "should not be called on the main thread" warnings.
+        let result: Bool = try await Task.detached {
+            // Create a trust object with BasicX509 policy (the fallback used in our fix)
+            let basicPolicy = SecPolicyCreateBasicX509()
+            var trust: SecTrust?
+            let status = SecTrustCreateWithCertificates(cert as CFTypeRef, basicPolicy, &trust)
+            XCTAssertEqual(status, errSecSuccess, "SecTrustCreateWithCertificates failed")
+            guard let trust else {
+                XCTFail("Trust object is nil")
+                return false
+            }
 
-        // Pin the cert as its own anchor (same as our delegate does with the custom CA)
-        SecTrustSetAnchorCertificates(trust, [cert] as CFArray)
-        SecTrustSetAnchorCertificatesOnly(trust, true)
+            // Pin the cert as its own anchor (same as our delegate does with the custom CA)
+            SecTrustSetAnchorCertificates(trust, [cert] as CFArray)
+            SecTrustSetAnchorCertificatesOnly(trust, true)
 
-        var error: CFError?
-        let result = SecTrustEvaluateWithError(trust, &error)
+            var error: CFError?
+            let evalResult = SecTrustEvaluateWithError(trust, &error)
 
-        XCTAssertTrue(
-            result,
-            "BasicX509 policy must accept a long-lived certificate; error: \(error.map { $0 as Error } ?? "none" as Any)"
-        )
+            XCTAssertTrue(
+                evalResult,
+                "BasicX509 policy must accept a long-lived certificate; error: \(error.map { $0 as Error } ?? "none" as Any)"
+            )
+            return evalResult
+        }.value
+        XCTAssertTrue(result)
     }
 
     /// Verifies the full fallback sequence: SSL fails → switch to BasicX509 → succeeds.
@@ -716,5 +757,47 @@ final class TLSTemporalValidityFallbackTests: XCTestCase {
             chainResult,
             "Fallback to BasicX509 must succeed after SSL rejection; error: \(chainError.map { $0 as Error } ?? "none" as Any)"
         )
+    }
+}
+
+// MARK: - extractForbiddenResource Tests
+
+final class ExtractForbiddenResourceTests: XCTestCase {
+
+    func testExtractForbiddenResource_validK8sStatus_returnsKind() {
+        let json = """
+            {"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure",\
+            "message":"pods is forbidden","reason":"Forbidden",\
+            "details":{"kind":"pods"},"code":403}
+            """
+        let data = Data(json.utf8)
+        XCTAssertEqual(KubeAPIService.extractForbiddenResource(from: data), "pods")
+    }
+
+    func testExtractForbiddenResource_deploymentsKind_returnsDeployments() {
+        let json = """
+            {"kind":"Status","apiVersion":"v1","status":"Failure",\
+            "details":{"kind":"deployments"},"code":403}
+            """
+        let data = Data(json.utf8)
+        XCTAssertEqual(KubeAPIService.extractForbiddenResource(from: data), "deployments")
+    }
+
+    func testExtractForbiddenResource_noDetailsKey_returnsNil() {
+        let json = """
+            {"kind":"Status","apiVersion":"v1","status":"Failure","code":403}
+            """
+        let data = Data(json.utf8)
+        XCTAssertNil(KubeAPIService.extractForbiddenResource(from: data))
+    }
+
+    func testExtractForbiddenResource_invalidJSON_returnsNil() {
+        let data = Data("not json".utf8)
+        XCTAssertNil(KubeAPIService.extractForbiddenResource(from: data))
+    }
+
+    func testExtractForbiddenResource_emptyData_returnsNil() {
+        let data = Data()
+        XCTAssertNil(KubeAPIService.extractForbiddenResource(from: data))
     }
 }

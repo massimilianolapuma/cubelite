@@ -25,7 +25,9 @@ final class AppSettings {
 
     /// Whether to show system namespaces (e.g. kube-system, kube-public).
     var showSystemNamespaces: Bool = false {
-        didSet { UserDefaults.standard.set(showSystemNamespaces, forKey: Keys.showSystemNamespaces) }
+        didSet {
+            UserDefaults.standard.set(showSystemNamespaces, forKey: Keys.showSystemNamespaces)
+        }
     }
 
     // MARK: - Appearance
@@ -49,19 +51,33 @@ final class AppSettings {
 
     /// Menu bar icon style.
     var menuBarIconStyle: MenuBarIconStyle = .standard {
-        didSet { UserDefaults.standard.set(menuBarIconStyle.rawValue, forKey: Keys.menuBarIconStyle) }
+        didSet {
+            UserDefaults.standard.set(menuBarIconStyle.rawValue, forKey: Keys.menuBarIconStyle)
+        }
     }
 
     // MARK: - Advanced
 
-    /// Custom kubeconfig file path. Empty string means the default `~/.kube/config`.
-    var kubeconfigPath: String = "" {
-        didSet { UserDefaults.standard.set(kubeconfigPath, forKey: Keys.kubeconfigPath) }
+    /// Custom kubeconfig file paths. When empty, default path resolution is used.
+    var kubeconfigPaths: [String] = [] {
+        didSet { UserDefaults.standard.set(kubeconfigPaths, forKey: Keys.kubeconfigPaths) }
     }
 
     /// Kubernetes API request timeout in seconds. Clamped to 5–120.
     var apiTimeout: Int = 30 {
         didSet { UserDefaults.standard.set(apiTimeout, forKey: Keys.apiTimeout) }
+    }
+
+    /// User-configured namespaces per context for RBAC-restricted clusters.
+    ///
+    /// When a cluster denies `list namespaces`, the app falls back to this map
+    /// to determine which namespaces the user can access. Keyed by context name.
+    var contextNamespaces: [String: [String]] = [:] {
+        didSet {
+            if let data = try? JSONEncoder().encode(contextNamespaces) {
+                UserDefaults.standard.set(data, forKey: Keys.contextNamespaces)
+            }
+        }
     }
 
     /// Whether to skip TLS certificate verification for all clusters.
@@ -80,12 +96,30 @@ final class AppSettings {
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
         showSystemNamespaces = d.bool(forKey: Keys.showSystemNamespaces)
         if let raw = d.string(forKey: Keys.appearanceMode),
-           let mode = AppearanceMode(rawValue: raw) { appearanceMode = mode }
+            let mode = AppearanceMode(rawValue: raw)
+        {
+            appearanceMode = mode
+        }
         if let raw = d.string(forKey: Keys.menuBarIconStyle),
-           let style = MenuBarIconStyle(rawValue: raw) { menuBarIconStyle = style }
-        kubeconfigPath = d.string(forKey: Keys.kubeconfigPath) ?? ""
+            let style = MenuBarIconStyle(rawValue: raw)
+        {
+            menuBarIconStyle = style
+        }
+        kubeconfigPaths = d.stringArray(forKey: Keys.kubeconfigPaths) ?? []
+        // Migrate legacy single-path key to the new array key.
+        if kubeconfigPaths.isEmpty, let legacy = d.string(forKey: Keys.kubeconfigPath),
+            !legacy.isEmpty
+        {
+            kubeconfigPaths = [legacy]
+            d.removeObject(forKey: Keys.kubeconfigPath)
+        }
         if let v = d.object(forKey: Keys.apiTimeout) as? Int { apiTimeout = min(120, max(5, v)) }
         skipTLSVerification = d.bool(forKey: Keys.skipTLSVerification)
+        if let data = d.data(forKey: Keys.contextNamespaces),
+            let decoded = try? JSONDecoder().decode([String: [String]].self, from: data)
+        {
+            contextNamespaces = decoded
+        }
     }
 
     // MARK: - Nested Types
@@ -107,7 +141,8 @@ final class AppSettings {
     /// Menu bar icon style.
     enum MenuBarIconStyle: String, CaseIterable {
         /// Standard full-colour icon. Raw value kept as "default" for UserDefaults back-compat.
-        case standard = "default", monochrome
+        case standard = "default"
+        case monochrome
 
         /// Human-readable label for display in UI.
         var label: String {
@@ -127,8 +162,11 @@ final class AppSettings {
         static let showSystemNamespaces = "showSystemNamespaces"
         static let appearanceMode = "appearanceMode"
         static let menuBarIconStyle = "menuBarIconStyle"
+        /// Legacy key — kept for one-time migration only.
         static let kubeconfigPath = "kubeconfigPath"
+        static let kubeconfigPaths = "kubeconfigPaths"
         static let apiTimeout = "apiTimeout"
         static let skipTLSVerification = "skipTLSVerification"
+        static let contextNamespaces = "contextNamespaces"
     }
 }

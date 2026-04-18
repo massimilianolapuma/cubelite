@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 @main
 struct CubeliteApp: App {
@@ -30,8 +30,17 @@ struct CubeliteApp: App {
                     .onChange(of: appSettings.appearanceMode) { _, newMode in
                         applyNSAppearance(newMode)
                     }
+                    .onChange(of: appSettings.kubeconfigPaths) { _, newPaths in
+                        let urls = newPaths.map { URL(fileURLWithPath: $0) }
+                        Task {
+                            await kubeconfigService.configure(paths: urls)
+                            await kubeAPIService.invalidateSession()
+                        }
+                    }
                     .task {
                         applyNSAppearance(appSettings.appearanceMode)
+                        let urls = appSettings.kubeconfigPaths.map { URL(fileURLWithPath: $0) }
+                        await kubeconfigService.configure(paths: urls)
                     }
             } else {
                 FirstLaunchView(

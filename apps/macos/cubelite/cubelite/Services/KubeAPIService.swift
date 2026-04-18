@@ -16,11 +16,27 @@ actor KubeAPIService {
 
     private let kubeconfigService: KubeconfigService
 
+    /// Cached URLSession paired with the cluster server URL it was built for.
+    ///
+    /// Reusing the session across sequential API calls to the same cluster avoids
+    /// repeated TLS handshakes, which cause `clientCertificateRejected` failures
+    /// on minikube-style clusters that use short-lived client certificates.
+    private var cachedSessionEntry: (session: URLSession, clusterServer: String)?
+
     /// Creates a new API service backed by the given kubeconfig service.
     ///
     /// - Parameter kubeconfigService: The service used to load kubeconfig state.
     init(kubeconfigService: KubeconfigService) {
         self.kubeconfigService = kubeconfigService
+    }
+
+    /// Invalidates and discards the cached URLSession.
+    ///
+    /// Call this when the active context changes so that the next API call
+    /// performs a fresh TLS handshake against the new cluster's certificates.
+    func invalidateSession() {
+        cachedSessionEntry?.session.invalidateAndCancel()
+        cachedSessionEntry = nil
     }
 
     // MARK: - Public API
@@ -40,7 +56,9 @@ actor KubeAPIService {
     ///   - namespace: If provided, only pods in this namespace are returned.
     ///     Passing `nil` lists pods across all namespaces.
     ///   - contextName: Kubeconfig context to use; defaults to the active context.
-    func listPods(namespace: String? = nil, inContext contextName: String? = nil) async throws -> [PodInfo] {
+    func listPods(namespace: String? = nil, inContext contextName: String? = nil) async throws
+        -> [PodInfo]
+    {
         let path: String
         if let ns = namespace {
             let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
@@ -48,8 +66,135 @@ actor KubeAPIService {
         } else {
             path = "/api/v1/pods"
         }
-        let response: K8sListResponse<K8sPod> = try await fetch(path: path, contextName: contextName)
+        let response: K8sListResponse<K8sPod> = try await fetch(
+            path: path, contextName: contextName)
         return response.items.map { $0.toPodInfo() }
+    }
+
+    /// Lists services, optionally scoped to a namespace and/or context.
+    ///
+    /// - Parameters:
+    ///   - namespace: If provided, only services in this namespace are returned.
+    ///     Passing `nil` lists services across all namespaces.
+    ///   - contextName: Kubeconfig context to use; defaults to the active context.
+    func listServices(namespace: String? = nil, inContext contextName: String? = nil) async throws
+        -> [ServiceInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/api/v1/namespaces/\(encoded)/services"
+        } else {
+            path = "/api/v1/services"
+        }
+        let response: K8sListResponse<K8sService> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toServiceInfo() }
+    }
+
+    /// Lists secrets, optionally scoped to a namespace and/or context.
+    ///
+    /// - Parameters:
+    ///   - namespace: If provided, only secrets in this namespace are returned.
+    ///     Passing `nil` lists secrets across all namespaces.
+    ///   - contextName: Kubeconfig context to use; defaults to the active context.
+    /// - Important: The returned ``SecretInfo`` values contain only key counts — actual
+    ///   secret data is never fetched, decoded, or stored.
+    func listSecrets(namespace: String? = nil, inContext contextName: String? = nil) async throws
+        -> [SecretInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/api/v1/namespaces/\(encoded)/secrets"
+        } else {
+            path = "/api/v1/secrets"
+        }
+        let response: K8sListResponse<K8sSecret> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toSecretInfo() }
+    }
+
+    /// Lists ConfigMaps, optionally scoped to a namespace and/or context.
+    ///
+    /// - Parameters:
+    ///   - namespace: If provided, only ConfigMaps in this namespace are returned.
+    ///     Passing `nil` lists ConfigMaps across all namespaces.
+    ///   - contextName: Kubeconfig context to use; defaults to the active context.
+    func listConfigMaps(namespace: String? = nil, inContext contextName: String? = nil) async throws
+        -> [ConfigMapInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/api/v1/namespaces/\(encoded)/configmaps"
+        } else {
+            path = "/api/v1/configmaps"
+        }
+        let response: K8sListResponse<K8sConfigMap> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toConfigMapInfo() }
+    }
+
+    /// Lists Ingresses, optionally scoped to a namespace and/or context.
+    ///
+    /// Uses the `networking.k8s.io/v1` API group, not the core `/api/v1` group.
+    ///
+    /// - Parameters:
+    ///   - namespace: If provided, only Ingresses in this namespace are returned.
+    ///     Passing `nil` lists Ingresses across all namespaces.
+    ///   - contextName: Kubeconfig context to use; defaults to the active context.
+    func listIngresses(namespace: String? = nil, inContext contextName: String? = nil) async throws
+        -> [IngressInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/apis/networking.k8s.io/v1/namespaces/\(encoded)/ingresses"
+        } else {
+            path = "/apis/networking.k8s.io/v1/ingresses"
+        }
+        let response: K8sListResponse<K8sIngress> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toIngressInfo() }
+    }
+
+    /// Lists Helm releases, optionally scoped to a namespace and/or context.
+    ///
+    /// Helm stores release metadata as Kubernetes Secrets labelled `owner=helm`.
+    /// Multiple revisions for the same release are deduplicated — only the latest
+    /// revision (highest `version` label value) is kept.
+    ///
+    /// - Parameters:
+    ///   - namespace: If provided, only releases in this namespace are returned.
+    ///     Passing `nil` lists releases across all namespaces.
+    ///   - contextName: Kubeconfig context to use; defaults to the active context.
+    func listHelmReleases(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [HelmReleaseInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/api/v1/namespaces/\(encoded)/secrets?labelSelector=owner%3Dhelm"
+        } else {
+            path = "/api/v1/secrets?labelSelector=owner%3Dhelm"
+        }
+        let response: K8sListResponse<K8sSecret> = try await fetch(
+            path: path, contextName: contextName)
+        let releases = response.items.compactMap { $0.toHelmReleaseInfo() }
+        // Deduplicate: keep only the latest revision per (namespace, name).
+        var latest: [String: HelmReleaseInfo] = [:]
+        for release in releases {
+            let key = release.id
+            if let existing = latest[key] {
+                if release.revision > existing.revision {
+                    latest[key] = release
+                }
+            } else {
+                latest[key] = release
+            }
+        }
+        return latest.values.sorted { $0.name < $1.name }
     }
 
     /// Lists deployments, optionally scoped to a namespace and/or context.
@@ -57,7 +202,9 @@ actor KubeAPIService {
     /// - Parameters:
     ///   - namespace: Namespace to query. Passing `nil` lists across all namespaces.
     ///   - contextName: Kubeconfig context to use; defaults to the active context.
-    func listDeployments(namespace: String? = nil, inContext contextName: String? = nil) async throws -> [DeploymentInfo] {
+    func listDeployments(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [DeploymentInfo]
+    {
         let path: String
         if let ns = namespace {
             let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
@@ -65,7 +212,8 @@ actor KubeAPIService {
         } else {
             path = "/apis/apps/v1/deployments"
         }
-        let response: K8sListResponse<K8sDeployment> = try await fetch(path: path, contextName: contextName)
+        let response: K8sListResponse<K8sDeployment> = try await fetch(
+            path: path, contextName: contextName)
         return response.items.map { $0.toDeploymentInfo() }
     }
 
@@ -76,7 +224,9 @@ actor KubeAPIService {
     /// - Parameters:
     ///   - path: API path to request.
     ///   - contextName: Override which kubeconfig context is used.
-    private func fetch<T: Codable & Sendable>(path: String, contextName: String? = nil) async throws -> T {
+    private func fetch<T: Codable & Sendable>(path: String, contextName: String? = nil) async throws
+        -> T
+    {
         let config = try await kubeconfigService.load()
         let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
 
@@ -98,8 +248,19 @@ actor KubeAPIService {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let session = try makeSession(cluster: cluster, user: user)
-        defer { session.finishTasksAndInvalidate() }
+        // Reuse the cached session when the cluster server matches; build a new one
+        // when the context has changed. This prevents repeated TLS handshakes that
+        // cause authentication failures on client-certificate clusters (e.g. minikube).
+        let session: URLSession
+        if let entry = cachedSessionEntry, entry.clusterServer == base {
+            session = entry.session
+        } else {
+            cachedSessionEntry?.session.invalidateAndCancel()
+            cachedSessionEntry = nil
+            let newSession = try makeSession(cluster: cluster, user: user)
+            cachedSessionEntry = (session: newSession, clusterServer: base)
+            session = newSession
+        }
 
         let (data, response): (Data, URLResponse)
         do {
@@ -111,7 +272,8 @@ actor KubeAPIService {
         } catch let urlError as URLError where Self.isConnectionError(urlError) {
             throw CubeliteError.clusterUnreachable
         } catch {
-            throw CubeliteError.clientError(reason: "Network request failed: \(error.localizedDescription)")
+            throw CubeliteError.clientError(
+                reason: "Network request failed: \(error.localizedDescription)")
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -120,6 +282,13 @@ actor KubeAPIService {
 
         guard (200...299).contains(httpResponse.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            if httpResponse.statusCode == 403 {
+                let resource = Self.extractForbiddenResource(from: data) ?? path
+                throw CubeliteError.forbidden(
+                    resource: resource,
+                    reason: body
+                )
+            }
             throw CubeliteError.clientError(
                 reason: "HTTP \(httpResponse.statusCode): \(body)"
             )
@@ -138,25 +307,35 @@ actor KubeAPIService {
     /// URL error codes that indicate the cluster server is unreachable.
     static func isConnectionError(_ error: URLError) -> Bool {
         switch error.code {
-        case .cannotConnectToHost,     // -1004: connection refused
-             .timedOut,                // -1001: timeout
-             .cannotFindHost,          // -1003: DNS failure
-             .networkConnectionLost,   // -1005: connection dropped
-             .notConnectedToInternet:  // -1009: no network
+        case .cannotConnectToHost,  // -1004: connection refused
+            .timedOut,  // -1001: timeout
+            .cannotFindHost,  // -1003: DNS failure
+            .networkConnectionLost,  // -1005: connection dropped
+            .notConnectedToInternet:  // -1009: no network
             return true
         default:
             return false
         }
     }
 
+    /// Extract the resource kind from a Kubernetes 403 Status JSON body.
+    static func extractForbiddenResource(from data: Data) -> String? {
+        guard
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let details = json["details"] as? [String: Any],
+            let kind = details["kind"] as? String
+        else { return nil }
+        return kind
+    }
+
     /// URL error codes that indicate TLS certificate validation failure.
     static func isTLSError(_ error: URLError) -> Bool {
         switch error.code {
         case .serverCertificateUntrusted,
-             .serverCertificateHasBadDate,
-             .serverCertificateHasUnknownRoot,
-             .serverCertificateNotYetValid,
-             .clientCertificateRejected:
+            .serverCertificateHasBadDate,
+            .serverCertificateHasUnknownRoot,
+            .serverCertificateNotYetValid,
+            .clientCertificateRejected:
             return true
         default:
             return false
@@ -184,21 +363,24 @@ actor KubeAPIService {
         }
 
         guard let namedContext = config.raw.contexts?.first(where: { $0.name == resolvedContext }),
-              let contextDetails = namedContext.context else {
+            let contextDetails = namedContext.context
+        else {
             throw CubeliteError.contextNotFound(name: resolvedContext)
         }
 
         guard let clusterName = contextDetails.cluster,
-              let namedCluster = config.raw.clusters?.first(where: { $0.name == clusterName }),
-              let cluster = namedCluster.cluster else {
+            let namedCluster = config.raw.clusters?.first(where: { $0.name == clusterName }),
+            let cluster = namedCluster.cluster
+        else {
             throw CubeliteError.clientError(
                 reason: "Cluster definition not found for context '\(resolvedContext)'"
             )
         }
 
         guard let userName = contextDetails.user,
-              let namedUser = config.raw.users?.first(where: { $0.name == userName }),
-              let user = namedUser.user else {
+            let namedUser = config.raw.users?.first(where: { $0.name == userName }),
+            let user = namedUser.user
+        else {
             throw CubeliteError.clientError(
                 reason: "User definition not found for context '\(resolvedContext)'"
             )
@@ -245,11 +427,19 @@ actor KubeAPIService {
     static func loadCACertificate(from cluster: ClusterDetails) throws -> SecCertificate? {
         // Try inline base64 data first
         if let b64 = cluster.certificateAuthorityData, !b64.isEmpty {
-            guard let derData = Data(base64Encoded: b64) else {
-                throw CubeliteError.clientError(reason: "Invalid base64 in certificate-authority-data")
+            guard let decoded = Data(base64Encoded: b64) else {
+                throw CubeliteError.clientError(
+                    reason: "Invalid base64 in certificate-authority-data")
             }
+            // Try DER directly; fall back to PEM stripping when the decoded bytes
+            // are PEM-wrapped (common in k3s, dynamiclistener, and similar tools).
+            if let certificate = SecCertificateCreateWithData(nil, decoded as CFData) {
+                return certificate
+            }
+            let derData = try pemToDER(decoded)
             guard let certificate = SecCertificateCreateWithData(nil, derData as CFData) else {
-                throw CubeliteError.clientError(reason: "Failed to create CA certificate from DER data")
+                throw CubeliteError.clientError(
+                    reason: "Failed to create CA certificate from certificate-authority-data")
             }
             return certificate
         }
@@ -291,18 +481,21 @@ actor KubeAPIService {
     private static func loadClientIdentity(from user: UserDetails) throws -> SecIdentity? {
         // --- Path 1: inline base64 data (client-certificate-data / client-key-data) ---
         if let certB64 = user.clientCertificateData, !certB64.isEmpty,
-           let keyB64 = user.clientKeyData, !keyB64.isEmpty {
+            let keyB64 = user.clientKeyData, !keyB64.isEmpty
+        {
             // Decode cert: base64 → DER (kubeconfig inline format).
             // Fall back to PEM stripping if the decoded bytes appear to be PEM-wrapped.
             guard let certDecoded = Data(base64Encoded: certB64) else {
                 throw CubeliteError.clientError(reason: "Invalid base64 in client-certificate-data")
             }
-            var certificate: SecCertificate? = SecCertificateCreateWithData(nil, certDecoded as CFData)
+            var certificate: SecCertificate? = SecCertificateCreateWithData(
+                nil, certDecoded as CFData)
             if certificate == nil, let certDERFromPEM = try? pemToDER(certDecoded) {
                 certificate = SecCertificateCreateWithData(nil, certDERFromPEM as CFData)
             }
             guard let certificate else {
-                throw CubeliteError.clientError(reason: "Failed to parse client certificate from client-certificate-data")
+                throw CubeliteError.clientError(
+                    reason: "Failed to parse client certificate from client-certificate-data")
             }
 
             // Decode key: base64 → PEM text.
@@ -310,14 +503,18 @@ actor KubeAPIService {
                 throw CubeliteError.clientError(reason: "Invalid base64 in client-key-data")
             }
             guard let keyPEMString = String(data: keyDecoded, encoding: .utf8) else {
-                throw CubeliteError.clientError(reason: "client-key-data is not valid UTF-8 after base64 decode")
+                throw CubeliteError.clientError(
+                    reason: "client-key-data is not valid UTF-8 after base64 decode")
             }
 
             // Detect key type from PEM headers (used when removing old keychain items).
             let isEC = keyPEMString.contains("BEGIN EC PRIVATE KEY")
-            let isRSA = keyPEMString.contains("BEGIN RSA PRIVATE KEY") || keyPEMString.contains("BEGIN PRIVATE KEY")
+            let isRSA =
+                keyPEMString.contains("BEGIN RSA PRIVATE KEY")
+                || keyPEMString.contains("BEGIN PRIVATE KEY")
             guard isEC || isRSA else {
-                throw CubeliteError.clientError(reason: "Unsupported private key type in client-key-data")
+                throw CubeliteError.clientError(
+                    reason: "Unsupported private key type in client-key-data")
             }
 
             // Import the PEM key in memory using SecItemImport, which handles SEC1, PKCS#1, and PKCS#8
@@ -332,7 +529,8 @@ actor KubeAPIService {
                 SecItemImportExportFlags(), &importParams, nil, &importedItems
             )
             guard importStatus == errSecSuccess,
-                  let privateKey = (importedItems as? [SecKey])?.first else {
+                let privateKey = (importedItems as? [SecKey])?.first
+            else {
                 throw CubeliteError.clientError(
                     reason: "Failed to import private key from PEM: OSStatus \(importStatus)"
                 )
@@ -343,7 +541,8 @@ actor KubeAPIService {
 
         // --- Path 2: file paths (client-certificate / client-key) ---
         if let certPath = user.clientCertificate, !certPath.isEmpty,
-           let keyPath = user.clientKey, !keyPath.isEmpty {
+            let keyPath = user.clientKey, !keyPath.isEmpty
+        {
             let expandedCertPath = NSString(string: certPath).expandingTildeInPath
             let expandedKeyPath = NSString(string: keyPath).expandingTildeInPath
 
@@ -352,7 +551,8 @@ actor KubeAPIService {
             do {
                 certPEM = try Data(contentsOf: URL(fileURLWithPath: expandedCertPath))
             } catch {
-                throw CubeliteError.clientError(reason: "Cannot read client certificate file: \(certPath)")
+                throw CubeliteError.clientError(
+                    reason: "Cannot read client certificate file: \(certPath)")
             }
 
             // Convert PEM → DER and create a SecCertificate.
@@ -360,10 +560,12 @@ actor KubeAPIService {
             do {
                 certDER = try pemToDER(certPEM)
             } catch {
-                throw CubeliteError.clientError(reason: "Failed to parse PEM certificate from file: \(certPath)")
+                throw CubeliteError.clientError(
+                    reason: "Failed to parse PEM certificate from file: \(certPath)")
             }
             guard let certificate = SecCertificateCreateWithData(nil, certDER as CFData) else {
-                throw CubeliteError.clientError(reason: "Failed to create certificate from file: \(certPath)")
+                throw CubeliteError.clientError(
+                    reason: "Failed to create certificate from file: \(certPath)")
             }
 
             // Read the private key PEM file.
@@ -376,12 +578,16 @@ actor KubeAPIService {
 
             // Validate key type from PEM headers.
             guard let keyPEMString = String(data: keyPEM, encoding: .utf8) else {
-                throw CubeliteError.clientError(reason: "Client key file is not valid UTF-8: \(keyPath)")
+                throw CubeliteError.clientError(
+                    reason: "Client key file is not valid UTF-8: \(keyPath)")
             }
             let isEC = keyPEMString.contains("BEGIN EC PRIVATE KEY")
-            let isRSA = keyPEMString.contains("BEGIN RSA PRIVATE KEY") || keyPEMString.contains("BEGIN PRIVATE KEY")
+            let isRSA =
+                keyPEMString.contains("BEGIN RSA PRIVATE KEY")
+                || keyPEMString.contains("BEGIN PRIVATE KEY")
             guard isEC || isRSA else {
-                throw CubeliteError.clientError(reason: "Unsupported private key type in file: \(keyPath)")
+                throw CubeliteError.clientError(
+                    reason: "Unsupported private key type in file: \(keyPath)")
             }
 
             // Import the PEM key using SecItemImport.
@@ -395,9 +601,11 @@ actor KubeAPIService {
                 SecItemImportExportFlags(), &importParams, nil, &importedItems
             )
             guard importStatus == errSecSuccess,
-                  let privateKey = (importedItems as? [SecKey])?.first else {
+                let privateKey = (importedItems as? [SecKey])?.first
+            else {
                 throw CubeliteError.clientError(
-                    reason: "Failed to import private key from file: \(keyPath) (OSStatus \(importStatus))"
+                    reason:
+                        "Failed to import private key from file: \(keyPath) (OSStatus \(importStatus))"
                 )
             }
 
@@ -487,14 +695,16 @@ actor KubeAPIService {
         for candidateIdentity in refs {
             var candidateCert: SecCertificate?
             guard SecIdentityCopyCertificate(candidateIdentity, &candidateCert) == errSecSuccess,
-                  let candidateCert,
-                  (SecCertificateCopyData(candidateCert) as Data) == expectedCertData else {
+                let candidateCert,
+                (SecCertificateCopyData(candidateCert) as Data) == expectedCertData
+            else {
                 continue
             }
             return candidateIdentity
         }
 
-        throw CubeliteError.clientError(reason: "Client identity not found in keychain after import")
+        throw CubeliteError.clientError(
+            reason: "Client identity not found in keychain after import")
     }
 
     /// Converts PEM-encoded certificate data to DER format.
@@ -506,7 +716,8 @@ actor KubeAPIService {
             throw CubeliteError.clientError(reason: "CA certificate file is not valid UTF-8")
         }
 
-        let base64Content = pemString
+        let base64Content =
+            pemString
             .replacingOccurrences(of: "\r", with: "")
             .split(separator: "\n")
             .filter { !$0.hasPrefix("-----") }
