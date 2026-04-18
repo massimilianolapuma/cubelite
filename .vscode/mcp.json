@@ -1,8 +1,51 @@
 {
-  "servers": {
-    "penpot": {
-      "type": "http",
-      "url": "http://localhost:4401/mcp"
-    }
-  }
+	"servers": {
+		"penpot": {
+			"type": "http",
+			"url": "http://localhost:4401/mcp"
+		},
+		"io.github.SonarSource/sonarqube-mcp-server": {
+			"type": "stdio",
+			"command": "docker",
+			"args": [
+				"run",
+				"-i",
+				"--rm",
+				"-e",
+				"SONARQUBE_TOKEN",
+				"-e",
+				"SONARQUBE_ORG",
+				"-e",
+				"SONARQUBE_URL",
+				"docker.io/mcp/sonarqube:latest"
+			],
+			"env": {
+				"SONARQUBE_TOKEN": "${input:SONARQUBE_TOKEN}",
+				"SONARQUBE_ORG": "${input:SONARQUBE_ORG}",
+				"SONARQUBE_URL": "${input:SONARQUBE_URL}"
+			},
+			"gallery": "https://api.mcp.github.com",
+			"version": "1.12.0"
+		}
+	},
+	"inputs": [
+		{
+			"id": "SONARQUBE_TOKEN",
+			"type": "promptString",
+			"description": "Your SonarQube USER token",
+			"password": true
+		},
+		{
+			"id": "SONARQUBE_ORG",
+			"type": "promptString",
+			"description": "Your SonarQube Cloud organization key (if using SonarQube Cloud)",
+			"password": true
+		},
+		{
+			"id": "SONARQUBE_URL",
+			"type": "promptString",
+			"description": "Your SonarQube Server URL (if using SonarQube Server)",
+			"password": true
+		}
+	]
 }
