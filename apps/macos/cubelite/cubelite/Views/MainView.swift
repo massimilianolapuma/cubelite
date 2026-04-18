@@ -87,9 +87,9 @@ struct MainView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
                 .navigationSplitViewColumnWidth(
-                    min: 52,
+                    min: isSidebarCollapsed ? 52 : 200,
                     ideal: isSidebarCollapsed ? 52 : 240,
-                    max: isSidebarCollapsed ? 60 : 300
+                    max: isSidebarCollapsed ? 52 : 300
                 )
         } content: {
             resourceTypeList
