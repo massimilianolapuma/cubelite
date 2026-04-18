@@ -16,12 +16,25 @@ actor KubeAPIService {
 
     private let kubeconfigService: KubeconfigService
 
-    /// Cached URLSession paired with the cluster server URL it was built for.
+    /// Cached URLSessions keyed by cluster server base URL.
     ///
-    /// Reusing the session across sequential API calls to the same cluster avoids
-    /// repeated TLS handshakes, which cause `clientCertificateRejected` failures
-    /// on minikube-style clusters that use short-lived client certificates.
-    private var cachedSessionEntry: (session: URLSession, clusterServer: String)?
+    /// Using a dictionary instead of a single entry allows concurrent parallel
+    /// fetches against different clusters (e.g. `withTaskGroup` in
+    /// `loadCrossClusterData()`) without one cluster's session invalidating
+    /// another's in-flight requests, which would cause `URLError(.cancelled)`.
+    ///
+    /// Reusing sessions within the same cluster still avoids repeated TLS
+    /// handshakes that cause `clientCertificateRejected` on minikube-style
+    /// clusters with short-lived client certificates.
+    private var sessionCache: [String: URLSession] = [:]
+
+    /// Whether to skip TLS certificate verification for all clusters.
+    ///
+    /// Set from `AppSettings.skipTLSVerification` via `updateSkipTLS(_:)`.
+    /// Reading `UserDefaults` directly in `makeSession()` is unreliable under
+    /// the sandbox (Xcode re-installs can wipe the container) and has timing
+    /// issues on first launch. Keeping the flag in-memory avoids both problems.
+    private var skipTLSVerification: Bool = false
 
     /// Creates a new API service backed by the given kubeconfig service.
     ///
@@ -30,13 +43,25 @@ actor KubeAPIService {
         self.kubeconfigService = kubeconfigService
     }
 
-    /// Invalidates and discards the cached URLSession.
+    /// Invalidates and discards all cached URLSessions.
     ///
-    /// Call this when the active context changes so that the next API call
-    /// performs a fresh TLS handshake against the new cluster's certificates.
+    /// Call this when TLS settings change so that the next API call to every
+    /// cluster performs a fresh TLS handshake reflecting the new configuration.
     func invalidateSession() {
-        cachedSessionEntry?.session.invalidateAndCancel()
-        cachedSessionEntry = nil
+        for (_, session) in sessionCache {
+            session.invalidateAndCancel()
+        }
+        sessionCache.removeAll()
+    }
+
+    /// Updates the global TLS-skip flag and invalidates the cached session.
+    ///
+    /// The next API call will create a fresh `URLSession` whose delegate
+    /// reflects the new setting.
+    func updateSkipTLS(_ skip: Bool) {
+        guard skip != skipTLSVerification else { return }
+        skipTLSVerification = skip
+        invalidateSession()
     }
 
     // MARK: - Public API
@@ -248,17 +273,17 @@ actor KubeAPIService {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        // Reuse the cached session when the cluster server matches; build a new one
-        // when the context has changed. This prevents repeated TLS handshakes that
+        // Reuse the cached session for this cluster server when available.
+        // Each server keeps its own URLSession so that parallel fetches to
+        // different clusters (e.g. via withTaskGroup) never cancel each other's
+        // in-flight requests. This also prevents repeated TLS handshakes that
         // cause authentication failures on client-certificate clusters (e.g. minikube).
         let session: URLSession
-        if let entry = cachedSessionEntry, entry.clusterServer == base {
-            session = entry.session
+        if let cached = sessionCache[base] {
+            session = cached
         } else {
-            cachedSessionEntry?.session.invalidateAndCancel()
-            cachedSessionEntry = nil
             let newSession = try makeSession(cluster: cluster, user: user)
-            cachedSessionEntry = (session: newSession, clusterServer: base)
+            sessionCache[base] = newSession
             session = newSession
         }
 
@@ -331,7 +356,8 @@ actor KubeAPIService {
     /// URL error codes that indicate TLS certificate validation failure.
     static func isTLSError(_ error: URLError) -> Bool {
         switch error.code {
-        case .serverCertificateUntrusted,
+        case .secureConnectionFailed,
+            .serverCertificateUntrusted,
             .serverCertificateHasBadDate,
             .serverCertificateHasUnknownRoot,
             .serverCertificateNotYetValid,
@@ -398,8 +424,7 @@ actor KubeAPIService {
     ) throws -> URLSession {
         let caCertificate = try Self.loadCACertificate(from: cluster)
         let clientIdentity = try Self.loadClientIdentity(from: user)
-        let globalSkip = UserDefaults.standard.bool(forKey: AppSettings.Keys.skipTLSVerification)
-        let insecureSkip = globalSkip || (cluster.insecureSkipTlsVerify ?? false)
+        let insecureSkip = skipTLSVerification || (cluster.insecureSkipTlsVerify ?? false)
 
         let delegate = KubeURLSessionDelegate(
             trustedCertificate: caCertificate,
@@ -621,6 +646,11 @@ actor KubeAPIService {
     /// explicitly propagated to the stored keychain item so the Security framework can correlate
     /// the private key with the certificate for identity matching.
     ///
+    /// Uses `SecIdentityCreateWithCertificate` to locate the identity because the
+    /// `SecItemCopyMatching`-based enumeration approach (`kSecClassIdentity` +
+    /// `kSecMatchLimitAll`) does not reliably find freshly-imported items —
+    /// particularly in sandboxed apps.
+    ///
     /// - Parameters:
     ///   - certificate: The client certificate.
     ///   - privateKey:  The matching private key (created via `SecItemImport`).
@@ -676,35 +706,17 @@ actor KubeAPIService {
             )
         }
 
-        // Find the identity by enumerating all accessible identities and matching
-        // the certificate by its DER representation.
-        let identityQuery: [CFString: Any] = [
-            kSecClass: kSecClassIdentity,
-            kSecReturnRef: true,
-            kSecMatchLimit: kSecMatchLimitAll,
-        ]
-        var identityRefs: CFTypeRef?
-        let queryStatus = SecItemCopyMatching(identityQuery as CFDictionary, &identityRefs)
-        guard queryStatus == errSecSuccess, let refs = identityRefs as? [SecIdentity] else {
+        // Find the identity using SecIdentityCreateWithCertificate which searches
+        // the default keychain list for a private key matching the certificate.
+        var identity: SecIdentity?
+        let identityStatus = SecIdentityCreateWithCertificate(nil, certificate, &identity)
+        guard identityStatus == errSecSuccess, let identity else {
             throw CubeliteError.clientError(
-                reason: "Failed to enumerate keychain identities: OSStatus \(queryStatus)"
+                reason:
+                    "Client identity not found in keychain after import (OSStatus \(identityStatus))"
             )
         }
-
-        let expectedCertData = SecCertificateCopyData(certificate) as Data
-        for candidateIdentity in refs {
-            var candidateCert: SecCertificate?
-            guard SecIdentityCopyCertificate(candidateIdentity, &candidateCert) == errSecSuccess,
-                let candidateCert,
-                (SecCertificateCopyData(candidateCert) as Data) == expectedCertData
-            else {
-                continue
-            }
-            return candidateIdentity
-        }
-
-        throw CubeliteError.clientError(
-            reason: "Client identity not found in keychain after import")
+        return identity
     }
 
     /// Converts PEM-encoded certificate data to DER format.
@@ -741,7 +753,9 @@ actor KubeAPIService {
 /// - `SecCertificate` and `SecIdentity` are immutable Core Foundation objects
 /// - `Bool` is a value type
 /// - No mutable state exists after initialization
-private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
+    @unchecked Sendable
+{
 
     let trustedCertificate: SecCertificate?
     let clientIdentity: SecIdentity?
@@ -757,10 +771,10 @@ private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, @unche
         self.insecureSkipTLS = insecureSkipTLS
     }
 
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge
-    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+    /// Evaluates an authentication challenge and returns the disposition and credential.
+    private func handleChallenge(
+        _ challenge: URLAuthenticationChallenge
+    ) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
         let method = challenge.protectionSpace.authenticationMethod
 
         // Server trust evaluation
@@ -817,5 +831,38 @@ private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, @unche
         }
 
         return (.performDefaultHandling, nil)
+    }
+
+    // MARK: - URLSessionDelegate (completion-handler)
+
+    /// Session-level authentication challenge handler.
+    ///
+    /// Uses the completion-handler variant instead of the async version because
+    /// `URLSession` does not reliably invoke async delegate methods on all macOS
+    /// versions, causing TLS challenges to be silently ignored.
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let (disposition, credential) = handleChallenge(challenge)
+        completionHandler(disposition, credential)
+    }
+
+    // MARK: - URLSessionTaskDelegate (completion-handler)
+
+    /// Task-level authentication challenge handler.
+    ///
+    /// `session.data(for:)` delivers challenges through the task delegate first.
+    /// Forward to the shared handler so TLS skip and CA pinning work for every
+    /// data task.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let (disposition, credential) = handleChallenge(challenge)
+        completionHandler(disposition, credential)
     }
 }
