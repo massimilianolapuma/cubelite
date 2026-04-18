@@ -122,7 +122,7 @@ final class KubeconfigAutoDiscoveryTests: XCTestCase {
 
     func testLoadFromPaths_rancherPlusDefault_mergesContexts() async throws {
         let defaultConfig = try writeFile("config", contents: minimalKubeconfig(
-            context: "minikube", server: "https://127.0.0.1:8443"
+            context: "minikube", server: "https://127.0.0.1:8443" // NOSONAR — test fixture
         ))
         let rancherConfig = try writeFile("kub3-dev", contents: minimalKubeconfig(
             context: "kub3-dev", server: "https://kub3.ors.it/k8s/clusters/local"

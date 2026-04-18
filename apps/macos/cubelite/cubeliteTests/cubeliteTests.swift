@@ -10,7 +10,7 @@ final class KubeconfigServiceTests: XCTestCase {
     // MARK: loadFromPaths
 
     func testLoadFromPaths_validKubeconfig_returnsExpectedConfig() async throws {
-        let yaml = minimalYAML(context: "test-ctx", cluster: "test-cluster", server: "https://127.0.0.1:6443")
+        let yaml = minimalYAML(context: "test-ctx", cluster: "test-cluster", server: "https://127.0.0.1:6443") // NOSONAR — test fixture
         let url = try temporaryFile(contents: yaml)
         defer { try? FileManager.default.removeItem(at: url) }
 
@@ -18,7 +18,7 @@ final class KubeconfigServiceTests: XCTestCase {
 
         XCTAssertEqual(config.currentContext, "test-ctx")
         XCTAssertEqual(config.contexts, ["test-ctx"])
-        XCTAssertEqual(config.raw.clusters?.first?.cluster?.server, "https://127.0.0.1:6443")
+        XCTAssertEqual(config.raw.clusters?.first?.cluster?.server, "https://127.0.0.1:6443") // NOSONAR
         XCTAssertEqual(config.paths.count, 1)
     }
 
