@@ -23,6 +23,14 @@ actor KubeAPIService {
     /// on minikube-style clusters that use short-lived client certificates.
     private var cachedSessionEntry: (session: URLSession, clusterServer: String)?
 
+    /// Whether to skip TLS certificate verification for all clusters.
+    ///
+    /// Set from `AppSettings.skipTLSVerification` via `updateSkipTLS(_:)`.
+    /// Reading `UserDefaults` directly in `makeSession()` is unreliable under
+    /// the sandbox (Xcode re-installs can wipe the container) and has timing
+    /// issues on first launch. Keeping the flag in-memory avoids both problems.
+    private var skipTLSVerification: Bool = false
+
     /// Creates a new API service backed by the given kubeconfig service.
     ///
     /// - Parameter kubeconfigService: The service used to load kubeconfig state.
@@ -37,6 +45,16 @@ actor KubeAPIService {
     func invalidateSession() {
         cachedSessionEntry?.session.invalidateAndCancel()
         cachedSessionEntry = nil
+    }
+
+    /// Updates the global TLS-skip flag and invalidates the cached session.
+    ///
+    /// The next API call will create a fresh `URLSession` whose delegate
+    /// reflects the new setting.
+    func updateSkipTLS(_ skip: Bool) {
+        guard skip != skipTLSVerification else { return }
+        skipTLSVerification = skip
+        invalidateSession()
     }
 
     // MARK: - Public API
@@ -399,8 +417,7 @@ actor KubeAPIService {
     ) throws -> URLSession {
         let caCertificate = try Self.loadCACertificate(from: cluster)
         let clientIdentity = try Self.loadClientIdentity(from: user)
-        let globalSkip = UserDefaults.standard.bool(forKey: AppSettings.Keys.skipTLSVerification)
-        let insecureSkip = globalSkip || (cluster.insecureSkipTlsVerify ?? false)
+        let insecureSkip = skipTLSVerification || (cluster.insecureSkipTlsVerify ?? false)
 
         let delegate = KubeURLSessionDelegate(
             trustedCertificate: caCertificate,
