@@ -10,15 +10,67 @@ actor KubeconfigService {
     // MARK: - Path Resolution
 
     /// Resolves kubeconfig file paths from the `KUBECONFIG` environment variable,
-    /// falling back to `~/.kube/config`.
+    /// falling back to `~/.kube/config` plus any additional kubeconfig files
+    /// discovered in the `~/.kube/` directory.
+    ///
+    /// Auto-discovery scans `~/.kube/` for regular files whose first bytes
+    /// contain a YAML `kind: Config` marker, which is present in all valid
+    /// kubeconfig files. The default `config` file always comes first so its
+    /// `current-context` takes precedence during merge.
     static func resolveKubeconfigPaths() -> [URL] {
         if let envValue = ProcessInfo.processInfo.environment["KUBECONFIG"],
-           !envValue.isEmpty {
-            return envValue
+            !envValue.isEmpty
+        {
+            return
+                envValue
                 .split(separator: ":")
                 .map { URL(fileURLWithPath: String($0)) }
         }
-        return [realHomeDirectory().appendingPathComponent(".kube/config")]
+        let kubeDir = realHomeDirectory().appendingPathComponent(".kube")
+        let defaultConfig = kubeDir.appendingPathComponent("config")
+        var paths = [defaultConfig]
+        // Auto-discover additional kubeconfig files in ~/.kube/
+        paths.append(contentsOf: discoverKubeconfigFiles(in: kubeDir, excluding: defaultConfig))
+        return paths
+    }
+
+    /// Scans a directory for files that look like valid kubeconfig YAML.
+    ///
+    /// A file qualifies when it is a regular file (not a directory or symlink
+    /// to a directory) and its first 512 bytes contain `kind: Config` or
+    /// `kind: "Config"`. Hidden files (starting with `.`) and the `cache`
+    /// directory are skipped.
+    private static func discoverKubeconfigFiles(
+        in directory: URL,
+        excluding excluded: URL
+    ) -> [URL] {
+        let fm = FileManager.default
+        guard
+            let entries = try? fm.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        else { return [] }
+
+        return entries
+            .filter { url in
+                // Skip the already-included default config
+                guard url.standardizedFileURL != excluded.standardizedFileURL else {
+                    return false
+                }
+                // Skip directories (e.g. cache/, kubens/)
+                let isDir =
+                    (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                guard !isDir else { return false }
+                // Quick heuristic: read first 512 bytes and check for kubeconfig marker
+                guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+                defer { handle.closeFile() }
+                guard let header = try? handle.read(upToCount: 512) else { return false }
+                guard let text = String(data: header, encoding: .utf8) else { return false }
+                return text.contains("kind: Config") || text.contains("kind: \"Config\"")
+            }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     /// Returns the user's real home directory, bypassing sandbox container redirection.
@@ -35,11 +87,28 @@ actor KubeconfigService {
         return FileManager.default.homeDirectoryForCurrentUser
     }
 
+    // MARK: - Custom Paths
+
+    /// User-specified kubeconfig paths. When non-empty, overrides `KUBECONFIG` env-var
+    /// and default `~/.kube/config` resolution.
+    private var customPaths: [URL] = []
+
+    /// Updates the custom kubeconfig paths used by this service.
+    ///
+    /// Call this whenever `AppSettings.kubeconfigPaths` changes.
+    /// Pass an empty array to revert to default path resolution.
+    func configure(paths: [URL]) {
+        customPaths = paths
+    }
+
     // MARK: - Load
 
     /// Loads and merges kubeconfig from the resolved paths.
+    ///
+    /// Uses `customPaths` when non-empty; otherwise falls back to `KUBECONFIG`
+    /// env-var resolution and `~/.kube/config`.
     func load() throws -> KubeConfig {
-        let paths = Self.resolveKubeconfigPaths()
+        let paths = customPaths.isEmpty ? Self.resolveKubeconfigPaths() : customPaths
         return try loadFromPaths(paths)
     }
 
