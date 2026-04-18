@@ -114,6 +114,8 @@ cubelite/
 
 - No direct commits to `main` — all changes via feature branch → PR → squash-merge
 - Commit messages follow Conventional Commits: `type(scope): description`
+- **Build and test locally before every commit** — never commit code that
+  has not been built and tested. See `AGENTS.md` § "Quality Gates" for commands
 - **PRs are mergeable only when ALL CI checks pass** (tests, lint, Sonar, build)
   - A PR that fails any check MUST NOT be merged — fix the failures first
   - No exceptions, no manual overrides
@@ -125,6 +127,21 @@ cubelite/
   exist on an open PR branch not yet merged to `main`, branch from that PR branch instead
 - Once the config PR is merged, resume branching from `main`
 - **Never overwrite** `.github/agents/*.agent.md` — rebase onto the config branch if missing
+
+### Bug Discovery Workflow
+
+When any agent discovers a bug **during work on another task**, it **MUST NOT** fix it
+on the current branch. Instead:
+
+1. **Create a GitHub issue** (`gh issue create`) with title, root cause, and acceptance criteria
+2. **Create a dedicated `fix/<N>-<slug>` branch** from `main`
+3. **Delegate to the owning agent** per the Agent Routing Table
+4. **Fix → test → commit → push → open PR** with `Closes #<N>`
+5. **Return** to the original branch
+
+See `AGENTS.md` § "Bug Discovery Workflow" for the full protocol.
+
+**Exception**: bugs caused by changes on the current branch may be fixed in-place.
 
 ---
 
