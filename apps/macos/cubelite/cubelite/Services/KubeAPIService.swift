@@ -760,10 +760,10 @@ private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, URLSes
         self.insecureSkipTLS = insecureSkipTLS
     }
 
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge
-    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+    /// Evaluates an authentication challenge and returns the disposition and credential.
+    private func handleChallenge(
+        _ challenge: URLAuthenticationChallenge
+    ) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
         let method = challenge.protectionSpace.authenticationMethod
 
         // Server trust evaluation
@@ -822,18 +822,36 @@ private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, URLSes
         return (.performDefaultHandling, nil)
     }
 
-    // MARK: - URLSessionTaskDelegate
+    // MARK: - URLSessionDelegate (completion-handler)
+
+    /// Session-level authentication challenge handler.
+    ///
+    /// Uses the completion-handler variant instead of the async version because
+    /// `URLSession` does not reliably invoke async delegate methods on all macOS
+    /// versions, causing TLS challenges to be silently ignored.
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let (disposition, credential) = handleChallenge(challenge)
+        completionHandler(disposition, credential)
+    }
+
+    // MARK: - URLSessionTaskDelegate (completion-handler)
 
     /// Task-level authentication challenge handler.
     ///
     /// `session.data(for:)` delivers challenges through the task delegate first.
-    /// Forward to the session-level handler so TLS skip and CA pinning work for
-    /// every data task.
+    /// Forward to the shared handler so TLS skip and CA pinning work for every
+    /// data task.
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
-        didReceive challenge: URLAuthenticationChallenge
-    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        await urlSession(session, didReceive: challenge)
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let (disposition, credential) = handleChallenge(challenge)
+        completionHandler(disposition, credential)
     }
 }
