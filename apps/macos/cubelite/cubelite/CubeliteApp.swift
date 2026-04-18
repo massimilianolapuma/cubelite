@@ -37,6 +37,12 @@ struct CubeliteApp: App {
                             await kubeAPIService.invalidateSession()
                         }
                     }
+                    .onChange(of: appSettings.skipTLSVerification) { _, newValue in
+                        // Defensive: persist explicitly in case @Observable didSet
+                        // does not fire for all binding paths.
+                        UserDefaults.standard.set(newValue, forKey: AppSettings.Keys.skipTLSVerification)
+                        Task { await kubeAPIService.invalidateSession() }
+                    }
                     .task {
                         applyNSAppearance(appSettings.appearanceMode)
                         let urls = appSettings.kubeconfigPaths.map { URL(fileURLWithPath: $0) }
