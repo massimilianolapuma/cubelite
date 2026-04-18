@@ -16,12 +16,17 @@ actor KubeAPIService {
 
     private let kubeconfigService: KubeconfigService
 
-    /// Cached URLSession paired with the cluster server URL it was built for.
+    /// Cached URLSessions keyed by cluster server base URL.
     ///
-    /// Reusing the session across sequential API calls to the same cluster avoids
-    /// repeated TLS handshakes, which cause `clientCertificateRejected` failures
-    /// on minikube-style clusters that use short-lived client certificates.
-    private var cachedSessionEntry: (session: URLSession, clusterServer: String)?
+    /// Using a dictionary instead of a single entry allows concurrent parallel
+    /// fetches against different clusters (e.g. `withTaskGroup` in
+    /// `loadCrossClusterData()`) without one cluster's session invalidating
+    /// another's in-flight requests, which would cause `URLError(.cancelled)`.
+    ///
+    /// Reusing sessions within the same cluster still avoids repeated TLS
+    /// handshakes that cause `clientCertificateRejected` on minikube-style
+    /// clusters with short-lived client certificates.
+    private var sessionCache: [String: URLSession] = [:]
 
     /// Whether to skip TLS certificate verification for all clusters.
     ///
@@ -38,13 +43,15 @@ actor KubeAPIService {
         self.kubeconfigService = kubeconfigService
     }
 
-    /// Invalidates and discards the cached URLSession.
+    /// Invalidates and discards all cached URLSessions.
     ///
-    /// Call this when the active context changes so that the next API call
-    /// performs a fresh TLS handshake against the new cluster's certificates.
+    /// Call this when TLS settings change so that the next API call to every
+    /// cluster performs a fresh TLS handshake reflecting the new configuration.
     func invalidateSession() {
-        cachedSessionEntry?.session.invalidateAndCancel()
-        cachedSessionEntry = nil
+        for (_, session) in sessionCache {
+            session.invalidateAndCancel()
+        }
+        sessionCache.removeAll()
     }
 
     /// Updates the global TLS-skip flag and invalidates the cached session.
@@ -266,17 +273,17 @@ actor KubeAPIService {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        // Reuse the cached session when the cluster server matches; build a new one
-        // when the context has changed. This prevents repeated TLS handshakes that
+        // Reuse the cached session for this cluster server when available.
+        // Each server keeps its own URLSession so that parallel fetches to
+        // different clusters (e.g. via withTaskGroup) never cancel each other's
+        // in-flight requests. This also prevents repeated TLS handshakes that
         // cause authentication failures on client-certificate clusters (e.g. minikube).
         let session: URLSession
-        if let entry = cachedSessionEntry, entry.clusterServer == base {
-            session = entry.session
+        if let cached = sessionCache[base] {
+            session = cached
         } else {
-            cachedSessionEntry?.session.invalidateAndCancel()
-            cachedSessionEntry = nil
             let newSession = try makeSession(cluster: cluster, user: user)
-            cachedSessionEntry = (session: newSession, clusterServer: base)
+            sessionCache[base] = newSession
             session = newSession
         }
 
