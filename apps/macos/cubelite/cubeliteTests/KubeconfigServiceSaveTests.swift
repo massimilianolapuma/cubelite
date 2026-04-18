@@ -120,7 +120,7 @@ final class KubeconfigServiceSaveTests: XCTestCase {
     /// Switching to the already-active context and saving is a no-op in terms of outcome.
     func testSetActiveContext_sameContext_thenSave_isIdempotent() async throws {
         let yaml = minimalYAML(
-            context: "ctx-only", cluster: "cluster", server: "https://127.0.0.1:6443")
+            context: "ctx-only", cluster: "cluster", server: "https://127.0.0.1:6443") // NOSONAR — test fixture
         let url = try temporaryFile(contents: yaml)
         defer { try? FileManager.default.removeItem(at: url) }
 

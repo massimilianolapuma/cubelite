@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import cubelite
 
 /// Unit tests for ``AppSettings``.
@@ -13,14 +14,17 @@ final class PreferencesTests: XCTestCase {
     /// Removes all AppSettings keys from UserDefaults so each test starts clean.
     private func resetDefaults() {
         let d = UserDefaults.standard
-        [Keys.autoRefreshInterval,
-         Keys.launchAtLogin,
-         Keys.showSystemNamespaces,
-         Keys.appearanceMode,
-         Keys.menuBarIconStyle,
-         Keys.kubeconfigPath,
-         Keys.apiTimeout,
-         Keys.skipTLSVerification].forEach { d.removeObject(forKey: $0) }
+        [
+            Keys.autoRefreshInterval,
+            Keys.launchAtLogin,
+            Keys.showSystemNamespaces,
+            Keys.appearanceMode,
+            Keys.menuBarIconStyle,
+            Keys.kubeconfigPath,
+            Keys.kubeconfigPaths,
+            Keys.apiTimeout,
+            Keys.skipTLSVerification,
+        ].forEach { d.removeObject(forKey: $0) }
     }
 
     override func setUp() async throws {
@@ -58,9 +62,9 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(sut.menuBarIconStyle, .standard)
     }
 
-    func testDefaultKubeconfigPath() {
+    func testDefaultKubeconfigPaths() {
         let sut = AppSettings()
-        XCTAssertEqual(sut.kubeconfigPath, "")
+        XCTAssertTrue(sut.kubeconfigPaths.isEmpty)
     }
 
     func testDefaultApiTimeout() {
@@ -105,11 +109,21 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(sut2.menuBarIconStyle, .monochrome)
     }
 
-    func testKubeconfigPathPersists() {
+    func testKubeconfigPathsPersists() {
         let sut = AppSettings()
-        sut.kubeconfigPath = "/Users/test/.kube/custom-config"
+        sut.kubeconfigPaths = ["/Users/test/.kube/custom-config", "/tmp/extra-config"]
         let sut2 = AppSettings()
-        XCTAssertEqual(sut2.kubeconfigPath, "/Users/test/.kube/custom-config")
+        XCTAssertEqual(
+            sut2.kubeconfigPaths, ["/Users/test/.kube/custom-config", "/tmp/extra-config"])
+    }
+
+    func testKubeconfigPathLegacyMigration() {
+        UserDefaults.standard.set("/Users/test/.kube/legacy-config", forKey: Keys.kubeconfigPath)
+        let sut = AppSettings()
+        XCTAssertEqual(sut.kubeconfigPaths, ["/Users/test/.kube/legacy-config"])
+        XCTAssertNil(
+            UserDefaults.standard.string(forKey: Keys.kubeconfigPath),
+            "Legacy key should be removed after migration")
     }
 
     func testApiTimeoutPersists() {
@@ -126,8 +140,9 @@ final class PreferencesTests: XCTestCase {
         let sut = AppSettings()
         for interval in validIntervals {
             sut.autoRefreshInterval = interval
-            XCTAssertEqual(sut.autoRefreshInterval, interval,
-                           "Interval \(interval) should be stored as-is")
+            XCTAssertEqual(
+                sut.autoRefreshInterval, interval,
+                "Interval \(interval) should be stored as-is")
         }
     }
 
@@ -136,15 +151,17 @@ final class PreferencesTests: XCTestCase {
     func testApiTimeoutBelowMinimumClampsOnLoad() {
         UserDefaults.standard.set(1, forKey: Keys.apiTimeout)
         let sut = AppSettings()
-        XCTAssertGreaterThanOrEqual(sut.apiTimeout, 5,
-                                    "Timeout below minimum should be clamped to 5 on load")
+        XCTAssertGreaterThanOrEqual(
+            sut.apiTimeout, 5,
+            "Timeout below minimum should be clamped to 5 on load")
     }
 
     func testApiTimeoutAboveMaximumClampsOnLoad() {
         UserDefaults.standard.set(999, forKey: Keys.apiTimeout)
         let sut = AppSettings()
-        XCTAssertLessThanOrEqual(sut.apiTimeout, 120,
-                                  "Timeout above maximum should be clamped to 120 on load")
+        XCTAssertLessThanOrEqual(
+            sut.apiTimeout, 120,
+            "Timeout above maximum should be clamped to 120 on load")
     }
 
     // MARK: - Skip TLS Verification
@@ -178,8 +195,9 @@ final class PreferencesTests: XCTestCase {
 
     func testAllAppearanceModesCoveredByLabel() {
         for mode in AppSettings.AppearanceMode.allCases {
-            XCTAssertFalse(mode.label.isEmpty,
-                           "AppearanceMode.\(mode.rawValue) must have a non-empty label")
+            XCTAssertFalse(
+                mode.label.isEmpty,
+                "AppearanceMode.\(mode.rawValue) must have a non-empty label")
         }
     }
 
@@ -187,8 +205,9 @@ final class PreferencesTests: XCTestCase {
 
     func testAllMenuBarIconStylesCoveredByLabel() {
         for style in AppSettings.MenuBarIconStyle.allCases {
-            XCTAssertFalse(style.label.isEmpty,
-                           "MenuBarIconStyle.\(style.rawValue) must have a non-empty label")
+            XCTAssertFalse(
+                style.label.isEmpty,
+                "MenuBarIconStyle.\(style.rawValue) must have a non-empty label")
         }
     }
 }

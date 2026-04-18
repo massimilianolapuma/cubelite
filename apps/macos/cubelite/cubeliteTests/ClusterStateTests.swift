@@ -145,10 +145,16 @@ final class ResourceTypeTests: XCTestCase {
         XCTAssertEqual(ResourceType.deployments.id, "Deployments")
     }
 
-    func testCaseIterable_containsBothCases() {
+    func testCaseIterable_containsAllCases() {
         let all = ResourceType.allCases
-        XCTAssertEqual(all.count, 2)
+        XCTAssertEqual(all.count, 8)
+        XCTAssertTrue(all.contains(.dashboard))
         XCTAssertTrue(all.contains(.pods))
         XCTAssertTrue(all.contains(.deployments))
+        XCTAssertTrue(all.contains(.services))
+        XCTAssertTrue(all.contains(.secrets))
+        XCTAssertTrue(all.contains(.configMaps))
+        XCTAssertTrue(all.contains(.ingresses))
+        XCTAssertTrue(all.contains(.helmReleases))
     }
 }

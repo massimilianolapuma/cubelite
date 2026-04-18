@@ -42,26 +42,38 @@ final class CubeliteUITests: XCTestCase {
 
     func testPreferences_opensViaMenuBar() throws {
         // Use the standard macOS menu: CubeLite > Settings... (Cmd+,)
+        let initialWindowCount = app.windows.count
         app.typeKey(",", modifierFlags: .command)
 
-        // Wait for the settings window to appear
-        let settingsWindow = app.windows.containing(.staticText, identifier: "General").firstMatch
-        let appeared = settingsWindow.waitForExistence(timeout: 3)
+        // On macOS 14+, the Settings window is a new window distinct from the main window.
+        // Its title matches the selected tab (e.g. "General").
+        // Wait for the window count to increase OR for a window named "General" to appear.
+        let newWindowPredicate = NSPredicate(format: "count > %d", initialWindowCount)
+        let windowExpectation = XCTNSPredicateExpectation(
+            predicate: newWindowPredicate,
+            object: app.windows
+        )
+        let appeared =
+            XCTWaiter.wait(for: [windowExpectation], timeout: 5) == .completed
+            || app.windows["General"].waitForExistence(timeout: 2)
         XCTAssertTrue(appeared, "Settings window should appear after Cmd+,")
     }
 
     func testPreferences_hasExpectedTabs() throws {
         app.typeKey(",", modifierFlags: .command)
 
-        // Give the window and all tab items time to appear
-        let generalTab = app.staticTexts["General"]
-        XCTAssertTrue(generalTab.waitForExistence(timeout: 5), "General tab should exist in preferences")
+        // On macOS 14+, TabView tabs inside a Settings scene are rendered as toolbar buttons,
+        // not static texts. The window title may also match the selected tab name.
+        let generalTab =
+            app.toolbars.buttons["General"].waitForExistence(timeout: 5)
+            || app.windows["General"].waitForExistence(timeout: 2)
+        XCTAssertTrue(generalTab, "General tab should exist in preferences")
 
-        let appearanceTab = app.staticTexts["Appearance"]
-        XCTAssertTrue(appearanceTab.waitForExistence(timeout: 3), "Appearance tab should exist in preferences")
+        let appearanceTab = app.toolbars.buttons["Appearance"].waitForExistence(timeout: 3)
+        XCTAssertTrue(appearanceTab, "Appearance tab should exist in preferences")
 
-        let advancedTab = app.staticTexts["Advanced"]
-        XCTAssertTrue(advancedTab.waitForExistence(timeout: 3), "Advanced tab should exist in preferences")
+        let advancedTab = app.toolbars.buttons["Advanced"].waitForExistence(timeout: 3)
+        XCTAssertTrue(advancedTab, "Advanced tab should exist in preferences")
     }
 
     // MARK: - Main Menu
@@ -95,8 +107,9 @@ final class CubeliteUITests: XCTestCase {
         let result = XCTWaiter.wait(for: [expectation], timeout: 2)
         // Either the window closes or remains (depending on app behaviour)
         // We just verify the shortcut doesn't crash
-        XCTAssertTrue(result == .completed || result == .timedOut,
-                       "Cmd+W should either close window or be handled gracefully")
+        XCTAssertTrue(
+            result == .completed || result == .timedOut,
+            "Cmd+W should either close window or be handled gracefully")
     }
 
     // MARK: - Launch Performance

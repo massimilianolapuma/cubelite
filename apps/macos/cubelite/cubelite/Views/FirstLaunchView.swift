@@ -40,8 +40,8 @@ struct FirstLaunchView: View {
     /// Exposed as a static property so that unit tests can verify content
     /// without instantiating the view.
     static let featureHighlights: [FeatureItem] = [
-        FeatureItem(icon: "server.rack",       label: "Discover & switch contexts across clusters"),
-        FeatureItem(icon: "cube.box",          label: "Monitor pods, deployments, and namespaces"),
+        FeatureItem(icon: "server.rack", label: "Discover & switch contexts across clusters"),
+        FeatureItem(icon: "cube.box", label: "Monitor pods, deployments, and namespaces"),
         FeatureItem(icon: "menubar.rectangle", label: "Native macOS menu bar integration"),
     ]
 
@@ -61,7 +61,6 @@ struct FirstLaunchView: View {
             KubeconfigStatusCard(status: status)
             FeatureListSection(items: Self.featureHighlights)
             Spacer(minLength: 0)
-            StepIndicatorDots()
             GetStartedButton(action: onComplete)
         }
         .padding(.horizontal, 48)
@@ -79,7 +78,8 @@ struct FirstLaunchView: View {
             let config = try await kubeconfigService.loadFromPaths(paths)
             let rawPath = paths.first?.path ?? ""
             let home = NSHomeDirectory()
-            let displayPath = rawPath.hasPrefix(home)
+            let displayPath =
+                rawPath.hasPrefix(home)
                 ? "~" + rawPath.dropFirst(home.count)
                 : rawPath
             status = .found(contextCount: config.contexts.count, displayPath: displayPath)
@@ -95,9 +95,9 @@ struct FirstLaunchView: View {
 private struct OnboardingHeaderSection: View {
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: "square.3.layers.3d")
-                .font(.system(size: 36, weight: .medium))
-                .foregroundStyle(.tint)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 80, height: 80)
             Text("Welcome to CubeLite")
                 .font(.title2.bold())
             Text("Your Kubernetes contexts, unified")
@@ -146,7 +146,7 @@ private struct KubeconfigStatusCard: View {
         switch status {
         case .checking:
             Text("Detecting kubeconfig…").foregroundStyle(.secondary)
-        case let .found(count, path):
+        case .found(let count, let path):
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(count) context\(count == 1 ? "" : "s") discovered")
                     .font(.callout.weight(.medium))
@@ -214,25 +214,5 @@ private struct GetStartedButton: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.regular)
-    }
-}
-
-// MARK: - StepIndicatorDots
-
-/// Three-dot step indicator. Visual-only; the first dot is always active
-/// since FirstLaunchView is a single-screen onboarding flow.
-private struct StepIndicatorDots: View {
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(.tint)
-                .frame(width: 12, height: 12)
-            Circle()
-                .fill(Color(nsColor: .separatorColor))
-                .frame(width: 8, height: 8)
-            Circle()
-                .fill(Color(nsColor: .separatorColor))
-                .frame(width: 8, height: 8)
-        }
     }
 }
