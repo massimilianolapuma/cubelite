@@ -83,11 +83,11 @@ final class ResourceModelIdentityTests: XCTestCase {
             phase: "Running", ready: true, restarts: 0, creationTimestamp: nil
         )
         pod.nodeName = "worker-1"
-        pod.podIP = "10.0.0.5"
+        pod.podIP = "10.0.0.5" // NOSONAR — mock pod IP in test fixture
         pod.cpuRequest = "500m"
         pod.memoryRequest = "256Mi"
         XCTAssertEqual(pod.nodeName, "worker-1")
-        XCTAssertEqual(pod.podIP, "10.0.0.5")
+        XCTAssertEqual(pod.podIP, "10.0.0.5") // NOSONAR
         XCTAssertEqual(pod.cpuRequest, "500m")
         XCTAssertEqual(pod.memoryRequest, "256Mi")
     }
