@@ -19,12 +19,20 @@ Unlike Lens (Electron-based, cloud account required) or k9s (terminal-only), Cub
 ## Features
 
 - **Kubeconfig merge** — resolves `KUBECONFIG` env paths, merges multiple files, first file's `current-context` wins
+- **Kubeconfig auto-discovery** — scans `~/.kube/` directory for config files automatically
 - **Context switch** — switch active context and persist the change to disk
 - **Menu bar quick-switch** — click the status-bar icon to switch context without opening the main window
 - **Lens-like GUI** — `NavigationSplitView` sidebar listing all contexts, detail pane for cluster resources
-- **Kubernetes resources** — Pods, Namespaces, Deployments (Pods: name, namespace, phase, ready, restarts)
-- **Secure credential storage** — OS Keychain integration for bearer tokens and client certificates (planned)
-- **Graceful no-config state** — informative UI when no kubeconfig is found
+- **All Clusters dashboard** — cross-cluster health aggregation showing online/offline/RBAC-limited status per cluster
+- **Kubernetes resources** — Pods, Namespaces, Deployments, Services, Secrets, ConfigMaps, Ingresses, Helm Releases
+- **Deployment detail** — spec grid with replica counts, rollout strategy, and conditions timeline
+- **Namespace browser** — CPU/Memory/IP columns with pod count badges per namespace
+- **Secure credential storage** — Security.framework keychain integration for bearer tokens and client certificate auth
+- **TLS flexibility** — skip certificate verification for self-signed clusters (minikube, dev environments)
+- **RBAC resilience** — graceful 403 Forbidden handling with per-resource tolerance; partial data shown where permitted
+- **First launch onboarding** — guided setup shown when no kubeconfig is found
+- **Preferences panel** — auto-refresh interval, dark/light/system theme, TLS skip verification, custom kubeconfig paths
+- **Application logs** — in-app log viewer with severity filtering
 
 ## Architecture
 
