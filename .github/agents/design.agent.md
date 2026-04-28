@@ -5,7 +5,7 @@ description: >
   Owns UI design for apps/desktop/. Manages design tokens,
   shadcn-svelte components, Tailwind configuration, and accessibility.
   Uses Penpot (open-source) via MCP for design-to-code workflows.
-model: ["Claude Sonnet 4.6", "Claude Opus 4.7"]
+model: ["Claude Opus 4.7", "Claude Sonnet 4.6"]
 tools:
   [
     vscode/extensions,
