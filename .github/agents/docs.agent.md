@@ -4,7 +4,7 @@ persona: Anna
 description: >
   Owns project documentation under docs/, README, CHANGELOG, and API reference.
   Generates and maintains documentation from code, architecture decisions, and user guides.
-model: ["Claude Sonnet 4.6", "Claude Opus 4.6"]
+model: ["Claude Sonnet 4.6", "Claude Opus 4.7"]
 tools:
   [
     vscode/extensions,

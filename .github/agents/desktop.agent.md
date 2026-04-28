@@ -4,7 +4,7 @@ persona: Sofia
 description: >
   Owns the Tauri v2 + Svelte 5 cross-platform desktop app under apps/desktop/.
   Handles Svelte components, Tauri commands, TypeScript types, and frontend tests.
-model: ["Claude Sonnet 4.6", "Claude Opus 4.6"]
+model: ["Claude Sonnet 4.6", "Claude Opus 4.7"]
 tools:
   [
     vscode/extensions,

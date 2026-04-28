@@ -4,7 +4,7 @@ persona: Giulia
 description: >
   Cross-cutting quality assurance. Reviews test coverage,
   validates CI results, and enforces quality gates across all stacks.
-model: ["Claude Sonnet 4.6", "Claude Opus 4.6"]
+model: ["Claude Sonnet 4.6", "Claude Opus 4.7"]
 tools:
   [
     vscode/extensions,

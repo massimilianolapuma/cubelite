@@ -4,7 +4,7 @@ persona: Paolo
 description: >
   Owns CI/CD and GitHub configuration under .github/.
   Manages workflows, actions, secret handling, and repo tooling.
-model: ["Claude Sonnet 4.6", "Claude Opus 4.6"]
+model: ["Claude Sonnet 4.6", "Claude Opus 4.7"]
 tools:
   [
     vscode/extensions,
