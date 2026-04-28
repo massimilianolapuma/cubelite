@@ -4,7 +4,7 @@ persona: Elena
 description: >
   Owns the native macOS menu-bar app under apps/macos/.
   Swift 6 + SwiftUI, Observation framework, Keychain integration.
-model: ["Claude Sonnet 4.6", "Claude Opus 4.6"]
+model: ["Claude Sonnet 4.6", "Claude Opus 4.7"]
 tools:
   [
     vscode/extensions,

@@ -4,7 +4,7 @@ persona: Marco
 description: >
   Owns all Rust code under crates/. Handles K8s API logic, domain models,
   error types, kubeconfig parsing, and the cubelite-core library.
-model: ["Claude Sonnet 4.6", "Claude Opus 4.6"]
+model: ["Claude Sonnet 4.6", "Claude Opus 4.7"]
 tools:
   [
     vscode/extensions,

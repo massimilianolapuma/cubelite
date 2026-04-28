@@ -4,7 +4,7 @@ persona: Davide
 description: >
   Owns the CubeLite landing page and its deployment to GitHub Pages.
   Manages site content, static generation, and the publishing workflow.
-model: ["Claude Sonnet 4.6", "Claude Opus 4.6"]
+model: ["Claude Sonnet 4.6", "Claude Opus 4.7"]
 tools:
   [
     vscode/extensions,
