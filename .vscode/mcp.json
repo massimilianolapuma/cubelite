@@ -2,7 +2,7 @@
 	"servers": {
 		"penpot": {
 			"type": "http",
-			"url": "http://localhost:4401/mcp"
+			"url": "https://design.penpot.app/mcp/stream?userToken=${input:PENPOT_USER_TOKEN}"
 		},
 		"io.github.SonarSource/sonarqube-mcp-server": {
 			"type": "stdio",
@@ -29,6 +29,12 @@
 		}
 	},
 	"inputs": [
+		{
+			"id": "PENPOT_USER_TOKEN",
+			"type": "promptString",
+			"description": "Penpot user token (https://design.penpot.app → Profile → Access tokens)",
+			"password": true
+		},
 		{
 			"id": "SONARQUBE_TOKEN",
 			"type": "promptString",
