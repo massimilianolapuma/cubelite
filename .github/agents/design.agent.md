@@ -94,11 +94,7 @@ tools:
     github/update_pull_request_branch,
     browser/openBrowserPage,
     ms-vscode.vscode-websearchforcopilot/websearch,
-    penpot/execute_code,
-    penpot/export_shape,
-    penpot/high_level_overview,
-    penpot/import_image,
-    penpot/penpot_api_info,
+    penpot/*,
     todo,
   ]
 ---
@@ -107,22 +103,26 @@ tools:
 
 You own the UI layer of `apps/desktop/`. You work alongside the desktop-agent.
 
-## Design Tool — Penpot MCP
+## Design Tool — Penpot MCP (Cloud Beta)
 
 This project uses **Penpot** (open-source design platform) instead of Figma.
-The Penpot MCP server is configured in `.vscode/mcp.json` and provides
-design-to-code and code-to-design workflows via the Model Context Protocol.
+The Penpot MCP server is configured in `.vscode/mcp.json` and points at the
+official **cloud beta endpoint**: `https://design.penpot.app/mcp/stream`.
+It provides design-to-code and code-to-design workflows via the Model Context
+Protocol.
 
 ### How it works
 
-1. **Start the server**: `npx -y @penpot/mcp@">=0"` (requires Node.js v22+)
-2. **Load the plugin** in Penpot (Plugins → `http://localhost:4400/manifest.json`)
-3. **Connect** the plugin to the MCP server (click "Connect to MCP server")
-4. VS Code connects automatically via `.vscode/mcp.json` (SSE on `localhost:4401`)
+1. Generate a personal access token in Penpot:
+   <https://design.penpot.app/#/settings/access-tokens>
+2. Start the MCP server in VS Code (Command Palette → `MCP: Start Server` →
+   `penpot`). Paste the token when prompted (stored as a masked input).
+3. VS Code connects to the cloud beta stream automatically via `.vscode/mcp.json`.
 
-The Penpot MCP tools are dynamically discovered at runtime when the server is
-running. They enable querying, transforming, and creating design elements
-directly from the AI agent.
+The Penpot MCP tools are dynamically discovered at runtime. The wildcard
+`penpot/*` entry in the `tools` allow-list above grants this agent permission
+to invoke any tool exposed by the cloud beta server (boards, files, pages,
+design tokens, exports, etc.).
 
 See `docs/penpot-mcp-setup.md` for the full setup guide.
 
