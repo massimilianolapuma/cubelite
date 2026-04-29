@@ -86,6 +86,29 @@ Riferimento per i mockup Penpot e l'allineamento con i kit `kit-titlebar-*`. mac
 | Traffic light min | `#FEBC2E` | `#FEBC2E` | |
 | Traffic light max | `#28C840` | `#28C840` | |
 
+### Titlebar Height (CubeLite)
+
+Altezza canonica **28pt** per la titlebar di tutte le finestre principali, dialog e panel. Allineata a `kit-titlebar-light/dark` (h=30pt nel kit, 28pt nelle istanze applicative — il kit include 2pt di margine visivo del board).
+
+| Tipo finestra | Titlebar | Toolbar (se presente) | Totale chrome |
+|---|---|---|---|
+| MainView (con toolbar unificata) | `28pt` | `44pt` | `72pt` |
+| Preferences (panel) | `28pt` | `52pt` (tabbar) | `80pt` |
+| Namespace View / Deployment Detail | `28pt` | — (toolbar inline) | `28pt` |
+| Logs & Errors Panel | `28pt`* | — | `28pt`* |
+| First Launch | `28pt` | — | `28pt` |
+
+\* La board `Logs & Errors Panel – Light` ha `titlebar-bg h=32pt` come residuo storico; `– Dark` è già a `28pt`. Allineamento futuro tracciato (non bloccante).
+
+**Centratura traffic lights**: i tre cerchi 12×12pt sono centrati verticalmente nella titlebar:
+- Per `h=28`: `y = (28 − 12) / 2 = 8pt` dal top della titlebar
+- Per `h=32` (legacy): `y = 10pt`
+
+**Centratura titolo**: testo titolo ~15pt di altezza, centrato:
+- Per `h=28`: `y ≈ (28 − 15) / 2 = 6.5pt` → `7pt` dal top
+
+> Convenzione: ogni nuova board macOS deve usare `h=28pt` per la titlebar. Eccezioni richiedono giustificazione esplicita nel design review.
+
 ### Dark Mode
 
 - Rispettare la scelta di sistema — **mai offrire impostazione app-specifica** per aspetto
