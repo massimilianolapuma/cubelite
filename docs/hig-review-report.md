@@ -468,7 +468,7 @@ In `MainView – Error`, il banner inline era visualizzato come:
 
 | ID | Board/Componente | Problema | Suggerimento |
 |---|---|---|---|
-| P3-01 | kit-toggle-off/on | Frame width diverso (off: 78pt, on: 74pt) | Uniformare larghezza frame se usati in layout fisso |
+| P3-01 | kit-toggle-off/on | Frame width diverso (off: 78pt, on: 74pt) | Uniformare larghezza frame se usati in layout fisso — ✅ Risolto (#189) — verificato via MCP: tutti e 4 i board (`kit-toggle-off-light`, `kit-toggle-on-light`, `kit-toggle-off-dark`, `kit-toggle-on-dark`) hanno larghezza **78pt × 26pt**. `kit-toggle-on-dark` mostra `77.99999999999994` (Δ ≈ 6e-14pt, artefatto floating-point sub-pixel non normalizzabile via `resize`). L'audit doc originale citava `74pt` come misreading. Nessuna mutation Penpot necessaria |
 | P3-02 | kit-badge-* | Border radius 3pt troppo quadrato per macOS | Aumentare a r:11 (metà altezza 22pt) per stile "pill" |
 | P3-03 | kit-button | Mancano varianti: disabled, hover, pressed, secondary, tertiary | Aggiungere stati nel design system |
 | P3-04 | kit-dropdown | Mancano stati: disabled, hover, focused | Aggiungere stati nel design system |
