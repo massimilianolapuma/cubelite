@@ -109,6 +109,20 @@ Le icone sidebar della **Resource Browser** usano colori semantici Apple system 
 
 > Nota HIG: Apple raccomanda generalmente di rispettare l'`accentColor` utente per le icone sidebar. Per le **icone "categoria"** di una resource browser è ammesso fissare colori semantici purché provengano dalla palette system, in modo che il cambio di tema light/dark sia automatico e il contrasto resti garantito.
 
+### Namespace View — Pod Table
+
+Schema canonico delle colonne della Pod table nella **Namespace View** (entrambe le varianti Light e Dark). Allineato alla convenzione `kubectl get pods` per famigliarità immediata agli utenti Kubernetes.
+
+| Posizione | Element name | Header text | Tipo dato | Esempio |
+|---|---|---|---|---|
+| 1 | `th-name` | `Name` | nome pod | `nginx-deployment-7d9c6b` |
+| 2 | `th-ns` | `Namespace` | namespace | `default`, `kube-system` |
+| 3 | `th-status` | `Status` | fase pod | `Running`, `Pending`, `CrashLoop` |
+| 4 | `th-age` | `Age` | età pod | `2d`, `5h`, `10m` |
+| 5 | `th-restarts` | `Restarts` | conteggio restart | `0`, `14` |
+
+> Variante Dark è la **canonica di riferimento** per element-name → testo. La variante Light deve allineare semantica colonne, posizioni `x` e contenuto rows alla Dark (vedere issue #185 per defects strutturali residui sul Light).
+
 ---
 
 ## 3. Dimensioni e Spaziatura
