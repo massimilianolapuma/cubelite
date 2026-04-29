@@ -459,7 +459,7 @@ In `MainView – Error`, il banner inline era visualizzato come:
 | P2-08 | macOS – Namespace View / Deployment Detail (Light) | Titlebar bg #e0e0e0 invece di standard #e8e8e8; traffic light colors diversi | Uniformare al kit standard — ✅ Risolto (#167) — verificato via MCP: entrambe le board hanno già `titlebar-bg #e8e8e8` e traffic lights `#ff5f57 / #febc2e / #28c840` (allineati al kit). Rilevato in PR precedenti (#143, #151); doc aggiornata per tracciamento |
 | P2-09 | Altezza titlebar | 28pt in Namespace/Preferences/Deployment vs 32pt in MainView | Definire altezza standard per ogni tipo di finestra e documentarla |
 | P2-10 | Preferences Advanced (TLS) | Input height 24pt invece di 28pt standard | Portare a 28pt |
-| P2-11 | Resource Browser | Icon colors sidebar non standard (#5856d6/#5e5ce6 purple, #ff6b00 orange, #0070c9/#0096ff blue) | Sostituire con Apple system colors |
+| P2-11 | Resource Browser | Icon colors sidebar non standard (#5856d6/#5e5ce6 purple, #ff6b00 orange, #0070c9/#0096ff blue) | Sostituire con Apple system colors — ✅ Risolto (#168) — verificato via MCP: tutte le 12 icone sidebar `icon-*` (Light + Dark) usano già colori Apple system (`systemBlue/Purple/Orange/Green` con varianti light/dark). Mappatura icona→colore documentata in `docs/cubelite-macos-design-instructions.md` § "Mappatura Icone Sidebar Resource Browser" |
 | P2-12 | cubelite-icon board | `icon-image` rect ha fill `undefined` | Collegare risorsa immagine |
 
 ---

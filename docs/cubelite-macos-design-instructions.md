@@ -94,6 +94,21 @@ Riferimento per i mockup Penpot e l'allineamento con i kit `kit-titlebar-*`. mac
 - **Desktop tinting**: aggiungere trasparenza ai background custom di componenti neutrali, così si armonizzano con lo sfondo del desktop
 - Non aggiungere trasparenza quando il componente usa colore (evita fluttuazioni)
 
+### Mappatura Icone Sidebar Resource Browser
+
+Le icone sidebar della **Resource Browser** usano colori semantici Apple system con varianti light/dark coerenti. Il raggruppamento riflette i domini Kubernetes:
+
+| Gruppo | Risorse | Light | Dark | Apple |
+|---|---|---|---|---|
+| Workloads | pods, deployments, jobs, cronjobs | `#007AFF` | `#0A84FF` | `systemBlue` |
+| Networking | services, ingress | `#AF52DE` | `#BF5AF2` | `systemPurple` |
+| Config | configmaps, secrets | `#FF9500` | `#FF9F0A` | `systemOrange` |
+| Storage | pvc | `#34C759` | `#30D158` | `systemGreen` |
+| Cluster | nodes | `#FF9500` | `#FF9F0A` | `systemOrange` |
+| Helm | helm-releases, helm-charts | `#007AFF` | `#0A84FF` | `systemBlue` |
+
+> Nota HIG: Apple raccomanda generalmente di rispettare l'`accentColor` utente per le icone sidebar. Per le **icone "categoria"** di una resource browser è ammesso fissare colori semantici purché provengano dalla palette system, in modo che il cambio di tema light/dark sia automatico e il contrasto resti garantito.
+
 ---
 
 ## 3. Dimensioni e Spaziatura
