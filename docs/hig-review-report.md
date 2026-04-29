@@ -337,7 +337,7 @@ Struttura identica a Empty, con placeholder "no kubeconfig" nella sidebar.
 **Struttura**: sidebar namespace list + content area con tabella pod ✅  
 **Dark**: layout completo e cromaticamente corretto ✅
 
-> ❌ **P0** — `macOS - Namespace View – Light`: `tab-selected-bg` usa #2c2c2e — **questo è il colore dark del tab selezionato applicato in light mode**. Il tab selezionato appare come un rettangolo scuro contro uno sfondo chiaro, rendendo il testo bianco del tab praticamente illeggibile (contrasto insufficiente e pattern visivamente contraddittorio). Bug critico di interfaccia.
+> ✅ **P0 — Risolto (#153)** — `tab-selected-bg` light: #2c2c2e → **#f0f0f0** (grigio chiaro, coerente con kit Preferences light tab #e8e8e8 e con la palette Apple system). Inoltre fix collaterale: `toolbar-title` (testo "Pods" sulla tab selezionata) era #ffffff (bianco su bianco — invisibile dopo un fix parziale precedente del bg) → **#1d1d1f** (Apple label primary light). Variante Dark non toccata: usa `toolbar-bg` #2c2c2e + `toolbar-title` #f5f5f7, già corretto.
 
 > ❌ **P2** — Light/Dark variant hanno **ordine colonne diverso** nell'header tabella:
 >   - Light: `th-name`, `th-status`, `th-ns`, `th-restarts`, `th-age`  
@@ -426,7 +426,7 @@ In `MainView – Error`, il banner inline era visualizzato come:
 | ID | Board/Componente | Problema | Azione | Stato |
 |---|---|---|---|---|
 | P0-01 | MainView – Error (Light/Dark) | `bell-badge` 13×13pt — sotto minimo assoluto 20×20pt | Aumentare a ≥20×20pt con padding interno per hit area | ✅ Risolto (#152) — `bell-badge` 20→22×22pt (light + dark), recentrato sul top-right di `btn-bell` 24×24pt; `bell-badge-n` ricentrato. Swift `MainView+Toolbar.swift` usa SwiftUI `Button` toolbar nativo (hit target sistema), badge decorativo in ZStack — già HIG-conforme. |
-| P0-02 | macOS - Namespace View – Light | `tab-selected-bg` usa #2c2c2e (dark) su light theme — tab visivamente rotto | Sostituire con #ffffff (o #f0f0f0) come nelle altre tab bar light | ⏳ In review (#153) |
+| P0-02 | macOS - Namespace View – Light | `tab-selected-bg` usa #2c2c2e (dark) su light theme — tab visivamente rotto | Sostituire con #ffffff (o #f0f0f0) come nelle altre tab bar light | ✅ Risolto (#153) — `tab-selected-bg` #2c2c2e→**#f0f0f0** (grigio chiaro coerente con kit Preferences light); fix collaterale `toolbar-title` #ffffff→**#1d1d1f** (era bianco su bianco dopo fix parziale precedente del bg). Variante Dark non regredita. |
 
 ---
 
