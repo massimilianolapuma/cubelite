@@ -238,6 +238,20 @@ Schema canonico delle colonne della Pod table nella **Namespace View** (entrambe
 - Considerare **colori di riga alternati** in tabelle multi-colonna
 - Usare outline view con triangoli di disclosure per dati gerarchici
 
+#### 4.8.1 Navigazione da riga (no link inline)
+
+L'HIG sconsiglia di usare **link colorati** (`#007AFF`/`#0A84FF` con underline) nelle celle di una tabella per aprire dettagli: i link appartengono al testo descrittivo, non alle righe-dato.
+
+Pattern corretto per aprire un dettaglio (es. Pod → Pod Detail):
+
+- Il **nome** della risorsa nella prima colonna usa il colore `label` standard (`#1d1d1f` light, `#f5f5f7` dark) — **nessun underline, nessun blu**
+- L'intera riga è hit-target (selezione + click); la selezione applica `controlAccent` come background
+- **Doppio click** o `↵` (Enter) sulla riga selezionata apre il dettaglio (`NavigationLink` o `sheet`)
+- Opzionale: chevron `›` di disclosure all'estrema destra della riga (visibile su hover) per indicare l'azione "open"
+- Mai aggiungere underline o cursore `pointer` ai testi delle righe
+
+**Riferimento Penpot**: i board `Resource Browser – Light/Dark` e `PodListView - Data - Light/Dark` adottano già questo pattern (`row-name-*` con `#1d1d1f`/`#f5f5f7`, nessun link blu).
+
 ### 4.9 Progress Indicator
 
 - Preferire **determinato** quando possibile
