@@ -431,16 +431,16 @@ In `MainView – Error`, il banner inline era visualizzato come:
 
 ### P1 — Alto (violazioni HIG strutturali)
 
-| ID | Board/Componente | Problema | Azione |
-|---|---|---|---|
-| P1-01 | Tutti i checkbox (kit + Preferences) | Box 18×18pt — sotto minimo HIG 20×20pt | Portare a ≥20×20pt |
-| P1-02 | macOS – First Launch – Light | Tutti colori Tailwind/non-Apple; button 44pt; nessun titlebar | Rifacimento completo con Apple system colors e dimensioni macOS |
-| P1-03 | macOS – First Launch – Dark | #5b5fcf custom purple; nessun titlebar | Allineare con Apple system colors |
-| P1-04 | macOS – Deployment Detail – Light | Google Blue #1a73e8, custom greens, colori non Apple | Allineare con Dark variant (che è corretta) |
-| P1-05 | Component Library + Empty/Error/Loading States | Board legacy con colori Tailwind, no dark mode, dimensioni iOS | Deprecare e sostituire con componenti `kit-*` |
-| P1-06 | Preferences – Advanced (TLS) | Toggle 36×20pt (non standard), thumb #98989d dark (non bianco) | Usare toggle dimensioni kit standard (44×26pt); thumb bianco |
-| P1-07 | kit-logrow-dark | Manca hover state (presente in light) | Aggiungere elemento hover equivalente a `kit-row-bg-hover-l` |
-| P1-08 | macOS – First Launch | Nessun titlebar window in entrambe le varianti | Aggiungere titlebar con traffic lights standard |
+| ID | Board/Componente | Problema | Azione | Stato |
+|---|---|---|---|---|
+| P1-01 | Tutti i checkbox (kit + Preferences) | Box 18×18pt — sotto minimo HIG 20×20pt | Portare a ≥20×20pt | ⏳ In corso (#140) |
+| P1-02 | macOS – First Launch – Light | Tutti colori Tailwind/non-Apple; button 44pt; nessun titlebar | Rifacimento completo con Apple system colors e dimensioni macOS | ⏳ In corso (#141) |
+| P1-03 | macOS – First Launch – Dark | #5b5fcf custom purple; nessun titlebar | Allineare con Apple system colors | ⏳ In corso (#142) |
+| P1-04 | macOS – Deployment Detail – Light | Google Blue #1a73e8, custom greens, colori non Apple | Allineare con Dark variant (che è corretta) | ⏳ In corso (#143) |
+| P1-05 | Component Library + Empty/Error/Loading States | Board legacy con colori Tailwind, no dark mode, dimensioni iOS | Deprecare e sostituire con componenti `kit-*` | ✅ Risolto (#144) — board prefissati `[DEPRECATED]`; sostituiti dai board `MainView – Empty/Error – Light/Dark`, `Logs & Errors Panel – Light/Dark`, `Error Banner Inline – Light/Dark` su `macOS Native` che usano i componenti `kit-*` con dark mode parity |
+| P1-06 | Preferences – Advanced (TLS) | Toggle 36×20pt (non standard), thumb #98989d dark (non bianco) | Usare toggle dimensioni kit standard (44×26pt); thumb bianco | ⏳ In corso (#145) |
+| P1-07 | kit-logrow-dark | Manca hover state (presente in light) | Aggiungere elemento hover equivalente a `kit-row-bg-hover-l` | ⏳ In corso (#146) |
+| P1-08 | macOS – First Launch | Nessun titlebar window in entrambe le varianti | Aggiungere titlebar con traffic lights standard | ⏳ In corso (#147) |
 
 ---
 
