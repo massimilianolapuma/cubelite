@@ -72,6 +72,20 @@ delle Apple Human Interface Guidelines (Foundations, Components, Patterns, Input
 - **Non fissare** il colore delle icone sidebar — usare il colore accent dell'utente
 - Azione distruttiva: stile **destructive** (rosso), ma solo per azioni non intenzionali
 
+### Cromia Window Chrome (CubeLite)
+
+Riferimento per i mockup Penpot e l'allineamento con i kit `kit-titlebar-*`. macOS Sonoma adotta una **toolbar unificata** con titlebar dello stesso colore (no separazione visiva).
+
+| Elemento | Light | Dark | Note |
+|---|---|---|---|
+| Titlebar bg | `#E8E8E8` | `#2C2C2E` | `kit-titlebar-light` / `kit-titlebar-dark` |
+| Toolbar bg | `#E8E8E8` | `#2C2C2E` | **Parità con titlebar** (unified toolbar HIG) — applicato a tutte le `MainView – */Dark` board |
+| Window bg | `#FFFFFF` | `#1C1C1E` | Contenuto principale |
+| Sidebar bg (Dark) | — | `#252528` | `kit-statusbar-dark` |
+| Traffic light close | `#FF5F57` | `#FF5F57` | |
+| Traffic light min | `#FEBC2E` | `#FEBC2E` | |
+| Traffic light max | `#28C840` | `#28C840` | |
+
 ### Dark Mode
 
 - Rispettare la scelta di sistema — **mai offrire impostazione app-specifica** per aspetto
