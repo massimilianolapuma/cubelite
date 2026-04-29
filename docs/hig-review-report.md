@@ -202,7 +202,7 @@ Questi quattro board rappresentano un prototipo precedente di stile web/Tailwind
 **Dimensioni board**: 400×400pt, background trasparente ✅  
 **Contenuto**: unico elemento `icon-image` [rect] 400×400pt con fill `undefined`
 
-> ❌ **P2** — L'elemento `icon-image` ha fill `undefined` — significa che l'immagine non è collegata o il placeholder è vuoto. L'icona non è visibile nel board. Verificare che la risorsa immagine sia effettivamente collegata nel layer Penpot.
+> ✅ **P2 — Risolto (#180)** — `icon-image` ora ha fill image valido `cubelite-icon-512.png` (512×512 PNG sorgente, scalata a 400×400pt nel rect, opacity 1). Risorsa collegata correttamente; l'icona è renderizzata in preview Penpot.
 
 ---
 
@@ -460,7 +460,7 @@ In `MainView – Error`, il banner inline era visualizzato come:
 | P2-09 | Altezza titlebar | 28pt in Namespace/Preferences/Deployment vs 32pt in MainView | Definire altezza standard per ogni tipo di finestra e documentarla |
 | P2-10 | Preferences Advanced (TLS) | Input height 24pt invece di 28pt standard | Portare a 28pt — ✅ Risolto (#179) — verificato via MCP: gli input TLS (`r1-field`, `r2-field`, `r4-field`) su `Preferences – Advanced (TLS) – Light/Dark` sono già `220×28pt`, allineati a `kit-formfield` standard. Probabilmente normalizzati nel PR #145 (TLS toggle redesign). Nessuna mutation Penpot necessaria, doc aggiornata per tracciamento |
 | P2-11 | Resource Browser | Icon colors sidebar non standard (#5856d6/#5e5ce6 purple, #ff6b00 orange, #0070c9/#0096ff blue) | Sostituire con Apple system colors — ✅ Risolto (#168) — verificato via MCP: tutte le 12 icone sidebar `icon-*` (Light + Dark) usano già colori Apple system (`systemBlue/Purple/Orange/Green` con varianti light/dark). Mappatura icona→colore documentata in `docs/cubelite-macos-design-instructions.md` § "Mappatura Icone Sidebar Resource Browser" |
-| P2-12 | cubelite-icon board | `icon-image` rect ha fill `undefined` | Collegare risorsa immagine |
+| P2-12 | cubelite-icon board | `icon-image` rect ha fill `undefined` | Collegare risorsa immagine — ✅ Risolto (#180) — verificato via MCP: `icon-image` (400×400pt) ha fill image valido `cubelite-icon-512.png` (512×512 PNG, mtype `image/png`, opacity 1). L'audit doc originale citava `fill: undefined` come stato precedente; risorsa ora collegata. Nessuna mutation Penpot necessaria, doc aggiornata per tracciamento |
 
 ---
 
