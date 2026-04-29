@@ -30,6 +30,7 @@ struct MainView: View {
 
     @Environment(ClusterState.self) private var clusterState
     @Environment(LogStore.self) private var logStore
+    @Environment(AppSettings.self) private var appSettings
 
     // MARK: - Navigation State
 
@@ -81,6 +82,13 @@ struct MainView: View {
     /// Row ID of the selected Helm release.
     @State private var selectedHelmReleaseID: HelmReleaseInfo.ID?
 
+    // MARK: - Auto-Reload
+
+    /// Box holding the FSEvents-based kubeconfig watcher. Wrapped in a class
+    /// so the `@State` value is stable across view re-evaluations and the
+    /// watcher's `start`/`stop` lifecycle ties to view appearance.
+    @State private var watcherBox = WatcherBox()
+
     // MARK: - Body
 
     var body: some View {
@@ -108,6 +116,8 @@ struct MainView: View {
                 .environment(logStore)
         }
         .task { await loadKubeconfig() }
+        .task(id: appSettings.kubeconfigPaths) { startKubeconfigWatcher() }
+        .onDisappear { watcherBox.watcher?.stop() }
         .onChange(of: selectedContext) { _, newValue in
             // Only exit All Clusters mode when selecting a specific context.
             // When All Clusters sets selectedContext = nil, preserve showAllClusters.
@@ -821,6 +831,58 @@ struct MainView: View {
         }
     }
 
+    // MARK: - Auto-Reload Wiring
+
+    /// Starts (or restarts) the kubeconfig file watcher. Called from a
+    /// `.task(id:)` so it re-runs whenever the user-configured kubeconfig
+    /// path list changes.
+    ///
+    /// On any debounced change event the watcher reloads the kubeconfig and
+    /// records an info-severity log entry so the change surfaces in the
+    /// existing logs view without introducing a new toast subsystem.
+    @MainActor
+    private func startKubeconfigWatcher() {
+        watcherBox.watcher?.stop()
+        let watcher = KubeconfigWatcher { [logStore] in
+            await reloadAfterFileChange(logStore: logStore)
+        }
+        watcherBox.watcher = watcher
+        let resolved = resolvePathsToWatch()
+        watcher.start(paths: resolved)
+    }
+
+    /// Resolves the set of paths to watch. Custom paths from `AppSettings`
+    /// take precedence over `$KUBECONFIG` / `~/.kube/config` discovery, to
+    /// stay in sync with `KubeconfigService.configure(paths:)`.
+    @MainActor
+    private func resolvePathsToWatch() -> [URL] {
+        let custom = appSettings.kubeconfigPaths
+        if !custom.isEmpty {
+            return custom.map { URL(fileURLWithPath: $0).standardizedFileURL }
+        }
+        return KubeconfigWatcher.resolveWatchedPaths()
+    }
+
+    /// Reloads the kubeconfig and the active context's resources after the
+    /// watcher detects an on-disk change. Logs the event to `LogStore`.
+    @MainActor
+    private func reloadAfterFileChange(logStore: LogStore) async {
+        logStore.append(
+            LogEntry(
+                severity: .info,
+                source: "Config",
+                message: "Kubeconfig updated on disk — reloading"
+            )
+        )
+        await loadKubeconfig()
+        if let context = selectedContext {
+            await loadNamespaces(for: context)
+        }
+        if let sel = sidebarSelection {
+            await loadResources(context: sel.context, namespace: sel.namespace)
+        }
+    }
+
     /// Looks up the default namespace for a context from the kubeconfig.
     ///
     /// Returns `nil` if the context has no namespace set, allowing cluster-scope queries.
@@ -1113,6 +1175,7 @@ struct MainView: View {
     return MainView(kubeconfigService: ks, kubeAPIService: KubeAPIService(kubeconfigService: ks))
         .environment(state)
         .environment(LogStore())
+        .environment(AppSettings())
 }
 
 #Preview("No kubeconfig") {
@@ -1122,4 +1185,15 @@ struct MainView: View {
     return MainView(kubeconfigService: ks, kubeAPIService: KubeAPIService(kubeconfigService: ks))
         .environment(state)
         .environment(LogStore())
+        .environment(AppSettings())
+}
+
+// MARK: - Watcher Box
+
+/// Reference-typed wrapper around `KubeconfigWatcher` so it can be stored in
+/// `@State` without being copied. Holding the watcher in a class also lets the
+/// FSEvents stream live across SwiftUI body re-evaluations.
+@MainActor
+final class WatcherBox {
+    var watcher: KubeconfigWatcher?
 }
