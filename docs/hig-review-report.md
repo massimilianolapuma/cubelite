@@ -455,7 +455,7 @@ In `MainView – Error`, il banner inline era visualizzato come:
 | P2-04 | Logs & Errors Panel – Light | `r6-sb` con ry=6008 — bug posizionamento | Correggere coordinata y |
 | P2-05 | Logs & Errors Panel – Light | Elementi titlebar duplicati | Rimuovere duplicati |
 | P2-06 | macOS – Namespace View Light/Dark | Ordine colonne tabella diverso tra Light e Dark | Allineare schema colonne tra varianti |
-| P2-07 | macOS – Namespace View Light/Dark | Badge radius r:9 (Light) vs r:4 (Dark) | Uniformare |
+| P2-07 | macOS – Namespace View Light/Dark | Badge radius r:9 (Light) vs r:4 (Dark) | Uniformare — ✅ Risolto (#166) — `all-ns-badge-bg` portato a `r:9` su entrambe le varianti (pill style su altezza 18pt). Probe MCP ha mostrato che entrambi erano in realtà `r:4`; ora entrambi `r:9` |
 | P2-08 | macOS – Namespace View / Deployment Detail (Light) | Titlebar bg #e0e0e0 invece di standard #e8e8e8; traffic light colors diversi | Uniformare al kit standard |
 | P2-09 | Altezza titlebar | 28pt in Namespace/Preferences/Deployment vs 32pt in MainView | Definire altezza standard per ogni tipo di finestra e documentarla |
 | P2-10 | Preferences Advanced (TLS) | Input height 24pt invece di 28pt standard | Portare a 28pt |
