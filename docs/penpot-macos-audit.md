@@ -72,7 +72,7 @@ Coverage matrix for every `*View.swift` under `apps/macos/cubelite/cubelite/View
 | `MainView.swift` (Error) | `MainView – Error – Light` (`…df75bd92887f`) | `MainView – Error – Dark` (`…df75bdfde6ff`) | Inline error banner |
 | `MainView.swift` (No Config) | `MainView – No Config – Light` (`…df7608974b50`) | `MainView – No Config – Dark` (`…df7608f36699`) | First run before kubeconfig |
 | `FirstLaunchView.swift` | `macOS - First Launch – Light` (`…de689852f6ef`) **+** `FirstLaunchView - Found - Light` (`…e11089d35883`) | `macOS - First Launch – Dark` (`…dfaf22cdae38`) **+** `FirstLaunchView - Found - Dark` (`…e11136baeaed`) | Two scenarios (no-config / found) |
-| `DashboardView.swift` | ❌ not modelled | ❌ not modelled | Embedded inside `MainView` boards but lacks a dedicated screen with cards + RBAC badge |
+| `DashboardView.swift` | `DashboardView – Light` (`…f17c66dc2031`) | `DashboardView – Dark` (`…f17c6a9a075f`) | F1 (#127). 9-tile LazyVGrid (Pods, Deployments, Services, Namespaces, Secrets, ConfigMaps, Ingresses, Helm Releases, Cluster) inside full MainView chrome (titlebar+toolbar unified, sidebar split). Secrets shown in `lock.slash` no-access state. See coordinator decisions below.
 | `CrossClusterDashboardView.swift` | ❌ not modelled | ❌ not modelled | "All Clusters" view |
 | `NamespaceListView.swift` (legacy "Namespace View") | `macOS - Namespace View – Light` (`…de69288179bd`) | `macOS - Namespace View – Dark` (`…dfabc1bf1d7d`) | |
 | `PodListView.swift` | `PodListView - Data - Light` (`…e1114316c0a9`) | `PodListView - Data - Dark` (`…e11146884398`) | Loading / empty / error states missing |
@@ -95,12 +95,34 @@ Coverage matrix for every `*View.swift` under `apps/macos/cubelite/cubelite/View
 
 ### 2.1 Light/Dark coverage summary
 
-- **Modelled screens with both modes**: 17 / 17 = **100%** of modelled screens.
-- **Swift views without any Penpot board**: 7 — `DashboardView`, `CrossClusterDashboardView`,
-  `ServiceListView`, `ConfigMapListView`, `SecretListView`, `IngressListView`, `HelmReleaseListView`.
+- **Modelled screens with both modes**: 18 / 18 = **100%** of modelled screens
+  (DashboardView added in F1 / #127).
+- **Swift views without any Penpot board**: 6 — `CrossClusterDashboardView`,
+  `ServiceListView`, `ConfigMapListView`, `SecretListView`, `IngressListView`,
+  `HelmReleaseListView`.
 - **List views with only the data state** (missing loading / empty / error
   variants): `PodListView`, `DeploymentListView`. The other five list views
   inherit the same 4-state pattern.
+
+### 2.2 F1 (#127) DashboardView — coordinator decisions
+
+Decisions applied when authoring `DashboardView – Light` and `DashboardView – Dark`:
+
+1. **Tile count = 9** in exact Swift source order: Pods, Deployments, Services,
+   Namespaces, Secrets, ConfigMaps, Ingresses, Helm Releases, Cluster. Swift
+   source (`apps/macos/cubelite/cubelite/Views/DashboardView.swift`) is
+   authoritative — no UI-only invented tiles.
+2. **Layout = full window with standard MainView chrome**: unified titlebar +
+   toolbar (`#E8E8E8` light / `#2C2C2E` dark), traffic lights, sidebar split
+   matching other `MainView – *` boards. Cluster name surfaces in the toolbar
+   ("minikube · default") and sidebar selected row — not as an in-content
+   header. Dashboard content is the LazyVGrid of 9 tiles inside the ScrollView
+   area only. Board height extended to `880pt` to fit all 9 tiles without
+   relying on scroll-clipping in the static screenshot.
+3. **No-access state copy mirrors Swift values** exactly: `lock.slash` SF Symbol
+   + title `"No access"` + subtitle `"RBAC restricted"`. Demonstrated on the
+   Secrets tile (RBAC commonly restricts secrets) in both light and dark
+   boards.
 
 ---
 
@@ -146,7 +168,7 @@ by category below.
 | `common/data/badge/status` | `kit-badge-error/warn/info-light/dark` | ✅ | |
 | `common/data/badge/count` | _none_ | ❌ gap | Sidebar count chips |
 | `common/data/cluster-card` | _none_ | ❌ gap | Used in `CrossClusterDashboardView` |
-| `common/data/resource-count-tile` | _none_ | ❌ gap | Used in `DashboardView` |
+| `common/data/resource-count-tile` | `common / data / resource-count-tile` (`…f17bd3ff6c0e`) | ✅ | Built for F1 (#127). Documents both populated + `no-access` (RBAC restricted) variants in light + dark. Used in `DashboardView – Light/Dark`. |
 | `common/data/log-row` | `kit-logrow-light/dark` | ✅ | |
 
 ### 3.4 feedback/
@@ -175,9 +197,10 @@ by category below.
 Issues uncovered while mapping Swift to Penpot. Each item should become a
 follow-up issue tracked under #73.
 
-1. **7 missing screen sets** (light + dark each, so 14 boards total) for
-   `DashboardView`, `CrossClusterDashboardView`, `ServiceListView`,
-   `ConfigMapListView`, `SecretListView`, `IngressListView`, `HelmReleaseListView`.
+1. **6 missing screen sets** (light + dark each, so 12 boards total) for
+   `CrossClusterDashboardView`, `ServiceListView`, `ConfigMapListView`,
+   `SecretListView`, `IngressListView`, `HelmReleaseListView`. (`DashboardView`
+   delivered in F1 / #127.)
 2. **List 4-state coverage** — only the data state exists. Add loading,
    empty, error boards for every list view, sharing the
    `common/feedback/loading` / `empty-state` / `banner/error` components.
