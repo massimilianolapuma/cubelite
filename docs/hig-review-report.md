@@ -226,7 +226,7 @@ Questi quattro board rappresentano un prototipo precedente di stile web/Tailwind
 
 ### 2.2 MainView – Empty – Light / – Dark (1200×700) ⚠️
 
-**Titlebar**: 32pt ✅ (leggermente alto ma conforme)  
+**Titlebar**: 28pt ✅ (uniformato al kit `kit-titlebar-light/dark` standard — PR #178)  
 **Toolbar**: 44pt ✅ (standard macOS NSToolbar)  
 **Sidebar**: 220pt ✅ (HIG sidebar tipicamente 180-260pt)  
 **Separatore sidebar-toolbar**: 1pt ✅  
@@ -350,7 +350,7 @@ Struttura identica a Empty, con placeholder "no kubeconfig" nella sidebar.
 
 > ⚠️ **P2** — Light: `tl-min` #ffbd2e (vs standard #febc2e), `tl-max` #28c940 (vs standard #28c840). Variazioni minime nei colori traffic lights rispetto al kit standard.
 
-> ⚠️ **P2** — Altezza titlebar: 28pt in Namespace/Preferences/Deployment, ma 32pt in MainView — inconsistenza nel "chrome" dell'app. Le finestre dovrebbero usare la stessa altezza titlebar.
+> ✅ **P2 — Risolto (#178)** — Altezza titlebar uniformata a **28pt** (kit standard) su tutte le 8 board MainView. Traffic lights ricentrati `(28−12)/2 = 8pt` dal top board.
 
 ---
 
@@ -457,7 +457,7 @@ In `MainView – Error`, il banner inline era visualizzato come:
 | P2-06 | macOS – Namespace View Light/Dark | Ordine colonne tabella diverso tra Light e Dark | Allineare schema colonne tra varianti — ✅ Risolto (#177) — verificato via MCP: l'**ordine degli element-name** dei header è già **uniforme** tra Light e Dark: `th-name → th-ns → th-status → th-age → th-restarts`. Schema canonico Pod table documentato in `docs/cubelite-macos-design-instructions.md` § "Namespace View — Pod Table". Defetti strutturali residui nella variante Light (header off-board, x mis-aligned con dati, semantica colonne invertita) trasferiti a issue dedicato #185 per Bug Discovery Workflow |
 | P2-07 | macOS – Namespace View Light/Dark | Badge radius r:9 (Light) vs r:4 (Dark) | Uniformare — ✅ Risolto (#166) — `all-ns-badge-bg` portato a `r:9` su entrambe le varianti (pill style su altezza 18pt). Probe MCP ha mostrato che entrambi erano in realtà `r:4`; ora entrambi `r:9` |
 | P2-08 | macOS – Namespace View / Deployment Detail (Light) | Titlebar bg #e0e0e0 invece di standard #e8e8e8; traffic light colors diversi | Uniformare al kit standard — ✅ Risolto (#167) — verificato via MCP: entrambe le board hanno già `titlebar-bg #e8e8e8` e traffic lights `#ff5f57 / #febc2e / #28c840` (allineati al kit). Rilevato in PR precedenti (#143, #151); doc aggiornata per tracciamento |
-| P2-09 | Altezza titlebar | 28pt in Namespace/Preferences/Deployment vs 32pt in MainView | Definire altezza standard per ogni tipo di finestra e documentarla |
+| P2-09 | Altezza titlebar | 28pt in Namespace/Preferences/Deployment vs 32pt in MainView | Definire altezza standard per ogni tipo di finestra e documentarla — ✅ Risolto (#178) — le 8 board MainView (Empty/Error/No Config/Select NS × Light/Dark) portate da `titlebar-bg h=32pt` a **`h=28pt`** (kit-titlebar standard). `titlebar-bdr` y -= 4 (1pt strip al nuovo bottom titlebar), traffic lights e `tb-title` ricentrati y -= 2 ((28−12)/2=8pt), toolbar-bg + sidebar + tutto il contenuto sotto y -= 4 per chiudere il gap. Verificato visualmente via export PNG. Standard documentato in `docs/cubelite-macos-design-instructions.md` § "Titlebar Height" |
 | P2-10 | Preferences Advanced (TLS) | Input height 24pt invece di 28pt standard | Portare a 28pt — ✅ Risolto (#179) — verificato via MCP: gli input TLS (`r1-field`, `r2-field`, `r4-field`) su `Preferences – Advanced (TLS) – Light/Dark` sono già `220×28pt`, allineati a `kit-formfield` standard. Probabilmente normalizzati nel PR #145 (TLS toggle redesign). Nessuna mutation Penpot necessaria, doc aggiornata per tracciamento |
 | P2-11 | Resource Browser | Icon colors sidebar non standard (#5856d6/#5e5ce6 purple, #ff6b00 orange, #0070c9/#0096ff blue) | Sostituire con Apple system colors — ✅ Risolto (#168) — verificato via MCP: tutte le 12 icone sidebar `icon-*` (Light + Dark) usano già colori Apple system (`systemBlue/Purple/Orange/Green` con varianti light/dark). Mappatura icona→colore documentata in `docs/cubelite-macos-design-instructions.md` § "Mappatura Icone Sidebar Resource Browser" |
 | P2-12 | cubelite-icon board | `icon-image` rect ha fill `undefined` | Collegare risorsa immagine — ✅ Risolto (#180) — verificato via MCP: `icon-image` (400×400pt) ha fill image valido `cubelite-icon-512.png` (512×512 PNG, mtype `image/png`, opacity 1). L'audit doc originale citava `fill: undefined` come stato precedente; risorsa ora collegata. Nessuna mutation Penpot necessaria, doc aggiornata per tracciamento |
