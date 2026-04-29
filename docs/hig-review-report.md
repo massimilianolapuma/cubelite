@@ -249,8 +249,7 @@ Questi quattro board rappresentano un prototipo precedente di stile web/Tailwind
 **Banner border**: render opacity 0.35 su colore sistema rosso ✅  
 **Link "Fix"**: colore blu sistema ✅
 
-> ❌ **P0** — `bell-badge`: 13×13pt — **viola il minimo assoluto HIG di 20×20pt**. Un badge/controllo di 13pt è inaccessibile per utenti con capacità motorie ridotte e difficilmente cliccabile. Questo è il badge rosso sul campanello delle notifiche.  
-> **Azione**: portare bell-badge ad almeno 20×20pt come area cliccabile (anche se visivamente più piccolo tramite inset padding).
+> ✅ **P0 — Risolto (#152)** — `bell-badge` aumentato a **22×22pt** (light + dark) per superare il minimo assoluto HIG 20×20pt e allinearsi alla convenzione kit-checkbox 22pt (PR #140). Re-centrato sul top-right del `btn-bell` (24×24pt, hit target nativo). Testo `bell-badge-n` ricentrato. Swift `MainView+Toolbar.swift` usa `Button { … } label: { Image(systemName: "bell") }` in un toolbar nativo: il bottone fornisce di per sé l'hit target HIG-conforme; il badge è decorativo (ZStack overlay).
 
 ---
 
@@ -424,8 +423,10 @@ In `MainView – Error`, il banner inline era visualizzato come:
 
 | ID | Board/Componente | Problema | Azione |
 |---|---|---|---|
-| P0-01 | MainView – Error (Light/Dark) | `bell-badge` 13×13pt — sotto minimo assoluto 20×20pt | Aumentare a ≥20×20pt con padding interno per hit area |
-| P0-02 | macOS - Namespace View – Light | `tab-selected-bg` usa #2c2c2e (dark) su light theme — tab visivamente rotto | Sostituire con #ffffff (o #f0f0f0) come nelle altre tab bar light |
+| ID | Board/Componente | Problema | Azione | Stato |
+|---|---|---|---|---|
+| P0-01 | MainView – Error (Light/Dark) | `bell-badge` 13×13pt — sotto minimo assoluto 20×20pt | Aumentare a ≥20×20pt con padding interno per hit area | ✅ Risolto (#152) — `bell-badge` 20→22×22pt (light + dark), recentrato sul top-right di `btn-bell` 24×24pt; `bell-badge-n` ricentrato. Swift `MainView+Toolbar.swift` usa SwiftUI `Button` toolbar nativo (hit target sistema), badge decorativo in ZStack — già HIG-conforme. |
+| P0-02 | macOS - Namespace View – Light | `tab-selected-bg` usa #2c2c2e (dark) su light theme — tab visivamente rotto | Sostituire con #ffffff (o #f0f0f0) come nelle altre tab bar light | ⏳ In review (#153) |
 
 ---
 
@@ -486,7 +487,7 @@ In `MainView – Error`, il banner inline era visualizzato come:
 | Colori Apple system | ✅ | ⚠️ Mix | Alcuni board usano colori custom/Tailwind |
 | Supporto dark mode | ✅ | ✅ | Tutte le viste hanno variante Dark |
 | Font SF Pro (presunto) | ✅ | ✅ | Non verificabile da dati strutturali |
-| Controlli min 20×20pt | ❌ | ❌ | Checkbox 18pt, bell-badge 13pt |
+| Controlli min 20×20pt | ✅ | ✅ | Checkbox 22pt (PR #140), bell-badge 22pt (PR #152) |
 | Controlli raccomandati 28×28pt | ⚠️ | ⚠️ | Vari controlli 24-26pt |
 | Spaziatura 12pt (con bezel) | ✅ mostly | ✅ mostly | |
 | Titolare altezza consistente | N/A | ❌ | 28pt vs 32pt tra finestre diverse |
