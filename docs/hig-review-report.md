@@ -450,7 +450,7 @@ In `MainView – Error`, il banner inline era visualizzato come:
 | ID | Board/Componente | Problema | Azione |
 |---|---|---|---|
 | P2-01 | kit-checkbox-unchecked-dark | Manca border element (presente in light) | Aggiungere `box-border` rect 1pt stroke — ✅ Risolto (#163) — `kit-cb-border-d` convertito da rect filled a 1pt inner stroke `#48484A` (Apple separator dark), border-radius 4pt |
-| P2-02 | MainView – Empty/Error/No Config/Select NS (Dark) | Titlebar bg #242424 (non standard vs kit #2c2c2e) | Uniformare a #2c2c2e |
+| P2-02 | MainView – Empty/Error/No Config/Select NS (Dark) | Titlebar bg #242424 (non standard vs kit #2c2c2e) | Uniformare a #2c2c2e — ✅ Risolto (#164) — verificato che `titlebar-bg` di tutte e 4 le board MainView Dark è già `#2c2c2e` (allineato a `kit-titlebar-dark`); nessuna modifica Penpot necessaria, doc aggiornata per tracciamento |
 | P2-03 | MainView – Empty/Error/No Config/Select NS (Dark) | Toolbar bg #2d2d2d (non documentato nel kit) | Definire valore standard e uniformare |
 | P2-04 | Logs & Errors Panel – Light | `r6-sb` con ry=6008 — bug posizionamento | Correggere coordinata y |
 | P2-05 | Logs & Errors Panel – Light | Elementi titlebar duplicati | Rimuovere duplicati |
