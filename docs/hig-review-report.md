@@ -433,13 +433,13 @@ In `MainView – Error`, il banner inline era visualizzato come:
 
 | ID | Board/Componente | Problema | Azione | Stato |
 |---|---|---|---|---|
-| P1-01 | Tutti i checkbox (kit + Preferences) | Box 18×18pt — sotto minimo HIG 20×20pt | Portare a ≥20×20pt | ⏳ In corso (#140) |
+| P1-01 | Tutti i checkbox (kit + Preferences) | Box 18×18pt — sotto minimo HIG 20×20pt | Portare a ≥20×20pt | ✅ Risolto (#140) — kit-checkbox-* box 18→22pt, label x 24→28pt; macOS Native Preferences cb-bg-* 20→22pt; Swift `Toggle(...)` già HIG-conforme |
 | P1-02 | macOS – First Launch – Light | Tutti colori Tailwind/non-Apple; button 44pt; nessun titlebar | Rifacimento completo con Apple system colors e dimensioni macOS | ⏳ In corso (#141) |
 | P1-03 | macOS – First Launch – Dark | #5b5fcf custom purple; nessun titlebar | Allineare con Apple system colors | ⏳ In corso (#142) |
 | P1-04 | macOS – Deployment Detail – Light | Google Blue #1a73e8, custom greens, colori non Apple | Allineare con Dark variant (che è corretta) | ⏳ In corso (#143) |
 | P1-05 | Component Library + Empty/Error/Loading States | Board legacy con colori Tailwind, no dark mode, dimensioni iOS | Deprecare e sostituire con componenti `kit-*` | ✅ Risolto (#144) — board prefissati `[DEPRECATED]`; sostituiti dai board `MainView – Empty/Error – Light/Dark`, `Logs & Errors Panel – Light/Dark`, `Error Banner Inline – Light/Dark` su `macOS Native` che usano i componenti `kit-*` con dark mode parity |
-| P1-06 | Preferences – Advanced (TLS) | Toggle 36×20pt (non standard), thumb #98989d dark (non bianco) | Usare toggle dimensioni kit standard (44×26pt); thumb bianco | ⏳ In corso (#145) |
-| P1-07 | kit-logrow-dark | Manca hover state (presente in light) | Aggiungere elemento hover equivalente a `kit-row-bg-hover-l` | ⏳ In corso (#146) |
+| P1-06 | Preferences – Advanced (TLS) | Toggle 36×20pt (non standard), thumb #98989d dark (non bianco) | Usare toggle dimensioni kit standard (44×26pt); thumb bianco | ✅ Risolto (#145) — TLS toggle già 44×26pt track + 22×22pt thumb (rifatto in PR precedenti); border-radius normalizzato a r:13 (track pill) e r:11 (thumb circle); thumb dark `#f5f5f7`; Swift `Toggle(...)` standard HIG |
+| P1-07 | kit-logrow-dark | Manca hover state (presente in light) | Aggiungere elemento hover equivalente a `kit-row-bg-hover-l` | ✅ Risolto (#146) — `kit-row-bg-hover-d` 480×32 #ffffff@0.08 (overlay HIG-corretto per dark mode) garantisce parità con `kit-row-bg-hover-l`; Swift `LogsView` usa `.listStyle(.inset(alternatesRowBackgrounds: true))` che gestisce hover/selection nativamente |
 | P1-08 | macOS – First Launch | Nessun titlebar window in entrambe le varianti | Aggiungere titlebar con traffic lights standard | ⏳ In corso (#147) |
 
 ---
