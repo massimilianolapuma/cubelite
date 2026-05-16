@@ -8,7 +8,7 @@ jobs:
         runs-on: ubuntu-latest
         timeout-minutes: 15
         permissions:
-            contents: write
+            contents: read
         steps:
             - name: Create Jira Issue
               id: create
@@ -23,34 +23,18 @@ jobs:
                     -d "$BODY" \
                     "$JIRA_BASE_URL/rest/api/3/issue")
                   ISSUE_KEY=$(echo "$RESPONSE" | jq -r '.key')
+                  ISSUE_URL="${JIRA_BASE_URL}/browse/${ISSUE_KEY}"
                   echo "issue=${ISSUE_KEY}" >> "$GITHUB_OUTPUT"
+                  echo "issue_url=${ISSUE_URL}" >> "$GITHUB_OUTPUT"
               env:
                   JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
                   JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
                   JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
                   JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
 
-            - name: Rename branch to match naming convention
-              # actions/github-script@v7 — SHA pinned
-              uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
-              with:
-                  github-token: ${{ secrets.GITHUB_TOKEN }}
-                  script: |
-                      const ticket = "${{ steps.create.outputs.issue }}";
-                      const oldBranch = context.ref.replace('refs/heads/', '');
-                      // Rimuove il prefisso 'dependabot/' e sostituisce '/' con '-'
-                      const description = oldBranch.replace(/^dependabot\//, '').replace(/\//g, '-');
-                      const newBranch = `chore/${ticket}-${description}`;
-                      // crea il nuovo branch dal vecchio
-                      const ref = await github.rest.git.getRef({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        ref: `heads/${oldBranch}`
-                      });
-                      await github.rest.git.createRef({
-                        owner: context.repo.owner,
-                        repo: context.repo.repo,
-                        ref: `refs/heads/${newBranch}`,
-                        sha: ref.data.object.sha
-                      });
-                      // il branch originale viene mantenuto
+            - name: Write job summary
+              run: |
+                  echo "## Jira ticket created" >> "$GITHUB_STEP_SUMMARY"
+                  echo "" >> "$GITHUB_STEP_SUMMARY"
+                  echo "- **Branch**: \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+                  echo "- **Ticket**: [${{ steps.create.outputs.issue }}](${{ steps.create.outputs.issue_url }})" >> "$GITHUB_STEP_SUMMARY"
