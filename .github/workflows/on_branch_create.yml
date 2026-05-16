@@ -6,24 +6,33 @@ jobs:
     handle-dependabot-branch:
         if: startsWith(github.ref_name, 'dependabot/')
         runs-on: ubuntu-latest
+        timeout-minutes: 15
+        permissions:
+            contents: write
         steps:
-            - name: Jira Login
-              uses: atlassian/gajira-login@v3
+            - name: Create Jira Issue
+              id: create
+              run: |
+                  BODY=$(jq -n \
+                    --arg project "$JIRA_PROJECT_KEY" \
+                    --arg summary "Security update: ${{ github.ref_name }}" \
+                    '{fields:{project:{key:$project},summary:$summary,issuetype:{name:"Task"}}}')
+                  RESPONSE=$(curl --fail-with-body -s -X POST \
+                    -H "Authorization: Basic $(printf '%s:%s' "$JIRA_USER_EMAIL" "$JIRA_API_TOKEN" | base64 -w0)" \
+                    -H "Content-Type: application/json" \
+                    -d "$BODY" \
+                    "$JIRA_BASE_URL/rest/api/3/issue")
+                  ISSUE_KEY=$(echo "$RESPONSE" | jq -r '.key')
+                  echo "issue=${ISSUE_KEY}" >> "$GITHUB_OUTPUT"
               env:
                   JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
                   JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
                   JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
-
-            - name: Create Jira Issue
-              id: create
-              uses: atlassian/gajira-create@v3
-              with:
-                  project: ${{ secrets.JIRA_PROJECT_KEY }}
-                  issuetype: Task
-                  summary: "Security update: ${{ github.ref_name }}"
+                  JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
 
             - name: Rename branch to match naming convention
-              uses: actions/github-script@v7
+              # actions/github-script@v7 — SHA pinned
+              uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
               with:
                   github-token: ${{ secrets.GITHUB_TOKEN }}
                   script: |
