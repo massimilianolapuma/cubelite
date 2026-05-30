@@ -4,12 +4,6 @@ import SwiftUI
 //
 // Kubeconfig + namespace-listing data flow. Extracted from `MainView` with no
 // behavior change.
-//
-// TODO(#106): `addManualNamespace(for:)` instantiates a throwaway `AppSettings()`
-// and never persists the mutated dictionary back to UserDefaults. Tracked
-// separately; do not fix here per the Bug Discovery Workflow.
-// TODO(#106): `loadNamespaces(for:)` instantiates a throwaway `AppSettings()` to
-// read `contextNamespaces`; this should use the injected environment instance.
 extension MainView {
 
     @MainActor
@@ -63,12 +57,13 @@ extension MainView {
             return
         }
         clusterState.namespaces.append(NamespaceInfo(name: ns, phase: nil))
-        // Persist to AppSettings
-        var settings = AppSettings()
-        var saved = settings.contextNamespaces[context] ?? []
+        // Persist to the shared AppSettings instance so the change is
+        // observed by every view and written back to UserDefaults via the
+        // `contextNamespaces` `didSet`.
+        var saved = appSettings.contextNamespaces[context] ?? []
         if !saved.contains(ns) {
             saved.append(ns)
-            settings.contextNamespaces[context] = saved
+            appSettings.contextNamespaces[context] = saved
         }
         manualNamespaceInput = ""
     }
@@ -101,8 +96,7 @@ extension MainView {
             if case .forbidden = cubeliteError {
                 clusterState.clusterReachable = true
                 var fallbackNamespaces: [NamespaceInfo] = []
-                let settings = AppSettings()
-                if let saved = settings.contextNamespaces[context], !saved.isEmpty {
+                if let saved = appSettings.contextNamespaces[context], !saved.isEmpty {
                     fallbackNamespaces = saved.map { NamespaceInfo(name: $0, phase: nil) }
                 } else {
                     let defaultNS = await resolveDefaultNamespace(for: context)
