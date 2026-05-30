@@ -26,6 +26,7 @@ struct PreferencesView: View {
 private struct GeneralPreferencesTab: View {
 
     @Environment(AppSettings.self) private var settings
+    @Environment(LoginItemController.self) private var loginItem
 
     private static let refreshOptions: [(label: String, value: Int)] = [
         ("Off", 0),
@@ -35,6 +36,21 @@ private struct GeneralPreferencesTab: View {
         ("2 minutes", 120),
     ]
 
+    /// Binding that routes toggle changes through the `LoginItemController`
+    /// so the system registration stays in sync with the persisted setting.
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { settings.launchAtLogin },
+            set: { newValue in
+                let ok = loginItem.setEnabled(newValue)
+                // Only persist the user's intent when the system accepted it.
+                // On failure, leave the toggle reflecting the real status so
+                // the UI doesn't silently disagree with the system.
+                settings.launchAtLogin = ok ? newValue : loginItem.status.isEnabled
+            }
+        )
+    }
+
     var body: some View {
         Form {
             Picker("Auto-refresh:", selection: Bindable(settings).autoRefreshInterval) {
@@ -42,11 +58,19 @@ private struct GeneralPreferencesTab: View {
                     Text(option.label).tag(option.value)
                 }
             }
-            Toggle("Launch at login", isOn: Bindable(settings).launchAtLogin)
+            Toggle("Launch at login", isOn: launchAtLoginBinding)
+            if loginItem.status == .requiresApproval {
+                Text(
+                    "Approval required in System Settings → General → Login Items."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
             Toggle("Show system namespaces", isOn: Bindable(settings).showSystemNamespaces)
         }
         .formStyle(.grouped)
         .padding()
+        .task { loginItem.refresh() }
     }
 }
 
