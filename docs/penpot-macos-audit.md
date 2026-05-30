@@ -187,7 +187,7 @@ by category below.
 | `common/controls/button/destructive` | _none_ | ❌ gap | System red |
 | `common/controls/button/icon` | _none_ | ❌ gap | 28×28pt SF Symbol-only |
 | `common/controls/toggle` | `kit-toggle-on/off-light/dark` | ✅ | 4pt frame width drift between on/off (P3, see HIG report §1.4) |
-| `common/controls/checkbox` | `kit-checkbox-checked/unchecked-light/dark` | ⚠️ **P1** | 18×18pt — under HIG 20pt minimum; dark unchecked missing border |
+| `common/controls/checkbox` | `kit-checkbox-checked/unchecked-light/dark` | ✅ | 20×20pt squares (HIG hit-target minimum); dark unchecked has visible 1pt border — #136 |
 | `common/controls/text-field` | `kit-formfield-light/dark` (+ focused, disabled) | ✅ | |
 | `common/controls/dropdown` | `kit-dropdown-light/dark` (+ hover, disabled, focused) | ✅ | Chevron updated to SF Symbol `chevron.down` artwork (12×6pt thin V, 1.5pt round-cap stroke, vector Path) on all 8 variants — #137 |
 | `common/controls/segmented-control` | `kit-tabbar-light/dark` | ✅ | |
@@ -268,9 +268,18 @@ follow-up issue tracked under #73.
 8. **Identifier coverage** — top-level boards already carry meaningful
    names but their child shapes mostly do not follow the `screen/...`
    pattern. Apply the convention progressively (one screen per PR).
-9. **Checkbox sub-spec** (P1) — `kit-checkbox-*` is 18pt; raise to 20pt
-   (HIG absolute minimum). Verify Swift implementation does not also
-   render at 18pt.
+9. **Checkbox sub-spec** — ✅ resolved by #136.
+   `kit-checkbox-{checked,unchecked}-{light,dark}` resized from 18×18pt to
+   20×20pt (HIG hit-target minimum); checkmark glyph re-centred at 13pt;
+   labels shifted +2pt right; board heights raised 22→24pt to keep a 2pt
+   vertical safe area. The dark unchecked board already carried a 1pt
+   `#48484a` inner-stroke border (`kit-cb-border-d`) — verified present.
+   Swift parity: a workspace-wide grep of `apps/macos/cubelite/cubelite/Views/`
+   for `.checkbox`, `CheckboxToggleStyle`, `toggleStyle` returns **0 matches**
+   — all `Toggle(...)` usages (PreferencesView "Launch at login", "Show
+   system namespaces", "Skip TLS certificate verification") render as the
+   standard macOS switch (NSSwitch), not a checkbox. There is no Swift
+   checkbox to audit against the 20pt minimum.
 10. **Dropdown chevron** — ✅ resolved by #137.
     Replaced the previous `▾` (U+25BE) text glyph in `kit-dropdown-{,hover-,disabled-,focused-}{light,dark}`
     with a vector `Path` tracing SF Symbol `chevron.down`
