@@ -24,6 +24,7 @@ final class PreferencesTests: XCTestCase {
             Keys.kubeconfigPaths,
             Keys.apiTimeout,
             Keys.skipTLSVerification,
+            Keys.contextNamespaces,
         ].forEach { d.removeObject(forKey: $0) }
     }
 
@@ -131,6 +132,32 @@ final class PreferencesTests: XCTestCase {
         sut.apiTimeout = 45
         let sut2 = AppSettings()
         XCTAssertEqual(sut2.apiTimeout, 45)
+    }
+
+    // MARK: - Shared instance semantics (regression: issue #105)
+
+    /// Mutations to `contextNamespaces` on one instance must be visible to a
+    /// freshly-loaded instance backed by the same UserDefaults. This guards
+    /// against regressing to per-callsite throwaway `AppSettings()` objects
+    /// that previously discarded namespace edits made from `MainView`.
+    func testContextNamespacesPersistsAcrossInstances() {
+        let sut = AppSettings()
+        sut.contextNamespaces["prod"] = ["team-a", "team-b"]
+        let sut2 = AppSettings()
+        XCTAssertEqual(sut2.contextNamespaces["prod"], ["team-a", "team-b"])
+    }
+
+    func testContextNamespacesAppendIsPersisted() {
+        let sut = AppSettings()
+        sut.contextNamespaces["staging"] = ["default"]
+        // Simulate `addManualNamespace` reading + writing through the shared
+        // instance: read, append, write back.
+        var saved = sut.contextNamespaces["staging"] ?? []
+        saved.append("qa")
+        sut.contextNamespaces["staging"] = saved
+
+        let reloaded = AppSettings()
+        XCTAssertEqual(reloaded.contextNamespaces["staging"], ["default", "qa"])
     }
 
     // MARK: - Valid Refresh Intervals
