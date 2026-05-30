@@ -6,6 +6,7 @@ struct CubeliteApp: App {
 
     @State private var clusterState = ClusterState()
     @State private var appSettings = AppSettings()
+    @State private var loginItemController: LoginItemController
     private let kubeconfigService: KubeconfigService
     private let kubeAPIService: KubeAPIService
 
@@ -17,6 +18,9 @@ struct CubeliteApp: App {
         let ks = KubeconfigService()
         self.kubeconfigService = ks
         self.kubeAPIService = KubeAPIService(kubeconfigService: ks)
+        // Default-initialised; the real `onError` closure is bound in `.task`
+        // once `logStore` and `appSettings` are available in scope.
+        self._loginItemController = State(initialValue: LoginItemController())
     }
 
     var body: some Scene {
@@ -26,6 +30,7 @@ struct CubeliteApp: App {
                     .environment(clusterState)
                     .environment(appSettings)
                     .environment(logStore)
+                    .environment(loginItemController)
                     .preferredColorScheme(appSettings.colorScheme)
                     .onChange(of: appSettings.appearanceMode) { _, newMode in
                         applyNSAppearance(newMode)
@@ -51,6 +56,7 @@ struct CubeliteApp: App {
                         await kubeAPIService.updateSkipTLS(appSettings.skipTLSVerification)
                         let urls = appSettings.kubeconfigPaths.map { URL(fileURLWithPath: $0) }
                         await kubeconfigService.configure(paths: urls)
+                        configureLoginItem()
                     }
             } else {
                 FirstLaunchView(
@@ -77,6 +83,43 @@ struct CubeliteApp: App {
         Settings {
             PreferencesView()
                 .environment(appSettings)
+                .environment(loginItemController)
+        }
+    }
+
+    /// Wires the login-item controller's error reporter into the shared
+    /// `LogStore` and reconciles the persisted `launchAtLogin` setting with
+    /// the live `SMAppService` status.
+    ///
+    /// - If the user previously enabled "Launch at login" but the system
+    ///   reports the app is no longer registered (e.g. the app bundle was
+    ///   moved, or the user disabled it from System Settings), this attempts
+    ///   to re-register. On failure, the persisted flag is set back to `false`
+    ///   so the UI reflects reality.
+    /// - If the persisted flag is `false` we just refresh status without
+    ///   forcing an unregister, to avoid clobbering a fresh first-launch
+    ///   registration the user might have just toggled on.
+    @MainActor
+    private func configureLoginItem() {
+        loginItemController.onError = { [logStore] message, details in
+            logStore.append(
+                LogEntry(
+                    severity: .error,
+                    source: "LoginItem",
+                    message: message,
+                    details: details
+                )
+            )
+        }
+        loginItemController.refresh()
+
+        if appSettings.launchAtLogin, !loginItemController.status.isEnabled {
+            let ok = loginItemController.setEnabled(true)
+            if !ok { appSettings.launchAtLogin = false }
+        } else {
+            // Keep the persisted flag in sync with reality so a stale `true`
+            // doesn't survive an external unregister.
+            appSettings.launchAtLogin = loginItemController.status.isEnabled
         }
     }
 
