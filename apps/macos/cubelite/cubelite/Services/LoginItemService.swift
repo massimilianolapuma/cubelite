@@ -45,7 +45,9 @@ enum LoginItemStatus: Sendable, Equatable {
 /// without touching the real system service.
 ///
 /// Implementations are only ever called from the main actor (via
-/// ``LoginItemController``); no cross-actor isolation is required.
+/// ``LoginItemController``); the protocol is `@MainActor`-isolated so
+/// implementations may safely touch main-actor state.
+@MainActor
 protocol LoginItemRegistering {
     func register() throws
     func unregister() throws
