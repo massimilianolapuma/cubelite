@@ -261,10 +261,14 @@ follow-up issue tracked under #73.
 6. **Component reuse missing** — every kit-* atom is a stand-alone board
    instead of a Penpot library component. Promote the kit-* boards to
    components so screens can instance them.
-7. **Orphan shapes on the macOS Native page** (15 items): `test-rect-dims`,
-   `child-rect`, `section-heading-icon`, `section-subheading-icon`,
-   `pref-title`, `design-note-mono`, plus 9 unnamed `Text` shapes. Move
-   them under a quarantine board or delete (follow-up cleanup PR).
+7. **Orphan shapes on the macOS Native page** — ✅ resolved by #134.
+   16 loose top-level shapes (`test-rect-dims`, `child-rect`,
+   `section-heading-icon`, `section-subheading-icon`, `pref-title`,
+   `design-note-mono`, a stray `resource-count-tile — Light` label, plus
+   9 unnamed `Text` debug shapes) were quarantined into the
+   `[QUARANTINE] orphan-shapes — issue #134` board
+   (id `0070e222-40fd-80c6-8008-193b30bce9ba`) at `(8000, 9500)`.
+   Page root no longer contains any loose shape.
 8. **Identifier coverage** — top-level boards already carry meaningful
    names but their child shapes mostly do not follow the `screen/...`
    pattern. Apply the convention progressively (one screen per PR).
