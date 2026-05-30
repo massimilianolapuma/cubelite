@@ -189,7 +189,7 @@ by category below.
 | `common/controls/toggle` | `kit-toggle-on/off-light/dark` | ✅ | 4pt frame width drift between on/off (P3, see HIG report §1.4) |
 | `common/controls/checkbox` | `kit-checkbox-checked/unchecked-light/dark` | ⚠️ **P1** | 18×18pt — under HIG 20pt minimum; dark unchecked missing border |
 | `common/controls/text-field` | `kit-formfield-light/dark` (+ focused, disabled) | ✅ | |
-| `common/controls/dropdown` | `kit-dropdown-light/dark` (+ hover, disabled) | ✅ | Chevron is a placeholder rectangle (verify SF Symbol in code) |
+| `common/controls/dropdown` | `kit-dropdown-light/dark` (+ hover, disabled, focused) | ✅ | Chevron updated to SF Symbol `chevron.down` artwork (12×6pt thin V, 1.5pt round-cap stroke, vector Path) on all 8 variants — #137 |
 | `common/controls/segmented-control` | `kit-tabbar-light/dark` | ✅ | |
 
 ### 3.2 chrome/
@@ -272,9 +272,18 @@ follow-up issue tracked under #73.
 9. **Checkbox sub-spec** (P1) — `kit-checkbox-*` is 18pt; raise to 20pt
    (HIG absolute minimum). Verify Swift implementation does not also
    render at 18pt.
-10. **Dropdown chevron** — visually a rectangle in `kit-dropdown-*`. Verify
-    Swift uses the SF Symbol `chevron.down` and update the Penpot artwork
-    to match.
+10. **Dropdown chevron** — ✅ resolved by #137.
+    Replaced the previous `▾` (U+25BE) text glyph in `kit-dropdown-{,hover-,disabled-,focused-}{light,dark}`
+    with a vector `Path` tracing SF Symbol `chevron.down`
+    (12×6pt thin V, 1.5pt round-cap stroke, system gray `#86868b` light /
+    `#98989d` dark, muted on disabled). Hover and disabled variants
+    previously had no chevron at all — chevrons added to all 8 variants.
+    Swift parity: `PreferencesView` uses `Picker(...)` and `LogsView` uses
+    `Picker("Filter", ...)` with the default pop-up style, which on macOS
+    renders the system chevron automatically — no manual SF Symbol use is
+    required in code. The only explicit `Image(systemName: "chevron.down")`
+    in `Views/` is the namespace section disclosure in `MainView+Sidebar.swift`,
+    which already uses the correct symbol. No macos-agent follow-up needed.
 
 ---
 
