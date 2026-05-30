@@ -82,13 +82,13 @@ Coverage matrix for every `*View.swift` under `apps/macos/cubelite/cubelite/View
 | `SecretListView.swift` | ❌ not modelled | ❌ not modelled | Reuses 4-state list pattern |
 | `IngressListView.swift` | ❌ not modelled | ❌ not modelled | Reuses 4-state list pattern |
 | `HelmReleaseListView.swift` | ❌ not modelled | ❌ not modelled | Reuses 4-state list pattern |
-| `DeploymentDetailView.swift` | `macOS - Deployment Detail – Light` (`…de696c84b705`) **+** `DeploymentDetailView - Populated - Light` (`…e1114f56b05a`) | `macOS - Deployment Detail – Dark` (`…dfaeef6e573c`) **+** `DeploymentDetailView - Populated - Dark` (`…e11151698255`) | Two versions co-exist |
+| `DeploymentDetailView.swift` | **canonical:** `DeploymentDetailView - Populated - Light` (`…e1114f56b05a`) — legacy `[LEGACY] macOS - Deployment Detail – Light` (`…de696c84b705`) archived | **canonical:** `DeploymentDetailView - Populated - Dark` (`…e11151698255`) — legacy `[LEGACY] macOS - Deployment Detail – Dark` (`…dfaeef6e573c`) archived | ✅ Converged in #131 |
 | `ResourceDetailView.swift` (Pod variant) | `ResourceDetailView - Pod Detail - Light` (`…e11153b98ed2`) | `ResourceDetailView - Pod Detail - Dark` (`…e111552cad20`) | Other resource kinds (Deployment / Service / ConfigMap / Secret / Ingress / HelmRelease) not modelled |
-| `LogsView.swift` | `Logs & Errors Panel – Light` (`…deb5e43c7849`) **+** `LogsView - Populated - Light` (`…e1113796c50a`) | `Logs & Errors Panel – Dark` (`…dfaa6c87d885`) **+** `LogsView - Populated - Dark` (`…e1113a502e5b`) | Two versions co-exist; consolidate |
+| `LogsView.swift` | **canonical:** `LogsView - Populated - Light` (`…e1113796c50a`) — legacy `[LEGACY] Logs & Errors Panel – Light` (`…deb5e43c7849`) archived | **canonical:** `LogsView - Populated - Dark` (`…e1113a502e5b`) — legacy `[LEGACY] Logs & Errors Panel – Dark` (`…dfaa6c87d885`) archived | ✅ Converged in #131 |
 | `ErrorBannerView.swift` | `Error Banner Inline – Light` (`…deb5e55a154a`) | `Error Banner Inline – Dark` (`…dfaf4b7f9863`) | Should become `common/feedback/banner/error` |
-| `PreferencesView.swift` (General) | `PreferencesView - General - Light` (`…e1113d504e3f`) **+** legacy `macOS - Preferences – Light` (`…de6995690e20`) | `PreferencesView - General - Dark` (`…e1113e2db66b`) **+** legacy `macOS - Preferences – Dark` (`…dfaaa38ea8de`) | Legacy + new variants — converge |
+| `PreferencesView.swift` (General) | **canonical:** `PreferencesView - General - Light` (`…e1113d504e3f`) — legacy `[LEGACY] macOS - Preferences – Light` (`…de6995690e20`) archived | **canonical:** `PreferencesView - General - Dark` (`…e1113e2db66b`) — legacy `[LEGACY] macOS - Preferences – Dark` (`…dfaaa38ea8de`) archived | ✅ Converged in #131 |
 | `PreferencesView.swift` (Appearance) | `PreferencesView - Appearance - Light` (`…e1113f3057e3`) | `PreferencesView - Appearance - Dark` (`…e11140137aab`) | |
-| `PreferencesView.swift` (Advanced) | `PreferencesView - Advanced - Light` (`…e11141154c39`) **+** legacy `Preferences – Advanced (TLS) – Light` (`…de8ff7e8677a`) | `PreferencesView - Advanced - Dark` (`…e111420591a3`) **+** legacy `Preferences – Advanced (TLS) – Dark` (`…dfaadd7bc3c2`) | Two co-existing variants |
+| `PreferencesView.swift` (Advanced) | **canonical:** `PreferencesView - Advanced - Light` (`…e11141154c39`) — legacy `[LEGACY] Preferences – Advanced (TLS) – Light` (`…de8ff7e8677a`) archived | **canonical:** `PreferencesView - Advanced - Dark` (`…e111420591a3`) — legacy `[LEGACY] Preferences – Advanced (TLS) – Dark` (`…dfaadd7bc3c2`) archived | ✅ Converged in #131 |
 | `MenuBarContextView.swift` | `MenuBarContextView - Light` (`…e11156d4f4b6`) | `MenuBarContextView - Dark` (`…e111578b8c17`) | |
 | Resource Browser (composite, see `MainView`) | `Resource Browser – Light` (`…dfafa9087d50`) | `Resource Browser – Dark` (`…dfaff71ab655`) | Not bound to a single Swift file — represents the Sidebar + Detail composition |
 | App icon | `CubeLite Icon — on Light` (`…df93cdce112b`) | `CubeLite Icon — on Dark` (`…df93cdd8e33f`) **+** `CubeLite Icon — Transparent` (`…df93cde1d0fd`) | Linked to the `cubelite-icon` library component |
@@ -253,10 +253,14 @@ follow-up issue tracked under #73.
 3. **Resource detail variants** — only the Pod detail is modelled; the same
    structure renders for Deployment, Service, ConfigMap, Secret, Ingress,
    HelmRelease.
-4. **Duplicated boards** — `macOS - Preferences – *` co-exists with
+4. ✅ **Duplicated boards (resolved in #131)** — `macOS - Preferences – *` co-existed with
    `PreferencesView - General - *`. Same for Advanced/TLS, Logs and
-   Deployment Detail. Pick the newer set, archive the legacy with a
-   `[LEGACY]` prefix on the name.
+   Deployment Detail. All 8 legacy boards renamed with `[LEGACY]` prefix
+   and relocated to archive area at `(15000, 4000)` on the macOS Native
+   page, behind container board `[ARCHIVE] legacy boards — issue #131`
+   (`0070e222-40fd-80c6-8008-193cc9c940cb`). Canonical replacements:
+   `PreferencesView - General`, `PreferencesView - Advanced`,
+   `LogsView - Populated`, `DeploymentDetailView - Populated`.
 5. ✅ **Penpot tokens configured (resolved in #132)** — `penpot.library.local.tokens` now contains **9 token sets** (`primitive/color`, `semantic/light`, `semantic/dark`, `spacing`, `radius`, `font/size`, `font/weight`, `apple-system/light`, `apple-system/dark`) totalling **136 tokens**, plus 2 themes in the `Mode` group (`Light`, `Dark`) wired to the corresponding sets. The two `apple-system/*` sets capture the literal NSColor hex values currently in use by the macOS kit (22 light + 19 dark) under semantic names (`label`, `secondary-label`, `surface`, `separator`, `border`, `system-blue`, etc.). **All 46 `kit-*` boards bound**: 127 fill bindings + 11 stroke bindings (138 total) — zero literal hex values remain in any kit-* shape on the States & Components page. The `semantic/*` sets imported from `design/tokens.json` are available for future desktop/web work but the macOS kit is bound to `apple-system/*` to preserve visual fidelity with the Apple system palette.
 6. **Component reuse missing** — every kit-* atom is a stand-alone board
    instead of a Penpot library component. Promote the kit-* boards to
