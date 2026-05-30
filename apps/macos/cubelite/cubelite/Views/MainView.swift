@@ -97,6 +97,22 @@ struct MainView: View {
     /// watcher's `start`/`stop` lifecycle ties to view appearance.
     @State var watcherBox = WatcherBox()
 
+    /// Drives the periodic refresh of cluster resources based on
+    /// `AppSettings.autoRefreshInterval`. Held in `@State` so its underlying
+    /// task survives view re-evaluations.
+    @State var autoRefreshCoordinator = AutoRefreshCoordinator()
+
+    /// Composite key that captures every input the auto-refresh schedule depends on.
+    /// Whenever any field changes, the schedule is rebuilt by `configureAutoRefresh()`.
+    var autoRefreshKey: AutoRefreshKey {
+        AutoRefreshKey(
+            intervalSeconds: appSettings.autoRefreshInterval,
+            allClusters: showAllClusters,
+            context: sidebarSelection?.context ?? selectedContext,
+            namespace: sidebarSelection?.namespace
+        )
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -125,7 +141,11 @@ struct MainView: View {
         }
         .task { await loadKubeconfig() }
         .task(id: appSettings.kubeconfigPaths) { startKubeconfigWatcher() }
-        .onDisappear { watcherBox.watcher?.stop() }
+        .onChange(of: autoRefreshKey, initial: true) { _, _ in configureAutoRefresh() }
+        .onDisappear {
+            watcherBox.watcher?.stop()
+            autoRefreshCoordinator.cancel()
+        }
         .onChange(of: selectedContext) { _, newValue in
             // Only exit All Clusters mode when selecting a specific context.
             // When All Clusters sets selectedContext = nil, preserve showAllClusters.
@@ -185,6 +205,16 @@ struct MainView: View {
 @MainActor
 final class WatcherBox {
     var watcher: KubeconfigWatcher?
+}
+
+// MARK: - Auto-Refresh Key
+
+/// Identifies the inputs that determine the active auto-refresh schedule.
+struct AutoRefreshKey: Equatable {
+    let intervalSeconds: Int
+    let allClusters: Bool
+    let context: String?
+    let namespace: String?
 }
 
 
