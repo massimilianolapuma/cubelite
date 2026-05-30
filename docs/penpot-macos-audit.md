@@ -257,8 +257,7 @@ follow-up issue tracked under #73.
    `PreferencesView - General - *`. Same for Advanced/TLS, Logs and
    Deployment Detail. Pick the newer set, archive the legacy with a
    `[LEGACY]` prefix on the name.
-5. **No Penpot tokens configured** — `penpot.library.local.tokens.sets`
-   is empty. Import `design/tokens.json` so colors/sizes can be bound.
+5. ✅ **Penpot tokens configured (resolved in #132)** — `penpot.library.local.tokens` now contains **9 token sets** (`primitive/color`, `semantic/light`, `semantic/dark`, `spacing`, `radius`, `font/size`, `font/weight`, `apple-system/light`, `apple-system/dark`) totalling **136 tokens**, plus 2 themes in the `Mode` group (`Light`, `Dark`) wired to the corresponding sets. The two `apple-system/*` sets capture the literal NSColor hex values currently in use by the macOS kit (22 light + 19 dark) under semantic names (`label`, `secondary-label`, `surface`, `separator`, `border`, `system-blue`, etc.). **All 46 `kit-*` boards bound**: 127 fill bindings + 11 stroke bindings (138 total) — zero literal hex values remain in any kit-* shape on the States & Components page. The `semantic/*` sets imported from `design/tokens.json` are available for future desktop/web work but the macOS kit is bound to `apple-system/*` to preserve visual fidelity with the Apple system palette.
 6. **Component reuse missing** — every kit-* atom is a stand-alone board
    instead of a Penpot library component. Promote the kit-* boards to
    components so screens can instance them.
@@ -294,9 +293,10 @@ review lives in `docs/hig-review-report.md`.
 
 - **Body text 13pt minimum**, never below 10pt — honoured in current boards.
 - **Control hit target ≥ 20×20pt** — checkbox kit fails (see §4.9).
-- **Use system semantic colors** — current kit uses literal hex values that
-  match the macOS system palette; once Penpot tokens are imported, every
-  fill must bind to a token, not a hex.
+- **Use system semantic colors** — ✅ every kit-* fill / stroke is now bound
+  to a Penpot color token (138 bindings across 46 boards). Bindings target
+  the `apple-system/light` and `apple-system/dark` sets, which mirror the
+  NSColor system palette. See §4.5 for details. (resolved in #132)
 - **Sidebar icons follow user accent** — do not pin a hard color. Verify
   every sidebar row icon in `MainView – *` boards is annotated with
   "tint = accent" rather than a fixed fill.
