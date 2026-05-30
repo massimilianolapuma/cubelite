@@ -4,10 +4,6 @@ import SwiftUI
 //
 // Per-namespace resource fetch orchestration with RBAC-aware partial-success
 // handling. Extracted from `MainView` with no behavior change.
-//
-// TODO(#104): `finishResourceLoad(...)` uses `error as! CubeliteError` after
-// `error is CubeliteError` — that force cast should become a `switch` or
-// `if let _ = error as? CubeliteError`. Tracked separately.
 extension MainView {
 
     @MainActor
@@ -141,45 +137,80 @@ extension MainView {
         clusterState.selectedNamespace = namespace
 
         if let error = fatalError {
-            if error is CubeliteError {
-                let cubeliteError = error as! CubeliteError
-                if case .clusterUnreachable = cubeliteError {
-                    clusterState.clusterReachable = false
-                    clusterState.resourceError = cubeliteError.localizedDescription
-                    logStore.append(
-                        LogEntry(
-                            severity: .warning,
-                            source: "KubeAPI",
-                            message: cubeliteError.localizedDescription,
-                            suggestedAction: "Check cluster connectivity and VPN/network settings."
-                        ))
-                } else {
-                    if case .tlsError = cubeliteError { clusterState.clusterReachable = false }
-                    clusterState.resourceError = cubeliteError.localizedDescription
-                    logStore.append(
-                        LogEntry(
-                            severity: .error,
-                            source: "KubeAPI",
-                            message: cubeliteError.localizedDescription,
-                            details: String(describing: cubeliteError)
-                        ))
-                }
-            } else {
-                clusterState.resourceError = error.localizedDescription
-                logStore.append(
-                    LogEntry(
-                        severity: .error,
-                        source: "KubeAPI",
-                        message: error.localizedDescription,
-                        details: String(describing: error)
-                    ))
+            let mapping = MainView.mapResourceFatalError(error)
+            if let reachable = mapping.clusterReachable {
+                clusterState.clusterReachable = reachable
             }
+            clusterState.resourceError = mapping.message
+            logStore.append(
+                LogEntry(
+                    severity: mapping.severity,
+                    source: "KubeAPI",
+                    message: mapping.message,
+                    details: mapping.details,
+                    suggestedAction: mapping.suggestedAction
+                ))
         } else {
             clusterState.clusterReachable = true
             if !forbidden.isEmpty {
                 clusterState.resourceError =
                     "Limited access: cannot read \(forbidden.sorted().joined(separator: ", "))"
             }
+        }
+    }
+
+    /// Outcome of mapping a resource-load fatal error into UI state and a log entry.
+    /// Pure, `Sendable`, and unit-testable without a SwiftUI host.
+    struct ResourceFatalErrorMapping: Sendable, Equatable {
+        let message: String
+        let severity: LogSeverity
+        /// `nil` leaves the prior reachability flag untouched.
+        let clusterReachable: Bool?
+        let details: String?
+        let suggestedAction: String?
+    }
+
+    /// Safely maps any error thrown during resource loading to the values
+    /// ``finishResourceLoad(fatalError:forbidden:namespace:)`` needs to update
+    /// `ClusterState` and append a `LogEntry`. Non-`CubeliteError` values
+    /// (e.g. `URLError`, decoding errors) fall back to a generic error log
+    /// instead of crashing via a force cast.
+    static func mapResourceFatalError(_ error: any Error) -> ResourceFatalErrorMapping {
+        guard let cubeliteError = error as? CubeliteError else {
+            return ResourceFatalErrorMapping(
+                message: error.localizedDescription,
+                severity: .error,
+                clusterReachable: nil,
+                details: String(describing: error),
+                suggestedAction: nil
+            )
+        }
+
+        switch cubeliteError {
+        case .clusterUnreachable:
+            return ResourceFatalErrorMapping(
+                message: cubeliteError.localizedDescription,
+                severity: .warning,
+                clusterReachable: false,
+                details: nil,
+                suggestedAction: "Check cluster connectivity and VPN/network settings."
+            )
+        case .tlsError:
+            return ResourceFatalErrorMapping(
+                message: cubeliteError.localizedDescription,
+                severity: .error,
+                clusterReachable: false,
+                details: String(describing: cubeliteError),
+                suggestedAction: nil
+            )
+        default:
+            return ResourceFatalErrorMapping(
+                message: cubeliteError.localizedDescription,
+                severity: .error,
+                clusterReachable: nil,
+                details: String(describing: cubeliteError),
+                suggestedAction: nil
+            )
         }
     }
 }
