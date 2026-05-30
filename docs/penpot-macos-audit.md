@@ -182,27 +182,27 @@ by category below.
 
 | Common id | Existing kit board(s) | HIG rating | Notes |
 |---|---|---|---|
-| `common/controls/button/primary` | `kit-button-light` / `kit-button-dark` (+ hover/pressed/disabled) | ✅ | Already has full state coverage |
+| `common/controls/button` | `kit-button-light` / `kit-button-dark` (+ hover/pressed/disabled) | ✅ | ✅ Promoted to library variant container in #133 (id `…19917e08ab51`, props `mode`+`state`, 8 variants). Full state coverage retained. |
 | `common/controls/button/secondary` | _none_ | ❌ gap | Add neutral fill variant |
 | `common/controls/button/destructive` | _none_ | ❌ gap | System red |
 | `common/controls/button/icon` | _none_ | ❌ gap | 28×28pt SF Symbol-only |
-| `common/controls/toggle` | `kit-toggle-on/off-light/dark` | ✅ | 4pt frame width drift between on/off (P3, see HIG report §1.4) |
-| `common/controls/checkbox` | `kit-checkbox-checked/unchecked-light/dark` | ✅ | 20×20pt squares (HIG hit-target minimum); dark unchecked has visible 1pt border — #136 |
-| `common/controls/text-field` | `kit-formfield-light/dark` (+ focused, disabled) | ✅ | |
-| `common/controls/dropdown` | `kit-dropdown-light/dark` (+ hover, disabled, focused) | ✅ | Chevron updated to SF Symbol `chevron.down` artwork (12×6pt thin V, 1.5pt round-cap stroke, vector Path) on all 8 variants — #137 |
-| `common/controls/segmented-control` | `kit-tabbar-light/dark` | ✅ | |
+| `common/controls/toggle` | `kit-toggle-on/off-light/dark` | ✅ | ✅ Promoted to library variant container in #133 (id `…19917edb7038`, props `mode`+`state`, 4 variants). 4pt frame width drift between on/off (P3, see HIG report §1.4). |
+| `common/controls/checkbox` | `kit-checkbox-checked/unchecked-light/dark` | ✅ | ✅ Promoted to library variant container in #133 (id `…19917fa2965c`, props `mode`+`state`, 4 variants). 20×20pt squares (HIG hit-target minimum); dark unchecked has visible 1pt border — #136. |
+| `common/controls/form-field` | `kit-formfield-light/dark` (+ focused, disabled) | ✅ | ✅ Promoted to library variant container in #133 (id `…1991806ac1de`, props `mode`+`state`, 6 variants). Canonical name converged on `form-field` (legacy aka `text-field`). |
+| `common/controls/dropdown` | `kit-dropdown-light/dark` (+ hover, disabled, focused) | ✅ | ✅ Promoted to library variant container in #133 (id `…199181370587`, props `mode`+`state`, 8 variants). Chevron updated to SF Symbol `chevron.down` artwork — #137. |
+| `common/controls/segmented-control` | `kit-tabbar-light/dark` | ✅ | ✅ Promoted to library variant container in #133 (id `…199174dead82`, prop `mode`, 2 variants). Canonical name converged on `segmented-control` (legacy aka `tabbar`). |
 
 ### 3.2 chrome/
 
 | Common id | Existing kit board(s) | HIG rating | Notes |
 |---|---|---|---|
-| `common/chrome/titlebar` | `kit-titlebar-light/dark` | ✅ | |
+| `common/chrome/titlebar` | `kit-titlebar-light/dark` | ✅ | ✅ Promoted to library variant container in #133 (id `…19917387c230`, prop `mode`, 2 variants). |
 | `common/chrome/sidebar` | implicit in MainView boards | ⚠️ | Extract to dedicated component |
 | `common/chrome/sidebar/list-row` | implicit | ⚠️ | Extract — every screen redraws it |
 | `common/chrome/sidebar/section-header` | implicit | ⚠️ | Extract |
 | `common/chrome/toolbar` | _none_ | ❌ gap | Standard 38pt toolbar |
-| `common/chrome/status-bar` | `kit-statusbar-light/dark` | ✅ | |
-| `common/chrome/separator` | `kit-separator-light/dark` | ✅ | |
+| `common/chrome/status-bar` | `kit-statusbar-light/dark` | ✅ | ✅ Promoted to library variant container in #133 (id `…199173fa09a3`, prop `mode`, 2 variants). Canonical name converged on `status-bar` (legacy aka `statusbar`). |
+| `common/chrome/separator` | `kit-separator-light/dark` | ✅ | ✅ Promoted to library variant container in #133 (id `…19917310f719`, prop `mode`, 2 variants). |
 
 ### 3.3 data/
 
@@ -211,11 +211,11 @@ by category below.
 | `common/data/table/header-row` | implicit in list view boards | ⚠️ | Extract |
 | `common/data/table/data-row` | implicit | ⚠️ | Extract |
 | `common/data/key-value-row` | implicit in detail boards | ⚠️ | Extract |
-| `common/data/badge/status` | `kit-badge-error/warn/info-light/dark` | ✅ | |
+| `common/data/badge` | `kit-badge-error/warn/info-light/dark` | ✅ | ✅ Promoted to library variant container in #133 (id `…1991a16eaa57`, props `mode`+`type`, 6 variants). |
 | `common/data/badge/count` | _none_ | ❌ gap | Sidebar count chips |
 | `common/data/cluster-card` | `common / data / cluster-card` (`…f17f4b20ea55`) | ✅ | Built for F2 (#128). Light + dark columns showing all three row states (online / RBAC limited / offline) following Swift's `ClusterSnapshotRow`. Used in `CrossClusterDashboardView – Light/Dark`. |
 | `common/data/resource-count-tile` | `common / data / resource-count-tile` (`…f17bd3ff6c0e`) | ✅ | Built for F1 (#127). Documents both populated + `no-access` (RBAC restricted) variants in light + dark. Used in `DashboardView – Light/Dark`. |
-| `common/data/log-row` | `kit-logrow-light/dark` | ✅ | |
+| `common/data/log-row` | `kit-logrow-light/dark` | ✅ | ✅ Promoted to library variant container in #133 (id `…1991746c8abe`, prop `mode`, 2 variants). Canonical name converged on `log-row` (legacy aka `logrow`). |
 
 ### 3.4 feedback/
 
@@ -262,9 +262,36 @@ follow-up issue tracked under #73.
    `PreferencesView - General`, `PreferencesView - Advanced`,
    `LogsView - Populated`, `DeploymentDetailView - Populated`.
 5. ✅ **Penpot tokens configured (resolved in #132)** — `penpot.library.local.tokens` now contains **9 token sets** (`primitive/color`, `semantic/light`, `semantic/dark`, `spacing`, `radius`, `font/size`, `font/weight`, `apple-system/light`, `apple-system/dark`) totalling **136 tokens**, plus 2 themes in the `Mode` group (`Light`, `Dark`) wired to the corresponding sets. The two `apple-system/*` sets capture the literal NSColor hex values currently in use by the macOS kit (22 light + 19 dark) under semantic names (`label`, `secondary-label`, `surface`, `separator`, `border`, `system-blue`, etc.). **All 46 `kit-*` boards bound**: 127 fill bindings + 11 stroke bindings (138 total) — zero literal hex values remain in any kit-* shape on the States & Components page. The `semantic/*` sets imported from `design/tokens.json` are available for future desktop/web work but the macOS kit is bound to `apple-system/*` to preserve visual fidelity with the Apple system palette.
-6. **Component reuse missing** — every kit-* atom is a stand-alone board
-   instead of a Penpot library component. Promote the kit-* boards to
-   components so screens can instance them.
+6. ✅ **Component reuse missing — resolved by #133.** All 46 kit-* atoms
+   on the **States & Components** page have been promoted into the local
+   library as **11 variant containers** (12 library components total
+   including the pre-existing `cubelite-icon`). Family mapping (canonical
+   name → variant container id → props → variant count):
+   - `common/chrome/separator` → `…19917310f719` → `mode` → 2
+   - `common/chrome/titlebar` → `…19917387c230` → `mode` → 2
+   - `common/chrome/status-bar` → `…199173fa09a3` → `mode` → 2
+   - `common/controls/segmented-control` → `…199174dead82` → `mode` → 2
+   - `common/data/log-row` → `…1991746c8abe` → `mode` → 2
+   - `common/controls/button` → `…19917e08ab51` → `mode`+`state` → 8
+   - `common/controls/toggle` → `…19917edb7038` → `mode`+`state` → 4
+   - `common/controls/checkbox` → `…19917fa2965c` → `mode`+`state` → 4
+   - `common/controls/form-field` → `…1991806ac1de` → `mode`+`state` → 6
+   - `common/controls/dropdown` → `…199181370587` → `mode`+`state` → 8
+   - `common/data/badge` → `…1991a16eaa57` → `mode`+`type` → 6
+
+   The original 46 `kit-*` boards remain in place (untouched) as reference
+   artwork on the States & Components page. The intermediate clone wrappers
+   used during promotion (staging area `x≥20000`) were cleaned up — 46
+   empty clones removed, 0 errors. The variant containers themselves sit at
+   `x≈19970` on the States & Components page; their canvas position does
+   not affect their use as library instances, but a follow-up may relocate
+   them to a curated catalogue on the Common Elements page.
+
+   **Deferred to follow-up**: rewiring the existing screen boards on
+   `macOS Native` to use these library instances instead of duplicated
+   geometry is intentionally **out of scope for #133** to keep this PR a
+   pure library-asset change with zero risk of visual regression on the
+   screen boards. To be addressed incrementally per screen.
 7. **Orphan shapes on the macOS Native page** — ✅ resolved by #134.
    16 loose top-level shapes (`test-rect-dims`, `child-rect`,
    `section-heading-icon`, `section-subheading-icon`, `pref-title`,
@@ -348,7 +375,7 @@ SwiftUI code or existing Penpot screen artwork.
 | F4 | design(macos): `ResourceDetailView` variants for Deployment, Service, ConfigMap, Secret, Ingress, HelmRelease | design-agent |
 | F5 | design(macos): converge legacy + new Preferences / Logs / Deployment Detail board sets | design-agent |
 | F6 | design(macos): import `design/tokens.json` into Penpot token sets and bind kit-* fills | design-agent |
-| F7 | design(macos): promote kit-* atoms to Penpot library components | design-agent |
+| F7 | ✅ design(macos): promote kit-* atoms to Penpot library components (resolved in #133) — 11 variant containers, 46 atoms | design-agent |
 | F8 | design(macos): clean up orphan shapes on macOS Native page | design-agent |
 | F9 | design(macos): apply `screen/*` identifier convention to existing screens (incrementally, one per PR) | design-agent |
 | F10 | design(macos): raise checkbox to 20pt in kit-* and verify Swift parity | design-agent + macos-agent |
