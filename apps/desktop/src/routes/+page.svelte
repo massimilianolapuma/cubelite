@@ -6,6 +6,7 @@
 	import Sidebar from '$lib/components/shell/Sidebar.svelte';
 	import StatusBar from '$lib/components/shell/StatusBar.svelte';
 	import ConnectingOverlay from '$lib/components/ui/ConnectingOverlay.svelte';
+	import UnreachableView from '$lib/components/views/UnreachableView.svelte';
 	import { viewRegistry } from '$lib/components/views';
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
@@ -55,7 +56,11 @@
 			<Sidebar />
 		{/if}
 		<main class="relative flex min-w-0 flex-1 flex-col overflow-y-auto">
-			<Current {...entry.props ?? {}} />
+			{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
+				<UnreachableView />
+			{:else}
+				<Current {...entry.props ?? {}} />
+			{/if}
 		</main>
 	</div>
 	<StatusBar />

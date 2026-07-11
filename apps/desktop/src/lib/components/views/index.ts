@@ -6,7 +6,11 @@
 
 import type { Component } from "svelte";
 import type { View } from "$lib/stores/app.svelte";
+import AllClustersView from "./AllClustersView.svelte";
+import DeploymentsView from "./DeploymentsView.svelte";
 import EmptyStateView from "./EmptyStateView.svelte";
+import OverviewView from "./OverviewView.svelte";
+import PodsView from "./PodsView.svelte";
 
 export interface ViewEntry {
   component: Component<Record<string, unknown>>;
@@ -27,10 +31,10 @@ const emptyState = (what: string): ViewEntry =>
   });
 
 export const viewRegistry: Record<View, ViewEntry> = {
-  dashboard: emptyState("The All Clusters dashboard"),
-  overview: emptyState("The cluster overview"),
-  pods: emptyState("The Pods view"),
-  deployments: emptyState("The Deployments view"),
+  dashboard: asEntry(AllClustersView),
+  overview: asEntry(OverviewView),
+  pods: asEntry(PodsView),
+  deployments: asEntry(DeploymentsView),
   helm: emptyState("The Helm Releases view"),
   services: emptyState("The Services view"),
   ingresses: emptyState("The Ingresses view"),
