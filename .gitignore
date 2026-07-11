@@ -36,3 +36,9 @@ lcov.info
 
 # Tauri generated schemas (auto-generated)
 apps/desktop/src-tauri/gen/
+
+# Design handoff HTML prototypes: reference-only, kept out of VCS
+# (SonarCloud automatic analysis cannot exclude them and flags a11y
+# rules on throwaway prototype markup). The bundle README + tokens-v2
+# remain tracked.
+design/design_handoff_cubelite_ui/*.dc.html

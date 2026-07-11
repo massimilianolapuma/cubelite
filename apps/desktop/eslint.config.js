@@ -8,5 +8,11 @@ export default tseslint.config(
 	...tseslint.configs.recommended,
 	...svelte.configs['flat/recommended'],
 	{ languageOptions: { globals: { ...globals.browser, ...globals.node } } },
-	{ files: ['**/*.svelte'], languageOptions: { parserOptions: { parser: tseslint.parser } } }
+	{
+		files: ['**/*.svelte'],
+		languageOptions: { parserOptions: { parser: tseslint.parser } },
+		// TypeScript owns undefined-identifier checks; no-undef false-positives
+		// on generics="T" in TS-parsed Svelte components.
+		rules: { 'no-undef': 'off' }
+	}
 );

@@ -1,75 +1,54 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/svelte";
+import { describe, it, expect, vi } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { render, screen, fireEvent } from "@testing-library/svelte";
 import DeploymentTable from "./DeploymentTable.svelte";
 import type { DeploymentInfo } from "$lib/tauri";
 
+function dep(overrides: Partial<DeploymentInfo> = {}): DeploymentInfo {
+  return {
+    name: "api",
+    namespace: "default",
+    replicas: 3,
+    ready_replicas: 3,
+    ...overrides,
+  };
+}
+
 describe("DeploymentTable", () => {
-  it("renders table headers", () => {
+  it("renders the spec'd column headers", () => {
     render(DeploymentTable, { props: { deployments: [] } });
-
-    expect(screen.getByText("Name")).toBeTruthy();
-    expect(screen.getByText("Namespace")).toBeTruthy();
-    expect(screen.getByText("Ready")).toBeTruthy();
-    expect(screen.getByText("Replicas")).toBeTruthy();
+    for (const h of ["Name", "Ready", "Status", "Age", "Replicas · Actions"]) {
+      expect(screen.getByText(h)).toBeInTheDocument();
+    }
   });
 
-  it("shows empty message when no deployments", () => {
+  it("shows the empty state when there are no deployments", () => {
     render(DeploymentTable, { props: { deployments: [] } });
-
-    expect(screen.getByText("No deployments found.")).toBeTruthy();
+    expect(screen.getByText("No deployments found.")).toBeInTheDocument();
   });
 
-  it("renders deployment rows", () => {
-    const deployments: DeploymentInfo[] = [
-      { name: "nginx", namespace: "default", replicas: 3, ready_replicas: 3 },
-      {
-        name: "api-server",
-        namespace: "production",
-        replicas: 5,
-        ready_replicas: 2,
-      },
-    ];
-
-    render(DeploymentTable, { props: { deployments } });
-
-    expect(screen.getByText("nginx")).toBeTruthy();
-    expect(screen.getByText("api-server")).toBeTruthy();
-    expect(screen.getByText("default")).toBeTruthy();
-    expect(screen.getByText("production")).toBeTruthy();
+  it("derives Available when all replicas are ready", () => {
+    render(DeploymentTable, { props: { deployments: [dep()] } });
+    expect(screen.getByText("Available")).toBeInTheDocument();
+    expect(screen.getByText("3/3")).toBeInTheDocument();
   });
 
-  it("displays ready/replicas ratio", () => {
-    const deployments: DeploymentInfo[] = [
-      { name: "nginx", namespace: "default", replicas: 3, ready_replicas: 3 },
-    ];
-
-    render(DeploymentTable, { props: { deployments } });
-
-    expect(screen.getByText("3/3")).toBeTruthy();
+  it("derives Progressing when replicas are missing", () => {
+    render(DeploymentTable, { props: { deployments: [dep({ ready_replicas: 1 })] } });
+    expect(screen.getByText("Progressing")).toBeInTheDocument();
   });
 
-  it("displays degraded deployment ratio", () => {
-    const deployments: DeploymentInfo[] = [
-      {
-        name: "failing-app",
-        namespace: "staging",
-        replicas: 5,
-        ready_replicas: 1,
-      },
-    ];
-
-    render(DeploymentTable, { props: { deployments } });
-
-    expect(screen.getByText("1/5")).toBeTruthy();
+  it("renders the stepper and Restart disabled with a reason", () => {
+    render(DeploymentTable, { props: { deployments: [dep()] } });
+    const restart = screen.getByText("Restart").closest("button");
+    expect(restart).toBeDisabled();
+    expect(restart).toHaveAttribute("title", "Requires backend support");
   });
 
-  it("displays total replicas column", () => {
-    const deployments: DeploymentInfo[] = [
-      { name: "nginx", namespace: "default", replicas: 10, ready_replicas: 8 },
-    ];
-
-    render(DeploymentTable, { props: { deployments } });
-
-    expect(screen.getByText("10")).toBeTruthy();
+  it("calls onRowClick with the deployment", async () => {
+    const onRowClick = vi.fn();
+    render(DeploymentTable, { props: { deployments: [dep()], onRowClick } });
+    await fireEvent.click(screen.getByText("api"));
+    expect(onRowClick).toHaveBeenCalledWith(dep());
   });
 });
