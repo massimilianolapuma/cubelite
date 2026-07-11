@@ -68,6 +68,8 @@ struct MainView: View {
     @State var namespaceError: String?
     /// Whether the Logs & Errors sheet is presented.
     @State var showingLogs = false
+    /// Whether the Cmd+K command palette is shown.
+    @State var showingPalette = false
     /// Text for the inline namespace input field when namespace listing is forbidden.
     @State var manualNamespaceInput: String = ""
 
@@ -111,6 +113,38 @@ struct MainView: View {
             context: sidebarSelection?.context ?? selectedContext,
             namespace: sidebarSelection?.namespace
         )
+    }
+
+    // MARK: - Shortcuts
+
+    /// Invisible buttons carrying the global keyboard shortcuts:
+    /// Cmd+K toggles the palette, Cmd+1–5 switch clusters by rail position.
+    @ViewBuilder
+    var shortcutButtons: some View {
+        Group {
+            Button("") { showingPalette.toggle() }
+                .keyboardShortcut("k", modifiers: .command)
+            ForEach(0..<5, id: \.self) { index in
+                Button("") {
+                    if clusterState.contexts.indices.contains(index) {
+                        switchToContext(clusterState.contexts[index])
+                    }
+                }
+                .keyboardShortcut(
+                    KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+            }
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+    }
+
+    /// Switch the active cluster from the palette or Cmd+1–5.
+    func switchToContext(_ context: String) {
+        showAllClusters = false
+        if selectedContext != context {
+            selectedContext = context
+        }
     }
 
     // MARK: - Actions
@@ -193,6 +227,26 @@ struct MainView: View {
                 onShowLogs: { showingLogs = true }
             )
         }
+        .overlay {
+            if showingPalette {
+                CommandPaletteView(
+                    contexts: clusterState.contexts,
+                    activeContext: selectedContext,
+                    onSelectContext: { switchToContext($0) },
+                    onSelectAllClusters: {
+                        showAllClusters = true
+                        selectedContext = nil
+                        Task { await loadCrossClusterData() }
+                    },
+                    onSelectResource: { type in
+                        showAllClusters = false
+                        selectedResourceType = type
+                    },
+                    onClose: { showingPalette = false }
+                )
+            }
+        }
+        .background(shortcutButtons)
         .frame(minWidth: 900, minHeight: 550)
         .sheet(isPresented: $showingLogs) {
             LogsView()
