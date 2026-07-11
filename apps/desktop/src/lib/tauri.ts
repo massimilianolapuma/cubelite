@@ -233,6 +233,53 @@ export type NodeCapacityInfo = {
   memory_allocatable_bytes: number;
 };
 
+export type JobInfo = {
+  name: string;
+  namespace: string;
+  completions: number;
+  succeeded: number;
+  active: number;
+  failed: number;
+  creation_timestamp: string | null;
+};
+
+export type CronJobInfo = {
+  name: string;
+  namespace: string;
+  schedule: string;
+  suspend: boolean;
+  active: number;
+  last_schedule: string | null;
+  creation_timestamp: string | null;
+};
+
+export type StatefulSetInfo = {
+  name: string;
+  namespace: string;
+  replicas: number;
+  ready_replicas: number;
+  creation_timestamp: string | null;
+};
+
+export type NodeInfo = {
+  name: string;
+  status: string;
+  roles: string[];
+  version: string | null;
+  creation_timestamp: string | null;
+};
+
+export type PvcInfo = {
+  name: string;
+  namespace: string;
+  status: string | null;
+  volume: string | null;
+  capacity: string | null;
+  access_modes: string[];
+  storage_class: string | null;
+  creation_timestamp: string | null;
+};
+
 export type ClusterHealthInfo = {
   context: string;
   reachable: boolean;
@@ -285,6 +332,64 @@ export function clusterCapacity(
   context?: string,
 ): Promise<NodeCapacityInfo[]> {
   return invoke<NodeCapacityInfo[]>("cluster_capacity", {
+    kubeconfigPath,
+    context: context ?? null,
+  });
+}
+
+export function listJobs(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<JobInfo[]> {
+  return invoke<JobInfo[]>("list_jobs", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function listCronJobs(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<CronJobInfo[]> {
+  return invoke<CronJobInfo[]>("list_cronjobs", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function listStatefulSets(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<StatefulSetInfo[]> {
+  return invoke<StatefulSetInfo[]>("list_statefulsets", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function listPvcs(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<PvcInfo[]> {
+  return invoke<PvcInfo[]>("list_pvcs", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function listNodes(
+  kubeconfigPath: string,
+  context?: string,
+): Promise<NodeInfo[]> {
+  return invoke<NodeInfo[]>("list_nodes", {
     kubeconfigPath,
     context: context ?? null,
   });

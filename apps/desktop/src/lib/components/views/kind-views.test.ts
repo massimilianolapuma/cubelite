@@ -19,6 +19,11 @@ vi.mock("$lib/tauri", () => ({
   listConfigMaps: vi.fn(async () => []),
   listSecrets: vi.fn(async () => []),
   listHelmReleases: vi.fn(async () => []),
+  listJobs: vi.fn(async () => []),
+  listCronJobs: vi.fn(async () => []),
+  listStatefulSets: vi.fn(async () => []),
+  listPvcs: vi.fn(async () => []),
+  listNodes: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
 }));
@@ -175,5 +180,59 @@ describe("HelmView", () => {
     const { default: HelmView } = await import("./HelmView.svelte");
     render(HelmView);
     expect(screen.getByText("No Helm releases found.")).toBeInTheDocument();
+  });
+});
+
+describe("workload views", () => {
+  it("JobsView renders completions and failed highlighting", async () => {
+    const { default: JobsView } = await import("./JobsView.svelte");
+    resources.jobs = [
+      { name: "migrate", namespace: "default", completions: 2, succeeded: 1, active: 1, failed: 1, creation_timestamp: null },
+    ];
+    render(JobsView);
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("migrate")).toBeInTheDocument();
+  });
+
+  it("CronJobsView renders schedule and suspend", async () => {
+    const { default: CronJobsView } = await import("./CronJobsView.svelte");
+    resources.cronjobs = [
+      { name: "backup", namespace: "ops", schedule: "0 3 * * *", suspend: true, active: 0, last_schedule: null, creation_timestamp: null },
+    ];
+    render(CronJobsView);
+    expect(screen.getByText("0 3 * * *")).toBeInTheDocument();
+    expect(screen.getByText("True")).toBeInTheDocument();
+  });
+
+  it("StatefulSetsView derives status", async () => {
+    const { default: StatefulSetsView } = await import("./StatefulSetsView.svelte");
+    resources.statefulsets = [
+      { name: "db", namespace: "default", replicas: 3, ready_replicas: 2, creation_timestamp: null },
+    ];
+    render(StatefulSetsView);
+    expect(screen.getByText("2/3")).toBeInTheDocument();
+    expect(screen.getByText("Progressing")).toBeInTheDocument();
+  });
+
+  it("NodesView renders status, roles and version", async () => {
+    const { default: NodesView } = await import("./NodesView.svelte");
+    resources.nodeInventory = [
+      { name: "node-1", status: "Ready", roles: ["control-plane"], version: "v1.30.2", creation_timestamp: null },
+    ];
+    render(NodesView);
+    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(screen.getByText("control-plane")).toBeInTheDocument();
+    expect(screen.getByText("v1.30.2")).toBeInTheDocument();
+  });
+
+  it("PvcsView renders bound claim details", async () => {
+    const { default: PvcsView } = await import("./PvcsView.svelte");
+    resources.pvcs = [
+      { name: "data", namespace: "default", status: "Bound", volume: "pv-1", capacity: "10Gi", access_modes: ["ReadWriteOnce"], storage_class: "fast", creation_timestamp: null },
+    ];
+    render(PvcsView);
+    expect(screen.getByText("Bound")).toBeInTheDocument();
+    expect(screen.getByText("10Gi")).toBeInTheDocument();
+    expect(screen.getByText("fast")).toBeInTheDocument();
   });
 });

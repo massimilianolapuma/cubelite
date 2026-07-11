@@ -9,13 +9,18 @@ export const VIEWS = [
   "overview",
   "pods",
   "deployments",
+  "statefulsets",
+  "jobs",
+  "cronjobs",
   "helm",
   "services",
   "ingresses",
   "configmaps",
   "secrets",
+  "pvcs",
   "events",
   "logs",
+  "nodes",
 ] as const;
 
 export type View = (typeof VIEWS)[number];

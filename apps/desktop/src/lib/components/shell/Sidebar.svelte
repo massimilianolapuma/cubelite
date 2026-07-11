@@ -14,13 +14,23 @@
 
 	// Group dot colors per spec: workloads blue, network violet, config amber, observe teal.
 	const sections: Section[] = [
-		{ label: 'Cluster', dot: 'var(--color-accent)', items: [{ view: 'overview', label: 'Overview' }] },
+		{
+			label: 'Cluster',
+			dot: 'var(--color-accent)',
+			items: [
+				{ view: 'overview', label: 'Overview' },
+				{ view: 'nodes', label: 'Nodes' }
+			]
+		},
 		{
 			label: 'Workloads',
 			dot: 'var(--color-cluster-blue)',
 			items: [
 				{ view: 'pods', label: 'Pods' },
 				{ view: 'deployments', label: 'Deployments' },
+				{ view: 'statefulsets', label: 'StatefulSets' },
+				{ view: 'jobs', label: 'Jobs' },
+				{ view: 'cronjobs', label: 'CronJobs' },
 				{ view: 'helm', label: 'Helm Releases' }
 			]
 		},
@@ -37,7 +47,8 @@
 			dot: 'var(--color-status-warn)',
 			items: [
 				{ view: 'configmaps', label: 'ConfigMaps' },
-				{ view: 'secrets', label: 'Secrets' }
+				{ view: 'secrets', label: 'Secrets' },
+				{ view: 'pvcs', label: 'PVCs' }
 			]
 		},
 		{

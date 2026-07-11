@@ -192,3 +192,92 @@ pub struct SecretInfo {
     /// RFC 3339 creation timestamp, when reported by the API server.
     pub creation_timestamp: Option<String>,
 }
+
+/// Lightweight representation of a Kubernetes Job.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct JobInfo {
+    /// The job name.
+    pub name: String,
+    /// The namespace the job belongs to.
+    pub namespace: String,
+    /// Desired completions (spec.completions, defaults to 1).
+    pub completions: i32,
+    /// Pods that completed successfully.
+    pub succeeded: i32,
+    /// Pods currently running.
+    pub active: i32,
+    /// Pods that failed.
+    pub failed: i32,
+    /// RFC 3339 creation timestamp, when reported by the API server.
+    pub creation_timestamp: Option<String>,
+}
+
+/// Lightweight representation of a Kubernetes CronJob.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CronJobInfo {
+    /// The cron job name.
+    pub name: String,
+    /// The namespace the cron job belongs to.
+    pub namespace: String,
+    /// Cron schedule expression.
+    pub schedule: String,
+    /// `true` when the cron job is suspended.
+    pub suspend: bool,
+    /// Number of currently active jobs.
+    pub active: i32,
+    /// RFC 3339 timestamp of the last scheduled run.
+    pub last_schedule: Option<String>,
+    /// RFC 3339 creation timestamp, when reported by the API server.
+    pub creation_timestamp: Option<String>,
+}
+
+/// Lightweight representation of a Kubernetes StatefulSet.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StatefulSetInfo {
+    /// The stateful set name.
+    pub name: String,
+    /// The namespace the stateful set belongs to.
+    pub namespace: String,
+    /// Desired number of replicas.
+    pub replicas: i32,
+    /// Replicas currently reporting ready.
+    pub ready_replicas: i32,
+    /// RFC 3339 creation timestamp, when reported by the API server.
+    pub creation_timestamp: Option<String>,
+}
+
+/// Lightweight representation of a Kubernetes Node (read-only inventory).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NodeInfo {
+    /// The node name.
+    pub name: String,
+    /// `"Ready"` / `"NotReady"` from the Ready condition.
+    pub status: String,
+    /// Roles from `node-role.kubernetes.io/*` labels.
+    pub roles: Vec<String>,
+    /// Kubelet version.
+    pub version: Option<String>,
+    /// RFC 3339 creation timestamp, when reported by the API server.
+    pub creation_timestamp: Option<String>,
+}
+
+/// Lightweight representation of a Kubernetes PersistentVolumeClaim.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PvcInfo {
+    /// The claim name.
+    pub name: String,
+    /// The namespace the claim belongs to.
+    pub namespace: String,
+    /// Claim phase (`"Bound"`, `"Pending"`, `"Lost"`).
+    pub status: Option<String>,
+    /// Bound volume name, when bound.
+    pub volume: Option<String>,
+    /// Requested/actual storage capacity (e.g. `"10Gi"`).
+    pub capacity: Option<String>,
+    /// Access modes (e.g. `"RWO"`, `"ROX"`, `"RWX"`).
+    pub access_modes: Vec<String>,
+    /// Storage class name, when set.
+    pub storage_class: Option<String>,
+    /// RFC 3339 creation timestamp, when reported by the API server.
+    pub creation_timestamp: Option<String>,
+}
