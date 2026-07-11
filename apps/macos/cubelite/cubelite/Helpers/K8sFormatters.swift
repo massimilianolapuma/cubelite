@@ -34,37 +34,39 @@ extension Optional where Wrapped == String {
 // MARK: - Pod Phase Color
 
 extension Color {
-    /// Returns the display colour for a given Kubernetes pod phase string.
+    /// Returns the display colour for a given Kubernetes pod phase string,
+    /// mapped onto the Design System v1 status palette.
     ///
-    /// | Phase       | Color        |
-    /// |-------------|--------------|
-    /// | `Running`   | `.green`     |
-    /// | `Pending`   | `.orange`    |
-    /// | `Succeeded` | `.blue`      |
-    /// | `Failed`    | `.red`       |
-    /// | *(other)*   | `.secondary` |
+    /// | Phase       | Token             |
+    /// |-------------|-------------------|
+    /// | `Running`   | `statusOk`        |
+    /// | `Pending`   | `statusWarn`      |
+    /// | `Succeeded` | `statusInfo`      |
+    /// | `Failed`    | `statusErr`       |
+    /// | *(other)*   | `textTertiary`    |
     static func podPhase(_ phase: String?) -> Color {
         switch phase {
-        case "Running":   return .green
-        case "Pending":   return .orange
-        case "Succeeded": return .blue
-        case "Failed":    return .red
-        default:          return .secondary
+        case "Running":   return DesignTokens.statusOk
+        case "Pending":   return DesignTokens.statusWarn
+        case "Succeeded": return DesignTokens.statusInfo
+        case "Failed":    return DesignTokens.statusErr
+        default:          return DesignTokens.textTertiary
         }
     }
 
-    /// Returns the display colour for a Kubernetes deployment condition status string.
+    /// Returns the display colour for a Kubernetes deployment condition
+    /// status string, mapped onto the Design System v1 status palette.
     ///
-    /// | Status    | Color     |
-    /// |-----------|-----------|
-    /// | `True`    | `.green`  |
-    /// | `False`   | `.red`    |
-    /// | *(other)* | `.orange` |
+    /// | Status    | Token        |
+    /// |-----------|--------------|
+    /// | `True`    | `statusOk`   |
+    /// | `False`   | `statusErr`  |
+    /// | *(other)* | `statusWarn` |
     static func conditionStatus(_ status: String) -> Color {
         switch status {
-        case "True":  return .green
-        case "False": return .red
-        default:      return .orange
+        case "True":  return DesignTokens.statusOk
+        case "False": return DesignTokens.statusErr
+        default:      return DesignTokens.statusWarn
         }
     }
 }

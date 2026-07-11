@@ -28,41 +28,15 @@ struct HelmReleaseListView: View {
     // MARK: - States
 
     private var loadingView: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-            Text("Loading Helm releases\u{2026}")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
+        UnifiedLoadingState(label: "Loading Helm releases\u{2026}")
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
-                .foregroundStyle(.orange)
-            Text("Failed to load Helm releases")
-                .font(.headline)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-        }
+        UnifiedErrorState(title: "Failed to load Helm releases", message: message)
     }
 
     private var emptyView: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "shippingbox")
-                .font(.system(size: 36))
-                .foregroundStyle(.quinary)
-            Text("No Helm releases found")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("No Helm releases were detected in this namespace.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
+        UnifiedEmptyState(message: "No Helm releases were detected in this namespace.")
     }
 
     // MARK: - Table
@@ -103,6 +77,7 @@ struct HelmReleaseListView: View {
             }
             .width(ideal: 60)
         }
+        .unifiedTableBackground()
     }
 }
 
