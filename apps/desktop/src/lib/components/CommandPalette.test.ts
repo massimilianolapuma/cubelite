@@ -15,13 +15,14 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
 
-// jsdom has no ResizeObserver; bits-ui Command.Viewport observes its list.
-class ResizeObserverMock implements ResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
+/**
+ * bits-ui Command schedules microtasks (item registration, scroll sync).
+ * Flush them while the component is still mounted so they don't surface
+ * as unhandled rejections after test teardown.
+ */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
-globalThis.ResizeObserver = ResizeObserverMock;
 
 import CommandPalette from "./CommandPalette.svelte";
 import { app } from "$lib/stores/app.svelte";
@@ -46,8 +47,9 @@ describe("CommandPalette", () => {
     expect(document.querySelector("[data-command-root]")).toBeNull();
   });
 
-  it("renders cluster and action sections when open", () => {
+  it("renders cluster and action sections when open", async () => {
     render(CommandPalette);
+    await flush();
     expect(screen.getByText("Switch cluster")).toBeInTheDocument();
     expect(screen.getByText("Actions")).toBeInTheDocument();
     expect(screen.getByText("prod")).toBeInTheDocument();
@@ -57,14 +59,18 @@ describe("CommandPalette", () => {
 
   it("navigates and closes when selecting an action", async () => {
     render(CommandPalette);
+    await flush();
     await fireEvent.click(screen.getByText("Go to Pods"));
+    await flush();
     expect(app.view).toBe("pods");
     expect(app.paletteOpen).toBe(false);
   });
 
   it("opens preferences from the Preferences action", async () => {
     render(CommandPalette);
+    await flush();
     await fireEvent.click(screen.getByText("Preferences"));
+    await flush();
     expect(app.preferencesOpen).toBe(true);
     expect(app.paletteOpen).toBe(false);
     app.preferencesOpen = false;
@@ -72,9 +78,11 @@ describe("CommandPalette", () => {
 
   it("closes on backdrop click", async () => {
     render(CommandPalette);
+    await flush();
     const backdrop = document.querySelector('[role="presentation"]');
     expect(backdrop).not.toBeNull();
     if (backdrop) await fireEvent.click(backdrop);
+    await flush();
     expect(app.paletteOpen).toBe(false);
   });
 });

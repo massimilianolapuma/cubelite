@@ -6,16 +6,13 @@
 
 import { listContexts, setContext, type ContextInfo } from "$lib/tauri";
 import { assignIdentityColors, type IdentityColor } from "$lib/cluster-identity";
+import { errorMessage } from "$lib/errors";
 import { app } from "./app.svelte";
 import { resources } from "./resources.svelte";
 import { settings } from "./settings.svelte";
 import { toasts } from "./toasts.svelte";
 
 export type ConnectionState = "unknown" | "connected" | "unreachable";
-
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 class ClustersStore {
   contexts = $state<ContextInfo[]>([]);

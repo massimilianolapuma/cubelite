@@ -15,14 +15,11 @@ import {
   type NamespaceInfo,
   type PodInfo,
 } from "$lib/tauri";
+import { errorMessage } from "$lib/errors";
 import { app } from "./app.svelte";
 import { settings } from "./settings.svelte";
 
 const RELOAD_DEBOUNCE_MS = 300;
-
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 class ResourcesStore {
   pods = $state<PodInfo[]>([]);

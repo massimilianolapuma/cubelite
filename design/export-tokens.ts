@@ -70,7 +70,7 @@ function lines(
 function hexToHslTriple(hex: string): string {
   const m = /^#([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) throw new Error(`Expected 6-digit hex color, got: ${hex}`);
-  const int = parseInt(m[1], 16);
+  const int = Number.parseInt(m[1], 16);
   const r = ((int >> 16) & 255) / 255;
   const g = ((int >> 8) & 255) / 255;
   const b = (int & 255) / 255;

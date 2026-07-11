@@ -299,8 +299,8 @@
 }
 
 /* Shared focus treatment: accent border + 3px accent-15% ring */
-@utility focus-ring {
-  &:focus-visible {
+@layer utilities {
+  .focus-ring:focus-visible {
     outline: none;
     border-color: var(--color-accent);
     box-shadow: var(--focus-ring);

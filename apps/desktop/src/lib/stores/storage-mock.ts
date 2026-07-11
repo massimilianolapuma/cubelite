@@ -12,8 +12,12 @@ export function installLocalStorageMock(): Storage {
     },
     clear: () => map.clear(),
     getItem: (k) => map.get(k) ?? null,
-    setItem: (k, v) => void map.set(k, String(v)),
-    removeItem: (k) => void map.delete(k),
+    setItem: (k, v) => {
+      map.set(k, String(v));
+    },
+    removeItem: (k) => {
+      map.delete(k);
+    },
     key: (i) => [...map.keys()][i] ?? null,
   };
   Object.defineProperty(window, "localStorage", {
