@@ -5,6 +5,7 @@
 	import StatusPill from '$lib/components/ui/StatusPill.svelte';
 	import { deploymentStatus, podStatusLabel, podTone, toneColor } from '$lib/status';
 	import { app } from '$lib/stores/app.svelte';
+	import { logs } from '$lib/stores/logs.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 	import type { DeploymentInfo } from '$lib/tauri';
 
@@ -85,6 +86,7 @@
 			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-accent text-surface-window hover:brightness-110"
 			onclick={() => {
 				onClose();
+				logs.textFilter = deployment.name;
 				app.navigate('logs');
 			}}
 		>

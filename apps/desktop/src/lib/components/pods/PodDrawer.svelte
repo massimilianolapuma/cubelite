@@ -7,6 +7,7 @@
 	import StatusPill from '$lib/components/ui/StatusPill.svelte';
 	import { podStatusLabel, podTone } from '$lib/status';
 	import { app } from '$lib/stores/app.svelte';
+	import { logs } from '$lib/stores/logs.svelte';
 	import type { PodInfo } from '$lib/tauri';
 
 	let { pod, onClose }: { pod: PodInfo; onClose: () => void } = $props();
@@ -60,6 +61,7 @@
 			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-accent text-surface-window hover:brightness-110"
 			onclick={() => {
 				onClose();
+				logs.textFilter = pod.name;
 				app.navigate('logs');
 			}}
 		>

@@ -1,5 +1,6 @@
 use cubelite_core::{
     client::KubeClient,
+    logs::stream_pod_logs,
     resources::{
         ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
         ServiceInfo,
@@ -7,6 +8,7 @@ use cubelite_core::{
     ResourceType, ResourceWatcher, WatchEvent,
 };
 use futures::StreamExt;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -16,6 +18,30 @@ use tokio::task::JoinHandle;
 
 /// Monotonically increasing counter for generating unique watch IDs.
 static WATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Monotonically increasing counter for generating unique log stream IDs.
+static LOG_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Maximum number of pods aggregated into one log stream.
+const MAX_LOG_PODS: usize = 20;
+
+/// Tauri managed state holding all active log stream task handles.
+///
+/// Keyed by the stream ID string returned from [`stream_logs`]; each stream
+/// aggregates one task per followed pod.
+#[derive(Default)]
+pub struct LogState {
+    handles: Mutex<HashMap<String, Vec<JoinHandle<()>>>>,
+}
+
+/// A pod to follow in an aggregated log stream.
+#[derive(Debug, Deserialize)]
+pub struct PodRef {
+    /// Namespace of the pod.
+    pub namespace: String,
+    /// Pod name.
+    pub name: String,
+}
 
 /// Tauri managed state holding all active watch task handles.
 ///
@@ -212,6 +238,66 @@ pub async fn watch_resources(
         .insert(watch_id.clone(), handle);
 
     Ok(watch_id)
+}
+
+/// Start an aggregated log stream over the given pods (capped at 20).
+///
+/// Each line is parsed (timestamp + severity) and emitted as a `"log-line"`
+/// Tauri event with a `LogLine` payload. Returns a stream ID for
+/// [`stop_logs`].
+#[tauri::command]
+pub async fn stream_logs(
+    app: AppHandle,
+    kubeconfig_path: String,
+    pods: Vec<PodRef>,
+    context: Option<String>,
+) -> Result<String, String> {
+    let kube_client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let client = kube_client.client();
+
+    let stream_id = LOG_COUNTER.fetch_add(1, Ordering::SeqCst).to_string();
+    let mut handles = Vec::new();
+
+    for pod in pods.into_iter().take(MAX_LOG_PODS) {
+        let app_clone = app.clone();
+        let mut stream = stream_pod_logs(client.clone(), pod.namespace, pod.name, 50);
+        handles.push(tokio::spawn(async move {
+            while let Some(line) = stream.next().await {
+                // Ignore emit errors — the frontend window may have been closed.
+                let _ = app_clone.emit("log-line", line);
+            }
+        }));
+    }
+
+    app.state::<LogState>()
+        .handles
+        .lock()
+        .await
+        .insert(stream_id.clone(), handles);
+
+    Ok(stream_id)
+}
+
+/// Stop an aggregated log stream by its stream ID.
+///
+/// All per-pod tasks are aborted. Silently succeeds if `stream_id` is not
+/// found.
+#[tauri::command]
+pub async fn stop_logs(app: AppHandle, stream_id: String) -> Result<(), String> {
+    if let Some(handles) = app
+        .state::<LogState>()
+        .handles
+        .lock()
+        .await
+        .remove(&stream_id)
+    {
+        for handle in handles {
+            handle.abort();
+        }
+    }
+    Ok(())
 }
 
 /// Stop a running watch stream by its watch ID.

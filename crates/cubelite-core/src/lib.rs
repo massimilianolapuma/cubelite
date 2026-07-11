@@ -32,6 +32,7 @@ pub mod client;
 pub mod context;
 pub mod error;
 pub mod kubeconfig;
+pub mod logs;
 pub mod resources;
 pub mod types;
 pub mod watcher;
@@ -40,6 +41,7 @@ pub mod watcher;
 pub use client::KubeClient;
 pub use error::{ContextError, KubeconfigError};
 pub use kubeconfig::KubeConfig;
+pub use logs::{LogLevel, LogLine};
 pub use resources::{
     ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
     ServiceInfo,
