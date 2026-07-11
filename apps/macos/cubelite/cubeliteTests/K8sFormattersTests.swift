@@ -120,49 +120,49 @@ final class K8sFormattersTests: XCTestCase {
     // MARK: Pod Phase Colors
 
     func testPodPhase_running_isGreen() {
-        XCTAssertEqual(Color.podPhase("Running"), .green)
+        XCTAssertEqual(Color.podPhase("Running"), DesignTokens.statusOk)
     }
 
     func testPodPhase_pending_isOrange() {
-        XCTAssertEqual(Color.podPhase("Pending"), .orange)
+        XCTAssertEqual(Color.podPhase("Pending"), DesignTokens.statusWarn)
     }
 
     func testPodPhase_succeeded_isBlue() {
-        XCTAssertEqual(Color.podPhase("Succeeded"), .blue)
+        XCTAssertEqual(Color.podPhase("Succeeded"), DesignTokens.statusInfo)
     }
 
     func testPodPhase_failed_isRed() {
-        XCTAssertEqual(Color.podPhase("Failed"), .red)
+        XCTAssertEqual(Color.podPhase("Failed"), DesignTokens.statusErr)
     }
 
     func testPodPhase_nil_isSecondary() {
-        XCTAssertEqual(Color.podPhase(nil), .secondary)
+        XCTAssertEqual(Color.podPhase(nil), DesignTokens.textTertiary)
     }
 
     func testPodPhase_unknown_isSecondary() {
-        XCTAssertEqual(Color.podPhase("Unknown"), .secondary)
+        XCTAssertEqual(Color.podPhase("Unknown"), DesignTokens.textTertiary)
     }
 
     func testPodPhase_caseSensitive_lowercaseReturnsSecondary() {
         // Kubernetes phases are case-sensitive: "running" ≠ "Running"
-        XCTAssertEqual(Color.podPhase("running"), .secondary)
+        XCTAssertEqual(Color.podPhase("running"), DesignTokens.textTertiary)
     }
 
     // MARK: Condition Status Colors
 
     func testConditionStatus_true_isGreen() {
-        XCTAssertEqual(Color.conditionStatus("True"), .green)
+        XCTAssertEqual(Color.conditionStatus("True"), DesignTokens.statusOk)
     }
 
     func testConditionStatus_false_isRed() {
-        XCTAssertEqual(Color.conditionStatus("False"), .red)
+        XCTAssertEqual(Color.conditionStatus("False"), DesignTokens.statusErr)
     }
 
     func testConditionStatus_unknown_isOrange() {
-        XCTAssertEqual(Color.conditionStatus("Unknown"), .orange)
+        XCTAssertEqual(Color.conditionStatus("Unknown"), DesignTokens.statusWarn)
     }
 
     func testConditionStatus_emptyString_isOrange() {
-        XCTAssertEqual(Color.conditionStatus(""), .orange)
+        XCTAssertEqual(Color.conditionStatus(""), DesignTokens.statusWarn)
     }
 }

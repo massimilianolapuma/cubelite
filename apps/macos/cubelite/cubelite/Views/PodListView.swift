@@ -28,41 +28,15 @@ struct PodListView: View {
     // MARK: - States
 
     private var loadingView: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-            Text("Loading pods…")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
+        UnifiedLoadingState(label: "Loading pods…")
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
-                .foregroundStyle(.orange)
-            Text("Failed to load pods")
-                .font(.headline)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-        }
+        UnifiedErrorState(title: "Failed to load pods", message: message)
     }
 
     private var emptyView: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "cube.box")
-                .font(.system(size: 36))
-                .foregroundStyle(.quinary)
-            Text("No pods found")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("There are no pods in this namespace.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
+        UnifiedEmptyState(message: "There are no pods in this namespace.")
     }
 
     // MARK: - Table
@@ -131,6 +105,7 @@ struct PodListView: View {
             }
             .width(ideal: 90)
         }
+        .unifiedTableBackground()
     }
 
 }

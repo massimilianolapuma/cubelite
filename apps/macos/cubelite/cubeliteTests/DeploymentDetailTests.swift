@@ -111,21 +111,21 @@ final class DeploymentDetailTests: XCTestCase {
 
     // MARK: - Condition Status Color Mapping
 
-    func testConditionStatusColor_trueIsGreen() {
-        XCTAssertEqual(Color.conditionStatus("True"), Color.green)
+    func testConditionStatusColor_trueIsStatusOk() {
+        XCTAssertEqual(Color.conditionStatus("True"), DesignTokens.statusOk)
     }
 
-    func testConditionStatusColor_falseIsRed() {
-        XCTAssertEqual(Color.conditionStatus("False"), Color.red)
+    func testConditionStatusColor_falseIsStatusErr() {
+        XCTAssertEqual(Color.conditionStatus("False"), DesignTokens.statusErr)
     }
 
-    func testConditionStatusColor_unknownIsOrange() {
-        XCTAssertEqual(Color.conditionStatus("Unknown"), Color.orange)
+    func testConditionStatusColor_unknownIsStatusWarn() {
+        XCTAssertEqual(Color.conditionStatus("Unknown"), DesignTokens.statusWarn)
     }
 
-    func testConditionStatusColor_unrecognisedValueIsOrange() {
-        XCTAssertEqual(Color.conditionStatus(""), Color.orange)
-        XCTAssertEqual(Color.conditionStatus("maybe"), Color.orange)
+    func testConditionStatusColor_unrecognisedValueIsStatusWarn() {
+        XCTAssertEqual(Color.conditionStatus(""), DesignTokens.statusWarn)
+        XCTAssertEqual(Color.conditionStatus("maybe"), DesignTokens.statusWarn)
     }
 
     // MARK: - Helpers

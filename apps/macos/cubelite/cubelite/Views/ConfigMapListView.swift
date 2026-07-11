@@ -26,41 +26,15 @@ struct ConfigMapListView: View {
     // MARK: - States
 
     private var loadingView: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-            Text("Loading config maps…")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
+        UnifiedLoadingState(label: "Loading config maps…")
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
-                .foregroundStyle(.orange)
-            Text("Failed to load config maps")
-                .font(.headline)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-        }
+        UnifiedErrorState(title: "Failed to load config maps", message: message)
     }
 
     private var emptyView: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 36))
-                .foregroundStyle(.quinary)
-            Text("No config maps found")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("There are no config maps in this namespace.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
+        UnifiedEmptyState(message: "There are no config maps in this namespace.")
     }
 
     // MARK: - Table
@@ -96,6 +70,7 @@ struct ConfigMapListView: View {
             }
             .width(ideal: 60)
         }
+        .unifiedTableBackground()
     }
 }
 

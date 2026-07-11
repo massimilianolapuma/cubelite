@@ -26,41 +26,15 @@ struct IngressListView: View {
     // MARK: - States
 
     private var loadingView: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-            Text("Loading ingresses…")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
+        UnifiedLoadingState(label: "Loading ingresses…")
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
-                .foregroundStyle(.orange)
-            Text("Failed to load ingresses")
-                .font(.headline)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-        }
+        UnifiedErrorState(title: "Failed to load ingresses", message: message)
     }
 
     private var emptyView: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "globe")
-                .font(.system(size: 36))
-                .foregroundStyle(.quinary)
-            Text("No ingresses found")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("There are no ingresses in this namespace.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
+        UnifiedEmptyState(message: "There are no ingresses in this namespace.")
     }
 
     // MARK: - Table
@@ -126,5 +100,6 @@ struct IngressListView: View {
             }
             .width(ideal: 60)
         }
+        .unifiedTableBackground()
     }
 }

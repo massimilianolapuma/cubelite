@@ -27,41 +27,15 @@ struct DeploymentListView: View {
     // MARK: - States
 
     private var loadingView: some View {
-        VStack(spacing: 12) {
-            ProgressView()
-            Text("Loading deployments…")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
+        UnifiedLoadingState(label: "Loading deployments…")
     }
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 32))
-                .foregroundStyle(.orange)
-            Text("Failed to load deployments")
-                .font(.headline)
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-        }
+        UnifiedErrorState(title: "Failed to load deployments", message: message)
     }
 
     private var emptyView: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 36))
-                .foregroundStyle(.quinary)
-            Text("No deployments found")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("There are no deployments in this namespace.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
+        UnifiedEmptyState(message: "There are no deployments in this namespace.")
     }
 
     // MARK: - Table
@@ -94,6 +68,7 @@ struct DeploymentListView: View {
             .width(ideal: 80)
 
         }
+        .unifiedTableBackground()
     }
 
     // MARK: - Helpers
