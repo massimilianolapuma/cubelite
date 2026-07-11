@@ -137,6 +137,14 @@ describe("listPods", () => {
         phase: "Running",
         ready: true,
         restarts: 0,
+        ready_containers: 1,
+        total_containers: 1,
+        node: null,
+        pod_ip: null,
+        qos_class: null,
+        containers: [],
+        labels: {},
+        creation_timestamp: null,
       },
     ];
     mockedInvoke.mockResolvedValueOnce(mockPods);
@@ -171,6 +179,14 @@ describe("listPods", () => {
         phase: null,
         ready: false,
         restarts: 3,
+        ready_containers: 1,
+        total_containers: 1,
+        node: null,
+        pod_ip: null,
+        qos_class: null,
+        containers: [],
+        labels: {},
+        creation_timestamp: null,
       },
     ];
     mockedInvoke.mockResolvedValueOnce(mockPods);
@@ -226,7 +242,7 @@ describe("listDeployments", () => {
 
   it("invokes list_deployments with all parameters", async () => {
     const mockDeployments: DeploymentInfo[] = [
-      { name: "nginx", namespace: "default", replicas: 3, ready_replicas: 3 },
+      { name: "nginx", namespace: "default", replicas: 3, ready_replicas: 3, images: [], selector: {}, strategy: null, conditions: [], creation_timestamp: null },
     ];
     mockedInvoke.mockResolvedValueOnce(mockDeployments);
 
@@ -242,7 +258,7 @@ describe("listDeployments", () => {
 
   it("handles degraded deployments", async () => {
     const mockDeployments: DeploymentInfo[] = [
-      { name: "api", namespace: "prod", replicas: 5, ready_replicas: 2 },
+      { name: "api", namespace: "prod", replicas: 5, ready_replicas: 2, images: [], selector: {}, strategy: null, conditions: [], creation_timestamp: null },
     ];
     mockedInvoke.mockResolvedValueOnce(mockDeployments);
 

@@ -3,6 +3,7 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
+	import { formatAge } from '$lib/age';
 	import type { DeploymentInfo } from '$lib/tauri';
 	import { deploymentStatus, toneColor } from '$lib/status';
 	import { mutations } from '$lib/stores/mutations.svelte';
@@ -61,7 +62,7 @@
 						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {toneColor[status.tone]};"></span>
 						<span class="text-[11.5px]" style="color: {toneColor[status.tone]};">{status.label}</span>
 					</span>
-					<span class="type-data-sm text-text-disabled">—</span>
+					<span class="type-data-sm text-text-secondary">{formatAge(dep.creation_timestamp)}</span>
 					<span class="flex items-center gap-1.5">
 						<span class="flex items-center overflow-hidden rounded-md border border-border-default">
 							<button

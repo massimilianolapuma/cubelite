@@ -19,7 +19,10 @@ use crate::{
         ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
         ServiceInfo,
     },
-    watcher::{configmap_to_info, ingress_to_info, secret_to_info, service_to_info},
+    watcher::{
+        configmap_to_info, deployment_to_info, ingress_to_info, namespace_to_info, pod_to_info,
+        secret_to_info, service_to_info,
+    },
 };
 
 /// An async Kubernetes client pre-configured from a kubeconfig file.
@@ -97,31 +100,7 @@ impl KubeClient {
                     reason: e.to_string(),
                 })?;
 
-        let pods = pod_list
-            .items
-            .into_iter()
-            .filter_map(|pod| {
-                let name = pod.metadata.name?;
-                let ns = pod.metadata.namespace.unwrap_or_default();
-                let phase = pod.status.as_ref().and_then(|s| s.phase.clone());
-                let container_statuses = pod
-                    .status
-                    .as_ref()
-                    .and_then(|s| s.container_statuses.as_deref())
-                    .unwrap_or(&[]);
-                let ready = container_statuses.iter().all(|cs| cs.ready);
-                let restarts = container_statuses.iter().map(|cs| cs.restart_count).sum();
-                Some(PodInfo {
-                    name,
-                    namespace: ns,
-                    phase,
-                    ready,
-                    restarts,
-                })
-            })
-            .collect();
-
-        Ok(pods)
+        Ok(pod_list.items.into_iter().filter_map(pod_to_info).collect())
     }
 
     /// List all namespaces visible to the authenticated user.
@@ -139,17 +118,11 @@ impl KubeClient {
                     reason: e.to_string(),
                 })?;
 
-        let namespaces = ns_list
+        Ok(ns_list
             .items
             .into_iter()
-            .filter_map(|ns| {
-                let name = ns.metadata.name?;
-                let phase = ns.status.as_ref().and_then(|s| s.phase.clone());
-                Some(NamespaceInfo { name, phase })
-            })
-            .collect();
-
-        Ok(namespaces)
+            .filter_map(namespace_to_info)
+            .collect())
     }
 
     /// List all deployments in the given `namespace`.
@@ -170,28 +143,11 @@ impl KubeClient {
                     reason: e.to_string(),
                 })?;
 
-        let deployments = deploy_list
+        Ok(deploy_list
             .items
             .into_iter()
-            .filter_map(|d| {
-                let name = d.metadata.name?;
-                let ns = d.metadata.namespace.unwrap_or_default();
-                let replicas = d.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0);
-                let ready_replicas = d
-                    .status
-                    .as_ref()
-                    .and_then(|s| s.ready_replicas)
-                    .unwrap_or(0);
-                Some(DeploymentInfo {
-                    name,
-                    namespace: ns,
-                    replicas,
-                    ready_replicas,
-                })
-            })
-            .collect();
-
-        Ok(deployments)
+            .filter_map(deployment_to_info)
+            .collect())
     }
 
     /// List services in `namespace`, or across all namespaces when `None`.

@@ -1,7 +1,22 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+/// Per-container readiness and image for the pod detail drawer.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ContainerInfo {
+    /// Container name.
+    pub name: String,
+    /// Container image reference.
+    pub image: Option<String>,
+    /// `true` when the container reports ready.
+    pub ready: bool,
+}
 
 /// Lightweight representation of a Kubernetes Pod for display purposes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Fields added after v0.1 carry `#[serde(default)]` so older payloads
+/// still deserialize.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PodInfo {
     /// The pod's name within its namespace.
     pub name: String,
@@ -13,6 +28,30 @@ pub struct PodInfo {
     pub ready: bool,
     /// Total number of container restarts across all containers in the pod.
     pub restarts: i32,
+    /// Number of containers reporting ready.
+    #[serde(default)]
+    pub ready_containers: i32,
+    /// Total number of containers in the pod.
+    #[serde(default)]
+    pub total_containers: i32,
+    /// Node the pod is scheduled on.
+    #[serde(default)]
+    pub node: Option<String>,
+    /// Pod IP address.
+    #[serde(default)]
+    pub pod_ip: Option<String>,
+    /// Quality of Service class (`"Guaranteed"`, `"Burstable"`, `"BestEffort"`).
+    #[serde(default)]
+    pub qos_class: Option<String>,
+    /// Containers with per-container readiness and image.
+    #[serde(default)]
+    pub containers: Vec<ContainerInfo>,
+    /// Pod labels (drives selector-based child-pod matching).
+    #[serde(default)]
+    pub labels: BTreeMap<String, String>,
+    /// RFC 3339 creation timestamp, when reported by the API server.
+    #[serde(default)]
+    pub creation_timestamp: Option<String>,
 }
 
 /// Lightweight representation of a Kubernetes Namespace.
@@ -24,8 +63,22 @@ pub struct NamespaceInfo {
     pub phase: Option<String>,
 }
 
+/// A deployment condition for the detail drawer cards.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeploymentConditionInfo {
+    /// Condition type (e.g. `"Available"`, `"Progressing"`).
+    pub condition_type: String,
+    /// Condition status (`"True"`, `"False"`, `"Unknown"`).
+    pub status: String,
+    /// Machine-readable reason, when reported.
+    pub reason: Option<String>,
+}
+
 /// Lightweight representation of a Kubernetes Deployment.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Fields added after v0.1 carry `#[serde(default)]` so older payloads
+/// still deserialize.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DeploymentInfo {
     /// The deployment name.
     pub name: String,
@@ -35,6 +88,21 @@ pub struct DeploymentInfo {
     pub replicas: i32,
     /// Number of replicas currently reporting as ready.
     pub ready_replicas: i32,
+    /// Container images from the pod template.
+    #[serde(default)]
+    pub images: Vec<String>,
+    /// Label selector (`matchLabels`) used to find owned pods.
+    #[serde(default)]
+    pub selector: BTreeMap<String, String>,
+    /// Rollout strategy type (`"RollingUpdate"`, `"Recreate"`).
+    #[serde(default)]
+    pub strategy: Option<String>,
+    /// Deployment conditions for the drawer cards.
+    #[serde(default)]
+    pub conditions: Vec<DeploymentConditionInfo>,
+    /// RFC 3339 creation timestamp, when reported by the API server.
+    #[serde(default)]
+    pub creation_timestamp: Option<String>,
 }
 
 /// Lightweight representation of a Kubernetes Service.

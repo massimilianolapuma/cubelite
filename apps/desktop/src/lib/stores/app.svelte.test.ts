@@ -8,6 +8,14 @@ const pod: PodInfo = {
   phase: "Running",
   ready: true,
   restarts: 0,
+  ready_containers: 1,
+  total_containers: 1,
+  node: null,
+  pod_ip: null,
+  qos_class: null,
+  containers: [],
+  labels: {},
+  creation_timestamp: null,
 };
 
 beforeEach(() => {

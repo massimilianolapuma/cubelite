@@ -2,12 +2,26 @@ import { invoke } from "@tauri-apps/api/core";
 
 // --- Types matching Rust structs ---
 
+export type ContainerInfo = {
+  name: string;
+  image: string | null;
+  ready: boolean;
+};
+
 export type PodInfo = {
   name: string;
   namespace: string;
   phase: string | null;
   ready: boolean;
   restarts: number;
+  ready_containers: number;
+  total_containers: number;
+  node: string | null;
+  pod_ip: string | null;
+  qos_class: string | null;
+  containers: ContainerInfo[];
+  labels: Record<string, string>;
+  creation_timestamp: string | null;
 };
 
 export type NamespaceInfo = {
@@ -15,11 +29,22 @@ export type NamespaceInfo = {
   phase: string | null;
 };
 
+export type DeploymentConditionInfo = {
+  condition_type: string;
+  status: string;
+  reason: string | null;
+};
+
 export type DeploymentInfo = {
   name: string;
   namespace: string;
   replicas: number;
   ready_replicas: number;
+  images: string[];
+  selector: Record<string, string>;
+  strategy: string | null;
+  conditions: DeploymentConditionInfo[];
+  creation_timestamp: string | null;
 };
 
 export type ContextInfo = {

@@ -30,7 +30,8 @@ use kube::{runtime::watcher, Api, Client};
 use serde::{Deserialize, Serialize};
 
 use crate::resources::{
-    ConfigMapInfo, DeploymentInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
+    ConfigMapInfo, ContainerInfo, DeploymentConditionInfo, DeploymentInfo, IngressInfo,
+    NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
 };
 
 /// Selects which Kubernetes resource type to watch.
@@ -220,29 +221,50 @@ where
 
 /// Convert a raw [`Pod`] object into a [`PodInfo`], returning `None` if the
 /// pod has no name (which is invalid in a well-formed cluster response).
-fn pod_to_info(pod: Pod) -> Option<PodInfo> {
-    let name = pod.metadata.name?;
-    let namespace = pod.metadata.namespace.unwrap_or_default();
-    let phase = pod.status.as_ref().and_then(|s| s.phase.clone());
-    let container_statuses = pod
-        .status
-        .as_ref()
-        .and_then(|s| s.container_statuses.as_deref())
-        .unwrap_or(&[]);
-    let ready = container_statuses.iter().all(|cs| cs.ready);
-    let restarts = container_statuses.iter().map(|cs| cs.restart_count).sum();
+pub(crate) fn pod_to_info(pod: Pod) -> Option<PodInfo> {
+    let name = pod.metadata.name.clone()?;
+    let namespace = pod.metadata.namespace.clone().unwrap_or_default();
+    let labels = pod.metadata.labels.clone().unwrap_or_default();
+    let creation = creation_timestamp(&pod.metadata);
+
+    let spec = pod.spec.unwrap_or_default();
+    let status = pod.status.unwrap_or_default();
+    let statuses = status.container_statuses.unwrap_or_default();
+
+    let containers: Vec<ContainerInfo> = spec
+        .containers
+        .iter()
+        .map(|c| ContainerInfo {
+            name: c.name.clone(),
+            image: c.image.clone(),
+            ready: statuses.iter().any(|cs| cs.name == c.name && cs.ready),
+        })
+        .collect();
+
+    let total_containers = containers.len() as i32;
+    let ready_containers = containers.iter().filter(|c| c.ready).count() as i32;
+    let restarts = statuses.iter().map(|cs| cs.restart_count).sum();
+
     Some(PodInfo {
         name,
         namespace,
-        phase,
-        ready,
+        phase: status.phase,
+        ready: total_containers > 0 && ready_containers == total_containers,
         restarts,
+        ready_containers,
+        total_containers,
+        node: spec.node_name,
+        pod_ip: status.pod_ip,
+        qos_class: status.qos_class,
+        containers,
+        labels,
+        creation_timestamp: creation,
     })
 }
 
 /// Convert a raw [`Namespace`] object into a [`NamespaceInfo`], returning
 /// `None` if there is no name.
-fn namespace_to_info(ns: Namespace) -> Option<NamespaceInfo> {
+pub(crate) fn namespace_to_info(ns: Namespace) -> Option<NamespaceInfo> {
     let name = ns.metadata.name?;
     let phase = ns.status.as_ref().and_then(|s| s.phase.clone());
     Some(NamespaceInfo { name, phase })
@@ -385,20 +407,58 @@ pub(crate) fn secret_to_info(s: Secret) -> Option<SecretInfo> {
 
 /// Convert a raw [`Deployment`] object into a [`DeploymentInfo`], returning
 /// `None` if there is no name.
-fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
-    let name = d.metadata.name?;
-    let namespace = d.metadata.namespace.unwrap_or_default();
-    let replicas = d.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0);
-    let ready_replicas = d
-        .status
-        .as_ref()
-        .and_then(|s| s.ready_replicas)
-        .unwrap_or(0);
+pub(crate) fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
+    let name = d.metadata.name.clone()?;
+    let namespace = d.metadata.namespace.clone().unwrap_or_default();
+    let creation = creation_timestamp(&d.metadata);
+
+    let (replicas, images, selector, strategy) = match d.spec {
+        Some(spec) => {
+            let images = spec
+                .template
+                .spec
+                .as_ref()
+                .map(|ps| {
+                    ps.containers
+                        .iter()
+                        .filter_map(|c| c.image.clone())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let selector = spec.selector.match_labels.unwrap_or_default();
+            let strategy = spec.strategy.and_then(|s| s.type_);
+            (spec.replicas.unwrap_or(0), images, selector, strategy)
+        }
+        None => (0, Vec::new(), Default::default(), None),
+    };
+
+    let (ready_replicas, conditions) = match d.status {
+        Some(status) => {
+            let conditions = status
+                .conditions
+                .unwrap_or_default()
+                .into_iter()
+                .map(|c| DeploymentConditionInfo {
+                    condition_type: c.type_,
+                    status: c.status,
+                    reason: c.reason,
+                })
+                .collect();
+            (status.ready_replicas.unwrap_or(0), conditions)
+        }
+        None => (0, Vec::new()),
+    };
+
     Some(DeploymentInfo {
         name,
         namespace,
         replicas,
         ready_replicas,
+        images,
+        selector,
+        strategy,
+        conditions,
+        creation_timestamp: creation,
     })
 }
 
@@ -445,6 +505,7 @@ mod tests {
             phase: Some("Running".to_string()),
             ready: true,
             restarts: 0,
+            ..Default::default()
         }));
 
         let json = serde_json::to_string(&event).unwrap();
@@ -472,17 +533,30 @@ mod tests {
 
     #[test]
     fn pod_to_info_full() {
-        use k8s_openapi::api::core::v1::{ContainerStatus, Pod, PodStatus};
+        use k8s_openapi::api::core::v1::{Container, ContainerStatus, Pod, PodSpec, PodStatus};
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+        use std::collections::BTreeMap;
 
         let pod = Pod {
             metadata: ObjectMeta {
                 name: Some("my-pod".to_string()),
                 namespace: Some("kube-system".to_string()),
+                labels: Some(BTreeMap::from([("app".to_string(), "my".to_string())])),
                 ..Default::default()
             },
+            spec: Some(PodSpec {
+                node_name: Some("node-1".to_string()),
+                containers: vec![Container {
+                    name: "main".to_string(),
+                    image: Some("nginx:1.27".to_string()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
             status: Some(PodStatus {
                 phase: Some("Running".to_string()),
+                pod_ip: Some("10.1.2.3".to_string()),
+                qos_class: Some("Burstable".to_string()),
                 container_statuses: Some(vec![ContainerStatus {
                     name: "main".to_string(),
                     ready: true,
@@ -491,7 +565,6 @@ mod tests {
                 }]),
                 ..Default::default()
             }),
-            ..Default::default()
         };
 
         let info = pod_to_info(pod).unwrap();
@@ -500,6 +573,14 @@ mod tests {
         assert_eq!(info.phase.as_deref(), Some("Running"));
         assert!(info.ready);
         assert_eq!(info.restarts, 3);
+        assert_eq!(info.ready_containers, 1);
+        assert_eq!(info.total_containers, 1);
+        assert_eq!(info.node.as_deref(), Some("node-1"));
+        assert_eq!(info.pod_ip.as_deref(), Some("10.1.2.3"));
+        assert_eq!(info.qos_class.as_deref(), Some("Burstable"));
+        assert_eq!(info.containers.len(), 1);
+        assert_eq!(info.containers[0].image.as_deref(), Some("nginx:1.27"));
+        assert_eq!(info.labels.get("app").map(String::as_str), Some("my"));
     }
 
     #[test]
@@ -693,5 +774,64 @@ mod tests {
         assert_eq!(info.namespace, "staging");
         assert_eq!(info.replicas, 3);
         assert_eq!(info.ready_replicas, 2);
+    }
+
+    #[test]
+    fn deployment_to_info_enriched_fields() {
+        use k8s_openapi::api::apps::v1::{
+            Deployment, DeploymentCondition, DeploymentSpec, DeploymentStatus, DeploymentStrategy,
+        };
+        use k8s_openapi::api::core::v1::{Container, PodTemplateSpec};
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta};
+        use std::collections::BTreeMap;
+
+        let d = Deployment {
+            metadata: ObjectMeta {
+                name: Some("api".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            spec: Some(DeploymentSpec {
+                replicas: Some(2),
+                selector: LabelSelector {
+                    match_labels: Some(BTreeMap::from([("app".to_string(), "api".to_string())])),
+                    ..Default::default()
+                },
+                strategy: Some(DeploymentStrategy {
+                    type_: Some("RollingUpdate".to_string()),
+                    ..Default::default()
+                }),
+                template: PodTemplateSpec {
+                    spec: Some(k8s_openapi::api::core::v1::PodSpec {
+                        containers: vec![Container {
+                            name: "api".to_string(),
+                            image: Some("ghcr.io/x/api:2.1".to_string()),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+            status: Some(DeploymentStatus {
+                ready_replicas: Some(2),
+                conditions: Some(vec![DeploymentCondition {
+                    type_: "Available".to_string(),
+                    status: "True".to_string(),
+                    reason: Some("MinimumReplicasAvailable".to_string()),
+                    ..Default::default()
+                }]),
+                ..Default::default()
+            }),
+        };
+
+        let info = deployment_to_info(d).unwrap();
+        assert_eq!(info.images, vec!["ghcr.io/x/api:2.1"]);
+        assert_eq!(info.selector.get("app").map(String::as_str), Some("api"));
+        assert_eq!(info.strategy.as_deref(), Some("RollingUpdate"));
+        assert_eq!(info.conditions.len(), 1);
+        assert_eq!(info.conditions[0].condition_type, "Available");
+        assert_eq!(info.conditions[0].status, "True");
     }
 }

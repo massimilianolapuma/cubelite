@@ -15,6 +15,7 @@ fn pod_info_serializes_to_json() {
         phase: Some("Running".to_string()),
         ready: true,
         restarts: 0,
+        ..Default::default()
     };
     let json = serde_json::to_string(&pod).expect("serialize");
     assert!(json.contains("\"name\":\"nginx-abc\""));
@@ -42,6 +43,7 @@ fn pod_info_roundtrip() {
         phase: Some("Pending".to_string()),
         ready: false,
         restarts: 3,
+        ..Default::default()
     };
     let json = serde_json::to_string(&original).expect("serialize");
     let deserialized: PodInfo = serde_json::from_str(&json).expect("deserialize");
@@ -100,6 +102,7 @@ fn deployment_info_serializes_to_json() {
         namespace: "default".to_string(),
         replicas: 3,
         ready_replicas: 3,
+        ..Default::default()
     };
     let json = serde_json::to_string(&dep).expect("serialize");
     assert!(json.contains("\"replicas\":3"));
@@ -113,6 +116,7 @@ fn deployment_info_degraded_state() {
         namespace: "production".to_string(),
         replicas: 5,
         ready_replicas: 2,
+        ..Default::default()
     };
     assert!(dep.ready_replicas < dep.replicas);
 }
@@ -124,6 +128,7 @@ fn deployment_info_zero_replicas() {
         namespace: "staging".to_string(),
         replicas: 0,
         ready_replicas: 0,
+        ..Default::default()
     };
     let json = serde_json::to_string(&dep).expect("serialize");
     let deserialized: DeploymentInfo = serde_json::from_str(&json).expect("deserialize");
