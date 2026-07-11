@@ -4,6 +4,7 @@
 	import IdentityAvatar from '$lib/components/ui/IdentityAvatar.svelte';
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
+	import { health } from '$lib/stores/health.svelte';
 
 	function clickCluster(name: string) {
 		if (name === app.activeCluster) {
@@ -45,7 +46,7 @@
 				name={ctx.name}
 				color={clusters.identityFor(ctx.name)}
 				active={isActive}
-				health={isActive ? clusters.connectionState : 'unknown'}
+				health={isActive ? clusters.connectionState : health.for(ctx.name).state}
 			/>
 		</button>
 	{/each}
