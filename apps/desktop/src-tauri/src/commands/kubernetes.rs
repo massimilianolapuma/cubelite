@@ -10,7 +10,7 @@ use cubelite_core::{
     ResourceType, ResourceWatcher, WatchEvent,
 };
 use futures::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -288,6 +288,62 @@ pub async fn cluster_capacity(
         .map_err(|e| e.to_string())?;
 
     client.cluster_capacity().await.map_err(|e| e.to_string())
+}
+
+/// Result of a cluster reachability probe.
+#[derive(Debug, Serialize)]
+pub struct ClusterHealthInfo {
+    /// Context name that was probed.
+    pub context: String,
+    /// `true` when the API server answered /version.
+    pub reachable: bool,
+    /// Kubernetes server version, when reachable.
+    pub version: Option<String>,
+    /// Node count, when the caller may list nodes.
+    pub node_count: Option<usize>,
+    /// Failure reason, when unreachable.
+    pub error: Option<String>,
+}
+
+/// Probe one context with short timeouts: /version + best-effort node count.
+#[tauri::command]
+pub async fn probe_cluster(
+    kubeconfig_path: String,
+    context: String,
+) -> Result<ClusterHealthInfo, String> {
+    let client = match KubeClient::new_probe(Path::new(&kubeconfig_path), Some(&context)).await {
+        Ok(c) => c,
+        Err(e) => {
+            return Ok(ClusterHealthInfo {
+                context,
+                reachable: false,
+                version: None,
+                node_count: None,
+                error: Some(e.to_string()),
+            });
+        }
+    };
+
+    match client.server_version().await {
+        Ok(version) => {
+            // Node listing may be forbidden; the probe still counts as healthy.
+            let node_count = client.node_count().await.ok();
+            Ok(ClusterHealthInfo {
+                context,
+                reachable: true,
+                version: Some(version),
+                node_count,
+                error: None,
+            })
+        }
+        Err(e) => Ok(ClusterHealthInfo {
+            context,
+            reachable: false,
+            version: None,
+            node_count: None,
+            error: Some(e.to_string()),
+        }),
+    }
 }
 
 /// Delete a pod (the owning controller will recreate it).

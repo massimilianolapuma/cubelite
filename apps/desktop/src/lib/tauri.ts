@@ -233,6 +233,14 @@ export type NodeCapacityInfo = {
   memory_allocatable_bytes: number;
 };
 
+export type ClusterHealthInfo = {
+  context: string;
+  reachable: boolean;
+  version: string | null;
+  node_count: number | null;
+  error: string | null;
+};
+
 export type LogLevel = "info" | "warn" | "error";
 
 export type LogLine = {
@@ -280,6 +288,13 @@ export function clusterCapacity(
     kubeconfigPath,
     context: context ?? null,
   });
+}
+
+export function probeCluster(
+  kubeconfigPath: string,
+  context: string,
+): Promise<ClusterHealthInfo> {
+  return invoke<ClusterHealthInfo>("probe_cluster", { kubeconfigPath, context });
 }
 
 export function streamLogs(

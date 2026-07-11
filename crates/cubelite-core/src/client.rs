@@ -12,6 +12,7 @@ use kube::{
     Api, Client, Config,
 };
 use std::path::Path;
+use std::time::Duration;
 
 use crate::{
     error::KubeconfigError,
@@ -58,6 +59,25 @@ impl KubeClient {
     /// Returns [`KubeconfigError`] when the file cannot be read, parsed, or
     /// when the client cannot be initialised from the resulting config.
     pub async fn new(path: &Path, context: Option<&str>) -> Result<Self, KubeconfigError> {
+        Self::build(path, context, None).await
+    }
+
+    /// Like [`KubeClient::new`] but with short connect/read timeouts —
+    /// intended for reachability probes that must fail fast.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError`] when the kubeconfig cannot be loaded or
+    /// the client cannot be initialised.
+    pub async fn new_probe(path: &Path, context: Option<&str>) -> Result<Self, KubeconfigError> {
+        Self::build(path, context, Some((3, 5))).await
+    }
+
+    async fn build(
+        path: &Path,
+        context: Option<&str>,
+        timeouts_secs: Option<(u64, u64)>,
+    ) -> Result<Self, KubeconfigError> {
         let raw = tokio::fs::read_to_string(path)
             .await
             .map_err(|source| KubeconfigError::Io { source })?;
@@ -70,17 +90,53 @@ impl KubeClient {
             ..Default::default()
         };
 
-        let config = Config::from_custom_kubeconfig(kubeconfig, &options)
+        let mut config = Config::from_custom_kubeconfig(kubeconfig, &options)
             .await
             .map_err(|e| KubeconfigError::MergeError {
                 reason: e.to_string(),
             })?;
+
+        if let Some((connect, read)) = timeouts_secs {
+            config.connect_timeout = Some(Duration::from_secs(connect));
+            config.read_timeout = Some(Duration::from_secs(read));
+        }
 
         let inner = Client::try_from(config).map_err(|e| KubeconfigError::ClientError {
             reason: e.to_string(),
         })?;
 
         Ok(Self { inner })
+    }
+
+    /// Kubernetes server version (`gitVersion` from `/version`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn server_version(&self) -> Result<String, KubeconfigError> {
+        let doc = self.raw_get("/version").await?;
+        doc["gitVersion"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| KubeconfigError::ClientError {
+                reason: "missing gitVersion in /version response".to_string(),
+            })
+    }
+
+    /// Number of nodes in the cluster (best used by reachability probes).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn node_count(&self) -> Result<usize, KubeconfigError> {
+        let api: Api<Node> = Api::all(self.inner.clone());
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list.items.len())
     }
 
     /// List pods in `namespace`, or across all namespaces when `namespace` is

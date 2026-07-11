@@ -8,6 +8,7 @@
 	import Kbd from '$lib/components/ui/Kbd.svelte';
 	import { app, type View } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
+	import { health } from '$lib/stores/health.svelte';
 	import { modLabel } from '$lib/platform';
 	import { providerOf } from '$lib/provider';
 	import type { Component } from 'svelte';
@@ -93,16 +94,17 @@
 									>
 										{providerOf(ctx.name, ctx.cluster_server)}
 									</span>
-									{#if ctx.name === app.activeCluster}
-										<span
-											class="h-1.5 w-1.5 rounded-full"
-											style="background: {clusters.connectionState === 'connected'
-												? 'var(--color-status-ok)'
-												: clusters.connectionState === 'unreachable'
-													? 'var(--color-status-err)'
-													: 'var(--color-text-tertiary)'};"
-										></span>
-									{/if}
+									{@const state = ctx.name === app.activeCluster
+										? clusters.connectionState
+										: health.for(ctx.name).state}
+									<span
+										class="h-1.5 w-1.5 rounded-full"
+										style="background: {state === 'connected'
+											? 'var(--color-status-ok)'
+											: state === 'unreachable'
+												? 'var(--color-status-err)'
+												: 'var(--color-text-tertiary)'};"
+									></span>
 									{#if i < 5}
 										<Kbd label="{modLabel}{i + 1}" />
 									{/if}

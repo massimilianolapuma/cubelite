@@ -16,6 +16,7 @@
 	import { isMac } from '$lib/platform';
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
+	import { health } from '$lib/stores/health.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 	import { settings } from '$lib/stores/settings.svelte';
 
@@ -37,11 +38,13 @@
 			if (!settings.onboardingSeen.value) {
 				app.onboardingOpen = true;
 			}
+			health.start();
 		})();
 
 		return () => {
 			void resources.stopWatching();
 			resources.stopAutoRefresh();
+			health.stop();
 		};
 	});
 

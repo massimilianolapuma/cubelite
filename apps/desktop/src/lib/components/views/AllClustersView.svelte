@@ -5,7 +5,9 @@
 	import StatusPill from '$lib/components/ui/StatusPill.svelte';
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
+	import { health } from '$lib/stores/health.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
+	import { formatAge } from '$lib/age';
 	import { percentOf } from '$lib/units';
 
 	const issues = $derived(resources.issuePods.length);
@@ -19,20 +21,33 @@
 		void clusters.switchCluster(name);
 	}
 
+	function stateFor(name: string): 'connected' | 'unreachable' | 'unknown' {
+		if (name === app.activeCluster && clusters.connectionState !== 'unknown') {
+			return clusters.connectionState;
+		}
+		return health.for(name).state;
+	}
+
 	function pillFor(name: string): { label: string; tone: 'ok' | 'err' | 'neutral' } {
-		if (name !== app.activeCluster) return { label: 'Unknown', tone: 'neutral' };
-		if (clusters.connectionState === 'connected') return { label: 'Healthy', tone: 'ok' };
-		if (clusters.connectionState === 'unreachable') return { label: 'Unreachable', tone: 'err' };
+		const state = stateFor(name);
+		if (state === 'connected') return { label: 'Healthy', tone: 'ok' };
+		if (state === 'unreachable') return { label: 'Unreachable', tone: 'err' };
 		return { label: 'Unknown', tone: 'neutral' };
 	}
 
-	// Backend has no probe for inactive clusters; only the active one has data.
 	function statsFor(name: string): [string, string][] {
+		const h = health.for(name);
 		const active = name === app.activeCluster && clusters.connectionState === 'connected';
+		const nodes =
+			h.nodeCount !== null
+				? String(h.nodeCount)
+				: active && resources.metricsAvailable
+					? String(resources.nodes.length)
+					: '—';
 		return [
-			['Nodes', active && resources.metricsAvailable ? String(resources.nodes.length) : '—'],
+			['Nodes', nodes],
 			['Pods', active ? String(resources.pods.length) : '—'],
-			['Version', '—'],
+			['Version', h.version ?? '—'],
 			['Warnings', active ? String(issues) : '—']
 		];
 	}
@@ -104,9 +119,13 @@
 					</div>
 				{/if}
 
-				{#if ctx.name === app.activeCluster && clusters.connectionState === 'unreachable'}
+				{#if stateFor(ctx.name) === 'unreachable'}
+					{@const h = health.for(ctx.name)}
 					<p class="type-caption text-status-err">
-						{clusters.unreachableReason ?? 'connection failed'}
+						{h.lastSeen ? `Last seen ${formatAge(h.lastSeen)} ago — ` : ''}{(ctx.name ===
+							app.activeCluster && clusters.unreachableReason) ||
+							h.reason ||
+							'connection failed'}
 					</p>
 				{/if}
 			</button>
