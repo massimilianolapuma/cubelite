@@ -37,6 +37,11 @@ function dep(overrides: Partial<DeploymentInfo> = {}): DeploymentInfo {
     namespace: "default",
     replicas: 3,
     ready_replicas: 3,
+    images: [],
+    selector: {},
+    strategy: null,
+    conditions: [],
+    creation_timestamp: null,
     ...overrides,
   };
 }

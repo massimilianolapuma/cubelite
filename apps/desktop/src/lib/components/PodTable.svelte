@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatAge } from '$lib/age';
 	import type { PodInfo } from '$lib/tauri';
 	import { podStatusLabel, podTone, toneColor } from '$lib/status';
 
@@ -47,8 +48,10 @@
 						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {toneColor[tone]};"></span>
 						<span class="text-[11.5px]" style="color: {toneColor[tone]};">{podStatusLabel(pod)}</span>
 					</span>
-					<span class="type-data-sm text-text-secondary">{pod.ready ? '1/1' : '0/1'}</span>
-					<span class="type-data-sm text-text-disabled">—</span>
+					<span class="type-data-sm text-text-secondary">
+						{pod.ready_containers}/{pod.total_containers}
+					</span>
+					<span class="type-data-sm text-text-secondary">{formatAge(pod.creation_timestamp)}</span>
 					<span class="type-data-sm text-text-disabled">—</span>
 					<span class="type-data-sm text-text-disabled">—</span>
 					<span

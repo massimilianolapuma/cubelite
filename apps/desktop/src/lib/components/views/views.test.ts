@@ -38,6 +38,14 @@ function pod(overrides: Partial<PodInfo> = {}): PodInfo {
     phase: "Running",
     ready: true,
     restarts: 0,
+    ready_containers: 1,
+    total_containers: 1,
+    node: null,
+    pod_ip: null,
+    qos_class: null,
+    containers: [],
+    labels: {},
+    creation_timestamp: null,
     ...overrides,
   };
 }
@@ -87,7 +95,7 @@ describe("UnreachableView", () => {
 describe("OverviewView", () => {
   it("shows real stats, metrics caption and recent warning events", () => {
     resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" })];
-    resources.deployments = [{ name: "api", namespace: "default", replicas: 2, ready_replicas: 1 }];
+    resources.deployments = [{ name: "api", namespace: "default", replicas: 2, ready_replicas: 1, images: [], selector: {}, strategy: null, conditions: [], creation_timestamp: null }];
     resources.events = [
       {
         event_type: "Warning",

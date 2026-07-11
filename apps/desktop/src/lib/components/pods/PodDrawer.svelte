@@ -3,6 +3,7 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import { formatAge } from '$lib/age';
 	import Drawer from '$lib/components/ui/Drawer.svelte';
 	import MeterBar from '$lib/components/ui/MeterBar.svelte';
 	import StatusPill from '$lib/components/ui/StatusPill.svelte';
@@ -25,14 +26,13 @@
 		const ok = await mutations.deletePod(pod.namespace, pod.name);
 		if (ok) onClose();
 	}
-	// Fields the backend does not expose yet render as "—" (layout per spec).
 	const meta = $derived<[string, string][]>([
 		['Namespace', pod.namespace],
-		['Node', '—'],
-		['Age', '—'],
+		['Node', pod.node ?? '—'],
+		['Age', formatAge(pod.creation_timestamp)],
 		['Restarts', String(pod.restarts)],
-		['Pod IP', '—'],
-		['QoS', '—']
+		['Pod IP', pod.pod_ip ?? '—'],
+		['QoS', pod.qos_class ?? '—']
 	]);
 
 	const pillTone = $derived.by(() => {
@@ -57,6 +57,28 @@
 				</div>
 			{/each}
 		</div>
+
+		{#if pod.containers.length > 0}
+			<div>
+				<div class="type-section mb-1.5 text-text-tertiary">Containers</div>
+				<div class="overflow-hidden rounded-lg border border-border-faint">
+					{#each pod.containers as container (container.name)}
+						<div class="flex items-center gap-2 border-b border-border-faint bg-surface-surface px-2.5 py-1.5 last:border-b-0">
+							<span
+								class="h-1.5 w-1.5 shrink-0 rounded-full"
+								style="background: {container.ready
+									? 'var(--color-status-ok)'
+									: 'var(--color-status-warn)'};"
+							></span>
+							<span class="type-data-sm shrink-0 text-text-secondary">{container.name}</span>
+							<span class="type-caption min-w-0 flex-1 truncate text-right text-text-tertiary">
+								{container.image ?? ''}
+							</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
 
 		<div class="flex flex-col gap-2 rounded-lg border border-border-faint bg-surface-surface p-3">
 			<MeterBar label="CPU" percent={null} />

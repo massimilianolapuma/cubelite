@@ -2,6 +2,8 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
+	import { formatAge } from '$lib/age';
+	import { matchesSelector } from '$lib/k8s-match';
 	import Drawer from '$lib/components/ui/Drawer.svelte';
 	import StatusPill from '$lib/components/ui/StatusPill.svelte';
 	import { deploymentStatus, podStatusLabel, podTone, toneColor } from '$lib/status';
@@ -15,19 +17,24 @@
 
 	const status = $derived(deploymentStatus(deployment));
 	const restarting = $derived(mutations.isRestarting(deployment.namespace, deployment.name));
+	const selectorLabel = $derived(
+		Object.entries(deployment.selector)
+			.map(([k, v]) => `${k}=${v}`)
+			.join(', ')
+	);
 	const meta = $derived<[string, string][]>([
 		['Namespace', deployment.namespace],
 		['Replicas', `${deployment.ready_replicas}/${deployment.replicas}`],
-		['Age', '—'],
-		['Image', '—'],
-		['Selector', '—'],
-		['Strategy', '—']
+		['Age', formatAge(deployment.creation_timestamp)],
+		['Image', deployment.images.join(', ') || '—'],
+		['Selector', selectorLabel || '—'],
+		['Strategy', deployment.strategy ?? '—']
 	]);
 
-	// Best-effort child pods: same namespace, ReplicaSet-style name prefix.
+	// Child pods matched via the deployment's label selector.
 	const childPods = $derived(
 		resources.pods.filter(
-			(p) => p.namespace === deployment.namespace && p.name.startsWith(`${deployment.name}-`)
+			(p) => p.namespace === deployment.namespace && matchesSelector(p.labels, deployment.selector)
 		)
 	);
 
@@ -56,6 +63,34 @@
 				</div>
 			{/each}
 		</div>
+
+		{#if deployment.conditions.length > 0}
+			<div>
+				<div class="type-section mb-1.5 text-text-tertiary">Conditions</div>
+				<div class="flex flex-col gap-1.5">
+					{#each deployment.conditions as condition (condition.condition_type)}
+						<div class="rounded-lg border border-border-faint bg-surface-surface px-2.5 py-1.5">
+							<div class="flex items-center gap-2">
+								<span class="type-body flex-1 text-text-primary">{condition.condition_type}</span>
+								<span
+									class="type-data-sm"
+									style="color: {condition.status === 'True'
+										? 'var(--color-status-ok)'
+										: condition.status === 'False'
+											? 'var(--color-status-err)'
+											: 'var(--color-text-tertiary)'};"
+								>
+									{condition.status}
+								</span>
+							</div>
+							{#if condition.reason}
+								<div class="type-caption mt-0.5 text-text-tertiary">{condition.reason}</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
 
 		<div>
 			<div class="type-section mb-1.5 text-text-tertiary">Pods</div>
