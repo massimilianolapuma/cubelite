@@ -5,9 +5,12 @@
 	import ClusterRail from '$lib/components/shell/ClusterRail.svelte';
 	import Sidebar from '$lib/components/shell/Sidebar.svelte';
 	import StatusBar from '$lib/components/shell/StatusBar.svelte';
+	import CommandPalette from '$lib/components/CommandPalette.svelte';
 	import ConnectingOverlay from '$lib/components/ui/ConnectingOverlay.svelte';
 	import UnreachableView from '$lib/components/views/UnreachableView.svelte';
 	import { viewRegistry } from '$lib/components/views';
+	import { matchShortcut } from '$lib/keyboard';
+	import { isMac } from '$lib/platform';
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
@@ -42,6 +45,20 @@
 	function onKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape' && app.closeTopOverlay()) {
 			event.preventDefault();
+			return;
+		}
+		const action = matchShortcut(event, isMac);
+		if (!action) return;
+		event.preventDefault();
+		if (action.type === 'palette') {
+			app.paletteOpen = !app.paletteOpen;
+		} else if (action.type === 'preferences') {
+			app.preferencesOpen = true;
+		} else {
+			const target = clusters.contexts[action.index];
+			if (target && target.name !== app.activeCluster) {
+				void clusters.switchCluster(target.name);
+			}
 		}
 	}
 </script>
@@ -66,4 +83,5 @@
 	<StatusBar />
 </div>
 
+<CommandPalette />
 <ConnectingOverlay />
