@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { setMode } from 'mode-watcher';
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
 	import { app } from '$lib/stores/app.svelte';
@@ -10,10 +11,10 @@
 		app.preferencesOpen = false;
 	}
 
-	const themeSegments: { value: Theme; label: string; disabled?: boolean; title?: string }[] = [
-		{ value: 'light', label: 'Light', disabled: true, title: 'Coming soon — dark is final in v1' },
+	const themeSegments: { value: Theme; label: string }[] = [
+		{ value: 'light', label: 'Light' },
 		{ value: 'dark', label: 'Dark' },
-		{ value: 'system', label: 'System', disabled: true, title: 'Coming soon — dark is final in v1' }
+		{ value: 'system', label: 'System' }
 	];
 
 	const refreshSegments: { value: RefreshInterval; label: string }[] = [
@@ -29,9 +30,13 @@
 		<section class="flex items-center justify-between gap-4">
 			<div>
 				<div class="type-body text-text-primary">Appearance</div>
-				<p class="type-caption mt-0.5 text-text-tertiary">Light and System arrive with the light theme.</p>
+				<p class="type-caption mt-0.5 text-text-tertiary">System follows the OS preference.</p>
 			</div>
-			<SegmentedControl segments={themeSegments} bind:value={settings.theme.value} />
+			<SegmentedControl
+				segments={themeSegments}
+				bind:value={settings.theme.value}
+				onChange={(value) => setMode(value)}
+			/>
 		</section>
 
 		<section class="flex items-center justify-between gap-4">

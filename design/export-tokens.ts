@@ -24,6 +24,8 @@ import { fileURLToPath } from "node:url";
 
 interface Token {
   $value: string;
+  /** Light-theme counterpart; falls back to $value when omitted. */
+  $light?: string;
   $type?: string;
   $description?: string;
 }
@@ -49,10 +51,29 @@ interface DesignTokensV2 {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Entries of a token group, skipping `$description` and other meta keys. */
-function entries(group: TokenGroup): [string, string][] {
+function entries(group: TokenGroup, theme: "dark" | "light" = "dark"): [string, string][] {
   return Object.entries(group)
     .filter(([k]) => !k.startsWith("$"))
-    .map(([k, t]) => [k, t.$value]);
+    .map(([k, t]) => [k, theme === "light" ? (t.$light ?? t.$value) : t.$value]);
+}
+
+/** `--prefix-key: var(--cl-prefix-key);` aliases for theme-switchable groups. */
+function aliasLines(group: TokenGroup, prefix: string, indent: string): string {
+  return entries(group)
+    .map(([k]) => `${indent}--${prefix}${k}: var(--cl-${prefix}${k});`)
+    .join("\n");
+}
+
+/** `--cl-prefix-key: <value>;` concrete values for one theme. */
+function themedLines(
+  group: TokenGroup,
+  prefix: string,
+  indent: string,
+  theme: "dark" | "light",
+): string {
+  return entries(group, theme)
+    .map(([k, v]) => `${indent}--cl-${prefix}${k}: ${v};`)
+    .join("\n");
 }
 
 function lines(
@@ -134,43 +155,44 @@ const cssFile = resolve(root, "apps", "desktop", "src", "app.css");
 
 const tk = JSON.parse(readFileSync(tokensFile, "utf-8")) as DesignTokensV2;
 
-const tval = (group: TokenGroup, key: string): string => {
+const tval = (group: TokenGroup, key: string, theme: "dark" | "light" = "dark"): string => {
   const t = group[key];
   if (!t) throw new Error(`Missing token: ${key}`);
-  return t.$value;
+  return theme === "light" ? (t.$light ?? t.$value) : t.$value;
 };
+
+/** Color groups whose values switch between light and dark. */
+const SWITCHABLE: [TokenGroup, string][] = [
+  [tk.surface, "color-surface-"],
+  [tk.border, "color-border-"],
+  [tk.text, "color-text-"],
+  [tk.status, "color-status-"],
+  [tk["cluster-identity"], "color-cluster-"],
+  [tk.shadow, "shadow-"],
+];
 
 // ── Build @theme block ────────────────────────────────────────────────────────
 
 // accent.default → --color-accent; other accent keys keep their name suffix.
-const accentLines = entries(tk.accent)
-  .map(([k, v]) =>
-    k === "default" ? `  --color-accent: ${v};` : `  --color-accent-${k}: ${v};`,
-  )
-  .join("\n");
+const accentAlias = (k: string): string =>
+  k === "default" ? "color-accent" : `color-accent-${k}`;
 
+// Colors and shadows are aliases into theme-switchable --cl-* custom
+// properties defined per :root (light) / .dark below; everything that uses
+// a utility or an inline var(--color-*) follows the active theme.
 const themeContent = [
   "@theme {",
   `  --font-sans: ${tval(tk.font.family, "sans")};`,
   `  --font-mono: ${tval(tk.font.family, "mono")};`,
   "",
-  lines(tk.surface, "color-surface-", "  "),
-  "",
-  lines(tk.border, "color-border-", "  "),
-  "",
-  lines(tk.text, "color-text-", "  "),
-  "",
-  accentLines,
-  "",
-  lines(tk.status, "color-status-", "  "),
-  "",
-  lines(tk["cluster-identity"], "color-cluster-", "  "),
+  ...SWITCHABLE.map(([group, prefix]) => aliasLines(group, prefix, "  ") + "\n"),
+  entries(tk.accent)
+    .map(([k]) => `  --${accentAlias(k)}: var(--cl-${accentAlias(k)});`)
+    .join("\n"),
   "",
   lines(tk.spacing, "spacing-", "  "),
   "",
   lines(tk.radius, "radius-", "  "),
-  "",
-  lines(tk.shadow, "shadow-", "  "),
   "}",
 ].join("\n");
 
@@ -192,55 +214,68 @@ const alphaLines = [
 const densityLines = lines(tk.density, "", "    ");
 const motionLines = lines(tk.motion, "motion-", "    ", motionValue);
 
-// shadcn-svelte compat bridge: HSL triples derived from the v2 dark palette.
+// shadcn-svelte compat bridge: HSL triples derived from the active palette.
 // Existing/future shadcn-styled components read hsl(var(--background)) etc.
-// The app is dark-only in v1, so :root and .dark get identical values.
-const bridge: [string, string][] = [
-  ["background", tval(tk.surface, "window")],
-  ["foreground", tval(tk.text, "primary")],
-  ["card", tval(tk.surface, "surface")],
-  ["card-foreground", tval(tk.text, "primary")],
-  ["popover", tval(tk.surface, "overlay")],
-  ["popover-foreground", tval(tk.text, "primary")],
-  ["primary", tval(tk.accent, "default")],
-  ["primary-foreground", tval(tk.surface, "window")],
-  ["secondary", tval(tk.surface, "raised")],
-  ["secondary-foreground", tval(tk.text, "primary")],
-  ["muted", tval(tk.surface, "raised")],
-  ["muted-foreground", tval(tk.text, "secondary")],
-  ["accent", tval(tk.surface, "raised")],
-  ["accent-foreground", tval(tk.text, "primary")],
-  ["destructive", tval(tk.status, "err-solid")],
-  ["destructive-foreground", tval(tk.text, "primary")],
-  ["border", tval(tk.border, "default")],
-  ["input", tval(tk.border, "default")],
-  ["ring", tval(tk.accent, "default")],
-  ["sidebar-background", tval(tk.surface, "panel")],
-  ["sidebar-foreground", tval(tk.text, "secondary")],
-  ["sidebar-primary", tval(tk.accent, "default")],
-  ["sidebar-primary-foreground", tval(tk.surface, "window")],
-  ["sidebar-accent", tval(tk.surface, "raised")],
-  ["sidebar-accent-foreground", tval(tk.text, "primary")],
-  ["sidebar-border", tval(tk.border, "faint")],
-  ["sidebar-ring", tval(tk.accent, "default")],
+const bridgeFor = (theme: "dark" | "light"): [string, string][] => [
+  ["background", tval(tk.surface, "window", theme)],
+  ["foreground", tval(tk.text, "primary", theme)],
+  ["card", tval(tk.surface, "surface", theme)],
+  ["card-foreground", tval(tk.text, "primary", theme)],
+  ["popover", tval(tk.surface, "overlay", theme)],
+  ["popover-foreground", tval(tk.text, "primary", theme)],
+  ["primary", tval(tk.accent, "default", theme)],
+  ["primary-foreground", tval(tk.surface, "window", theme)],
+  ["secondary", tval(tk.surface, "raised", theme)],
+  ["secondary-foreground", tval(tk.text, "primary", theme)],
+  ["muted", tval(tk.surface, "raised", theme)],
+  ["muted-foreground", tval(tk.text, "secondary", theme)],
+  ["accent", tval(tk.surface, "raised", theme)],
+  ["accent-foreground", tval(tk.text, "primary", theme)],
+  ["destructive", tval(tk.status, "err-solid", theme)],
+  ["destructive-foreground", tval(tk.text, "primary", theme)],
+  ["border", tval(tk.border, "default", theme)],
+  ["input", tval(tk.border, "default", theme)],
+  ["ring", tval(tk.accent, "default", theme)],
+  ["sidebar-background", tval(tk.surface, "panel", theme)],
+  ["sidebar-foreground", tval(tk.text, "secondary", theme)],
+  ["sidebar-primary", tval(tk.accent, "default", theme)],
+  ["sidebar-primary-foreground", tval(tk.surface, "window", theme)],
+  ["sidebar-accent", tval(tk.surface, "raised", theme)],
+  ["sidebar-accent-foreground", tval(tk.text, "primary", theme)],
+  ["sidebar-border", tval(tk.border, "faint", theme)],
+  ["sidebar-ring", tval(tk.accent, "default", theme)],
 ];
 
-const bridgeLines = (indent: string): string =>
-  bridge.map(([k, v]) => `${indent}--${k}: ${hexToHslTriple(v)};`).join("\n");
+const bridgeLines = (indent: string, theme: "dark" | "light"): string =>
+  bridgeFor(theme)
+    .map(([k, v]) => `${indent}--${k}: ${hexToHslTriple(v)};`)
+    .join("\n");
+
+const themedBlock = (theme: "dark" | "light"): string =>
+  [
+    ...SWITCHABLE.map(([group, prefix]) => themedLines(group, prefix, "    ", theme)),
+    entries(tk.accent, theme)
+      .map(([k, v]) => `    --cl-${accentAlias(k)}: ${v};`)
+      .join("\n"),
+  ].join("\n");
 
 const layerContent = [
   "@layer base {",
   "  :root {",
+  themedBlock("light"),
+  "",
   alphaLines,
   "",
   densityLines,
   "",
   motionLines,
   "",
-  bridgeLines("    "),
+  bridgeLines("    ", "light"),
   "  }",
   "  .dark {",
-  bridgeLines("    "),
+  themedBlock("dark"),
+  "",
+  bridgeLines("    ", "dark"),
   "  }",
   "}",
 ].join("\n");

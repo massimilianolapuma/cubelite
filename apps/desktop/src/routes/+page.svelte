@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { setMode } from 'mode-watcher';
 	import { homeDir } from '@tauri-apps/api/path';
 	import Titlebar from '$lib/components/shell/Titlebar.svelte';
 	import ClusterRail from '$lib/components/shell/ClusterRail.svelte';
@@ -24,6 +25,7 @@
 	const Current = $derived(entry.component);
 
 	onMount(() => {
+		setMode(settings.theme.value);
 		void (async () => {
 			const dir = await homeDir();
 			app.kubeconfigPath = `${dir}/.kube/config`;
