@@ -1,12 +1,15 @@
 <script lang="ts">
 	import IdentityAvatar from '$lib/components/ui/IdentityAvatar.svelte';
+	import MeterBar from '$lib/components/ui/MeterBar.svelte';
 	import StatCard from '$lib/components/ui/StatCard.svelte';
 	import StatusPill from '$lib/components/ui/StatusPill.svelte';
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
+	import { percentOf } from '$lib/units';
 
 	const issues = $derived(resources.issuePods.length);
+	const capacity = $derived(resources.capacityTotals);
 
 	function clickCluster(name: string) {
 		if (name === app.activeCluster) {
@@ -27,7 +30,7 @@
 	function statsFor(name: string): [string, string][] {
 		const active = name === app.activeCluster && clusters.connectionState === 'connected';
 		return [
-			['Nodes', '—'],
+			['Nodes', active && resources.metricsAvailable ? String(resources.nodes.length) : '—'],
 			['Pods', active ? String(resources.pods.length) : '—'],
 			['Version', '—'],
 			['Warnings', active ? String(issues) : '—']
@@ -93,6 +96,13 @@
 						</div>
 					{/each}
 				</div>
+
+				{#if ctx.name === app.activeCluster && capacity}
+					<div class="flex flex-col gap-1.5">
+						<MeterBar label="CPU" percent={percentOf(capacity.cpuUsed, capacity.cpuAllocatable)} />
+						<MeterBar label="MEM" percent={percentOf(capacity.memUsed, capacity.memAllocatable)} />
+					</div>
+				{/if}
 
 				{#if ctx.name === app.activeCluster && clusters.connectionState === 'unreachable'}
 					<p class="type-caption text-status-err">

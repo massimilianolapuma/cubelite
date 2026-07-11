@@ -11,6 +11,8 @@
 	import { app } from '$lib/stores/app.svelte';
 	import { logs } from '$lib/stores/logs.svelte';
 	import { mutations } from '$lib/stores/mutations.svelte';
+	import { resources } from '$lib/stores/resources.svelte';
+	import { formatBytes, formatCpu, percentOf } from '$lib/units';
 	import type { PodInfo } from '$lib/tauri';
 
 	let {
@@ -34,6 +36,10 @@
 		['Pod IP', pod.pod_ip ?? '—'],
 		['QoS', pod.qos_class ?? '—']
 	]);
+
+	const usage = $derived(resources.metricsFor(pod.namespace, pod.name));
+	// Bars are relative to the allocatable capacity of the pod's node.
+	const nodeCapacity = $derived(resources.nodes.find((n) => n.name === pod.node) ?? null);
 
 	const pillTone = $derived.by(() => {
 		const tone = podTone(pod);
@@ -81,11 +87,27 @@
 		{/if}
 
 		<div class="flex flex-col gap-2 rounded-lg border border-border-faint bg-surface-surface p-3">
-			<MeterBar label="CPU" percent={null} />
-			<MeterBar label="MEM" percent={null} />
-			<p class="type-caption text-text-disabled">
-				metrics unavailable — requires metrics-server integration
-			</p>
+			<MeterBar
+				label="CPU"
+				percent={usage && nodeCapacity
+					? percentOf(usage.cpu_millis, nodeCapacity.cpu_allocatable_millis)
+					: null}
+			/>
+			<MeterBar
+				label="MEM"
+				percent={usage && nodeCapacity
+					? percentOf(usage.memory_bytes, nodeCapacity.memory_allocatable_bytes)
+					: null}
+			/>
+			{#if usage}
+				<p class="type-caption text-text-tertiary">
+					{formatCpu(usage.cpu_millis)} CPU · {formatBytes(usage.memory_bytes)} — share of node allocatable
+				</p>
+			{:else}
+				<p class="type-caption text-text-disabled">
+					metrics unavailable — metrics-server not detected in this cluster
+				</p>
+			{/if}
 		</div>
 	</div>
 

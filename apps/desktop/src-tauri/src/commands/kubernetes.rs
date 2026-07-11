@@ -2,6 +2,7 @@ use cubelite_core::{
     client::KubeClient,
     helm::HelmReleaseInfo,
     logs::stream_pod_logs,
+    metrics::{NodeCapacityInfo, PodMetricsInfo},
     resources::{
         ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
         ServiceInfo,
@@ -257,6 +258,36 @@ pub async fn list_helm_releases(
         .list_helm_releases(namespace.as_deref())
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Fetch pod CPU/memory usage from metrics-server (404 when absent).
+#[tauri::command]
+pub async fn list_pod_metrics(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<PodMetricsInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_pod_metrics(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Per-node usage + allocatable capacity (node inventory for the UI).
+#[tauri::command]
+pub async fn cluster_capacity(
+    kubeconfig_path: String,
+    context: Option<String>,
+) -> Result<Vec<NodeCapacityInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client.cluster_capacity().await.map_err(|e| e.to_string())
 }
 
 /// Delete a pod (the owning controller will recreate it).

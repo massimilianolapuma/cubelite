@@ -34,6 +34,7 @@ pub mod error;
 pub mod helm;
 pub mod kubeconfig;
 pub mod logs;
+pub mod metrics;
 pub mod resources;
 pub mod types;
 pub mod watcher;
@@ -44,6 +45,7 @@ pub use error::{ContextError, KubeconfigError};
 pub use helm::HelmReleaseInfo;
 pub use kubeconfig::KubeConfig;
 pub use logs::{LogLevel, LogLine};
+pub use metrics::{NodeCapacityInfo, PodMetricsInfo};
 pub use resources::{
     ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
     ServiceInfo,

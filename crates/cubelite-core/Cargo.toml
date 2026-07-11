@@ -15,6 +15,7 @@ kube = { version = "0.97", features = ["runtime", "derive", "client"] }
 serde_json = { workspace = true }
 k8s-openapi = { version = "0.23", features = ["v1_30"] }
 base64 = "0.22"
+http = "1"
 flate2 = "1"
 
 [dev-dependencies]
