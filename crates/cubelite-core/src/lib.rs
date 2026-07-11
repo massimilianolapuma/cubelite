@@ -31,6 +31,7 @@
 pub mod client;
 pub mod context;
 pub mod error;
+pub mod helm;
 pub mod kubeconfig;
 pub mod logs;
 pub mod resources;
@@ -40,6 +41,7 @@ pub mod watcher;
 // Re-export the most commonly used items at the crate root.
 pub use client::KubeClient;
 pub use error::{ContextError, KubeconfigError};
+pub use helm::HelmReleaseInfo;
 pub use kubeconfig::KubeConfig;
 pub use logs::{LogLevel, LogLine};
 pub use resources::{

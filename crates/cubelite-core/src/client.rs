@@ -7,7 +7,7 @@ use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Pod, Secret, Service};
 use k8s_openapi::api::networking::v1::Ingress;
 use kube::{
-    api::{DeleteParams, Patch, PatchParams},
+    api::{DeleteParams, ListParams, Patch, PatchParams},
     config::{KubeConfigOptions, Kubeconfig},
     Api, Client, Config,
 };
@@ -15,6 +15,7 @@ use std::path::Path;
 
 use crate::{
     error::KubeconfigError,
+    helm::{latest_releases, parse_release_secret, HelmReleaseInfo},
     resources::{
         ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
         ServiceInfo,
@@ -242,6 +243,36 @@ impl KubeClient {
                     reason: e.to_string(),
                 })?;
         Ok(list.items.into_iter().filter_map(secret_to_info).collect())
+    }
+
+    /// List Helm v3 releases (latest revision per release) in `namespace`,
+    /// or across all namespaces when `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_helm_releases(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<HelmReleaseInfo>, KubeconfigError> {
+        let api: Api<Secret> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let params = ListParams::default().labels("owner=helm");
+        let list = api
+            .list(&params)
+            .await
+            .map_err(|e| KubeconfigError::ClientError {
+                reason: e.to_string(),
+            })?;
+        let releases = list
+            .items
+            .iter()
+            .filter(|s| s.type_.as_deref() == Some("helm.sh/release.v1"))
+            .filter_map(parse_release_secret)
+            .collect();
+        Ok(latest_releases(releases))
     }
 
     /// List events in `namespace`, or across all namespaces when `None`,

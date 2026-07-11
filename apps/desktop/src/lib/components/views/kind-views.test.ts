@@ -16,6 +16,7 @@ vi.mock("$lib/tauri", () => ({
   listIngresses: vi.fn(async () => []),
   listConfigMaps: vi.fn(async () => []),
   listSecrets: vi.fn(async () => []),
+  listHelmReleases: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
 }));
@@ -133,5 +134,44 @@ describe("SecretsView", () => {
     expect(screen.getByText("hunter2")).toBeInTheDocument();
     await fireEvent.click(screen.getByRole("button", { name: /Hide/ }));
     expect(screen.queryByText("hunter2")).toBeNull();
+  });
+});
+
+describe("HelmView", () => {
+  it("renders columns, status pills and chart", async () => {
+    const { default: HelmView } = await import("./HelmView.svelte");
+    resources.helmReleases = [
+      {
+        name: "web",
+        namespace: "default",
+        revision: 3,
+        status: "deployed",
+        chart: "nginx-15.1.2",
+        app_version: "1.27",
+        updated: null,
+      },
+      {
+        name: "queue",
+        namespace: "default",
+        revision: 1,
+        status: "pending-upgrade",
+        chart: null,
+        app_version: null,
+        updated: null,
+      },
+    ];
+    render(HelmView);
+    for (const h of ["Name", "Namespace", "Rev", "Status", "Chart", "Updated"]) {
+      expect(screen.getByText(h)).toBeInTheDocument();
+    }
+    expect(screen.getByText("deployed")).toBeInTheDocument();
+    expect(screen.getByText("pending-upgrade")).toBeInTheDocument();
+    expect(screen.getByText("nginx-15.1.2")).toBeInTheDocument();
+  });
+
+  it("shows the empty state", async () => {
+    const { default: HelmView } = await import("./HelmView.svelte");
+    render(HelmView);
+    expect(screen.getByText("No Helm releases found.")).toBeInTheDocument();
   });
 });

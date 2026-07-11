@@ -208,6 +208,16 @@ export function listEvents(
   });
 }
 
+export type HelmReleaseInfo = {
+  name: string;
+  namespace: string;
+  revision: number;
+  status: string | null;
+  chart: string | null;
+  app_version: string | null;
+  updated: string | null;
+};
+
 export type LogLevel = "info" | "warn" | "error";
 
 export type LogLine = {
@@ -222,6 +232,18 @@ export type PodRef = {
   namespace: string;
   name: string;
 };
+
+export function listHelmReleases(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<HelmReleaseInfo[]> {
+  return invoke<HelmReleaseInfo[]>("list_helm_releases", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
 
 export function streamLogs(
   kubeconfigPath: string,

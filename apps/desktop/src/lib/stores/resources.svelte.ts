@@ -9,6 +9,7 @@ import {
   listConfigMaps,
   listDeployments,
   listEvents,
+  listHelmReleases,
   listIngresses,
   listNamespaces,
   listPods,
@@ -19,6 +20,7 @@ import {
   type ConfigMapInfo,
   type DeploymentInfo,
   type EventInfo,
+  type HelmReleaseInfo,
   type IngressInfo,
   type NamespaceInfo,
   type PodInfo,
@@ -32,9 +34,15 @@ import { settings } from "./settings.svelte";
 const RELOAD_DEBOUNCE_MS = 300;
 
 /** Resource kinds loaded on demand when their view is opened. */
-export type ExtraKind = "services" | "ingresses" | "configmaps" | "secrets";
+export type ExtraKind = "services" | "ingresses" | "configmaps" | "secrets" | "helm";
 
-const EXTRA_KINDS: readonly ExtraKind[] = ["services", "ingresses", "configmaps", "secrets"];
+const EXTRA_KINDS: readonly ExtraKind[] = [
+  "services",
+  "ingresses",
+  "configmaps",
+  "secrets",
+  "helm",
+];
 
 export function isExtraKind(v: unknown): v is ExtraKind {
   return typeof v === "string" && (EXTRA_KINDS as readonly string[]).includes(v);
@@ -49,6 +57,7 @@ class ResourcesStore {
   ingresses = $state<IngressInfo[]>([]);
   configmaps = $state<ConfigMapInfo[]>([]);
   secrets = $state<SecretInfo[]>([]);
+  helmReleases = $state<HelmReleaseInfo[]>([]);
   loading = $state(false);
   error = $state<string | null>(null);
   extraLoading = $state(false);
@@ -166,6 +175,11 @@ class ResourcesStore {
           if (seq === this.#extraSeq) this.secrets = list;
           break;
         }
+        case "helm": {
+          const list = await listHelmReleases(kc, ns, cluster);
+          if (seq === this.#extraSeq) this.helmReleases = list;
+          break;
+        }
       }
     } catch (e) {
       if (seq === this.#extraSeq) this.extraError = errorMessage(e);
@@ -186,6 +200,7 @@ class ResourcesStore {
     this.ingresses = [];
     this.configmaps = [];
     this.secrets = [];
+    this.helmReleases = [];
     this.error = null;
     this.loading = false;
     this.extraError = null;

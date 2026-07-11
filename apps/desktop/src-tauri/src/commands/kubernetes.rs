@@ -1,5 +1,6 @@
 use cubelite_core::{
     client::KubeClient,
+    helm::HelmReleaseInfo,
     logs::stream_pod_logs,
     resources::{
         ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
@@ -238,6 +239,24 @@ pub async fn watch_resources(
         .insert(watch_id.clone(), handle);
 
     Ok(watch_id)
+}
+
+/// List Helm v3 releases (latest revision per release) in the given
+/// namespace (all namespaces when `None`).
+#[tauri::command]
+pub async fn list_helm_releases(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<HelmReleaseInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_helm_releases(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Delete a pod (the owning controller will recreate it).
