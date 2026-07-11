@@ -1,7 +1,8 @@
 use cubelite_core::{
     client::KubeClient,
     resources::{
-        ConfigMapInfo, DeploymentInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
+        ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
+        ServiceInfo,
     },
     ResourceType, ResourceWatcher, WatchEvent,
 };
@@ -138,6 +139,24 @@ pub async fn list_secrets(
 
     client
         .list_secrets(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List events in the given namespace (all namespaces when `None`),
+/// sorted most-recent first.
+#[tauri::command]
+pub async fn list_events(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<EventInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_events(namespace.as_deref())
         .await
         .map_err(|e| e.to_string())
 }

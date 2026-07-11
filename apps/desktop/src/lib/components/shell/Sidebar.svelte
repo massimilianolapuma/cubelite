@@ -51,6 +51,7 @@
 	];
 
 	const issueCount = $derived(resources.issuePods.length);
+	const warningCount = $derived(resources.warningEvents.length);
 
 	function countFor(view: View): number | null {
 		if (view === 'pods') return resources.pods.length;
@@ -78,6 +79,9 @@
 					</span>
 					{#if item.view === 'pods' && issueCount > 0}
 						<span class="font-mono text-[10.5px] text-status-err">{issueCount}</span>
+					{/if}
+					{#if item.view === 'events' && warningCount > 0}
+						<span class="font-mono text-[10.5px] text-status-err">{warningCount}</span>
 					{/if}
 					{#if count !== null}
 						<span class="font-mono text-[10.5px] text-text-tertiary">{count}</span>

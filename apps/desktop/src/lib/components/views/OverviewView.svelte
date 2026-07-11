@@ -1,12 +1,12 @@
 <script lang="ts">
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import { formatAge } from '$lib/age';
 	import MeterBar from '$lib/components/ui/MeterBar.svelte';
 	import StatCard from '$lib/components/ui/StatCard.svelte';
-	import { podStatusLabel, podTone, toneColor } from '$lib/status';
 	import { app } from '$lib/stores/app.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 
-	const issues = $derived(resources.issuePods);
+	const warnings = $derived(resources.warningEvents);
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -16,7 +16,7 @@
 		<StatCard label="Nodes" value="—" />
 		<StatCard label="Pods running" value={resources.runningPods} />
 		<StatCard label="Deployments" value={resources.deployments.length} />
-		<StatCard label="Issues" value={issues.length} tone={issues.length > 0 ? 'warn' : 'ok'} />
+		<StatCard label="Warnings" value={warnings.length} tone={warnings.length > 0 ? 'warn' : 'ok'} />
 	</div>
 
 	<div class="grid gap-3 xl:grid-cols-2">
@@ -31,37 +31,35 @@
 
 		<div class="rounded-xl border border-border-default bg-surface-surface p-4">
 			<div class="mb-2 flex items-center">
-				<div class="type-colhead flex-1">Recent issues</div>
+				<div class="type-colhead flex-1">Recent warnings</div>
 				<button
 					type="button"
 					class="focus-ring type-caption flex items-center gap-1 rounded-sm text-text-tertiary hover:text-text-secondary"
-					onclick={() => app.navigate('pods')}
+					onclick={() => app.navigate('events')}
 				>
-					All pods
+					All events
 					<ArrowRight class="h-3 w-3" />
 				</button>
 			</div>
-			{#if issues.length === 0}
-				<p class="type-caption text-text-disabled">No pod issues detected.</p>
+			{#if warnings.length === 0}
+				<p class="type-caption text-text-disabled">No warning events.</p>
 			{:else}
 				<div class="flex flex-col">
-					{#each issues.slice(0, 5) as pod (pod.namespace + '/' + pod.name)}
+					{#each warnings.slice(0, 5) as event, i (i)}
 						<button
 							type="button"
 							class="flex items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-surface-row-hover"
-							onclick={() => {
-								app.navigate('pods');
-								app.selectedPod = pod;
-							}}
+							onclick={() => app.navigate('events')}
 						>
 							<span
 								class="h-1.5 w-1.5 shrink-0 rounded-full"
-								style="background: {toneColor[podTone(pod)]};"
+								style="background: var(--color-status-warn);"
 							></span>
-							<span class="type-data-sm flex-1 truncate text-text-secondary">
-								{pod.namespace}/{pod.name}
+							<span class="type-data-sm w-40 shrink-0 truncate text-text-secondary">{event.object}</span>
+							<span class="type-caption flex-1 truncate text-text-tertiary">
+								{event.message ?? event.reason ?? '—'}
 							</span>
-							<span class="type-caption text-text-tertiary">{podStatusLabel(pod)}</span>
+							<span class="type-caption text-text-tertiary">{formatAge(event.last_timestamp)}</span>
 						</button>
 					{/each}
 				</div>

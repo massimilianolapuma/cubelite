@@ -88,6 +88,25 @@ pub struct ConfigMapInfo {
     pub creation_timestamp: Option<String>,
 }
 
+/// Lightweight representation of a Kubernetes Event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventInfo {
+    /// Event type (`"Normal"` or `"Warning"`).
+    pub event_type: Option<String>,
+    /// Machine-readable reason (e.g. `"BackOff"`, `"Scheduled"`).
+    pub reason: Option<String>,
+    /// Involved object rendered kubectl-style (e.g. `"Pod/api-0"`).
+    pub object: String,
+    /// Human-readable message.
+    pub message: Option<String>,
+    /// The namespace the event belongs to.
+    pub namespace: String,
+    /// Number of occurrences of this event.
+    pub count: i32,
+    /// RFC 3339 timestamp of the most recent occurrence.
+    pub last_timestamp: Option<String>,
+}
+
 /// Lightweight representation of a Kubernetes Secret.
 ///
 /// Values are base64-decoded locally by the backend and never leave the

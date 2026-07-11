@@ -56,6 +56,16 @@ export type ConfigMapInfo = {
   creation_timestamp: string | null;
 };
 
+export type EventInfo = {
+  event_type: string | null;
+  reason: string | null;
+  object: string;
+  message: string | null;
+  namespace: string;
+  count: number;
+  last_timestamp: string | null;
+};
+
 export type SecretInfo = {
   name: string;
   namespace: string;
@@ -155,6 +165,18 @@ export function listSecrets(
   context?: string,
 ): Promise<SecretInfo[]> {
   return invoke<SecretInfo[]>("list_secrets", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function listEvents(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<EventInfo[]> {
+  return invoke<EventInfo[]>("list_events", {
     kubeconfigPath,
     namespace: namespace ?? null,
     context: context ?? null,

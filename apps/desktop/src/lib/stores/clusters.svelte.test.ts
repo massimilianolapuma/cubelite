@@ -6,6 +6,7 @@ vi.mock("$lib/tauri", () => ({
   listPods: vi.fn(),
   listNamespaces: vi.fn(),
   listDeployments: vi.fn(),
+  listEvents: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
 }));

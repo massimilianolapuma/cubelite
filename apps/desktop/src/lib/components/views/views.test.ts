@@ -8,6 +8,7 @@ vi.mock("$lib/tauri", () => ({
   listPods: vi.fn(),
   listNamespaces: vi.fn(),
   listDeployments: vi.fn(),
+  listEvents: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
 }));
@@ -17,6 +18,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import EmptyStateView from "./EmptyStateView.svelte";
 import UnreachableView from "./UnreachableView.svelte";
+import EventsView from "./EventsView.svelte";
 import OverviewView from "./OverviewView.svelte";
 import AllClustersView from "./AllClustersView.svelte";
 import PodsView from "./PodsView.svelte";
@@ -55,6 +57,7 @@ beforeEach(() => {
   resources.pods = [];
   resources.namespaces = [];
   resources.deployments = [];
+  resources.events = [];
 });
 
 describe("EmptyStateView", () => {
@@ -79,14 +82,27 @@ describe("UnreachableView", () => {
 });
 
 describe("OverviewView", () => {
-  it("shows real stats, dashes for missing data and the metrics caption", () => {
+  it("shows real stats, metrics caption and recent warning events", () => {
     resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" })];
     resources.deployments = [{ name: "api", namespace: "default", replicas: 2, ready_replicas: 1 }];
+    resources.events = [
+      {
+        event_type: "Warning",
+        reason: "FailedScheduling",
+        object: "Pod/api-1",
+        message: "0/3 nodes are available",
+        namespace: "default",
+        count: 1,
+        last_timestamp: null,
+      },
+    ];
     render(OverviewView);
     expect(screen.getByText("Nodes")).toBeInTheDocument();
     expect(screen.getByText("Pods running")).toBeInTheDocument();
     expect(screen.getByText(/metrics unavailable/)).toBeInTheDocument();
-    expect(screen.getByText("default/api-1")).toBeInTheDocument();
+    expect(screen.getByText("Recent warnings")).toBeInTheDocument();
+    expect(screen.getByText("Pod/api-1")).toBeInTheDocument();
+    expect(screen.getByText("0/3 nodes are available")).toBeInTheDocument();
   });
 });
 
@@ -138,5 +154,44 @@ describe("PodDrawer", () => {
     render(PodDrawer, { props: { pod: pod(), onClose } });
     await fireEvent.click(screen.getByLabelText("Close"));
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("EventsView", () => {
+  it("renders type pills, warning row tint and count suffix", () => {
+    resources.events = [
+      {
+        event_type: "Warning",
+        reason: "BackOff",
+        object: "Pod/api-0",
+        message: "Back-off restarting failed container",
+        namespace: "default",
+        count: 7,
+        last_timestamp: null,
+      },
+      {
+        event_type: "Normal",
+        reason: "Scheduled",
+        object: "Pod/api-1",
+        message: "Successfully assigned default/api-1",
+        namespace: "default",
+        count: 1,
+        last_timestamp: null,
+      },
+    ];
+    render(EventsView);
+    for (const h of ["Type", "Reason", "Object", "Message", "Age"]) {
+      expect(screen.getByText(h)).toBeInTheDocument();
+    }
+    expect(screen.getByText("Warning")).toBeInTheDocument();
+    expect(screen.getByText("Normal")).toBeInTheDocument();
+    expect(screen.getByText(/BackOff ×7/)).toBeInTheDocument();
+    const warningRow = screen.getByText("Pod/api-0").closest("div");
+    expect(warningRow?.getAttribute("style")).toContain("--alpha-log-warn-row");
+  });
+
+  it("shows the empty state", () => {
+    render(EventsView);
+    expect(screen.getByText("No events found.")).toBeInTheDocument();
   });
 });

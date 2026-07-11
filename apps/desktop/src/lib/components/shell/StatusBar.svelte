@@ -7,7 +7,7 @@
 	const server = $derived(
 		clusters.contexts.find((c) => c.name === app.activeCluster)?.cluster_server ?? null
 	);
-	const issueCount = $derived(resources.issuePods.length);
+	const warningCount = $derived(resources.warningEvents.length);
 	const refreshLabel = $derived(
 		settings.refreshInterval.value === 0
 			? 'refresh off'
@@ -25,13 +25,13 @@
 	{/if}
 	<span>{refreshLabel}</span>
 	<span class="flex-1"></span>
-	{#if issueCount > 0}
+	{#if warningCount > 0}
 		<button
 			type="button"
 			class="focus-ring rounded-sm text-status-warn hover:brightness-110"
-			onclick={() => app.navigate('pods')}
+			onclick={() => app.navigate('events')}
 		>
-			{issueCount} issue{issueCount === 1 ? '' : 's'}
+			{warningCount} warning{warningCount === 1 ? '' : 's'}
 		</button>
 	{/if}
 </footer>

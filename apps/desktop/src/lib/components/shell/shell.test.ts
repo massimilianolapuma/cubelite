@@ -8,6 +8,7 @@ vi.mock("$lib/tauri", () => ({
   listPods: vi.fn(),
   listNamespaces: vi.fn(),
   listDeployments: vi.fn(),
+  listEvents: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
 }));
@@ -49,6 +50,7 @@ beforeEach(() => {
   resources.pods = [];
   resources.namespaces = [];
   resources.deployments = [];
+  resources.events = [];
 });
 
 describe("Titlebar", () => {
@@ -140,13 +142,23 @@ describe("Sidebar", () => {
 });
 
 describe("StatusBar", () => {
-  it("shows server, refresh interval and clickable issue count", async () => {
-    resources.pods = [pod({ ready: false, phase: "Pending" })];
+  it("shows server, refresh interval and clickable warning count", async () => {
+    resources.events = [
+      {
+        event_type: "Warning",
+        reason: "BackOff",
+        object: "Pod/api-0",
+        message: "Back-off restarting failed container",
+        namespace: "default",
+        count: 3,
+        last_timestamp: null,
+      },
+    ];
     render(StatusBar);
     expect(screen.getByText("https://prod.azmk8s.io:443")).toBeInTheDocument();
     expect(screen.getByText(/refresh/)).toBeInTheDocument();
-    const issues = screen.getByText("1 issue");
-    await fireEvent.click(issues);
-    expect(app.view).toBe("pods");
+    const warnings = screen.getByText("1 warning");
+    await fireEvent.click(warnings);
+    expect(app.view).toBe("events");
   });
 });

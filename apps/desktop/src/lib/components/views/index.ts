@@ -10,6 +10,7 @@ import AllClustersView from "./AllClustersView.svelte";
 import ConfigMapsView from "./ConfigMapsView.svelte";
 import DeploymentsView from "./DeploymentsView.svelte";
 import EmptyStateView from "./EmptyStateView.svelte";
+import EventsView from "./EventsView.svelte";
 import IngressesView from "./IngressesView.svelte";
 import OverviewView from "./OverviewView.svelte";
 import PodsView from "./PodsView.svelte";
@@ -44,6 +45,6 @@ export const viewRegistry: Record<View, ViewEntry> = {
   ingresses: asEntry(IngressesView),
   configmaps: asEntry(ConfigMapsView),
   secrets: asEntry(SecretsView),
-  events: emptyState("The Events view"),
+  events: asEntry(EventsView),
   logs: emptyState("The Logs view"),
 };
