@@ -4,7 +4,7 @@
 //! methods for listing the most common Kubernetes resources.
 
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Pod, Secret, Service};
+use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Pod, Secret, Service};
 use k8s_openapi::api::networking::v1::Ingress;
 use kube::{
     config::{KubeConfigOptions, Kubeconfig},
@@ -15,7 +15,8 @@ use std::path::Path;
 use crate::{
     error::KubeconfigError,
     resources::{
-        ConfigMapInfo, DeploymentInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
+        ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
+        ServiceInfo,
     },
     watcher::{configmap_to_info, ingress_to_info, secret_to_info, service_to_info},
 };
@@ -284,5 +285,112 @@ impl KubeClient {
                     reason: e.to_string(),
                 })?;
         Ok(list.items.into_iter().filter_map(secret_to_info).collect())
+    }
+
+    /// List events in `namespace`, or across all namespaces when `None`,
+    /// sorted most-recent first.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_events(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<EventInfo>, KubeconfigError> {
+        let api: Api<Event> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        let mut events: Vec<EventInfo> = list.items.into_iter().map(event_to_info).collect();
+        events.sort_by(|a, b| b.last_timestamp.cmp(&a.last_timestamp));
+        Ok(events)
+    }
+}
+
+/// Convert a raw [`Event`] object into an [`EventInfo`].
+fn event_to_info(e: Event) -> EventInfo {
+    let object = match (&e.involved_object.kind, &e.involved_object.name) {
+        (Some(kind), Some(name)) => format!("{kind}/{name}"),
+        (None, Some(name)) => name.clone(),
+        _ => "—".to_string(),
+    };
+    // Prefer the most recent signal available: series, lastTimestamp, eventTime.
+    let last_timestamp = e
+        .series
+        .as_ref()
+        .and_then(|s| s.last_observed_time.as_ref().map(|t| t.0.to_rfc3339()))
+        .or_else(|| e.last_timestamp.as_ref().map(|t| t.0.to_rfc3339()))
+        .or_else(|| e.event_time.as_ref().map(|t| t.0.to_rfc3339()));
+
+    EventInfo {
+        event_type: e.type_,
+        reason: e.reason,
+        object,
+        message: e.message,
+        namespace: e.metadata.namespace.unwrap_or_default(),
+        count: e.count.unwrap_or(1),
+        last_timestamp,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use k8s_openapi::api::core::v1::{EventSource, ObjectReference};
+    use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Time};
+
+    #[test]
+    fn event_to_info_full() {
+        let e = Event {
+            metadata: ObjectMeta {
+                name: Some("api-0.evt".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            involved_object: ObjectReference {
+                kind: Some("Pod".to_string()),
+                name: Some("api-0".to_string()),
+                ..Default::default()
+            },
+            type_: Some("Warning".to_string()),
+            reason: Some("BackOff".to_string()),
+            message: Some("Back-off restarting failed container".to_string()),
+            count: Some(7),
+            last_timestamp: Some(Time(
+                k8s_openapi::chrono::DateTime::parse_from_rfc3339("2026-07-11T10:00:00Z")
+                    .expect("valid test timestamp")
+                    .with_timezone(&k8s_openapi::chrono::Utc),
+            )),
+            source: Some(EventSource::default()),
+            ..Default::default()
+        };
+
+        let info = event_to_info(e);
+        assert_eq!(info.event_type.as_deref(), Some("Warning"));
+        assert_eq!(info.reason.as_deref(), Some("BackOff"));
+        assert_eq!(info.object, "Pod/api-0");
+        assert_eq!(info.count, 7);
+        assert!(info
+            .last_timestamp
+            .as_deref()
+            .is_some_and(|t| t.starts_with("2026-07-11T10:00:00")));
+    }
+
+    #[test]
+    fn event_to_info_defaults() {
+        let e = Event {
+            involved_object: ObjectReference::default(),
+            ..Default::default()
+        };
+        let info = event_to_info(e);
+        assert_eq!(info.object, "—");
+        assert_eq!(info.count, 1);
+        assert!(info.last_timestamp.is_none());
     }
 }

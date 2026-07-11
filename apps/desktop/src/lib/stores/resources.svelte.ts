@@ -8,6 +8,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   listConfigMaps,
   listDeployments,
+  listEvents,
   listIngresses,
   listNamespaces,
   listPods,
@@ -17,6 +18,7 @@ import {
   watchResources,
   type ConfigMapInfo,
   type DeploymentInfo,
+  type EventInfo,
   type IngressInfo,
   type NamespaceInfo,
   type PodInfo,
@@ -42,6 +44,7 @@ class ResourcesStore {
   pods = $state<PodInfo[]>([]);
   namespaces = $state<NamespaceInfo[]>([]);
   deployments = $state<DeploymentInfo[]>([]);
+  events = $state<EventInfo[]>([]);
   services = $state<ServiceInfo[]>([]);
   ingresses = $state<IngressInfo[]>([]);
   configmaps = $state<ConfigMapInfo[]>([]);
@@ -71,11 +74,16 @@ class ResourcesStore {
     return this.pods.filter((p) => p.phase === "Running").length;
   }
 
-  /** Pods that are not ready or restarting hard — the "warnings" surrogate. */
+  /** Pods that are not ready or restarting hard. */
   get issuePods(): PodInfo[] {
     return this.pods.filter(
       (p) => (!p.ready && p.phase !== "Succeeded") || p.restarts > 3,
     );
+  }
+
+  /** Warning-type events (drives sidebar/status-bar counts and Overview). */
+  get warningEvents(): EventInfo[] {
+    return this.events.filter((e) => e.event_type === "Warning");
   }
 
   /**
@@ -93,9 +101,11 @@ class ResourcesStore {
     this.loading = true;
     this.error = null;
     try {
-      const [podList, nsList] = await Promise.all([
+      const [podList, nsList, eventList] = await Promise.all([
         listPods(kc, ns ?? undefined, cluster),
         listNamespaces(kc, cluster),
+        // Events are non-fatal: the warnings count degrades to empty.
+        listEvents(kc, ns ?? undefined, cluster).catch(() => [] as EventInfo[]),
       ]);
       // list_deployments requires a namespace: fan out when filtering "all".
       const depList = ns
@@ -112,6 +122,7 @@ class ResourcesStore {
       this.pods = podList;
       this.namespaces = nsList;
       this.deployments = depList;
+      this.events = eventList;
       // Keep the currently open extra view in sync with refresh/watch cycles.
       if (isExtraKind(app.view)) void this.loadKind(app.view);
       return true;
@@ -170,6 +181,7 @@ class ResourcesStore {
     this.pods = [];
     this.namespaces = [];
     this.deployments = [];
+    this.events = [];
     this.services = [];
     this.ingresses = [];
     this.configmaps = [];

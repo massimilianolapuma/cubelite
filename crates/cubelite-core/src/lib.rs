@@ -41,7 +41,8 @@ pub use client::KubeClient;
 pub use error::{ContextError, KubeconfigError};
 pub use kubeconfig::KubeConfig;
 pub use resources::{
-    ConfigMapInfo, DeploymentInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
+    ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
+    ServiceInfo,
 };
 pub use types::{
     ClusterDetails, ContextDetails, ContextInfo, KubeConfigFile, NamedCluster, NamedContext,
