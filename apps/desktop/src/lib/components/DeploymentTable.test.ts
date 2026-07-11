@@ -1,8 +1,35 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
+
+vi.mock("$lib/tauri", () => ({
+  deletePod: vi.fn(async () => undefined),
+  restartDeployment: vi.fn(async () => undefined),
+  scaleDeployment: vi.fn(async () => undefined),
+  listPods: vi.fn(async () => []),
+  listNamespaces: vi.fn(async () => []),
+  listDeployments: vi.fn(async () => []),
+  listEvents: vi.fn(async () => []),
+  listServices: vi.fn(async () => []),
+  listIngresses: vi.fn(async () => []),
+  listConfigMaps: vi.fn(async () => []),
+  listSecrets: vi.fn(async () => []),
+  watchResources: vi.fn(),
+  unwatchResources: vi.fn(),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => {}),
+}));
+
 import DeploymentTable from "./DeploymentTable.svelte";
-import type { DeploymentInfo } from "$lib/tauri";
+import { restartDeployment, scaleDeployment, type DeploymentInfo } from "$lib/tauri";
+import { app } from "$lib/stores/app.svelte";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  app.kubeconfigPath = "/home/u/.kube/config";
+  app.activeCluster = "prod";
+});
 
 function dep(overrides: Partial<DeploymentInfo> = {}): DeploymentInfo {
   return {
@@ -38,11 +65,22 @@ describe("DeploymentTable", () => {
     expect(screen.getByText("Progressing")).toBeInTheDocument();
   });
 
-  it("renders the stepper and Restart disabled with a reason", () => {
+  it("scales up via the stepper", async () => {
     render(DeploymentTable, { props: { deployments: [dep()] } });
-    const restart = screen.getByText("Restart").closest("button");
-    expect(restart).toBeDisabled();
-    expect(restart).toHaveAttribute("title", "Requires backend support");
+    await fireEvent.click(screen.getByLabelText("Scale up"));
+    expect(scaleDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", 4, "prod");
+  });
+
+  it("scales down via the stepper", async () => {
+    render(DeploymentTable, { props: { deployments: [dep()] } });
+    await fireEvent.click(screen.getByLabelText("Scale down"));
+    expect(scaleDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", 2, "prod");
+  });
+
+  it("triggers a rollout restart from the row", async () => {
+    render(DeploymentTable, { props: { deployments: [dep()] } });
+    await fireEvent.click(screen.getByText("Restart"));
+    expect(restartDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", "prod");
   });
 
   it("calls onRowClick with the deployment", async () => {

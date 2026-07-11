@@ -7,6 +7,7 @@ use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Pod, Secret, Service};
 use k8s_openapi::api::networking::v1::Ingress;
 use kube::{
+    api::{DeleteParams, Patch, PatchParams},
     config::{KubeConfigOptions, Kubeconfig},
     Api, Client, Config,
 };
@@ -310,6 +311,75 @@ impl KubeClient {
         let mut events: Vec<EventInfo> = list.items.into_iter().map(event_to_info).collect();
         events.sort_by(|a, b| b.last_timestamp.cmp(&a.last_timestamp));
         Ok(events)
+    }
+
+    /// Delete a pod. The owning controller (if any) will recreate it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn delete_pod(&self, namespace: &str, name: &str) -> Result<(), KubeconfigError> {
+        let api: Api<Pod> = Api::namespaced(self.inner.clone(), namespace);
+        api.delete(name, &DeleteParams::default())
+            .await
+            .map_err(|e| KubeconfigError::ClientError {
+                reason: e.to_string(),
+            })?;
+        Ok(())
+    }
+
+    /// Trigger a rolling restart of a deployment by stamping the pod
+    /// template with the `kubectl.kubernetes.io/restartedAt` annotation
+    /// (same mechanism as `kubectl rollout restart`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn restart_deployment(
+        &self,
+        namespace: &str,
+        name: &str,
+    ) -> Result<(), KubeconfigError> {
+        let api: Api<Deployment> = Api::namespaced(self.inner.clone(), namespace);
+        let now = k8s_openapi::chrono::Utc::now().to_rfc3339();
+        let patch = serde_json::json!({
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "kubectl.kubernetes.io/restartedAt": now
+                        }
+                    }
+                }
+            }
+        });
+        api.patch(name, &PatchParams::default(), &Patch::Merge(&patch))
+            .await
+            .map_err(|e| KubeconfigError::ClientError {
+                reason: e.to_string(),
+            })?;
+        Ok(())
+    }
+
+    /// Scale a deployment to `replicas`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn scale_deployment(
+        &self,
+        namespace: &str,
+        name: &str,
+        replicas: i32,
+    ) -> Result<(), KubeconfigError> {
+        let api: Api<Deployment> = Api::namespaced(self.inner.clone(), namespace);
+        let patch = serde_json::json!({ "spec": { "replicas": replicas } });
+        api.patch(name, &PatchParams::default(), &Patch::Merge(&patch))
+            .await
+            .map_err(|e| KubeconfigError::ClientError {
+                reason: e.to_string(),
+            })?;
+        Ok(())
     }
 }
 

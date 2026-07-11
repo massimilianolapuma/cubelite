@@ -8,6 +8,9 @@ vi.mock("$lib/tauri", () => ({
   listPods: vi.fn(),
   listNamespaces: vi.fn(),
   listDeployments: vi.fn(),
+  deletePod: vi.fn(async () => undefined),
+  restartDeployment: vi.fn(async () => undefined),
+  scaleDeployment: vi.fn(async () => undefined),
   listEvents: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
@@ -136,17 +139,17 @@ describe("PodsView", () => {
 });
 
 describe("PodDrawer", () => {
-  it("shows meta grid with real fields, dashes elsewhere, and disabled destructive actions", () => {
+  it("shows meta grid with real fields and live footer actions", async () => {
     const onClose = vi.fn();
-    render(PodDrawer, { props: { pod: pod({ restarts: 2 }), onClose } });
+    const onDelete = vi.fn();
+    render(PodDrawer, { props: { pod: pod({ restarts: 2 }), onClose, onDelete } });
     expect(screen.getByText("api-0")).toBeInTheDocument();
     expect(screen.getByText("Namespace")).toBeInTheDocument();
     expect(screen.getByText("QoS")).toBeInTheDocument();
-    const del = screen.getByText("Delete").closest("button");
-    expect(del).toBeDisabled();
-    const restart = screen.getByText("Restart").closest("button");
-    expect(restart).toBeDisabled();
     expect(screen.getByText("Logs").closest("button")).not.toBeDisabled();
+    expect(screen.getByText("Restart").closest("button")).not.toBeDisabled();
+    await fireEvent.click(screen.getByText("Delete"));
+    expect(onDelete).toHaveBeenCalled();
   });
 
   it("closes via the header button", async () => {

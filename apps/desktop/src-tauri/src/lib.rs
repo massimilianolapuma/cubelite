@@ -1,9 +1,10 @@
 pub mod commands;
 
 use commands::kubernetes::{
-    get_current_context, list_configmaps, list_contexts, list_deployments, list_events,
-    list_ingresses, list_namespaces, list_pods, list_secrets, list_services, set_context,
-    stop_logs, stream_logs, unwatch_resources, watch_resources, LogState, WatchState,
+    delete_pod, get_current_context, list_configmaps, list_contexts, list_deployments, list_events,
+    list_ingresses, list_namespaces, list_pods, list_secrets, list_services, restart_deployment,
+    scale_deployment, set_context, stop_logs, stream_logs, unwatch_resources, watch_resources,
+    LogState, WatchState,
 };
 
 /// Entry point for the Tauri application.
@@ -24,6 +25,9 @@ pub fn run() {
             unwatch_resources,
             stream_logs,
             stop_logs,
+            delete_pod,
+            restart_deployment,
+            scale_deployment,
             list_contexts,
             get_current_context,
             set_context,

@@ -1,18 +1,20 @@
 <script lang="ts">
 	import FileText from '@lucide/svelte/icons/file-text';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Drawer from '$lib/components/ui/Drawer.svelte';
 	import StatusPill from '$lib/components/ui/StatusPill.svelte';
 	import { deploymentStatus, podStatusLabel, podTone, toneColor } from '$lib/status';
 	import { app } from '$lib/stores/app.svelte';
 	import { logs } from '$lib/stores/logs.svelte';
+	import { mutations } from '$lib/stores/mutations.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 	import type { DeploymentInfo } from '$lib/tauri';
 
 	let { deployment, onClose }: { deployment: DeploymentInfo; onClose: () => void } = $props();
 
-	const disabledTitle = 'Requires backend support';
 	const status = $derived(deploymentStatus(deployment));
+	const restarting = $derived(mutations.isRestarting(deployment.namespace, deployment.name));
 	const meta = $derived<[string, string][]>([
 		['Namespace', deployment.namespace],
 		['Replicas', `${deployment.ready_replicas}/${deployment.replicas}`],
@@ -95,11 +97,15 @@
 		</button>
 		<button
 			type="button"
-			disabled
-			title={disabledTitle}
-			class="type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised text-text-tertiary opacity-45"
+			disabled={restarting}
+			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
+			onclick={() => void mutations.restartDeployment(deployment.namespace, deployment.name)}
 		>
-			<RotateCw class="h-3 w-3" />
+			{#if restarting}
+				<LoaderCircle class="h-3 w-3 animate-spin" />
+			{:else}
+				<RotateCw class="h-3 w-3" />
+			{/if}
 			Rollout Restart
 		</button>
 	{/snippet}
