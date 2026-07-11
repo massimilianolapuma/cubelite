@@ -2,6 +2,8 @@
 	import { formatAge } from '$lib/age';
 	import type { PodInfo } from '$lib/tauri';
 	import { podStatusLabel, podTone, toneColor } from '$lib/status';
+	import { resources } from '$lib/stores/resources.svelte';
+	import { formatBytes, formatCpu } from '$lib/units';
 
 	let {
 		pods,
@@ -34,6 +36,7 @@
 			{#each pods as pod (pod.namespace + '/' + pod.name)}
 				{@const tone = podTone(pod)}
 				{@const isSelected = selected?.name === pod.name && selected?.namespace === pod.namespace}
+				{@const usage = resources.metricsFor(pod.namespace, pod.name)}
 				<!-- Resource names are never links; the row is the interactive target (HIG §4.8.1). -->
 				<button
 					type="button"
@@ -52,8 +55,12 @@
 						{pod.ready_containers}/{pod.total_containers}
 					</span>
 					<span class="type-data-sm text-text-secondary">{formatAge(pod.creation_timestamp)}</span>
-					<span class="type-data-sm text-text-disabled">—</span>
-					<span class="type-data-sm text-text-disabled">—</span>
+					<span class="type-data-sm {usage ? 'text-text-secondary' : 'text-text-disabled'}">
+						{usage ? formatCpu(usage.cpu_millis) : '—'}
+					</span>
+					<span class="type-data-sm {usage ? 'text-text-secondary' : 'text-text-disabled'}">
+						{usage ? formatBytes(usage.memory_bytes) : '—'}
+					</span>
 					<span
 						class="type-data-sm"
 						style="color: {pod.restarts > 3 ? 'var(--color-status-err)' : 'var(--color-text-secondary)'};"

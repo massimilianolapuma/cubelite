@@ -4,7 +4,7 @@
 //! methods for listing the most common Kubernetes resources.
 
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Pod, Secret, Service};
+use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
 use k8s_openapi::api::networking::v1::Ingress;
 use kube::{
     api::{DeleteParams, ListParams, Patch, PatchParams},
@@ -16,6 +16,10 @@ use std::path::Path;
 use crate::{
     error::KubeconfigError,
     helm::{latest_releases, parse_release_secret, HelmReleaseInfo},
+    metrics::{
+        parse_cpu_millis, parse_memory_bytes, pod_metrics_from_item, NodeCapacityInfo,
+        PodMetricsInfo,
+    },
     resources::{
         ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
         ServiceInfo,
@@ -273,6 +277,102 @@ impl KubeClient {
             .filter_map(parse_release_secret)
             .collect();
         Ok(latest_releases(releases))
+    }
+
+    /// Fetch pod CPU/memory usage from metrics-server.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails —
+    /// including a 404 when metrics-server is not installed.
+    pub async fn list_pod_metrics(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<PodMetricsInfo>, KubeconfigError> {
+        let path = match namespace {
+            Some(ns) => format!("/apis/metrics.k8s.io/v1beta1/namespaces/{ns}/pods"),
+            None => "/apis/metrics.k8s.io/v1beta1/pods".to_string(),
+        };
+        let doc = self.raw_get(&path).await?;
+        Ok(doc["items"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .filter_map(pod_metrics_from_item)
+            .collect())
+    }
+
+    /// Per-node usage (metrics-server) joined with allocatable capacity
+    /// (node status). Also serves as the node inventory for the UI.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when either API call fails.
+    pub async fn cluster_capacity(&self) -> Result<Vec<NodeCapacityInfo>, KubeconfigError> {
+        let nodes_api: Api<Node> = Api::all(self.inner.clone());
+        let nodes = nodes_api.list(&Default::default()).await.map_err(|e| {
+            KubeconfigError::ClientError {
+                reason: e.to_string(),
+            }
+        })?;
+
+        let usage_doc = self.raw_get("/apis/metrics.k8s.io/v1beta1/nodes").await?;
+        let usage: std::collections::HashMap<String, (f64, u64)> = usage_doc["items"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .filter_map(|item| {
+                let name = item["metadata"]["name"].as_str()?.to_string();
+                let cpu = item["usage"]["cpu"].as_str().and_then(parse_cpu_millis)?;
+                let mem = item["usage"]["memory"]
+                    .as_str()
+                    .and_then(parse_memory_bytes)?;
+                Some((name, (cpu, mem)))
+            })
+            .collect();
+
+        Ok(nodes
+            .items
+            .into_iter()
+            .filter_map(|node| {
+                let name = node.metadata.name?;
+                let allocatable = node.status.as_ref().and_then(|s| s.allocatable.as_ref());
+                let cpu_allocatable_millis = allocatable
+                    .and_then(|a| a.get("cpu"))
+                    .and_then(|q| parse_cpu_millis(&q.0))
+                    .unwrap_or(0.0);
+                let memory_allocatable_bytes = allocatable
+                    .and_then(|a| a.get("memory"))
+                    .and_then(|q| parse_memory_bytes(&q.0))
+                    .unwrap_or(0);
+                let (cpu_used_millis, memory_used_bytes) =
+                    usage.get(&name).copied().unwrap_or((0.0, 0));
+                Some(NodeCapacityInfo {
+                    name,
+                    cpu_used_millis,
+                    cpu_allocatable_millis,
+                    memory_used_bytes,
+                    memory_allocatable_bytes,
+                })
+            })
+            .collect())
+    }
+
+    /// GET an arbitrary API path as JSON.
+    async fn raw_get(&self, path: &str) -> Result<serde_json::Value, KubeconfigError> {
+        let request = http::Request::get(path).body(Vec::new()).map_err(|e| {
+            KubeconfigError::ClientError {
+                reason: e.to_string(),
+            }
+        })?;
+        self.inner
+            .request::<serde_json::Value>(request)
+            .await
+            .map_err(|e| KubeconfigError::ClientError {
+                reason: e.to_string(),
+            })
     }
 
     /// List events in `namespace`, or across all namespaces when `None`,

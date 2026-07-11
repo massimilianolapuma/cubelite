@@ -5,15 +5,17 @@
 	import StatCard from '$lib/components/ui/StatCard.svelte';
 	import { app } from '$lib/stores/app.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
+	import { percentOf } from '$lib/units';
 
 	const warnings = $derived(resources.warningEvents);
+	const capacity = $derived(resources.capacityTotals);
 </script>
 
 <div class="flex flex-col gap-4 p-4">
 	<h1 class="type-title">Overview</h1>
 
 	<div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
-		<StatCard label="Nodes" value="—" />
+		<StatCard label="Nodes" value={resources.metricsAvailable ? resources.nodes.length : '—'} />
 		<StatCard label="Pods running" value={resources.runningPods} />
 		<StatCard label="Deployments" value={resources.deployments.length} />
 		<StatCard label="Warnings" value={warnings.length} tone={warnings.length > 0 ? 'warn' : 'ok'} />
@@ -22,11 +24,13 @@
 	<div class="grid gap-3 xl:grid-cols-2">
 		<div class="flex flex-col gap-2.5 rounded-xl border border-border-default bg-surface-surface p-4">
 			<div class="type-colhead">Capacity</div>
-			<MeterBar label="CPU" percent={null} />
-			<MeterBar label="MEM" percent={null} />
-			<p class="type-caption text-text-disabled">
-				metrics unavailable — requires metrics-server integration
-			</p>
+			<MeterBar label="CPU" percent={capacity ? percentOf(capacity.cpuUsed, capacity.cpuAllocatable) : null} />
+			<MeterBar label="MEM" percent={capacity ? percentOf(capacity.memUsed, capacity.memAllocatable) : null} />
+			{#if !capacity}
+				<p class="type-caption text-text-disabled">
+					metrics unavailable — metrics-server not detected in this cluster
+				</p>
+			{/if}
 		</div>
 
 		<div class="rounded-xl border border-border-default bg-surface-surface p-4">

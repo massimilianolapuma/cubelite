@@ -218,6 +218,21 @@ export type HelmReleaseInfo = {
   updated: string | null;
 };
 
+export type PodMetricsInfo = {
+  name: string;
+  namespace: string;
+  cpu_millis: number;
+  memory_bytes: number;
+};
+
+export type NodeCapacityInfo = {
+  name: string;
+  cpu_used_millis: number;
+  cpu_allocatable_millis: number;
+  memory_used_bytes: number;
+  memory_allocatable_bytes: number;
+};
+
 export type LogLevel = "info" | "warn" | "error";
 
 export type LogLine = {
@@ -241,6 +256,28 @@ export function listHelmReleases(
   return invoke<HelmReleaseInfo[]>("list_helm_releases", {
     kubeconfigPath,
     namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function listPodMetrics(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<PodMetricsInfo[]> {
+  return invoke<PodMetricsInfo[]>("list_pod_metrics", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function clusterCapacity(
+  kubeconfigPath: string,
+  context?: string,
+): Promise<NodeCapacityInfo[]> {
+  return invoke<NodeCapacityInfo[]>("cluster_capacity", {
+    kubeconfigPath,
     context: context ?? null,
   });
 }

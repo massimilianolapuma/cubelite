@@ -6,6 +6,7 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  clusterCapacity,
   listConfigMaps,
   listDeployments,
   listEvents,
@@ -13,6 +14,7 @@ import {
   listIngresses,
   listNamespaces,
   listPods,
+  listPodMetrics,
   listSecrets,
   listServices,
   unwatchResources,
@@ -23,7 +25,9 @@ import {
   type HelmReleaseInfo,
   type IngressInfo,
   type NamespaceInfo,
+  type NodeCapacityInfo,
   type PodInfo,
+  type PodMetricsInfo,
   type SecretInfo,
   type ServiceInfo,
 } from "$lib/tauri";
@@ -58,6 +62,11 @@ class ResourcesStore {
   configmaps = $state<ConfigMapInfo[]>([]);
   secrets = $state<SecretInfo[]>([]);
   helmReleases = $state<HelmReleaseInfo[]>([]);
+  /** ns/name → usage; null until metrics-server answers, {} when it 404s. */
+  podMetrics = $state<Record<string, PodMetricsInfo>>({});
+  nodes = $state<NodeCapacityInfo[]>([]);
+  /** false when metrics-server is unavailable in the active cluster. */
+  metricsAvailable = $state(false);
   loading = $state(false);
   error = $state<string | null>(null);
   extraLoading = $state(false);
@@ -132,6 +141,7 @@ class ResourcesStore {
       this.namespaces = nsList;
       this.deployments = depList;
       this.events = eventList;
+      void this.#loadMetrics(kc, ns ?? undefined, cluster, seq);
       // Keep the currently open extra view in sync with refresh/watch cycles.
       if (isExtraKind(app.view)) void this.loadKind(app.view);
       return true;
@@ -141,6 +151,55 @@ class ResourcesStore {
     } finally {
       if (seq === this.#loadSeq) this.loading = false;
     }
+  }
+
+  /** Metrics are best-effort: absence of metrics-server must not fail load(). */
+  async #loadMetrics(
+    kc: string,
+    ns: string | undefined,
+    cluster: string,
+    seq: number,
+  ): Promise<void> {
+    try {
+      const [podMetricsList, nodeList] = await Promise.all([
+        listPodMetrics(kc, ns, cluster),
+        clusterCapacity(kc, cluster),
+      ]);
+      if (seq !== this.#loadSeq) return;
+      const map: Record<string, PodMetricsInfo> = {};
+      for (const m of podMetricsList) map[`${m.namespace}/${m.name}`] = m;
+      this.podMetrics = map;
+      this.nodes = nodeList;
+      this.metricsAvailable = true;
+    } catch {
+      if (seq !== this.#loadSeq) return;
+      this.podMetrics = {};
+      this.nodes = [];
+      this.metricsAvailable = false;
+    }
+  }
+
+  metricsFor(namespace: string, name: string): PodMetricsInfo | null {
+    return this.podMetrics[`${namespace}/${name}`] ?? null;
+  }
+
+  /** Cluster totals from per-node capacity; null without metrics. */
+  get capacityTotals(): {
+    cpuUsed: number;
+    cpuAllocatable: number;
+    memUsed: number;
+    memAllocatable: number;
+  } | null {
+    if (!this.metricsAvailable || this.nodes.length === 0) return null;
+    return this.nodes.reduce(
+      (acc, n) => ({
+        cpuUsed: acc.cpuUsed + n.cpu_used_millis,
+        cpuAllocatable: acc.cpuAllocatable + n.cpu_allocatable_millis,
+        memUsed: acc.memUsed + n.memory_used_bytes,
+        memAllocatable: acc.memAllocatable + n.memory_allocatable_bytes,
+      }),
+      { cpuUsed: 0, cpuAllocatable: 0, memUsed: 0, memAllocatable: 0 },
+    );
   }
 
   /** Load one on-demand kind (services/ingresses/configmaps/secrets). */
@@ -201,6 +260,9 @@ class ResourcesStore {
     this.configmaps = [];
     this.secrets = [];
     this.helmReleases = [];
+    this.podMetrics = {};
+    this.nodes = [];
+    this.metricsAvailable = false;
     this.error = null;
     this.loading = false;
     this.extraError = null;
