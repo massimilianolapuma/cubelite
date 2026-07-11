@@ -1,16 +1,12 @@
-/**
- * View registry: maps the app view enum to a component (+ static props).
- * Views without backend support render the spec'd empty state until their
- * Tauri commands exist.
- */
+/** View registry: maps the app view enum to a component (+ static props). */
 
 import type { Component } from "svelte";
 import type { View } from "$lib/stores/app.svelte";
 import AllClustersView from "./AllClustersView.svelte";
 import ConfigMapsView from "./ConfigMapsView.svelte";
 import DeploymentsView from "./DeploymentsView.svelte";
-import EmptyStateView from "./EmptyStateView.svelte";
 import EventsView from "./EventsView.svelte";
+import HelmView from "./HelmView.svelte";
 import IngressesView from "./IngressesView.svelte";
 import LogsView from "./LogsView.svelte";
 import OverviewView from "./OverviewView.svelte";
@@ -31,17 +27,12 @@ export function asEntry<P extends Record<string, unknown>>(
   return { component: component as unknown as ViewEntry["component"], props };
 }
 
-const emptyState = (what: string): ViewEntry =>
-  asEntry(EmptyStateView, {
-    message: `${what} requires backend support — coming soon.`,
-  });
-
 export const viewRegistry: Record<View, ViewEntry> = {
   dashboard: asEntry(AllClustersView),
   overview: asEntry(OverviewView),
   pods: asEntry(PodsView),
   deployments: asEntry(DeploymentsView),
-  helm: emptyState("The Helm Releases view"),
+  helm: asEntry(HelmView),
   services: asEntry(ServicesView),
   ingresses: asEntry(IngressesView),
   configmaps: asEntry(ConfigMapsView),
