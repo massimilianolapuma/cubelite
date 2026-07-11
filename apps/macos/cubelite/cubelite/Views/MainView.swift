@@ -113,28 +113,87 @@ struct MainView: View {
         )
     }
 
+    // MARK: - Actions
+
+    /// Refresh everything relevant to the current mode (used by the header).
+    func refreshAll() {
+        Task {
+            await loadKubeconfig()
+            if showAllClusters {
+                await loadCrossClusterData()
+            } else {
+                if let ctx = selectedContext {
+                    await loadNamespaces(for: ctx)
+                }
+                if let sel = sidebarSelection {
+                    await loadResources(context: sel.context, namespace: sel.namespace)
+                }
+            }
+        }
+    }
+
     // MARK: - Body
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebar
-                .navigationSplitViewColumnWidth(
-                    min: 52,
-                    ideal: isSidebarCollapsed ? 52 : 240,
-                    max: isSidebarCollapsed ? 60 : 300
+        VStack(spacing: 0) {
+            UnifiedHeaderView(
+                contexts: clusterState.contexts,
+                selectedContext: showAllClusters ? nil : selectedContext,
+                clusterReachable: clusterState.clusterReachable,
+                namespaces: clusterState.namespaces,
+                selectedNamespace: sidebarSelection?.namespace,
+                isLoading: clusterState.isLoading || clusterState.isLoadingResources
+                    || isLoadingNamespaces,
+                unreadErrorCount: logStore.unreadErrorCount,
+                onSelectNamespace: { namespace in
+                    if let context = selectedContext {
+                        sidebarSelection = SidebarSelection(context: context, namespace: namespace)
+                    }
+                },
+                onRefresh: { refreshAll() },
+                onShowLogs: { showingLogs = true }
+            )
+            HStack(spacing: 0) {
+                ClusterRailView(
+                    contexts: clusterState.contexts,
+                    selectedContext: selectedContext,
+                    showAllClusters: showAllClusters,
+                    onSelectAllClusters: {
+                        showAllClusters = true
+                        selectedContext = nil
+                        Task { await loadCrossClusterData() }
+                    },
+                    onSelectContext: { context in
+                        showAllClusters = false
+                        if selectedContext == context {
+                            selectedResourceType = .dashboard
+                        } else {
+                            selectedContext = context
+                        }
+                    }
                 )
-        } content: {
-            resourceTypeList
-                .navigationTitle("Resources")
-                .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 220)
-        } detail: {
-            VStack(spacing: 0) {
-                errorBannerInset
-                detailArea
+                if !showAllClusters {
+                    UnifiedSidebarView(
+                        selection: $selectedResourceType,
+                        podCount: clusterState.pods.count,
+                        deploymentCount: clusterState.deployments.count
+                    )
+                    Rectangle().fill(DesignTokens.borderFaint).frame(width: 1)
+                }
+                VStack(spacing: 0) {
+                    errorBannerInset
+                    detailArea
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .background(DesignTokens.surfaceWindow)
             }
+            StatusBarView(
+                autoRefreshInterval: appSettings.autoRefreshInterval,
+                unreadErrorCount: logStore.unreadErrorCount,
+                onShowLogs: { showingLogs = true }
+            )
         }
         .frame(minWidth: 900, minHeight: 550)
-        .toolbar { toolbarContent }
         .sheet(isPresented: $showingLogs) {
             LogsView()
                 .environment(logStore)
@@ -186,12 +245,6 @@ struct MainView: View {
             selectedHelmReleaseID = nil
             if let sel = newValue {
                 Task { await loadResources(context: sel.context, namespace: sel.namespace) }
-            }
-        }
-        .onChange(of: columnVisibility) { _, newValue in
-            if newValue != .all {
-                columnVisibility = .all
-                isSidebarCollapsed.toggle()
             }
         }
     }
