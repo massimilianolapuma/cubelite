@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+html{background:#0b0b0d}
+body{margin:0;background:#0b0b0d;font-family:"Geist",system-ui,sans-serif;color:#f4f4f5;overflow:hidden}
+a{color:#6e9bf5;text-decoration:none} a:hover{color:#9dbcff}
+*{box-sizing:border-box}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:#26262b;border-radius:5px;border:2px solid #0b0b0d}
+::-webkit-scrollbar-track{background:transparent}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+@keyframes popin{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes slidein{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}
+@keyframes toastin{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+</style>
+</helmet>
+<div style="display:flex;flex-direction:column;height:100vh;background:#0b0b0d;user-select:none" data-screen-label="CubeLite">
+
+  <!-- ======= TITLEBAR ======= -->
+  <div style="display:flex;align-items:center;height:42px;background:#131316;border-bottom:1px solid #26262b;padding:0 14px;gap:8px;flex:none" data-screen-label="Titlebar">
+    <div style="display:flex;gap:7px;margin-right:10px;flex:none"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+    <sc-if value="{{ isAll }}" hint-placeholder-val="{{ false }}">
+      <span style="font:600 12.5px 'Geist',sans-serif;color:#f4f4f5">All Clusters</span>
+      <span style="font:400 11px 'Geist',sans-serif;color:#71717a">{{ clusterCountLabel }}</span>
+    </sc-if>
+    <sc-if value="{{ notAll }}" hint-placeholder-val="{{ true }}">
+      <span style="width:8px;height:8px;border-radius:50%;background:{{ ac.color }};flex:none"></span>
+      <span style="font:600 12.5px 'Geist',sans-serif;color:#f4f4f5;white-space:nowrap">{{ ac.name }}</span>
+      <span style="font:500 10px 'Geist Mono',monospace;color:{{ ac.color }};background:{{ ac.provBg }};padding:2px 7px;border-radius:4px">{{ ac.prov }}</span>
+      <span style="display:inline-flex;align-items:center;gap:5px;font:400 11px 'Geist',sans-serif;color:{{ connColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ connColor }}"></span>{{ connLabel }}</span>
+    </sc-if>
+    <div style="flex:1"></div>
+    <div onClick="{{ openPalette }}" style="display:flex;align-items:center;gap:7px;background:#0b0b0d;border:1px solid #26262b;border-radius:6px;padding:5px 10px;width:240px;cursor:pointer" style-hover="border-color:#3f3f46">
+      <span style="font:400 11.5px 'Geist',sans-serif;color:#5c5c66">Search & switch…</span>
+      <div style="flex:1"></div>
+      <span style="font:500 9.5px 'Geist Mono',monospace;color:#5c5c66;border:1px solid #26262b;border-radius:4px;padding:1px 5px">⌘K</span>
+    </div>
+    <sc-if value="{{ notAll }}" hint-placeholder-val="{{ true }}">
+      <div style="position:relative">
+        <div onClick="{{ toggleNs }}" style="display:inline-flex;align-items:center;gap:6px;font:500 11.5px 'Geist',sans-serif;color:#d4d4d8;background:#1a1a1f;border:1px solid #26262b;border-radius:6px;padding:5px 10px;cursor:pointer" style-hover="border-color:#3f3f46">namespace: <b style="font-family:'Geist Mono',monospace;font-weight:500;color:#f4f4f5">{{ nsLabel }}</b> <span style="font-size:9px;color:#71717a">▾</span></div>
+        <sc-if value="{{ nsOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:34px;right:0;width:220px;background:#161619;border:1px solid #34343b;border-radius:8px;box-shadow:0 16px 48px rgba(0,0,0,.6);padding:5px;z-index:60;animation:popin .12s ease">
+            <sc-for list="{{ nsItems }}" as="n" hint-placeholder-count="4">
+              <div onClick="{{ n.onClick }}" style="display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:6px;font:400 12px 'Geist Mono',monospace;color:{{ n.fg }};background:{{ n.bg }};cursor:pointer" style-hover="background:#222227">
+                {{ n.name }}<div style="flex:1"></div><span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66">{{ n.count }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- ======= MAIN ROW ======= -->
+  <div style="display:flex;flex:1;min-height:0;position:relative">
+
+    <!-- Rail -->
+    <div style="width:58px;background:#0b0b0d;border-right:1px solid #1e1e23;display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:8px;flex:none" data-screen-label="Cluster Rail">
+      <div onClick="{{ goAll }}" title="All Clusters" style="width:38px;height:38px;border-radius:10px;background:{{ homeBg }};border:1px solid #26262b;display:flex;align-items:center;justify-content:center;font:600 14px 'Geist',sans-serif;color:{{ homeFg }};cursor:pointer;box-shadow:{{ homeRing }}" style-hover="background:#222227">⌂</div>
+      <div style="width:26px;height:1px;background:#26262b"></div>
+      <sc-for list="{{ railItems }}" as="c" hint-placeholder-count="5">
+        <div onClick="{{ c.onClick }}" title="{{ c.name }}" style="position:relative;width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font:600 12px 'Geist',sans-serif;color:{{ c.fg }};background:{{ c.bg }};box-shadow:{{ c.ring }};cursor:pointer" style-hover="filter:brightness(1.25)">
+          {{ c.initials }}
+          <span style="position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;border:2px solid #0b0b0d;background:{{ c.healthColor }}"></span>
+        </div>
+      </sc-for>
+      <div style="flex:1"></div>
+      <div onClick="{{ openPrefs }}" title="Preferences" style="width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font:400 16px 'Geist',sans-serif;color:#5c5c66;cursor:pointer" style-hover="color:#9c9ca6;background:#1a1a1f">⚙</div>
+    </div>
+
+    <!-- Sidebar -->
+    <sc-if value="{{ notAll }}" hint-placeholder-val="{{ true }}">
+      <div style="width:198px;background:#101013;border-right:1px solid #1e1e23;padding:12px 8px;display:flex;flex-direction:column;gap:1px;flex:none;overflow-y:auto" data-screen-label="Sidebar">
+        <sc-for list="{{ sideNav }}" as="n" hint-placeholder-count="10">
+          <sc-if value="{{ n.isHeader }}" hint-placeholder-val="{{ false }}">
+            <span style="font:600 9.5px 'Geist',sans-serif;color:#5c5c66;letter-spacing:.07em;text-transform:uppercase;padding:{{ n.pad }}">{{ n.label }}</span>
+          </sc-if>
+          <sc-if value="{{ n.isItem }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ n.onClick }}" style="display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;font:500 12.5px 'Geist',sans-serif;color:{{ n.fg }};background:{{ n.bg }};cursor:pointer" style-hover="background:#1a1a1f">
+              <span style="width:6px;height:6px;border-radius:2px;background:{{ n.dot }};flex:none"></span>{{ n.label }}
+              <div style="flex:1"></div>
+              <span style="font:400 10.5px 'Geist Mono',monospace;color:{{ n.countColor }}">{{ n.count }}</span>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <!-- ======= CONTENT ======= -->
+    <div style="position:relative;flex:1;display:flex;flex-direction:column;min-width:0;background:#0b0b0d">
+
+      <!-- Connecting overlay -->
+      <sc-if value="{{ connecting }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;background:rgba(11,11,13,.75);z-index:40;display:flex;align-items:center;justify-content:center;animation:fadein .1s ease">
+          <div style="display:flex;align-items:center;gap:10px;background:#161619;border:1px solid #34343b;border-radius:10px;padding:14px 20px">
+            <span style="width:14px;height:14px;border:2px solid #26262b;border-top-color:{{ accent }};border-radius:50%;animation:spin .7s linear infinite"></span>
+            <span style="font:500 12.5px 'Geist',sans-serif;color:#d4d4d8">Connecting to <b style="font-family:'Geist Mono',monospace;font-weight:500">{{ ac.name }}</b>…</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- OFFLINE -->
+      <sc-if value="{{ isOffline }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px" data-screen-label="Cluster offline">
+          <div style="width:52px;height:52px;border-radius:14px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);display:flex;align-items:center;justify-content:center;font:400 22px 'Geist',sans-serif;color:#f87171">⚠</div>
+          <span style="font:600 15px 'Geist',sans-serif;color:#f4f4f5">Cluster unreachable</span>
+          <span style="font:400 12px 'Geist',sans-serif;color:#9c9ca6;text-align:center;max-width:380px;line-height:1.6">Connection to <b style="font-family:'Geist Mono',monospace;font-weight:500;color:#d4d4d8">{{ ac.server }}</b> timed out after 10s. Check VPN or credentials.</span>
+          <div style="display:flex;gap:10px;margin-top:6px">
+            <span onClick="{{ retryConnect }}" style="font:500 12px 'Geist',sans-serif;color:#0b0b0d;background:{{ accent }};border-radius:6px;padding:7px 16px;cursor:pointer" style-hover="filter:brightness(1.1)">Retry</span>
+            <span onClick="{{ goAll }}" style="font:500 12px 'Geist',sans-serif;color:#d4d4d8;background:#1a1a1f;border:1px solid #26262b;border-radius:6px;padding:7px 16px;cursor:pointer" style-hover="border-color:#3f3f46">All Clusters</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- DASHBOARD (All Clusters) -->
+      <sc-if value="{{ isAll }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;overflow-y:auto;padding:22px 26px" data-screen-label="All Clusters Dashboard">
+          <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:6px">
+            <span style="font:600 18px 'Geist',sans-serif;color:#f4f4f5">All Clusters</span>
+            <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ aggLabel }}</span>
+          </div>
+          <div style="display:flex;gap:14px;margin:14px 0 20px">
+            <sc-for list="{{ aggStats }}" as="s" hint-placeholder-count="4">
+              <div style="flex:1;background:#131316;border:1px solid #26262b;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px">
+                <span style="font:400 10.5px 'Geist',sans-serif;color:#71717a;letter-spacing:.04em;text-transform:uppercase">{{ s.label }}</span>
+                <span style="font:600 22px 'Geist Mono',monospace;color:{{ s.color }}">{{ s.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px">
+            <sc-for list="{{ dashCards }}" as="d" hint-placeholder-count="5">
+              <div onClick="{{ d.onClick }}" style="background:#131316;border:1px solid #26262b;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;cursor:pointer" style-hover="border-color:#3f3f46;background:#161619">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <span style="width:30px;height:30px;border-radius:8px;background:{{ d.avatarBg }};display:flex;align-items:center;justify-content:center;font:600 11px 'Geist',sans-serif;color:{{ d.color }}">{{ d.initials }}</span>
+                  <div style="display:flex;flex-direction:column;min-width:0">
+                    <span style="font:600 13px 'Geist',sans-serif;color:#f4f4f5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.name }}</span>
+                    <span style="font:400 10.5px 'Geist Mono',monospace;color:#71717a">{{ d.server }}</span>
+                  </div>
+                  <div style="flex:1"></div>
+                  <span style="display:inline-flex;align-items:center;gap:5px;font:500 10.5px 'Geist',sans-serif;color:{{ d.healthColor }};background:{{ d.healthBg }};border-radius:999px;padding:3px 9px"><span style="width:6px;height:6px;border-radius:50%;background:{{ d.healthColor }}"></span>{{ d.healthLabel }}</span>
+                </div>
+                <sc-if value="{{ d.online }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;gap:14px">
+                    <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">NODES</span><span style="font:500 13px 'Geist Mono',monospace;color:#d4d4d8">{{ d.nodes }}</span></div>
+                    <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">PODS</span><span style="font:500 13px 'Geist Mono',monospace;color:#d4d4d8">{{ d.podsLabel }}</span></div>
+                    <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">VERSION</span><span style="font:500 13px 'Geist Mono',monospace;color:#d4d4d8">{{ d.version }}</span></div>
+                    <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">WARNINGS</span><span style="font:500 13px 'Geist Mono',monospace;color:{{ d.warnColor }}">{{ d.warnings }}</span></div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:7px">
+                    <div style="display:flex;align-items:center;gap:8px"><span style="font:400 9.5px 'Geist Mono',monospace;color:#5c5c66;width:28px">CPU</span><div style="flex:1;height:5px;border-radius:3px;background:#1e1e23;overflow:hidden"><div style="height:100%;border-radius:3px;background:{{ d.cpuColor }};width:{{ d.cpuW }}"></div></div><span style="font:400 10px 'Geist Mono',monospace;color:#9c9ca6;width:32px;text-align:right">{{ d.cpuPct }}</span></div>
+                    <div style="display:flex;align-items:center;gap:8px"><span style="font:400 9.5px 'Geist Mono',monospace;color:#5c5c66;width:28px">MEM</span><div style="flex:1;height:5px;border-radius:3px;background:#1e1e23;overflow:hidden"><div style="height:100%;border-radius:3px;background:{{ d.memColor }};width:{{ d.memW }}"></div></div><span style="font:400 10px 'Geist Mono',monospace;color:#9c9ca6;width:32px;text-align:right">{{ d.memPct }}</span></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ d.offline }}" hint-placeholder-val="{{ false }}">
+                  <span style="font:400 11.5px 'Geist',sans-serif;color:#71717a;line-height:1.5">Last seen 2h ago · connection timed out. Health checks paused.</span>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- OVERVIEW -->
+      <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;overflow-y:auto;padding:22px 26px" data-screen-label="Cluster Overview">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">Overview</span>
+          <div style="display:flex;gap:14px;margin:14px 0 18px">
+            <sc-for list="{{ ovStats }}" as="s" hint-placeholder-count="4">
+              <div style="flex:1;background:#131316;border:1px solid #26262b;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px">
+                <span style="font:400 10.5px 'Geist',sans-serif;color:#71717a;letter-spacing:.04em;text-transform:uppercase">{{ s.label }}</span>
+                <span style="font:600 22px 'Geist Mono',monospace;color:{{ s.color }}">{{ s.value }}</span>
+                <span style="font:400 10.5px 'Geist',sans-serif;color:#5c5c66">{{ s.sub }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:14px">
+            <div style="flex:1;background:#131316;border:1px solid #26262b;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px">
+              <span style="font:600 12px 'Geist',sans-serif;color:#d4d4d8">Capacity</span>
+              <div style="display:flex;align-items:center;gap:8px"><span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66;width:32px">CPU</span><div style="flex:1;height:7px;border-radius:4px;background:#1e1e23;overflow:hidden"><div style="height:100%;border-radius:4px;background:{{ ovCpuColor }};width:{{ ovCpuW }}"></div></div><span style="font:400 11px 'Geist Mono',monospace;color:#9c9ca6;width:36px;text-align:right">{{ ovCpuPct }}</span></div>
+              <div style="display:flex;align-items:center;gap:8px"><span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66;width:32px">MEM</span><div style="flex:1;height:7px;border-radius:4px;background:#1e1e23;overflow:hidden"><div style="height:100%;border-radius:4px;background:{{ ovMemColor }};width:{{ ovMemW }}"></div></div><span style="font:400 11px 'Geist Mono',monospace;color:#9c9ca6;width:36px;text-align:right">{{ ovMemPct }}</span></div>
+              <span style="font:400 10.5px 'Geist',sans-serif;color:#5c5c66">{{ ovNodesLabel }}</span>
+            </div>
+            <div style="flex:1.4;background:#131316;border:1px solid #26262b;border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center"><span style="font:600 12px 'Geist',sans-serif;color:#d4d4d8">Recent warnings</span><div style="flex:1"></div><span onClick="{{ goEvents }}" style="font:500 11px 'Geist',sans-serif;color:{{ accent }};cursor:pointer">All events →</span></div>
+              <sc-for list="{{ ovWarnings }}" as="w" hint-placeholder-count="3">
+                <div style="display:flex;align-items:baseline;gap:9px;padding:6px 0;border-bottom:1px solid #1a1a1f">
+                  <span style="width:6px;height:6px;border-radius:50%;background:{{ w.color }};flex:none;position:relative;top:-1px"></span>
+                  <span style="font:500 11.5px 'Geist Mono',monospace;color:#d4d4d8;flex:none">{{ w.reason }}</span>
+                  <span style="font:400 11.5px 'Geist',sans-serif;color:#9c9ca6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ w.msg }}</span>
+                  <div style="flex:1"></div>
+                  <span style="font:400 10.5px 'Geist Mono',monospace;color:#5c5c66;flex:none">{{ w.age }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- PODS -->
+      <sc-if value="{{ isPods }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;padding:14px 20px 10px;gap:12px" data-screen-label="Pods">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">Pods</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ podsCountLabel }}</span>
+          <div style="flex:1"></div>
+          <input value="{{ podFilter }}" onChange="{{ onPodFilter }}" placeholder="Filter by name…" style="font:400 11.5px 'Geist Mono',monospace;color:#f4f4f5;background:#131316;border:1px solid #26262b;border-radius:6px;padding:6px 10px;width:190px;outline:none" style-focus="border-color:{{ accent }}"></input>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 20px 16px">
+          <div style="border:1px solid #26262b;border-radius:8px;overflow:hidden;background:#101013">
+            <div style="display:grid;grid-template-columns:2.4fr .9fr .7fr .55fr .6fr .7fr .5fr;padding:8px 14px;background:#131316;border-bottom:1px solid #26262b;position:sticky;top:0;z-index:2">
+              <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">NAME</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">STATUS</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">READY</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">AGE</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">CPU</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">MEMORY</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;text-align:right">RESTARTS</span>
+            </div>
+            <sc-for list="{{ podRows }}" as="p" hint-placeholder-count="8">
+              <div onClick="{{ p.onClick }}" style="display:grid;grid-template-columns:2.4fr .9fr .7fr .55fr .6fr .7fr .5fr;padding:{{ rowPad }} 14px;border-bottom:1px solid #1a1a1f;align-items:center;background:{{ p.rowBg }};cursor:pointer" style-hover="background:#16161a">
+                <span style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font:500 12px 'Geist Mono',monospace;color:#e4e4e7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</span><sc-if value="{{ p.busy }}" hint-placeholder-val="{{ false }}"><span style="width:10px;height:10px;border:1.5px solid #26262b;border-top-color:{{ accent }};border-radius:50%;animation:spin .7s linear infinite;flex:none"></span></sc-if></span>
+                <span><span style="display:inline-flex;align-items:center;gap:6px;font:500 11px 'Geist',sans-serif;color:{{ p.statusColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ p.statusColor }}"></span>{{ p.status }}</span></span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ p.ready }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ p.age }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ p.cpu }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ p.mem }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:{{ p.restartColor }};text-align:right">{{ p.restarts }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ podsEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:26px;text-align:center;font:400 12px 'Geist',sans-serif;color:#5c5c66">No pods match the current filters.</div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- DEPLOYMENTS -->
+      <sc-if value="{{ isDeploys }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;padding:14px 20px 10px;gap:12px" data-screen-label="Deployments">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">Deployments</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ deployCountLabel }}</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 20px 16px">
+          <div style="border:1px solid #26262b;border-radius:8px;overflow:hidden;background:#101013">
+            <div style="display:grid;grid-template-columns:2.2fr .7fr .8fr .6fr 1.4fr;padding:8px 14px;background:#131316;border-bottom:1px solid #26262b">
+              <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">NAME</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">READY</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">STATUS</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">AGE</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;text-align:right">REPLICAS · ACTIONS</span>
+            </div>
+            <sc-for list="{{ deployRows }}" as="d" hint-placeholder-count="6">
+              <div onClick="{{ d.onClick }}" style="display:grid;grid-template-columns:2.2fr .7fr .8fr .6fr 1.4fr;padding:{{ rowPad }} 14px;border-bottom:1px solid #1a1a1f;align-items:center;background:{{ d.rowBg }};cursor:pointer" style-hover="background:#16161a">
+                <span style="font:500 12px 'Geist Mono',monospace;color:#e4e4e7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ d.name }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ d.ready }}</span>
+                <span><span style="display:inline-flex;align-items:center;gap:6px;font:500 11px 'Geist',sans-serif;color:{{ d.statusColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ d.statusColor }}"></span>{{ d.status }}</span></span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ d.age }}</span>
+                <span style="display:flex;align-items:center;justify-content:flex-end;gap:8px">
+                  <span style="display:inline-flex;align-items:center;gap:0;border:1px solid #26262b;border-radius:6px;overflow:hidden">
+                    <span onClick="{{ d.onScaleDown }}" style="font:500 13px 'Geist Mono',monospace;color:#9c9ca6;padding:2px 9px;cursor:pointer;background:#131316" style-hover="color:#f4f4f5;background:#1e1e23">−</span>
+                    <span style="font:500 11.5px 'Geist Mono',monospace;color:{{ d.repColor }};padding:2px 10px;border-left:1px solid #26262b;border-right:1px solid #26262b;min-width:26px;text-align:center">{{ d.replicas }}</span>
+                    <span onClick="{{ d.onScaleUp }}" style="font:500 13px 'Geist Mono',monospace;color:#9c9ca6;padding:2px 9px;cursor:pointer;background:#131316" style-hover="color:#f4f4f5;background:#1e1e23">+</span>
+                  </span>
+                  <span onClick="{{ d.onRestart }}" style="font:500 11px 'Geist',sans-serif;color:#d4d4d8;border:1px solid #26262b;border-radius:6px;padding:3px 10px;background:#1a1a1f;cursor:pointer" style-hover="border-color:#3f3f46;color:#fff">Restart</span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- SERVICES -->
+      <sc-if value="{{ isServices }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;padding:14px 20px 10px;gap:12px" data-screen-label="Services">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">Services</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ svcCountLabel }}</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 20px 16px">
+          <div style="border:1px solid #26262b;border-radius:8px;overflow:hidden;background:#101013">
+            <div style="display:grid;grid-template-columns:2fr .9fr 1.1fr 1.2fr .6fr;padding:8px 14px;background:#131316;border-bottom:1px solid #26262b">
+              <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">NAME</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">TYPE</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">CLUSTER-IP</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">PORTS</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">AGE</span>
+            </div>
+            <sc-for list="{{ svcRows }}" as="s" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:2fr .9fr 1.1fr 1.2fr .6fr;padding:{{ rowPad }} 14px;border-bottom:1px solid #1a1a1f;align-items:center" style-hover="background:#16161a">
+                <span style="font:500 12px 'Geist Mono',monospace;color:#e4e4e7">{{ s.name }}</span>
+                <span style="font:400 11.5px 'Geist',sans-serif;color:#9c9ca6">{{ s.type }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ s.ip }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ s.ports }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ s.age }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- INGRESSES -->
+      <sc-if value="{{ isIngresses }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;padding:14px 20px 10px;gap:12px" data-screen-label="Ingresses">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">Ingresses</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ ingressCountLabel }}</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 20px 16px">
+          <div style="border:1px solid #26262b;border-radius:8px;overflow:hidden;background:#101013">
+            <div style="display:grid;grid-template-columns:1.6fr .7fr 1.6fr 1.8fr .5fr;padding:8px 14px;background:#131316;border-bottom:1px solid #26262b">
+              <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">NAME</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">CLASS</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">HOSTS</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">ADDRESS</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;text-align:right">AGE</span>
+            </div>
+            <sc-for list="{{ ingressRows }}" as="i" hint-placeholder-count="2">
+              <div style="display:grid;grid-template-columns:1.6fr .7fr 1.6fr 1.8fr .5fr;padding:{{ rowPad }} 14px;border-bottom:1px solid #1a1a1f;align-items:center" style-hover="background:#16161a">
+                <span style="font:500 12px 'Geist Mono',monospace;color:#e4e4e7">{{ i.name }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ i.cls }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ i.hosts }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ i.addr }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6;text-align:right">{{ i.age }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ ingressEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:26px;text-align:center;font:400 12px 'Geist',sans-serif;color:#5c5c66">No ingresses in this cluster.</div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- CONFIGMAPS -->
+      <sc-if value="{{ isConfigMaps }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;padding:14px 20px 10px;gap:12px" data-screen-label="ConfigMaps">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">ConfigMaps</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ cmCountLabel }}</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 20px 16px">
+          <div style="border:1px solid #26262b;border-radius:8px;overflow:hidden;background:#101013">
+            <div style="display:grid;grid-template-columns:1.8fr 2.6fr .5fr;padding:8px 14px;background:#131316;border-bottom:1px solid #26262b">
+              <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">NAME</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">KEYS</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;text-align:right">AGE</span>
+            </div>
+            <sc-for list="{{ cmRows }}" as="c" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:1.8fr 2.6fr .5fr;padding:{{ rowPad }} 14px;border-bottom:1px solid #1a1a1f;align-items:center" style-hover="background:#16161a">
+                <span style="font:500 12px 'Geist Mono',monospace;color:#e4e4e7">{{ c.name }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.keys }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6;text-align:right">{{ c.age }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- SECRETS -->
+      <sc-if value="{{ isSecrets }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;padding:14px 20px 10px;gap:12px" data-screen-label="Secrets">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">Secrets</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ secretCountLabel }}</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font:400 10.5px 'Geist',sans-serif;color:#fbbf24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:999px;padding:2px 10px">values decoded locally — never leave this machine</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 20px 16px">
+          <div style="border:1px solid #26262b;border-radius:8px;overflow:hidden;background:#101013">
+            <div style="display:grid;grid-template-columns:1.5fr 1.5fr 1.9fr .55fr .55fr;padding:8px 14px;background:#131316;border-bottom:1px solid #26262b">
+              <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">NAME</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">TYPE</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">DATA</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">AGE</span><span></span>
+            </div>
+            <sc-for list="{{ secretRows }}" as="s" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:1.5fr 1.5fr 1.9fr .55fr .55fr;padding:{{ rowPad }} 14px;border-bottom:1px solid #1a1a1f;align-items:center" style-hover="background:#16161a">
+                <span style="font:500 12px 'Geist Mono',monospace;color:#e4e4e7">{{ s.name }}</span>
+                <span style="font:400 11px 'Geist Mono',monospace;color:#9c9ca6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s.type }}</span>
+                <span style="font:400 11px 'Geist Mono',monospace;color:{{ s.shownColor }};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.02em">{{ s.shown }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ s.age }}</span>
+                <span onClick="{{ s.onToggle }}" style="font:500 10.5px 'Geist',sans-serif;color:#9c9ca6;border:1px solid #26262b;border-radius:5px;padding:2px 9px;background:#131316;cursor:pointer;text-align:center;justify-self:end" style-hover="color:#f4f4f5;border-color:#3f3f46">{{ s.eye }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- HELM RELEASES -->
+      <sc-if value="{{ isHelm }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;padding:14px 20px 10px;gap:12px" data-screen-label="Helm Releases">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">Helm Releases</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ helmCountLabel }}</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 20px 16px">
+          <div style="border:1px solid #26262b;border-radius:8px;overflow:hidden;background:#101013">
+            <div style="display:grid;grid-template-columns:1.5fr 1.1fr .5fr 1fr 1.6fr .9fr;padding:8px 14px;background:#131316;border-bottom:1px solid #26262b">
+              <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">NAME</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">NAMESPACE</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">REV</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">STATUS</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">CHART</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;text-align:right">UPDATED</span>
+            </div>
+            <sc-for list="{{ helmRows }}" as="h" hint-placeholder-count="4">
+              <div style="display:grid;grid-template-columns:1.5fr 1.1fr .5fr 1fr 1.6fr .9fr;padding:{{ rowPad }} 14px;border-bottom:1px solid #1a1a1f;align-items:center" style-hover="background:#16161a">
+                <span style="font:500 12px 'Geist Mono',monospace;color:#e4e4e7">{{ h.name }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ h.ns }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6">{{ h.rev }}</span>
+                <span><span style="display:inline-flex;align-items:center;gap:6px;font:500 11px 'Geist',sans-serif;color:{{ h.statusColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ h.statusColor }}"></span>{{ h.status }}</span></span>
+                <span style="font:400 11px 'Geist Mono',monospace;color:#9c9ca6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ h.chart }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6;text-align:right">{{ h.updated }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ helmEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:26px;text-align:center;font:400 12px 'Geist',sans-serif;color:#5c5c66">No Helm releases found in this cluster.</div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- EVENTS -->
+      <sc-if value="{{ isEvents }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;padding:14px 20px 10px;gap:12px" data-screen-label="Events">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">Events</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ eventCountLabel }}</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:0 20px 16px">
+          <div style="border:1px solid #26262b;border-radius:8px;overflow:hidden;background:#101013">
+            <div style="display:grid;grid-template-columns:.8fr 1.1fr 1.6fr 2.6fr .5fr;padding:8px 14px;background:#131316;border-bottom:1px solid #26262b">
+              <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">TYPE</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">REASON</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">OBJECT</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a">MESSAGE</span><span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;text-align:right">AGE</span>
+            </div>
+            <sc-for list="{{ eventRows }}" as="e" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:.8fr 1.1fr 1.6fr 2.6fr .5fr;padding:{{ rowPad }} 14px;border-bottom:1px solid #1a1a1f;align-items:center;background:{{ e.rowBg }}">
+                <span><span style="font:500 10.5px 'Geist',sans-serif;color:{{ e.typeColor }};background:{{ e.typeBg }};border-radius:4px;padding:2px 8px">{{ e.type }}</span></span>
+                <span style="font:500 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ e.reason }}</span>
+                <span style="font:400 11.5px 'Geist Mono',monospace;color:#9c9ca6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.object }}</span>
+                <span style="font:400 11.5px 'Geist',sans-serif;color:#9c9ca6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ e.msg }}</span>
+                <span style="font:400 11px 'Geist Mono',monospace;color:#5c5c66;text-align:right">{{ e.age }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- LOGS -->
+      <sc-if value="{{ isLogs }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;padding:14px 20px 10px;gap:10px;flex-wrap:wrap" data-screen-label="Logs">
+          <span style="font:600 16px 'Geist',sans-serif;color:#f4f4f5">Logs</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#71717a">{{ logsScopeLabel }}</span>
+          <div style="flex:1"></div>
+          <sc-for list="{{ levelChips }}" as="l" hint-placeholder-count="4">
+            <span onClick="{{ l.onClick }}" style="font:500 10.5px 'Geist Mono',monospace;color:{{ l.fg }};background:{{ l.bg }};border:1px solid {{ l.bd }};border-radius:999px;padding:3px 11px;cursor:pointer">{{ l.label }}</span>
+          </sc-for>
+          <input value="{{ logsQuery }}" onChange="{{ onLogsQuery }}" placeholder="Filter text…" style="font:400 11.5px 'Geist Mono',monospace;color:#f4f4f5;background:#131316;border:1px solid #26262b;border-radius:6px;padding:5px 10px;width:150px;outline:none" style-focus="border-color:{{ accent }}"></input>
+          <span onClick="{{ toggleFollow }}" style="display:inline-flex;align-items:center;gap:6px;font:500 11px 'Geist',sans-serif;color:{{ followFg }};background:{{ followBg }};border:1px solid {{ followBd }};border-radius:6px;padding:5px 11px;cursor:pointer">{{ followLabel }}</span>
+          <span onClick="{{ clearLogs }}" style="font:500 11px 'Geist',sans-serif;color:#9c9ca6;border:1px solid #26262b;border-radius:6px;padding:5px 11px;background:#131316;cursor:pointer" style-hover="color:#f4f4f5">Clear</span>
+        </div>
+        <div ref="{{ logsRef }}" style="flex:1;overflow-y:auto;margin:0 20px 16px;border:1px solid #26262b;border-radius:8px;background:#0d0d10;padding:8px 0">
+          <sc-for list="{{ logRows }}" as="l" hint-placeholder-count="14">
+            <div style="display:flex;align-items:baseline;gap:10px;padding:2.5px 14px;background:{{ l.rowBg }};border-left:2px solid {{ l.edge }}">
+              <span style="font:400 10.5px 'Geist Mono',monospace;color:#5c5c66;flex:none">{{ l.time }}</span>
+              <span style="font:600 10px 'Geist Mono',monospace;color:{{ l.levelColor }};flex:none;width:38px">{{ l.level }}</span>
+              <span style="font:500 10.5px 'Geist Mono',monospace;color:{{ l.podColor }};flex:none">{{ l.pod }}</span>
+              <span style="font:400 11px 'Geist Mono',monospace;color:#c8c8d0;white-space:pre-wrap;word-break:break-word">{{ l.msg }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ logsPaused }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;justify-content:center;padding:8px"><span style="font:500 10.5px 'Geist Mono',monospace;color:#fbbf24;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:999px;padding:3px 12px;animation:pulse 2s ease infinite">⏸ paused — new lines buffered</span></div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- Status bar -->
+      <sc-if value="{{ notAll }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;height:27px;border-top:1px solid #1e1e23;padding:0 16px;gap:16px;background:#0b0b0d;flex:none">
+          <span style="font:400 10.5px 'Geist Mono',monospace;color:#5c5c66">{{ ac.server }} · {{ ac.version }}</span>
+          <span style="font:400 10.5px 'Geist Mono',monospace;color:#5c5c66">refresh {{ refreshLabel }}</span>
+          <div style="flex:1"></div>
+          <span onClick="{{ goEvents }}" style="display:inline-flex;align-items:center;gap:5px;font:400 10.5px 'Geist Mono',monospace;color:{{ sbWarnColor }};cursor:pointer"><span style="width:5px;height:5px;border-radius:50%;background:{{ sbWarnColor }}"></span>{{ sbWarnLabel }}</span>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- ======= POD DETAIL DRAWER ======= -->
+    <sc-if value="{{ hasDetail }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;top:0;right:0;bottom:0;width:360px;background:#101013;border-left:1px solid #26262b;display:flex;flex-direction:column;box-shadow:-16px 0 40px rgba(0,0,0,.45);z-index:30;animation:slidein .16s ease" data-screen-label="Pod Detail">
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:16px 16px 12px;border-bottom:1px solid #1e1e23">
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+            <span style="font:500 12.5px 'Geist Mono',monospace;color:#f4f4f5;word-break:break-all">{{ detail.name }}</span>
+            <span style="display:inline-flex;align-items:center;gap:6px;font:500 11px 'Geist',sans-serif;color:{{ detail.statusColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ detail.statusColor }}"></span>{{ detail.status }}</span>
+          </div>
+          <div style="flex:1"></div>
+          <span onClick="{{ closeDetail }}" style="font:400 14px 'Geist',sans-serif;color:#5c5c66;cursor:pointer;padding:2px 6px" style-hover="color:#f4f4f5">✕</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">NAMESPACE</span><span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ detail.ns }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">NODE</span><span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ detail.node }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">AGE</span><span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ detail.age }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">RESTARTS</span><span style="font:400 11.5px 'Geist Mono',monospace;color:{{ detail.restartColor }}">{{ detail.restarts }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">POD IP</span><span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ detail.ip }}</span></div>
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">QOS</span><span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ detail.qos }}</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;letter-spacing:.05em">RESOURCES</span>
+            <div style="display:flex;align-items:center;gap:8px"><span style="font:400 9.5px 'Geist Mono',monospace;color:#5c5c66;width:28px">CPU</span><div style="flex:1;height:5px;border-radius:3px;background:#1e1e23;overflow:hidden"><div style="height:100%;border-radius:3px;background:{{ accent }};width:{{ detail.cpuW }}"></div></div><span style="font:400 10px 'Geist Mono',monospace;color:#9c9ca6;width:60px;text-align:right">{{ detail.cpu }}</span></div>
+            <div style="display:flex;align-items:center;gap:8px"><span style="font:400 9.5px 'Geist Mono',monospace;color:#5c5c66;width:28px">MEM</span><div style="flex:1;height:5px;border-radius:3px;background:#1e1e23;overflow:hidden"><div style="height:100%;border-radius:3px;background:{{ accent }};width:{{ detail.memW }}"></div></div><span style="font:400 10px 'Geist Mono',monospace;color:#9c9ca6;width:60px;text-align:right">{{ detail.mem }}</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;letter-spacing:.05em">CONTAINERS</span>
+            <sc-for list="{{ detail.containers }}" as="c" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:8px;background:#131316;border:1px solid #1e1e23;border-radius:7px;padding:8px 10px">
+                <span style="width:6px;height:6px;border-radius:50%;background:{{ c.color }}"></span>
+                <span style="font:500 11.5px 'Geist Mono',monospace;color:#e4e4e7">{{ c.name }}</span>
+                <div style="flex:1"></div>
+                <span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66">{{ c.image }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;letter-spacing:.05em">LABELS</span>
+            <div style="display:flex;flex-wrap:wrap;gap:5px">
+              <sc-for list="{{ detail.labels }}" as="lb" hint-placeholder-count="3">
+                <span style="font:400 10px 'Geist Mono',monospace;color:#9c9ca6;background:#1a1a1f;border:1px solid #26262b;border-radius:4px;padding:2px 7px">{{ lb }}</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;padding:13px 16px;border-top:1px solid #1e1e23">
+          <span onClick="{{ detail.onLogs }}" style="flex:1;text-align:center;font:500 11.5px 'Geist',sans-serif;color:#0b0b0d;background:{{ accent }};border-radius:6px;padding:7px 0;cursor:pointer" style-hover="filter:brightness(1.1)">Logs</span>
+          <span onClick="{{ detail.onRestart }}" style="flex:1;text-align:center;font:500 11.5px 'Geist',sans-serif;color:#d4d4d8;background:#1a1a1f;border:1px solid #26262b;border-radius:6px;padding:7px 0;cursor:pointer" style-hover="border-color:#3f3f46;color:#fff">Restart</span>
+          <span onClick="{{ detail.onDelete }}" style="flex:1;text-align:center;font:500 11.5px 'Geist',sans-serif;color:#f87171;border:1px solid rgba(248,113,113,.3);border-radius:6px;padding:7px 0;background:rgba(248,113,113,.08);cursor:pointer" style-hover="background:rgba(248,113,113,.16)">Delete</span>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- ======= DEPLOYMENT DETAIL DRAWER ======= -->
+  <sc-if value="{{ hasDepDetail }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;top:42px;right:0;bottom:0;width:380px;background:#101013;border-left:1px solid #26262b;display:flex;flex-direction:column;box-shadow:-16px 0 40px rgba(0,0,0,.45);z-index:30;animation:slidein .16s ease" data-screen-label="Deployment Detail">
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:16px 16px 12px;border-bottom:1px solid #1e1e23">
+        <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+          <span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66;letter-spacing:.06em">DEPLOYMENT</span>
+          <span style="font:500 13px 'Geist Mono',monospace;color:#f4f4f5;word-break:break-all">{{ depDetail.name }}</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font:500 11px 'Geist',sans-serif;color:{{ depDetail.statusColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ depDetail.statusColor }}"></span>{{ depDetail.status }}</span>
+        </div>
+        <div style="flex:1"></div>
+        <span onClick="{{ closeDepDetail }}" style="font:400 14px 'Geist',sans-serif;color:#5c5c66;cursor:pointer;padding:2px 6px" style-hover="color:#f4f4f5">✕</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">REPLICAS</span><span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ depDetail.replicas }} desired · {{ depDetail.ready }} ready</span></div>
+          <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">AGE</span><span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ depDetail.age }}</span></div>
+          <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">IMAGE</span><span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8;word-break:break-all">{{ depDetail.image }}</span></div>
+          <div style="display:flex;flex-direction:column;gap:2px"><span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">SELECTOR</span><span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ depDetail.selector }}</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span style="font:400 9.5px 'Geist',sans-serif;color:#5c5c66">STRATEGY</span>
+          <span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">{{ depDetail.strategy }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;letter-spacing:.05em">CONDITIONS</span>
+          <sc-for list="{{ depDetail.conditions }}" as="c" hint-placeholder-count="2">
+            <div style="display:flex;align-items:center;gap:9px;background:#131316;border:1px solid #1e1e23;border-radius:7px;padding:8px 10px">
+              <span style="width:6px;height:6px;border-radius:50%;background:{{ c.color }}"></span>
+              <span style="font:500 11.5px 'Geist',sans-serif;color:#e4e4e7">{{ c.type }}</span>
+              <span style="font:500 10px 'Geist Mono',monospace;color:{{ c.color }}">{{ c.val }}</span>
+              <div style="flex:1"></div>
+              <span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66">{{ c.reason }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span style="font:600 10.5px 'Geist',sans-serif;color:#71717a;letter-spacing:.05em">PODS</span>
+          <sc-for list="{{ depDetail.depPods }}" as="p" hint-placeholder-count="2">
+            <div onClick="{{ p.onClick }}" style="display:flex;align-items:center;gap:9px;background:#131316;border:1px solid #1e1e23;border-radius:7px;padding:8px 10px;cursor:pointer" style-hover="border-color:#34343b">
+              <span style="width:6px;height:6px;border-radius:50%;background:{{ p.statusColor }}"></span>
+              <span style="font:500 11px 'Geist Mono',monospace;color:#e4e4e7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.name }}</span>
+              <div style="flex:1"></div>
+              <span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66">{{ p.ready }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:13px 16px;border-top:1px solid #1e1e23">
+        <span onClick="{{ depDetail.onLogs }}" style="flex:1;text-align:center;font:500 11.5px 'Geist',sans-serif;color:#0b0b0d;background:{{ accent }};border-radius:6px;padding:7px 0;cursor:pointer" style-hover="filter:brightness(1.1)">Logs</span>
+        <span onClick="{{ depDetail.onRestart }}" style="flex:1;text-align:center;font:500 11.5px 'Geist',sans-serif;color:#d4d4d8;background:#1a1a1f;border:1px solid #26262b;border-radius:6px;padding:7px 0;cursor:pointer" style-hover="border-color:#3f3f46;color:#fff">Rollout Restart</span>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ======= COMMAND PALETTE ======= -->
+  <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePalette }}" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:flex;justify-content:center;padding-top:110px;animation:fadein .1s ease" data-screen-label="Command Palette">
+      <div onClick="{{ stop }}" style="width:580px;height:fit-content;max-height:70vh;display:flex;flex-direction:column;background:#131316;border:1px solid #34343b;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.7);overflow:hidden;animation:popin .14s ease">
+        <div style="display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid #26262b;flex:none">
+          <span style="font:400 14px 'Geist',sans-serif;color:#5c5c66">⌕</span>
+          <input value="{{ paletteQuery }}" onChange="{{ onPaletteQuery }}" ref="{{ paletteInputRef }}" placeholder="Switch cluster, run action, jump to view…" style="flex:1;font:400 13.5px 'Geist',sans-serif;color:#f4f4f5;background:transparent;border:none;outline:none"></input>
+          <span style="font:500 9.5px 'Geist Mono',monospace;color:#5c5c66;border:1px solid #26262b;border-radius:4px;padding:1px 6px">esc</span>
+        </div>
+        <div style="padding:8px;overflow-y:auto">
+          <sc-for list="{{ paletteRows }}" as="r" hint-placeholder-count="8">
+            <sc-if value="{{ r.isHeader }}" hint-placeholder-val="{{ false }}">
+              <span style="display:block;font:600 9.5px 'Geist',sans-serif;color:#5c5c66;letter-spacing:.07em;text-transform:uppercase;padding:8px 10px 5px">{{ r.label }}</span>
+            </sc-if>
+            <sc-if value="{{ r.isItem }}" hint-placeholder-val="{{ true }}">
+              <div onClick="{{ r.onClick }}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;background:{{ r.bg }};cursor:pointer">
+                <sc-if value="{{ r.dot }}" hint-placeholder-val="{{ false }}"><span style="width:8px;height:8px;border-radius:50%;background:{{ r.dot }};flex:none"></span></sc-if>
+                <sc-if value="{{ r.icon }}" hint-placeholder-val="{{ false }}"><span style="font:400 12px 'Geist',sans-serif;color:#9c9ca6;flex:none">{{ r.icon }}</span></sc-if>
+                <span style="font:500 12.5px 'Geist',sans-serif;color:#f4f4f5">{{ r.label }}</span>
+                <sc-if value="{{ r.chip }}" hint-placeholder-val="{{ false }}"><span style="font:500 9.5px 'Geist Mono',monospace;color:#9c9ca6;background:#1a1a1f;border-radius:4px;padding:1px 6px">{{ r.chip }}</span></sc-if>
+                <div style="flex:1"></div>
+                <sc-if value="{{ r.health }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;align-items:center;gap:5px;font:400 10.5px 'Geist',sans-serif;color:{{ r.healthColor }}"><span style="width:6px;height:6px;border-radius:50%;background:{{ r.healthColor }}"></span>{{ r.health }}</span></sc-if>
+                <sc-if value="{{ r.key }}" hint-placeholder-val="{{ false }}"><span style="font:500 9.5px 'Geist Mono',monospace;color:#5c5c66;border:1px solid #26262b;border-radius:4px;padding:1px 6px">{{ r.key }}</span></sc-if>
+              </div>
+            </sc-if>
+          </sc-for>
+          <sc-if value="{{ paletteEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:20px;text-align:center;font:400 12px 'Geist',sans-serif;color:#5c5c66">No results for "{{ paletteQuery }}"</div>
+          </sc-if>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;padding:9px 16px;border-top:1px solid #26262b;background:#101013;flex:none">
+          <span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66">↑↓ navigate</span>
+          <span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66">↵ select</span>
+          <span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66">⌘1–5 switch cluster</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ======= CONFIRM DELETE ======= -->
+  <sc-if value="{{ confirmOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:110;display:flex;align-items:center;justify-content:center;animation:fadein .1s ease" data-screen-label="Confirm Delete">
+      <div style="width:400px;background:#161619;border:1px solid #34343b;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.7);padding:20px;display:flex;flex-direction:column;gap:12px;animation:popin .14s ease">
+        <span style="font:600 14px 'Geist',sans-serif;color:#f4f4f5">Delete Pod?</span>
+        <span style="font:400 12px 'Geist',sans-serif;color:#9c9ca6;line-height:1.6">The pod <b style="font-family:'Geist Mono',monospace;font-weight:500;color:#f4f4f5">{{ confirmName }}</b> in namespace <b style="font-family:'Geist Mono',monospace;font-weight:500;color:#f4f4f5">{{ confirmNs }}</b> will be deleted. Its controller may recreate it.</span>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px">
+          <span onClick="{{ cancelDelete }}" style="font:500 12px 'Geist',sans-serif;color:#d4d4d8;background:#1a1a1f;border:1px solid #26262b;border-radius:6px;padding:7px 16px;cursor:pointer" style-hover="border-color:#3f3f46">Cancel</span>
+          <span onClick="{{ doDelete }}" style="font:500 12px 'Geist',sans-serif;color:#fff;background:#dc4646;border-radius:6px;padding:7px 16px;cursor:pointer" style-hover="filter:brightness(1.12)">Delete Pod</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ======= PREFERENCES ======= -->
+  <sc-if value="{{ prefsOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closePrefs }}" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:105;display:flex;align-items:center;justify-content:center;animation:fadein .1s ease" data-screen-label="Preferences">
+      <div onClick="{{ stop }}" style="width:520px;background:#131316;border:1px solid #34343b;border-radius:12px;box-shadow:0 24px 80px rgba(0,0,0,.7);overflow:hidden;animation:popin .14s ease">
+        <div style="display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid #26262b">
+          <span style="font:600 14px 'Geist',sans-serif;color:#f4f4f5">Preferences</span>
+          <div style="flex:1"></div>
+          <span onClick="{{ closePrefs }}" style="font:400 14px 'Geist',sans-serif;color:#5c5c66;cursor:pointer" style-hover="color:#f4f4f5">✕</span>
+        </div>
+        <div style="padding:18px 20px;display:flex;flex-direction:column;gap:18px">
+          <div style="display:flex;align-items:center">
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 12.5px 'Geist',sans-serif;color:#f4f4f5">Appearance</span><span style="font:400 11px 'Geist',sans-serif;color:#71717a">Theme follows this setting on every platform</span></div>
+            <div style="flex:1"></div>
+            <div style="display:flex;background:#0b0b0d;border:1px solid #26262b;border-radius:7px;padding:2px;gap:2px">
+              <sc-for list="{{ themeOpts }}" as="t" hint-placeholder-count="3">
+                <span onClick="{{ t.onClick }}" style="font:500 11px 'Geist',sans-serif;color:{{ t.fg }};background:{{ t.bg }};border-radius:5px;padding:4px 12px;cursor:pointer">{{ t.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center">
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 12.5px 'Geist',sans-serif;color:#f4f4f5">Auto-refresh interval</span><span style="font:400 11px 'Geist',sans-serif;color:#71717a">How often resources are re-fetched</span></div>
+            <div style="flex:1"></div>
+            <div style="display:flex;background:#0b0b0d;border:1px solid #26262b;border-radius:7px;padding:2px;gap:2px">
+              <sc-for list="{{ refreshOpts }}" as="r" hint-placeholder-count="4">
+                <span onClick="{{ r.onClick }}" style="font:500 11px 'Geist Mono',monospace;color:{{ r.fg }};background:{{ r.bg }};border-radius:5px;padding:4px 11px;cursor:pointer">{{ r.label }}</span>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center">
+            <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 12.5px 'Geist',sans-serif;color:#f4f4f5">Skip TLS verification</span><span style="font:400 11px 'Geist',sans-serif;color:#71717a">For self-signed clusters (minikube, dev)</span></div>
+            <div style="flex:1"></div>
+            <div onClick="{{ toggleTls }}" style="width:38px;height:22px;border-radius:999px;background:{{ tlsBg }};padding:2px;cursor:pointer;transition:background .15s">
+              <div style="width:18px;height:18px;border-radius:50%;background:#f4f4f5;transform:{{ tlsKnob }};transition:transform .15s"></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <span style="font:500 12.5px 'Geist',sans-serif;color:#f4f4f5">Kubeconfig paths</span>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <sc-for list="{{ kubePaths }}" as="p" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:8px;background:#0b0b0d;border:1px solid #26262b;border-radius:6px;padding:7px 10px">
+                  <span style="font:400 11px 'Geist Mono',monospace;color:#d4d4d8">{{ p.path }}</span>
+                  <div style="flex:1"></div>
+                  <span style="font:400 10px 'Geist Mono',monospace;color:{{ p.color }}">{{ p.note }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding-top:2px;border-top:1px solid #1e1e23">
+            <span onClick="{{ showOnboarding }}" style="font:500 11.5px 'Geist',sans-serif;color:{{ accent }};cursor:pointer;padding-top:10px">Show first-launch onboarding again</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ======= ONBOARDING ======= -->
+  <sc-if value="{{ onboarding }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(8,8,10,.88);z-index:120;display:flex;align-items:center;justify-content:center;animation:fadein .15s ease" data-screen-label="Onboarding">
+      <div style="width:480px;background:#131316;border:1px solid #34343b;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.7);padding:28px;display:flex;flex-direction:column;gap:18px;animation:popin .18s ease">
+        <sc-if value="{{ obStep0 }}" hint-placeholder-val="{{ true }}">
+          <div style="width:46px;height:46px;border-radius:12px;background:rgba(110,155,245,.12);border:1px solid rgba(110,155,245,.3);display:flex;align-items:center;justify-content:center;font:600 18px 'Geist',sans-serif;color:{{ accent }}">◳</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font:600 18px 'Geist',sans-serif;color:#f4f4f5">Welcome to CubeLite</span>
+            <span style="font:400 12.5px 'Geist',sans-serif;color:#9c9ca6;line-height:1.65">Local-first Kubernetes management. CubeLite reads your existing kubeconfig — no cloud account, no telemetry, no setup.</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;background:#0b0b0d;border:1px solid #26262b;border-radius:8px;padding:11px 13px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#34d399"></span>
+            <span style="font:400 11.5px 'Geist Mono',monospace;color:#d4d4d8">~/.kube/config</span>
+            <div style="flex:1"></div>
+            <span style="font:400 10.5px 'Geist Mono',monospace;color:#34d399">5 contexts found</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ obStep1 }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font:600 18px 'Geist',sans-serif;color:#f4f4f5">Your clusters</span>
+            <span style="font:400 12.5px 'Geist',sans-serif;color:#9c9ca6;line-height:1.65">Each cluster gets a color identity, shown everywhere — rail, titlebar, palette — so you always know where you are.</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{ obClusters }}" as="c" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:10px;background:#0b0b0d;border:1px solid #26262b;border-radius:8px;padding:9px 12px">
+                <span style="width:24px;height:24px;border-radius:6px;background:{{ c.avatarBg }};display:flex;align-items:center;justify-content:center;font:600 9.5px 'Geist',sans-serif;color:{{ c.color }}">{{ c.initials }}</span>
+                <span style="font:500 12px 'Geist',sans-serif;color:#f4f4f5">{{ c.name }}</span>
+                <span style="font:500 9.5px 'Geist Mono',monospace;color:#9c9ca6;background:#1a1a1f;border-radius:4px;padding:1px 6px">{{ c.prov }}</span>
+                <div style="flex:1"></div>
+                <span style="font:400 10px 'Geist Mono',monospace;color:#5c5c66">{{ c.key }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ obStep2 }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font:600 18px 'Geist',sans-serif;color:#f4f4f5">Move fast</span>
+            <span style="font:400 12.5px 'Geist',sans-serif;color:#9c9ca6;line-height:1.65">Everything is reachable from the keyboard.</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:10px;background:#0b0b0d;border:1px solid #26262b;border-radius:8px;padding:10px 12px"><span style="font:500 10px 'Geist Mono',monospace;color:#d4d4d8;border:1px solid #34343b;border-radius:4px;padding:2px 7px">⌘K</span><span style="font:400 12px 'Geist',sans-serif;color:#9c9ca6">Command palette — switch, search, act</span></div>
+            <div style="display:flex;align-items:center;gap:10px;background:#0b0b0d;border:1px solid #26262b;border-radius:8px;padding:10px 12px"><span style="font:500 10px 'Geist Mono',monospace;color:#d4d4d8;border:1px solid #34343b;border-radius:4px;padding:2px 7px">⌘1–5</span><span style="font:400 12px 'Geist',sans-serif;color:#9c9ca6">Jump straight to a cluster</span></div>
+            <div style="display:flex;align-items:center;gap:10px;background:#0b0b0d;border:1px solid #26262b;border-radius:8px;padding:10px 12px"><span style="font:500 10px 'Geist Mono',monospace;color:#d4d4d8;border:1px solid #34343b;border-radius:4px;padding:2px 7px">esc</span><span style="font:400 12px 'Geist',sans-serif;color:#9c9ca6">Close panels and overlays</span></div>
+          </div>
+        </sc-if>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+          <sc-for list="{{ obDots }}" as="d" hint-placeholder-count="3">
+            <span style="width:6px;height:6px;border-radius:50%;background:{{ d.color }}"></span>
+          </sc-for>
+          <div style="flex:1"></div>
+          <span onClick="{{ obSkip }}" style="font:500 12px 'Geist',sans-serif;color:#71717a;cursor:pointer;padding:7px 12px" style-hover="color:#d4d4d8">Skip</span>
+          <span onClick="{{ obNext }}" style="font:500 12px 'Geist',sans-serif;color:#0b0b0d;background:{{ accent }};border-radius:6px;padding:7px 18px;cursor:pointer" style-hover="filter:brightness(1.1)">{{ obNextLabel }}</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ======= TOASTS ======= -->
+  <div style="position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:130">
+    <sc-for list="{{ toasts }}" as="t" hint-placeholder-count="0">
+      <div style="display:flex;align-items:center;gap:9px;background:#161619;border:1px solid #34343b;border-radius:9px;padding:10px 14px;box-shadow:0 10px 34px rgba(0,0,0,.5);animation:toastin .18s ease">
+        <span style="width:7px;height:7px;border-radius:50%;background:{{ t.color }}"></span>
+        <span style="font:500 12px 'Geist',sans-serif;color:#f4f4f5">{{ t.msg }}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#6e9bf5&quot;,&quot;options&quot;:[&quot;#6e9bf5&quot;,&quot;#a78bfa&quot;,&quot;#2dd4bf&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;comfortable&quot;,&quot;options&quot;:[&quot;comfortable&quot;,&quot;compact&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+class Component extends DCLogic {
+  state = {
+    activeId: 'aks', view: 'pods', ns: 'all', nsOpen: false,
+    connecting: false, retrying: false,
+    paletteOpen: false, paletteQuery: '', paletteIndex: 0,
+    selectedPod: null, selectedDeploy: null, confirmDelete: null, revealedSecrets: {},
+    busyPods: {}, deletedPods: {}, extraRestarts: {},
+    podFilter: '',
+    logsFollow: true, logsLevel: 'all', logsQuery: '', logLines: [],
+    prefsOpen: false, theme: 'Dark', refresh: '30s', tlsSkip: true,
+    onboarding: true, obStep: 0,
+    toasts: [], scales: {},
+  };
+
+  // ---------- static data ----------
+  data() {
+    if (this._d) return this._d;
+    const ok = '#34d399', warn = '#fbbf24', err = '#f87171';
+    const mk = (name, ns, status, ready, age, cpu, mem, restarts, node) =>
+      ({ name, ns, status, ready, age, cpu, mem, restarts, node });
+    const clusters = [
+      { id: 'aks', name: 'prod-aks-westeu', prov: 'AKS', color: '#60a5fa', initials: 'PA', health: 'ok', key: '⌘1',
+        server: 'api.westeu.azmk8s.io', version: 'v1.31.2', nodes: 12, cpuPct: 42, memPct: 61,
+        pods: [
+          mk('api-gateway-6f9c4d-x2x7k', 'default', 'Running', '2/2', '4d', '12m', '148Mi', 0, 'aks-np-1-vmss000002'),
+          mk('api-gateway-6f9c4d-p9qzr', 'default', 'Running', '2/2', '4d', '9m', '141Mi', 0, 'aks-np-1-vmss000003'),
+          mk('billing-worker-58b7f-kd2mn', 'default', 'CrashLoop', '0/1', '2h', '—', '—', 14, 'aks-np-2-vmss000001'),
+          mk('checkout-7d9c6b-4fh8w', 'default', 'Running', '1/1', '12d', '31m', '302Mi', 1, 'aks-np-1-vmss000002'),
+          mk('ingest-cron-29041880-ttx5c', 'default', 'Pending', '0/1', '3m', '—', '—', 0, '—'),
+          mk('notifications-84c5d-mm2lp', 'default', 'Running', '1/1', '4d', '4m', '96Mi', 0, 'aks-np-2-vmss000004'),
+          mk('redis-cache-0', 'default', 'Running', '1/1', '31d', '18m', '512Mi', 2, 'aks-np-1-vmss000001'),
+          mk('search-indexer-b6d94-z8wq2', 'default', 'Running', '1/1', '9d', '52m', '621Mi', 0, 'aks-np-2-vmss000002'),
+          mk('coredns-76f75df574-8rl2x', 'kube-system', 'Running', '1/1', '31d', '3m', '24Mi', 0, 'aks-np-1-vmss000001'),
+          mk('metrics-server-54bf7cdd-w2c9p', 'kube-system', 'Running', '1/1', '31d', '6m', '58Mi', 0, 'aks-np-1-vmss000002'),
+          mk('prometheus-server-0', 'monitoring', 'Running', '2/2', '18d', '104m', '1.2Gi', 0, 'aks-np-2-vmss000003'),
+          mk('grafana-5c9d8-t7xnn', 'monitoring', 'Running', '1/1', '18d', '11m', '187Mi', 0, 'aks-np-2-vmss000003'),
+        ],
+        deploys: [
+          { name: 'api-gateway', ready: '2/2', status: 'Available', age: '92d', replicas: 2 },
+          { name: 'billing-worker', ready: '0/1', status: 'Degraded', age: '2h', replicas: 1 },
+          { name: 'checkout', ready: '1/1', status: 'Available', age: '92d', replicas: 1 },
+          { name: 'notifications', ready: '1/1', status: 'Available', age: '60d', replicas: 1 },
+          { name: 'search-indexer', ready: '1/1', status: 'Available', age: '44d', replicas: 1 },
+          { name: 'grafana', ready: '1/1', status: 'Available', age: '18d', replicas: 1 },
+        ],
+        services: [
+          { name: 'api-gateway', type: 'LoadBalancer', ip: '10.0.24.11', ports: '443:31820/TCP', age: '92d' },
+          { name: 'checkout', type: 'ClusterIP', ip: '10.0.31.7', ports: '8080/TCP', age: '92d' },
+          { name: 'redis-cache', type: 'ClusterIP', ip: '10.0.12.40', ports: '6379/TCP', age: '31d' },
+          { name: 'prometheus-server', type: 'ClusterIP', ip: '10.0.18.22', ports: '9090/TCP', age: '18d' },
+          { name: 'grafana', type: 'ClusterIP', ip: '10.0.18.23', ports: '3000/TCP', age: '18d' },
+        ],
+        events: [
+          { type: 'Warning', reason: 'BackOff', object: 'pod/billing-worker-58b7f-kd2mn', msg: 'Back-off restarting failed container billing', age: '2m' },
+          { type: 'Warning', reason: 'OOMKilled', object: 'pod/billing-worker-58b7f-kd2mn', msg: 'Container billing exceeded memory limit (256Mi)', age: '9m' },
+          { type: 'Normal', reason: 'Scheduled', object: 'pod/ingest-cron-29041880-ttx5c', msg: 'Successfully assigned default/ingest-cron to node', age: '3m' },
+          { type: 'Normal', reason: 'Pulled', object: 'pod/checkout-7d9c6b-4fh8w', msg: 'Container image "checkout:2.14.1" already present', age: '1h' },
+          { type: 'Warning', reason: 'FailedScheduling', object: 'pod/ingest-cron-29041880-ttx5c', msg: '0/12 nodes available: insufficient cpu', age: '3m' },
+          { type: 'Normal', reason: 'ScalingReplicaSet', object: 'deployment/api-gateway', msg: 'Scaled up replica set api-gateway-6f9c4d to 2', age: '4d' },
+        ] },
+      { id: 'eks', name: 'prod-eks-us-east', prov: 'EKS', color: '#f59e0b', initials: 'PE', health: 'ok', key: '⌘2',
+        server: 'A1B2.gr7.us-east-1.eks.amazonaws.com', version: 'v1.30.8', nodes: 18, cpuPct: 55, memPct: 48,
+        pods: [
+          mk('orders-api-79d4c-nb2vp', 'default', 'Running', '3/3', '21d', '84m', '740Mi', 0, 'ip-10-0-41-113'),
+          mk('orders-api-79d4c-qq8sl', 'default', 'Running', '3/3', '21d', '79m', '731Mi', 0, 'ip-10-0-42-87'),
+          mk('payments-6b8f9-r4kmd', 'default', 'Running', '1/1', '13d', '22m', '265Mi', 0, 'ip-10-0-41-113'),
+          mk('kafka-broker-0', 'streaming', 'Running', '1/1', '48d', '210m', '2.4Gi', 1, 'ip-10-0-43-201'),
+          mk('kafka-broker-1', 'streaming', 'Running', '1/1', '48d', '198m', '2.3Gi', 0, 'ip-10-0-44-16'),
+          mk('flink-taskmanager-8c7d5-jw2xn', 'streaming', 'Running', '1/1', '6d', '340m', '3.1Gi', 3, 'ip-10-0-44-16'),
+          mk('fluent-bit-x9k2m', 'logging', 'Running', '1/1', '48d', '8m', '42Mi', 0, 'ip-10-0-41-113'),
+        ],
+        deploys: [
+          { name: 'orders-api', ready: '2/2', status: 'Available', age: '120d', replicas: 2 },
+          { name: 'payments', ready: '1/1', status: 'Available', age: '120d', replicas: 1 },
+          { name: 'flink-taskmanager', ready: '1/1', status: 'Available', age: '6d', replicas: 1 },
+        ],
+        services: [
+          { name: 'orders-api', type: 'LoadBalancer', ip: '10.100.4.18', ports: '443:30211/TCP', age: '120d' },
+          { name: 'payments', type: 'ClusterIP', ip: '10.100.9.31', ports: '8443/TCP', age: '120d' },
+          { name: 'kafka', type: 'ClusterIP', ip: 'None', ports: '9092/TCP', age: '48d' },
+        ],
+        events: [
+          { type: 'Normal', reason: 'Pulled', object: 'pod/orders-api-79d4c-nb2vp', msg: 'Image "orders:5.2.0" pulled in 3.1s', age: '21d' },
+          { type: 'Warning', reason: 'NodeNotReady', object: 'node/ip-10-0-43-88', msg: 'Node became NotReady, workloads rescheduled', age: '2d' },
+          { type: 'Normal', reason: 'SuccessfulRescale', object: 'hpa/orders-api', msg: 'New size: 2; reason: cpu utilization below target', age: '5h' },
+        ] },
+      { id: 'stg', name: 'staging-eks-eu', prov: 'EKS', color: '#f472b6', initials: 'ST', health: 'warn', key: '⌘3',
+        server: 'C3D4.gr7.eu-west-1.eks.amazonaws.com', version: 'v1.31.0', nodes: 6, cpuPct: 78, memPct: 83,
+        pods: [
+          mk('api-gateway-canary-5d8c-p2ln4', 'default', 'Running', '2/2', '6h', '44m', '412Mi', 0, 'ip-10-1-22-40'),
+          mk('checkout-preview-9f2d7-zz1qm', 'default', 'ImagePullBackOff', '0/1', '38m', '—', '—', 0, 'ip-10-1-22-41'),
+          mk('load-generator-7c6f-m3wkd', 'perf', 'Running', '1/1', '2h', '480m', '1.8Gi', 0, 'ip-10-1-23-12'),
+          mk('e2e-runner-29041912-b7xph', 'ci', 'Succeeded', '0/1', '52m', '—', '—', 0, 'ip-10-1-23-12'),
+          mk('postgres-staging-0', 'default', 'Running', '1/1', '14d', '92m', '1.4Gi', 0, 'ip-10-1-22-40'),
+        ],
+        deploys: [
+          { name: 'api-gateway-canary', ready: '2/2', status: 'Progressing', age: '6h', replicas: 2 },
+          { name: 'checkout-preview', ready: '0/1', status: 'Degraded', age: '38m', replicas: 1 },
+          { name: 'load-generator', ready: '1/1', status: 'Available', age: '2h', replicas: 1 },
+        ],
+        services: [
+          { name: 'api-gateway-canary', type: 'ClusterIP', ip: '10.101.7.20', ports: '8080/TCP', age: '6h' },
+          { name: 'postgres-staging', type: 'ClusterIP', ip: '10.101.2.9', ports: '5432/TCP', age: '14d' },
+        ],
+        events: [
+          { type: 'Warning', reason: 'ErrImagePull', object: 'pod/checkout-preview-9f2d7-zz1qm', msg: 'Failed to pull image "checkout:pr-482": not found', age: '4m' },
+          { type: 'Warning', reason: 'HighMemory', object: 'node/ip-10-1-22-41', msg: 'Node memory pressure: 83% used', age: '11m' },
+          { type: 'Normal', reason: 'Completed', object: 'job/e2e-runner-29041912', msg: 'Job completed successfully in 6m12s', age: '46m' },
+        ] },
+      { id: 'rke', name: 'rancher-onprem', prov: 'RKE2', color: '#a78bfa', initials: 'RA', health: 'err', key: '⌘4',
+        server: 'rancher.internal.lan:6443', version: 'v1.29.5', nodes: 8, cpuPct: 0, memPct: 0,
+        pods: [], deploys: [], services: [], events: [] },
+      { id: 'mk', name: 'minikube', prov: 'local', color: '#2dd4bf', initials: 'MK', health: 'ok', key: '⌘5',
+        server: 'https://127.0.0.1:56443', version: 'v1.32.0', nodes: 1, cpuPct: 23, memPct: 37,
+        pods: [
+          mk('hello-app-7d4b9-x1abc', 'default', 'Running', '1/1', '3h', '2m', '18Mi', 0, 'minikube'),
+          mk('registry-proxy-h8s2k', 'kube-system', 'Running', '1/1', '3h', '1m', '12Mi', 0, 'minikube'),
+          mk('storage-provisioner', 'kube-system', 'Running', '1/1', '3h', '1m', '9Mi', 1, 'minikube'),
+        ],
+        deploys: [{ name: 'hello-app', ready: '1/1', status: 'Available', age: '3h', replicas: 1 }],
+        services: [{ name: 'hello-app', type: 'NodePort', ip: '10.96.4.2', ports: '8080:30080/TCP', age: '3h' }],
+        events: [{ type: 'Normal', reason: 'Started', object: 'pod/hello-app-7d4b9-x1abc', msg: 'Started container hello', age: '3h' }] },
+    ];
+    const extras = {
+      aks: {
+        cms: [
+          { name: 'app-config', keys: 'LOG_LEVEL, TIMEOUT_MS, +4', age: '92d' },
+          { name: 'nginx-conf', keys: 'nginx.conf', age: '92d' },
+          { name: 'feature-flags', keys: 'flags.yaml', age: '6d' },
+          { name: 'prometheus-rules', keys: 'alerts.yaml, records.yaml', age: '18d' },
+        ],
+        secrets: [
+          { name: 'registry-creds', type: 'kubernetes.io/dockerconfigjson', keys: '.dockerconfigjson', value: 'eyJhdXRocyI6eyJjdWJlLmF6dXJlY3IuaW8i…', age: '92d' },
+          { name: 'tls-api-gateway', type: 'kubernetes.io/tls', keys: 'tls.crt, tls.key', value: 'LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t…', age: '13d' },
+          { name: 'db-credentials', type: 'Opaque', keys: 'username, password', value: 'cG9zdGdyZXM6c3VwZXJzZWNyZXQ=…', age: '92d' },
+          { name: 'api-keys', type: 'Opaque', keys: 'stripe, sendgrid', value: 'c2tfbGl2ZV80eDdCOXpRMg==…', age: '30d' },
+        ],
+        ingresses: [
+          { name: 'api-gateway', cls: 'nginx', hosts: 'api.cubelite.io', addr: '20.31.44.12', age: '92d' },
+          { name: 'grafana', cls: 'nginx', hosts: 'grafana.internal.cubelite.io', addr: '20.31.44.12', age: '18d' },
+        ],
+        helm: [
+          { name: 'prometheus', ns: 'monitoring', rev: '12', status: 'deployed', chart: 'prometheus-25.8.0', app: 'v2.53.0', updated: '18d ago' },
+          { name: 'grafana', ns: 'monitoring', rev: '4', status: 'deployed', chart: 'grafana-8.5.1', app: '11.2.0', updated: '18d ago' },
+          { name: 'ingress-nginx', ns: 'ingress-nginx', rev: '7', status: 'deployed', chart: 'ingress-nginx-4.11.2', app: '1.11.2', updated: '44d ago' },
+          { name: 'cert-manager', ns: 'cert-manager', rev: '2', status: 'pending-upgrade', chart: 'cert-manager-v1.16.1', app: 'v1.16.1', updated: '2h ago' },
+        ] },
+      eks: {
+        cms: [
+          { name: 'orders-config', keys: 'application.yaml', age: '120d' },
+          { name: 'kafka-client-config', keys: 'bootstrap, sasl', age: '48d' },
+        ],
+        secrets: [
+          { name: 'aws-credentials', type: 'Opaque', keys: 'access_key, secret_key', value: 'QUtJQVhYWFhYWFhYWFhYWA==…', age: '120d' },
+          { name: 'tls-orders', type: 'kubernetes.io/tls', keys: 'tls.crt, tls.key', value: 'LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t…', age: '27d' },
+        ],
+        ingresses: [
+          { name: 'orders-api', cls: 'alb', hosts: 'orders.cubelite.io', addr: 'k8s-orders-a1b2.elb.amazonaws.com', age: '120d' },
+        ],
+        helm: [
+          { name: 'strimzi-kafka', ns: 'streaming', rev: '9', status: 'deployed', chart: 'strimzi-kafka-operator-0.43.0', app: '0.43.0', updated: '48d ago' },
+          { name: 'fluent-bit', ns: 'logging', rev: '3', status: 'deployed', chart: 'fluent-bit-0.47.10', app: '3.1.9', updated: '48d ago' },
+          { name: 'karpenter', ns: 'kube-system', rev: '5', status: 'deployed', chart: 'karpenter-1.0.6', app: '1.0.6', updated: '12d ago' },
+        ] },
+      stg: {
+        cms: [{ name: 'canary-flags', keys: 'flags.yaml', age: '6h' }],
+        secrets: [{ name: 'ghcr-pull-secret', type: 'kubernetes.io/dockerconfigjson', keys: '.dockerconfigjson', value: 'eyJhdXRocyI6eyJnaGNyLmlvIjp7ImF1dGgi…', age: '14d' }],
+        ingresses: [{ name: 'canary', cls: 'alb', hosts: 'staging.cubelite.io', addr: 'k8s-canary-c3d4.elb.amazonaws.com', age: '6h' }],
+        helm: [{ name: 'postgres-staging', ns: 'default', rev: '6', status: 'failed', chart: 'postgresql-15.5.20', app: '16.4.0', updated: '38m ago' }] },
+      mk: {
+        cms: [{ name: 'hello-config', keys: 'greeting', age: '3h' }],
+        secrets: [{ name: 'default-token', type: 'Opaque', keys: 'token, ca.crt', value: 'ZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXQ=…', age: '3h' }],
+        ingresses: [],
+        helm: [] },
+    };
+    clusters.forEach(c => Object.assign(c, extras[c.id] || { cms: [], secrets: [], ingresses: [], helm: [] }));
+    this._d = { clusters, ok, warn, err };
+    return this._d;
+  }
+
+  cluster(id) { return this.data().clusters.find(c => c.id === (id || this.state.activeId)); }
+
+  statusColor(s) {
+    const { ok, warn, err } = this.data();
+    if (s === 'Running' || s === 'Available' || s === 'Succeeded' || s === 'deployed') return ok;
+    if (s === 'Pending' || s === 'Progressing' || s === 'pending-upgrade') return warn;
+    return err;
+  }
+  healthColor(h) { const { ok, warn, err } = this.data(); return h === 'ok' ? ok : h === 'warn' ? warn : err; }
+
+  // ---------- lifecycle ----------
+  componentDidMount() {
+    this._key = (e) => {
+      const k = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && k === 'k') { e.preventDefault(); this.setState(s => ({ paletteOpen: !s.paletteOpen, paletteQuery: '', paletteIndex: 0 })); return; }
+      if ((e.metaKey || e.ctrlKey) && '12345'.includes(e.key)) { e.preventDefault(); const c = this.data().clusters[+e.key - 1]; if (c) this.switchCluster(c.id); return; }
+      if (e.key === 'Escape') { this.setState({ paletteOpen: false, nsOpen: false, selectedPod: null, selectedDeploy: null, confirmDelete: null, prefsOpen: false }); return; }
+      if (this.state.paletteOpen) {
+        const items = this.paletteItems();
+        if (e.key === 'ArrowDown') { e.preventDefault(); this.setState(s => ({ paletteIndex: Math.min(s.paletteIndex + 1, items.length - 1) })); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); this.setState(s => ({ paletteIndex: Math.max(s.paletteIndex - 1, 0) })); }
+        if (e.key === 'Enter') { const it = items[this.state.paletteIndex]; if (it) it.run(); }
+      }
+    };
+    window.addEventListener('keydown', this._key);
+    this._logTimer = setInterval(() => this.tickLogs(), 850);
+    this.seedLogs();
+  }
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this._key);
+    clearInterval(this._logTimer);
+  }
+  componentDidUpdate() {
+    if (this.state.view === 'logs' && this.state.logsFollow && this.logsRef && this.logsRef.current) {
+      this.logsRef.current.scrollTop = this.logsRef.current.scrollHeight;
+    }
+    if (this.state.paletteOpen && this.paletteInputRef && this.paletteInputRef.current) {
+      this.paletteInputRef.current.focus();
+    }
+  }
+
+  // ---------- logs ----------
+  logPool() {
+    return [
+      ['info', 'GET /api/v1/orders 200 12ms'],
+      ['info', 'reconciled deployment in 84ms'],
+      ['info', 'cache hit ratio 0.94 (last 5m)'],
+      ['info', 'POST /api/v1/checkout 201 47ms'],
+      ['info', 'leader election renewed lease'],
+      ['warn', 'slow query 812ms on orders_db'],
+      ['warn', 'retrying connection to redis (attempt 2/5)'],
+      ['warn', 'certificate expires in 13 days'],
+      ['error', 'connection refused: redis-cache:6379'],
+      ['error', 'OOMKilled: container billing exceeded memory limit'],
+      ['error', 'panic recovered: nil pointer in worker loop'],
+    ];
+  }
+  makeLine(i) {
+    const c = this.cluster();
+    const pods = c && c.pods.length ? c.pods : [{ name: 'system', ns: 'default' }];
+    const pool = this.logPool();
+    const r = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+    const r2 = Math.abs(Math.sin(i * 78.233) * 12543.123) % 1;
+    const lvIdx = r < 0.72 ? Math.floor(r2 * 5) : r < 0.9 ? 5 + Math.floor(r2 * 3) : 8 + Math.floor(r2 * 3);
+    const [level, msg] = pool[Math.min(lvIdx, pool.length - 1)];
+    const pod = pods[Math.floor(r2 * pods.length) % pods.length];
+    const d = new Date(Date.now());
+    const pad = n => String(n).padStart(2, '0');
+    return { time: pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()), level, pod: pod.name.split('-').slice(0, 2).join('-'), msg };
+  }
+  seedLogs() {
+    const lines = []; for (let i = 0; i < 30; i++) lines.push(this.makeLine(i + Math.random() * 100));
+    this.setState({ logLines: lines });
+  }
+  tickLogs() {
+    if (!this.state.logsFollow || this.state.view !== 'logs') return;
+    this._li = (this._li || 100) + 1;
+    this.setState(s => ({ logLines: [...s.logLines.slice(-180), this.makeLine(this._li)] }));
+  }
+
+  // ---------- actions ----------
+  switchCluster(id) {
+    if (id === this.state.activeId && this.state.view !== 'all') { this.setState({ paletteOpen: false }); return; }
+    this.setState({ activeId: id, connecting: true, ns: 'all', nsOpen: false, selectedPod: null, selectedDeploy: null, paletteOpen: false, podFilter: '', view: this.state.view === 'all' ? 'pods' : this.state.view });
+    setTimeout(() => { this.setState({ connecting: false }); this.seedLogs(); }, 650);
+  }
+  toast(msg, color) {
+    const id = Math.random();
+    this.setState(s => ({ toasts: [...s.toasts, { id, msg, color: color || '#34d399' }] }));
+    setTimeout(() => this.setState(s => ({ toasts: s.toasts.filter(t => t.id !== id) })), 3200);
+  }
+  restartPod(name) {
+    this.setState(s => ({ busyPods: { ...s.busyPods, [name]: true } }));
+    setTimeout(() => {
+      this.setState(s => ({ busyPods: { ...s.busyPods, [name]: false }, extraRestarts: { ...s.extraRestarts, [name]: (s.extraRestarts[name] || 0) + 1 } }));
+      this.toast('Pod ' + name.slice(0, 22) + '… restarted');
+    }, 1300);
+  }
+
+  // ---------- palette ----------
+  paletteItems() {
+    const q = this.state.paletteQuery.toLowerCase();
+    const { clusters } = this.data();
+    const items = [];
+    clusters.filter(c => c.id !== this.state.activeId || this.state.view === 'all')
+      .filter(c => !q || (c.name + c.prov).toLowerCase().includes(q))
+      .forEach(c => items.push({ section: 'Switch cluster', label: c.name, dot: c.color, chip: c.prov, key: c.key, health: c.health === 'ok' ? 'healthy' : c.health === 'warn' ? 'degraded' : 'unreachable', healthColor: this.healthColor(c.health), run: () => this.switchCluster(c.id) }));
+    const acts = [
+      { label: 'All Clusters dashboard', icon: '▦', run: () => this.setState({ view: 'all', paletteOpen: false }) },
+      { label: 'Go to Pods', icon: '□', run: () => this.setState({ view: 'pods', paletteOpen: false }) },
+      { label: 'Go to Deployments', icon: '▤', run: () => this.setState({ view: 'deploys', paletteOpen: false }) },
+      { label: 'Go to Helm Releases', icon: '⎈', run: () => this.setState({ view: 'helm', paletteOpen: false }) },
+      { label: 'Go to Secrets', icon: '◆', run: () => this.setState({ view: 'secrets', paletteOpen: false }) },
+      { label: 'Tail logs (aggregated)', icon: '≡', run: () => this.setState({ view: 'logs', paletteOpen: false }) },
+      { label: 'View events', icon: '!', run: () => this.setState({ view: 'events', paletteOpen: false }) },
+      { label: 'Open Preferences', icon: '⚙', run: () => this.setState({ prefsOpen: true, paletteOpen: false }) },
+    ].filter(a => !q || a.label.toLowerCase().includes(q));
+    acts.forEach(a => items.push({ section: 'Actions', ...a }));
+    return items;
+  }
+
+  // ---------- render ----------
+  renderVals() {
+    const st = this.state;
+    const { clusters, ok, warn, err } = this.data();
+    const accent = this.props.accentColor ?? '#6e9bf5';
+    const density = this.props.density ?? 'comfortable';
+    const rowPad = density === 'compact' ? '5px' : '9px';
+    const ac = this.cluster();
+    const isAll = st.view === 'all';
+    const offline = ac.health === 'err';
+    const view = st.view;
+    const hexA = (hex, a) => hex + Math.round(a * 255).toString(16).padStart(2, '0');
+
+    this.logsRef = this.logsRef || React.createRef();
+    this.paletteInputRef = this.paletteInputRef || React.createRef();
+
+    // pods for active cluster, minus deleted, with overrides
+    const livePods = ac.pods.filter(p => !st.deletedPods[ac.id + p.name]);
+    const nsList = [...new Set(ac.pods.map(p => p.ns))];
+    const nsPods = livePods.filter(p => st.ns === 'all' || p.ns === st.ns);
+    const filteredPods = nsPods.filter(p => !st.podFilter || p.name.includes(st.podFilter));
+
+    const podRows = filteredPods.map(p => ({
+      ...p,
+      restarts: String(p.restarts + (st.extraRestarts[p.name] || 0) * 0),
+      statusColor: this.statusColor(p.status),
+      restartColor: p.restarts > 3 ? err : '#9c9ca6',
+      rowBg: st.selectedPod === p.name ? hexA(accent, 0.10) : 'transparent',
+      busy: !!st.busyPods[p.name],
+      onClick: () => this.setState(s => ({ selectedPod: s.selectedPod === p.name ? null : p.name })),
+    }));
+
+    const selPod = livePods.find(p => p.name === st.selectedPod);
+    const detail = selPod ? {
+      ...selPod,
+      statusColor: this.statusColor(selPod.status),
+      restartColor: selPod.restarts > 3 ? err : '#d4d4d8',
+      restarts: String(selPod.restarts),
+      ip: '10.244.' + (selPod.name.length % 9) + '.' + (selPod.name.length * 3 % 250),
+      qos: 'Burstable',
+      cpuW: Math.min(90, selPod.name.length * 3) + '%',
+      memW: Math.min(85, selPod.name.length * 2.4) + '%',
+      containers: [
+        { name: selPod.name.split('-')[0], image: selPod.name.split('-')[0] + ':2.14.1', color: this.statusColor(selPod.status) },
+        ...(selPod.ready.startsWith('2') || selPod.ready.startsWith('3') ? [{ name: 'envoy-sidecar', image: 'envoy:1.29', color: ok }] : []),
+      ],
+      labels: ['app=' + selPod.name.split('-')[0], 'ns=' + selPod.ns, 'tier=backend'],
+      onLogs: () => this.setState({ view: 'logs', selectedPod: null }),
+      onRestart: () => this.restartPod(selPod.name),
+      onDelete: () => this.setState({ confirmDelete: { name: selPod.name, ns: selPod.ns } }),
+    } : null;
+
+    // sidebar
+    const counts = {
+      pods: livePods.length, deploys: ac.deploys.length, services: ac.services.length,
+      events: ac.events.length, warnEvents: ac.events.filter(e => e.type === 'Warning').length,
+    };
+    const navItem = (label, v, dot, count, countColor) => ({
+      isItem: true, isHeader: false, label, dot, count: count == null ? '' : String(count),
+      countColor: countColor || '#5c5c66',
+      fg: view === v ? '#f4f4f5' : '#9c9ca6',
+      bg: view === v ? hexA(accent, 0.14) : 'transparent',
+      onClick: () => this.setState({ view: v }),
+    });
+    const header = (label, first) => ({ isHeader: true, isItem: false, label, pad: first ? '2px 10px 6px' : '12px 10px 6px' });
+    const sideNav = [
+      header('Cluster', true), navItem('Overview', 'overview', accent),
+      header('Workloads'),
+      navItem('Pods', 'pods', '#60a5fa', counts.pods),
+      navItem('Deployments', 'deploys', '#60a5fa', counts.deploys),
+      navItem('Helm Releases', 'helm', '#60a5fa', ac.helm.length || null),
+      header('Network'),
+      navItem('Services', 'services', '#a78bfa', counts.services),
+      navItem('Ingresses', 'ingresses', '#a78bfa', ac.ingresses.length || null),
+      header('Config'),
+      navItem('ConfigMaps', 'configmaps', '#fbbf24', ac.cms.length || null),
+      navItem('Secrets', 'secrets', '#fbbf24', ac.secrets.length || null),
+      header('Observe'),
+      navItem('Events', 'events', '#2dd4bf', counts.warnEvents || null, counts.warnEvents ? err : '#5c5c66'),
+      navItem('Logs', 'logs', '#2dd4bf'),
+    ];
+
+    // rail
+    const railItems = clusters.map(c => ({
+      ...c,
+      healthColor: this.healthColor(c.health),
+      fg: c.id === st.activeId && !isAll ? '#fff' : '#9c9ca6',
+      bg: c.id === st.activeId && !isAll ? hexA(c.color, 0.20) : '#1a1a1f',
+      ring: c.id === st.activeId && !isAll ? '0 0 0 2px ' + c.color : 'none',
+      onClick: () => this.switchCluster(c.id),
+    }));
+
+    // dashboard
+    const online = clusters.filter(c => c.health !== 'err');
+    const totalPods = online.reduce((a, c) => a + c.pods.length, 0);
+    const totalWarn = online.reduce((a, c) => a + c.events.filter(e => e.type === 'Warning').length, 0);
+    const dashCards = clusters.map(c => ({
+      ...c,
+      avatarBg: hexA(c.color, 0.15),
+      healthColor: this.healthColor(c.health),
+      healthBg: hexA(this.healthColor(c.health), 0.10),
+      healthLabel: c.health === 'ok' ? 'Healthy' : c.health === 'warn' ? 'Degraded' : 'Unreachable',
+      online: c.health !== 'err', offline: c.health === 'err',
+      nodes: String(c.nodes),
+      podsLabel: c.pods.filter(p => p.status === 'Running').length + '/' + c.pods.length,
+      warnings: String(c.events.filter(e => e.type === 'Warning').length),
+      warnColor: c.events.filter(e => e.type === 'Warning').length ? warn : '#d4d4d8',
+      cpuW: c.cpuPct + '%', memW: c.memPct + '%',
+      cpuPct: c.cpuPct + '%', memPct: c.memPct + '%',
+      cpuColor: c.cpuPct > 75 ? err : c.cpuPct > 60 ? warn : accent,
+      memColor: c.memPct > 75 ? err : c.memPct > 60 ? warn : accent,
+      onClick: () => this.switchCluster(c.id),
+    }));
+    const aggStats = [
+      { label: 'Clusters online', value: online.length + '/' + clusters.length, color: online.length === clusters.length ? ok : warn },
+      { label: 'Total pods', value: String(totalPods), color: '#f4f4f5' },
+      { label: 'Warnings', value: String(totalWarn), color: totalWarn ? warn : ok },
+      { label: 'Contexts watched', value: String(clusters.length), color: '#f4f4f5' },
+    ];
+
+    // overview
+    const runningPods = livePods.filter(p => p.status === 'Running').length;
+    const ovStats = [
+      { label: 'Nodes', value: String(ac.nodes), color: '#f4f4f5', sub: 'all schedulable' },
+      { label: 'Pods running', value: runningPods + '/' + livePods.length, color: runningPods === livePods.length ? ok : warn, sub: st.ns === 'all' ? 'all namespaces' : 'ns ' + st.ns },
+      { label: 'Deployments', value: String(ac.deploys.length), color: '#f4f4f5', sub: ac.deploys.filter(d => d.status !== 'Available').length + ' not available' },
+      { label: 'Warnings', value: String(counts.warnEvents), color: counts.warnEvents ? warn : ok, sub: 'last hour' },
+    ];
+    const ovWarnings = ac.events.filter(e => e.type === 'Warning').slice(0, 4).map(w => ({ ...w, color: warn }));
+
+    // deployments
+    const deployRows = ac.deploys.map(d => {
+      const replicas = st.scales[ac.id + d.name] != null ? st.scales[ac.id + d.name] : d.replicas;
+      const pending = !!st.busyPods['dep:' + d.name];
+      return {
+        ...d,
+        replicas: String(replicas),
+        repColor: pending ? warn : '#f4f4f5',
+        statusColor: this.statusColor(d.status),
+        rowBg: st.selectedDeploy === d.name ? hexA(accent, 0.10) : 'transparent',
+        onClick: () => this.setState(s => ({ selectedDeploy: s.selectedDeploy === d.name ? null : d.name, selectedPod: null })),
+        onScaleUp: e => { e.stopPropagation(); this.scaleDep(d.name, replicas + 1); },
+        onScaleDown: e => { e.stopPropagation(); if (replicas > 0) this.scaleDep(d.name, replicas - 1); },
+        onRestart: e => { e.stopPropagation(); this.toast('Rollout restart: ' + d.name); },
+      };
+    });
+
+    // deployment detail
+    const selDep = ac.deploys.find(d => d.name === st.selectedDeploy);
+    const depDetail = selDep ? {
+      ...selDep,
+      replicas: String(st.scales[ac.id + selDep.name] != null ? st.scales[ac.id + selDep.name] : selDep.replicas),
+      statusColor: this.statusColor(selDep.status),
+      image: selDep.name + ':2.14.1',
+      strategy: 'RollingUpdate · maxSurge 25% · maxUnavailable 25%',
+      selector: 'app=' + selDep.name,
+      conditions: [
+        { type: 'Available', val: selDep.status === 'Degraded' ? 'False' : 'True', reason: selDep.status === 'Degraded' ? 'MinimumReplicasUnavailable' : 'MinimumReplicasAvailable', color: selDep.status === 'Degraded' ? err : ok },
+        { type: 'Progressing', val: 'True', reason: selDep.status === 'Progressing' ? 'ReplicaSetUpdated' : 'NewReplicaSetAvailable', color: selDep.status === 'Progressing' ? warn : ok },
+      ],
+      depPods: livePods.filter(p => p.name.startsWith(selDep.name)).map(p => ({ ...p, statusColor: this.statusColor(p.status), onClick: () => this.setState({ selectedPod: p.name, selectedDeploy: null, view: 'pods' }) })),
+      onRestart: () => this.toast('Rollout restart: ' + selDep.name),
+      onLogs: () => this.setState({ view: 'logs', selectedDeploy: null }),
+    } : null;
+
+    // configmaps / secrets / ingresses / helm
+    const cmRows = ac.cms;
+    const secretRows = ac.secrets.map(sx => {
+      const revealed = !!st.revealedSecrets[ac.id + sx.name];
+      return {
+        ...sx,
+        shown: revealed ? sx.value : '••••••••••••••••••••••••',
+        shownColor: revealed ? '#c8c8d0' : '#5c5c66',
+        eye: revealed ? 'Hide' : 'Reveal',
+        onToggle: () => this.setState(s => ({ revealedSecrets: { ...s.revealedSecrets, [ac.id + sx.name]: !revealed } })),
+      };
+    });
+    const ingressRows = ac.ingresses;
+    const helmRows = ac.helm.map(h => ({ ...h, statusColor: this.statusColor(h.status) }));
+
+    // events / services / logs
+    const eventRows = ac.events.map(e => ({
+      ...e,
+      typeColor: e.type === 'Warning' ? warn : '#9c9ca6',
+      typeBg: e.type === 'Warning' ? hexA(warn, 0.10) : '#1a1a1f',
+      rowBg: e.type === 'Warning' ? hexA(warn, 0.04) : 'transparent',
+    }));
+    const svcRows = ac.services;
+
+    const levels = ['all', 'info', 'warn', 'error'];
+    const levelColors = { info: '#7dd3fc', warn: warn, error: err };
+    const levelChips = levels.map(l => ({
+      label: l.toUpperCase(),
+      fg: st.logsLevel === l ? '#0b0b0d' : (levelColors[l] || '#d4d4d8'),
+      bg: st.logsLevel === l ? (levelColors[l] || '#d4d4d8') : '#131316',
+      bd: st.logsLevel === l ? 'transparent' : '#26262b',
+      onClick: () => this.setState({ logsLevel: l }),
+    }));
+    const logRows = st.logLines
+      .filter(l => st.logsLevel === 'all' || l.level === st.logsLevel)
+      .filter(l => !st.logsQuery || (l.msg + l.pod).toLowerCase().includes(st.logsQuery.toLowerCase()))
+      .map(l => ({
+        ...l,
+        level: l.level.toUpperCase(),
+        levelColor: levelColors[l.level],
+        podColor: '#9c9ca6',
+        rowBg: l.level === 'error' ? hexA(err, 0.07) : l.level === 'warn' ? hexA(warn, 0.045) : 'transparent',
+        edge: l.level === 'error' ? err : l.level === 'warn' ? hexA(warn, 0.5) : 'transparent',
+      }));
+
+    // palette
+    const items = this.paletteItems();
+    const paletteRows = [];
+    let lastSection = null;
+    items.forEach((it, i) => {
+      if (it.section !== lastSection) { paletteRows.push({ isHeader: true, isItem: false, label: it.section }); lastSection = it.section; }
+      paletteRows.push({
+        isHeader: false, isItem: true, label: it.label, dot: it.dot || false, icon: it.icon || false,
+        chip: it.chip || false, key: it.key || false, health: it.health || false, healthColor: it.healthColor || '#9c9ca6',
+        bg: i === st.paletteIndex ? hexA(accent, 0.14) : 'transparent',
+        onClick: () => it.run(),
+      });
+    });
+
+    // ns dropdown
+    const nsItems = [{ name: 'all namespaces', key: 'all', count: livePods.length }, ...nsList.map(n => ({ name: n, key: n, count: livePods.filter(p => p.ns === n).length }))]
+      .map(n => ({
+        name: n.name, count: String(n.count),
+        fg: st.ns === n.key ? '#f4f4f5' : '#9c9ca6',
+        bg: st.ns === n.key ? hexA(accent, 0.14) : 'transparent',
+        onClick: () => this.setState({ ns: n.key, nsOpen: false }),
+      }));
+
+    const themeOpts = ['Light', 'Dark', 'System'].map(t => ({
+      label: t, fg: st.theme === t ? '#f4f4f5' : '#71717a', bg: st.theme === t ? '#26262b' : 'transparent',
+      onClick: () => { this.setState({ theme: t }); if (t !== 'Dark') this.toast('Light theme: coming in DS v2', warn); },
+    }));
+    const refreshOpts = ['10s', '30s', '1m', 'off'].map(r => ({
+      label: r, fg: st.refresh === r ? '#f4f4f5' : '#71717a', bg: st.refresh === r ? '#26262b' : 'transparent',
+      onClick: () => this.setState({ refresh: r }),
+    }));
+    const obDots = [0, 1, 2].map(i => ({ color: st.obStep === i ? accent : '#26262b' }));
+
+    return {
+      accent, rowPad,
+      // titlebar
+      isAll, notAll: !isAll,
+      ac: { ...ac, provBg: hexA(ac.color, 0.12) },
+      connColor: offline ? err : ok, connLabel: offline ? 'Unreachable' : 'Connected',
+      clusterCountLabel: clusters.length + ' contexts',
+      openPalette: () => this.setState({ paletteOpen: true, paletteQuery: '', paletteIndex: 0 }),
+      toggleNs: () => this.setState(s => ({ nsOpen: !s.nsOpen })),
+      nsLabel: st.ns === 'all' ? 'all' : st.ns, nsOpen: st.nsOpen, nsItems,
+      // rail
+      railItems,
+      goAll: () => this.setState({ view: 'all', nsOpen: false, selectedPod: null }),
+      homeBg: isAll ? hexA(accent, 0.16) : '#131316', homeFg: isAll ? '#fff' : '#9c9ca6', homeRing: isAll ? '0 0 0 2px ' + accent : 'none',
+      openPrefs: () => this.setState({ prefsOpen: true }),
+      // sidebar + views
+      sideNav, connecting: st.connecting,
+      isOffline: offline && !isAll,
+      isOverview: !isAll && !offline && view === 'overview',
+      isPods: !isAll && !offline && view === 'pods',
+      isDeploys: !isAll && !offline && view === 'deploys',
+      isServices: !isAll && !offline && view === 'services',
+      isIngresses: !isAll && !offline && view === 'ingresses',
+      isConfigMaps: !isAll && !offline && view === 'configmaps',
+      isSecrets: !isAll && !offline && view === 'secrets',
+      isHelm: !isAll && !offline && view === 'helm',
+      isEvents: !isAll && !offline && view === 'events',
+      isLogs: !isAll && !offline && view === 'logs',
+      retryConnect: () => { this.setState({ connecting: true }); setTimeout(() => { this.setState({ connecting: false }); this.toast('Still unreachable: connection timed out', err); }, 900); },
+      goEvents: () => this.setState({ view: 'events' }),
+      // dashboard
+      dashCards, aggStats, aggLabel: clusters.length + ' contexts · ' + totalPods + ' pods',
+      // overview
+      ovStats, ovWarnings,
+      ovCpuW: ac.cpuPct + '%', ovCpuPct: ac.cpuPct + '%', ovCpuColor: ac.cpuPct > 75 ? err : ac.cpuPct > 60 ? warn : accent,
+      ovMemW: ac.memPct + '%', ovMemPct: ac.memPct + '%', ovMemColor: ac.memPct > 75 ? err : ac.memPct > 60 ? warn : accent,
+      ovNodesLabel: ac.nodes + ' nodes · ' + ac.version,
+      // pods
+      podRows, podsEmpty: filteredPods.length === 0,
+      podsCountLabel: filteredPods.length + ' items · ' + (st.ns === 'all' ? 'all namespaces' : st.ns),
+      podFilter: st.podFilter, onPodFilter: e => this.setState({ podFilter: e.target.value }),
+      // deployments / services / events
+      deployRows, deployCountLabel: ac.deploys.length + ' items',
+      svcRows, svcCountLabel: ac.services.length + ' items',
+      cmRows, cmCountLabel: ac.cms.length + ' items',
+      secretRows, secretCountLabel: ac.secrets.length + ' items',
+      ingressRows, ingressCountLabel: ac.ingresses.length + ' items',
+      ingressEmpty: ac.ingresses.length === 0,
+      helmRows, helmCountLabel: ac.helm.length + ' releases',
+      helmEmpty: ac.helm.length === 0,
+      hasDepDetail: !!depDetail, depDetail: depDetail || {},
+      closeDepDetail: () => this.setState({ selectedDeploy: null }),
+      eventRows, eventCountLabel: ac.events.length + ' items · ' + counts.warnEvents + ' warnings',
+      // logs
+      logsScopeLabel: 'aggregated · ' + (st.ns === 'all' ? 'all namespaces' : st.ns) + ' · ' + logRows.length + ' lines',
+      levelChips, logRows, logsRef: this.logsRef,
+      logsQuery: st.logsQuery, onLogsQuery: e => this.setState({ logsQuery: e.target.value }),
+      toggleFollow: () => this.setState(s => ({ logsFollow: !s.logsFollow })),
+      followLabel: st.logsFollow ? '● Following' : '⏸ Paused',
+      followFg: st.logsFollow ? '#0b0b0d' : warn,
+      followBg: st.logsFollow ? ok : hexA(warn, 0.1),
+      followBd: st.logsFollow ? 'transparent' : hexA(warn, 0.35),
+      logsPaused: !st.logsFollow,
+      clearLogs: () => this.setState({ logLines: [] }),
+      // status bar
+      refreshLabel: st.refresh,
+      sbWarnColor: counts.warnEvents ? warn : '#5c5c66',
+      sbWarnLabel: counts.warnEvents ? counts.warnEvents + ' warnings' : 'no warnings',
+      // detail
+      hasDetail: !!detail, detail: detail || {},
+      closeDetail: () => this.setState({ selectedPod: null }),
+      // palette
+      paletteOpen: st.paletteOpen, paletteRows, paletteEmpty: items.length === 0,
+      paletteQuery: st.paletteQuery, paletteInputRef: this.paletteInputRef,
+      onPaletteQuery: e => this.setState({ paletteQuery: e.target.value, paletteIndex: 0 }),
+      closePalette: () => this.setState({ paletteOpen: false }),
+      stop: e => e.stopPropagation(),
+      // confirm
+      confirmOpen: !!st.confirmDelete,
+      confirmName: st.confirmDelete ? st.confirmDelete.name : '',
+      confirmNs: st.confirmDelete ? st.confirmDelete.ns : '',
+      cancelDelete: () => this.setState({ confirmDelete: null }),
+      doDelete: () => {
+        const p = st.confirmDelete;
+        this.setState({ confirmDelete: null, selectedPod: null });
+        this.setState(s => ({ deletedPods: { ...s.deletedPods, [ac.id + p.name]: true } }));
+        this.toast('Pod ' + p.name.slice(0, 22) + '… deleted', err);
+      },
+      // prefs
+      prefsOpen: st.prefsOpen, closePrefs: () => this.setState({ prefsOpen: false }),
+      themeOpts, refreshOpts,
+      tlsBg: st.tlsSkip ? ok : '#26262b',
+      tlsKnob: st.tlsSkip ? 'translateX(16px)' : 'translateX(0)',
+      toggleTls: () => this.setState(s => ({ tlsSkip: !s.tlsSkip })),
+      kubePaths: [
+        { path: '~/.kube/config', note: '5 contexts', color: ok },
+        { path: '~/.kube/rancher.yaml', note: 'merged', color: '#5c5c66' },
+      ],
+      showOnboarding: () => this.setState({ onboarding: true, obStep: 0, prefsOpen: false }),
+      // onboarding
+      onboarding: st.onboarding,
+      obStep0: st.obStep === 0, obStep1: st.obStep === 1, obStep2: st.obStep === 2,
+      obClusters: clusters.map(c => ({ ...c, avatarBg: hexA(c.color, 0.15) })),
+      obDots,
+      obSkip: () => this.setState({ onboarding: false }),
+      obNext: () => st.obStep < 2 ? this.setState(s => ({ obStep: s.obStep + 1 })) : this.setState({ onboarding: false }),
+      obNextLabel: st.obStep < 2 ? 'Continue' : 'Start using CubeLite',
+      // toasts
+      toasts: st.toasts,
+    };
+  }
+
+  scaleDep(name, n) {
+    const ac = this.cluster();
+    this.setState(s => ({ busyPods: { ...s.busyPods, ['dep:' + name]: true } }));
+    setTimeout(() => {
+      this.setState(s => ({ scales: { ...s.scales, [ac.id + name]: n }, busyPods: { ...s.busyPods, ['dep:' + name]: false } }));
+      this.toast('Scaled ' + name + ' to ' + n + ' replicas');
+    }, 800);
+  }
+}
+</script>
+</body>
+</html>
