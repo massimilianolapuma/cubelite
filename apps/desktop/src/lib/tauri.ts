@@ -395,6 +395,30 @@ export function listNodes(
   });
 }
 
+export type YamlResourceType =
+  | "pod"
+  | "deployment"
+  | "service"
+  | "configmap"
+  | "secret"
+  | "ingress";
+
+export function getResourceYaml(
+  kubeconfigPath: string,
+  resourceType: YamlResourceType,
+  namespace: string,
+  name: string,
+  context?: string,
+): Promise<string> {
+  return invoke<string>("get_resource_yaml", {
+    kubeconfigPath,
+    resourceType,
+    namespace,
+    name,
+    context: context ?? null,
+  });
+}
+
 export function probeCluster(
   kubeconfigPath: string,
   context: string,

@@ -427,6 +427,30 @@ pub async fn list_nodes(
     client.list_nodes().await.map_err(|e| e.to_string())
 }
 
+/// Render one resource as cleaned YAML (managedFields stripped).
+///
+/// `resource_type` accepts the same lowercase names as `watch_resources`.
+#[tauri::command]
+pub async fn get_resource_yaml(
+    kubeconfig_path: String,
+    resource_type: String,
+    namespace: String,
+    name: String,
+    context: Option<String>,
+) -> Result<String, String> {
+    let rt: ResourceType = serde_json::from_value(serde_json::Value::String(resource_type))
+        .map_err(|e| format!("invalid resource_type: {e}"))?;
+
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .get_resource_yaml(rt, &namespace, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Delete a pod (the owning controller will recreate it).
 #[tauri::command]
 pub async fn delete_pod(

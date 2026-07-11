@@ -28,6 +28,7 @@ use crate::{
         ConfigMapInfo, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo, NamespaceInfo,
         NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,
     },
+    watcher::ResourceType,
     watcher::{
         configmap_to_info, cronjob_to_info, deployment_to_info, ingress_to_info, job_to_info,
         namespace_to_info, node_to_info, pod_to_info, pvc_to_info, secret_to_info, service_to_info,
@@ -543,6 +544,33 @@ impl KubeClient {
         Ok(list.items.into_iter().filter_map(node_to_info).collect())
     }
 
+    /// Fetch one resource and render it as cleaned YAML (managedFields
+    /// stripped, like `kubectl get -o yaml`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails or
+    /// the resource kind does not support YAML rendering.
+    pub async fn get_resource_yaml(
+        &self,
+        resource_type: ResourceType,
+        namespace: &str,
+        name: &str,
+    ) -> Result<String, KubeconfigError> {
+        let client = self.inner.clone();
+        match resource_type {
+            ResourceType::Pod => fetch_yaml::<Pod>(client, namespace, name).await,
+            ResourceType::Deployment => fetch_yaml::<Deployment>(client, namespace, name).await,
+            ResourceType::Service => fetch_yaml::<Service>(client, namespace, name).await,
+            ResourceType::ConfigMap => fetch_yaml::<ConfigMap>(client, namespace, name).await,
+            ResourceType::Secret => fetch_yaml::<Secret>(client, namespace, name).await,
+            ResourceType::Ingress => fetch_yaml::<Ingress>(client, namespace, name).await,
+            ResourceType::Namespace => Err(KubeconfigError::ClientError {
+                reason: "YAML view is not supported for namespaces".to_string(),
+            }),
+        }
+    }
+
     /// List events in `namespace`, or across all namespaces when `None`,
     /// sorted most-recent first.
     ///
@@ -638,6 +666,44 @@ impl KubeClient {
     }
 }
 
+/// Fetch one namespaced object and serialize it as cleaned YAML.
+async fn fetch_yaml<K>(
+    client: Client,
+    namespace: &str,
+    name: &str,
+) -> Result<String, KubeconfigError>
+where
+    K: kube::Resource<Scope = k8s_openapi::NamespaceResourceScope>
+        + Clone
+        + serde::Serialize
+        + serde::de::DeserializeOwned
+        + std::fmt::Debug,
+    <K as kube::Resource>::DynamicType: Default,
+{
+    let api: Api<K> = Api::namespaced(client, namespace);
+    let obj = api
+        .get(name)
+        .await
+        .map_err(|e| KubeconfigError::ClientError {
+            reason: e.to_string(),
+        })?;
+    to_clean_yaml(&obj)
+}
+
+/// Serialize an API object to YAML with noisy server-side bookkeeping
+/// (`metadata.managedFields`) stripped, like `kubectl get -o yaml`.
+fn to_clean_yaml<T: serde::Serialize>(obj: &T) -> Result<String, KubeconfigError> {
+    let mut value = serde_json::to_value(obj).map_err(|e| KubeconfigError::ClientError {
+        reason: e.to_string(),
+    })?;
+    if let Some(meta) = value.get_mut("metadata").and_then(|m| m.as_object_mut()) {
+        meta.remove("managedFields");
+    }
+    serde_yaml::to_string(&value).map_err(|e| KubeconfigError::ClientError {
+        reason: e.to_string(),
+    })
+}
+
 /// Convert a raw [`Event`] object into an [`EventInfo`].
 fn event_to_info(e: Event) -> EventInfo {
     let object = match (&e.involved_object.kind, &e.involved_object.name) {
@@ -669,6 +735,23 @@ mod tests {
     use super::*;
     use k8s_openapi::api::core::v1::{EventSource, ObjectReference};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Time};
+
+    #[test]
+    fn to_clean_yaml_strips_managed_fields() {
+        let obj = serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "name": "api-0",
+                "managedFields": [{ "manager": "kubectl" }]
+            },
+            "spec": { "containers": [] }
+        });
+        let yaml = to_clean_yaml(&obj).expect("yaml");
+        assert!(yaml.contains("name: api-0"));
+        assert!(!yaml.contains("managedFields"));
+        assert!(yaml.contains("kind: Pod"));
+    }
 
     #[test]
     fn event_to_info_full() {

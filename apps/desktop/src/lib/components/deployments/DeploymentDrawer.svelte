@@ -1,10 +1,12 @@
 <script lang="ts">
+	import FileCode from '@lucide/svelte/icons/file-code';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import { formatAge } from '$lib/age';
 	import { matchesSelector } from '$lib/k8s-match';
 	import Drawer from '$lib/components/ui/Drawer.svelte';
+	import YamlModal from '$lib/components/YamlModal.svelte';
 	import StatusPill from '$lib/components/ui/StatusPill.svelte';
 	import { deploymentStatus, podStatusLabel, podTone, toneColor } from '$lib/status';
 	import { app } from '$lib/stores/app.svelte';
@@ -17,6 +19,7 @@
 
 	const status = $derived(deploymentStatus(deployment));
 	const restarting = $derived(mutations.isRestarting(deployment.namespace, deployment.name));
+	let yamlOpen = $state(false);
 	const selectorLabel = $derived(
 		Object.entries(deployment.selector)
 			.map(([k, v]) => `${k}=${v}`)
@@ -132,6 +135,15 @@
 		</button>
 		<button
 			type="button"
+			aria-label="YAML"
+			title="View YAML"
+			class="focus-ring type-body flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110"
+			onclick={() => (yamlOpen = true)}
+		>
+			<FileCode class="h-3 w-3" />
+		</button>
+		<button
+			type="button"
 			disabled={restarting}
 			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
 			onclick={() => void mutations.restartDeployment(deployment.namespace, deployment.name)}
@@ -145,3 +157,12 @@
 		</button>
 	{/snippet}
 </Drawer>
+
+{#if yamlOpen}
+	<YamlModal
+		resourceType="deployment"
+		namespace={deployment.namespace}
+		name={deployment.name}
+		onClose={() => (yamlOpen = false)}
+	/>
+{/if}
