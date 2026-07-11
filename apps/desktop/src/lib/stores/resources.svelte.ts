@@ -6,14 +6,22 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  listConfigMaps,
   listDeployments,
+  listIngresses,
   listNamespaces,
   listPods,
+  listSecrets,
+  listServices,
   unwatchResources,
   watchResources,
+  type ConfigMapInfo,
   type DeploymentInfo,
+  type IngressInfo,
   type NamespaceInfo,
   type PodInfo,
+  type SecretInfo,
+  type ServiceInfo,
 } from "$lib/tauri";
 import { errorMessage } from "$lib/errors";
 import { app } from "./app.svelte";
@@ -21,14 +29,30 @@ import { settings } from "./settings.svelte";
 
 const RELOAD_DEBOUNCE_MS = 300;
 
+/** Resource kinds loaded on demand when their view is opened. */
+export type ExtraKind = "services" | "ingresses" | "configmaps" | "secrets";
+
+const EXTRA_KINDS: readonly ExtraKind[] = ["services", "ingresses", "configmaps", "secrets"];
+
+export function isExtraKind(v: unknown): v is ExtraKind {
+  return typeof v === "string" && (EXTRA_KINDS as readonly string[]).includes(v);
+}
+
 class ResourcesStore {
   pods = $state<PodInfo[]>([]);
   namespaces = $state<NamespaceInfo[]>([]);
   deployments = $state<DeploymentInfo[]>([]);
+  services = $state<ServiceInfo[]>([]);
+  ingresses = $state<IngressInfo[]>([]);
+  configmaps = $state<ConfigMapInfo[]>([]);
+  secrets = $state<SecretInfo[]>([]);
   loading = $state(false);
   error = $state<string | null>(null);
+  extraLoading = $state(false);
+  extraError = $state<string | null>(null);
 
   #loadSeq = 0;
+  #extraSeq = 0;
   #watchIds: string[] = [];
   #unlisteners: UnlistenFn[] = [];
   #reloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -88,6 +112,8 @@ class ResourcesStore {
       this.pods = podList;
       this.namespaces = nsList;
       this.deployments = depList;
+      // Keep the currently open extra view in sync with refresh/watch cycles.
+      if (isExtraKind(app.view)) void this.loadKind(app.view);
       return true;
     } catch (e) {
       if (seq === this.#loadSeq) this.error = errorMessage(e);
@@ -97,14 +123,61 @@ class ResourcesStore {
     }
   }
 
+  /** Load one on-demand kind (services/ingresses/configmaps/secrets). */
+  async loadKind(kind: ExtraKind): Promise<void> {
+    const seq = ++this.#extraSeq;
+    const kc = app.kubeconfigPath;
+    const cluster = app.activeCluster;
+    const ns = app.namespace ?? undefined;
+    if (!kc || !cluster) return;
+
+    this.extraLoading = true;
+    this.extraError = null;
+    try {
+      switch (kind) {
+        case "services": {
+          const list = await listServices(kc, ns, cluster);
+          if (seq === this.#extraSeq) this.services = list;
+          break;
+        }
+        case "ingresses": {
+          const list = await listIngresses(kc, ns, cluster);
+          if (seq === this.#extraSeq) this.ingresses = list;
+          break;
+        }
+        case "configmaps": {
+          const list = await listConfigMaps(kc, ns, cluster);
+          if (seq === this.#extraSeq) this.configmaps = list;
+          break;
+        }
+        case "secrets": {
+          const list = await listSecrets(kc, ns, cluster);
+          if (seq === this.#extraSeq) this.secrets = list;
+          break;
+        }
+      }
+    } catch (e) {
+      if (seq === this.#extraSeq) this.extraError = errorMessage(e);
+    } finally {
+      if (seq === this.#extraSeq) this.extraLoading = false;
+    }
+  }
+
   /** Invalidate in-flight loads and clear data (call before switching cluster). */
   clear(): void {
     this.#loadSeq++;
+    this.#extraSeq++;
     this.pods = [];
     this.namespaces = [];
     this.deployments = [];
+    this.services = [];
+    this.ingresses = [];
+    this.configmaps = [];
+    this.secrets = [];
     this.error = null;
     this.loading = false;
+    this.extraError = null;
+    this.extraLoading = false;
   }
 
   #scheduleReload(): void {

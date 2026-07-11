@@ -1,6 +1,8 @@
 use cubelite_core::{
     client::KubeClient,
-    resources::{DeploymentInfo, NamespaceInfo, PodInfo},
+    resources::{
+        ConfigMapInfo, DeploymentInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
+    },
     ResourceType, ResourceWatcher, WatchEvent,
 };
 use futures::StreamExt;
@@ -69,9 +71,81 @@ pub async fn list_deployments(
         .map_err(|e| e.to_string())
 }
 
+/// List services in the given namespace (all namespaces when `None`).
+#[tauri::command]
+pub async fn list_services(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<ServiceInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_services(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List ingresses in the given namespace (all namespaces when `None`).
+#[tauri::command]
+pub async fn list_ingresses(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<IngressInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_ingresses(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List config maps in the given namespace (all namespaces when `None`).
+#[tauri::command]
+pub async fn list_configmaps(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<ConfigMapInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_configmaps(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List secrets in the given namespace (all namespaces when `None`).
+///
+/// Secret values are base64-decoded locally in the Rust backend and never
+/// leave the machine.
+#[tauri::command]
+pub async fn list_secrets(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<SecretInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_secrets(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Start watching a Kubernetes resource type and emit Tauri events for each change.
 ///
-/// `resource_type` must be one of `"pod"`, `"namespace"`, or `"deployment"`.
+/// `resource_type` must be one of `"pod"`, `"namespace"`, `"deployment"`,
+/// `"service"`, `"ingress"`, `"configmap"`, or `"secret"`.
 /// Returns a unique watch ID that can be passed to [`unwatch_resources`] to stop
 /// the stream.
 ///

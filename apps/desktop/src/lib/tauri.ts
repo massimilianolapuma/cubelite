@@ -29,6 +29,42 @@ export type ContextInfo = {
   is_active: boolean;
 };
 
+export type ServiceInfo = {
+  name: string;
+  namespace: string;
+  service_type: string | null;
+  cluster_ip: string | null;
+  external_ips: string[];
+  ports: string[];
+  creation_timestamp: string | null;
+};
+
+export type IngressInfo = {
+  name: string;
+  namespace: string;
+  class: string | null;
+  hosts: string[];
+  addresses: string[];
+  tls: boolean;
+  creation_timestamp: string | null;
+};
+
+export type ConfigMapInfo = {
+  name: string;
+  namespace: string;
+  data_count: number;
+  creation_timestamp: string | null;
+};
+
+export type SecretInfo = {
+  name: string;
+  namespace: string;
+  secret_type: string | null;
+  /** Values decoded locally by the backend — they never leave this machine. */
+  data: Record<string, string>;
+  creation_timestamp: string | null;
+};
+
 // --- Invoke wrappers ---
 
 export function listContexts(): Promise<ContextInfo[]> {
@@ -73,6 +109,54 @@ export function listDeployments(
   return invoke<DeploymentInfo[]>("list_deployments", {
     kubeconfigPath,
     namespace,
+    context: context ?? null,
+  });
+}
+
+export function listServices(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<ServiceInfo[]> {
+  return invoke<ServiceInfo[]>("list_services", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function listIngresses(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<IngressInfo[]> {
+  return invoke<IngressInfo[]>("list_ingresses", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function listConfigMaps(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<ConfigMapInfo[]> {
+  return invoke<ConfigMapInfo[]>("list_configmaps", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+export function listSecrets(
+  kubeconfigPath: string,
+  namespace?: string,
+  context?: string,
+): Promise<SecretInfo[]> {
+  return invoke<SecretInfo[]>("list_secrets", {
+    kubeconfigPath,
+    namespace: namespace ?? null,
     context: context ?? null,
   });
 }

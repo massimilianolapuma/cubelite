@@ -4,7 +4,8 @@
 //! methods for listing the most common Kubernetes resources.
 
 use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::{Namespace, Pod};
+use k8s_openapi::api::core::v1::{ConfigMap, Namespace, Pod, Secret, Service};
+use k8s_openapi::api::networking::v1::Ingress;
 use kube::{
     config::{KubeConfigOptions, Kubeconfig},
     Api, Client, Config,
@@ -13,7 +14,10 @@ use std::path::Path;
 
 use crate::{
     error::KubeconfigError,
-    resources::{DeploymentInfo, NamespaceInfo, PodInfo},
+    resources::{
+        ConfigMapInfo, DeploymentInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
+    },
+    watcher::{configmap_to_info, ingress_to_info, secret_to_info, service_to_info},
 };
 
 /// An async Kubernetes client pre-configured from a kubeconfig file.
@@ -186,5 +190,99 @@ impl KubeClient {
             .collect();
 
         Ok(deployments)
+    }
+
+    /// List services in `namespace`, or across all namespaces when `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_services(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<ServiceInfo>, KubeconfigError> {
+        let api: Api<Service> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list.items.into_iter().filter_map(service_to_info).collect())
+    }
+
+    /// List ingresses in `namespace`, or across all namespaces when `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_ingresses(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<IngressInfo>, KubeconfigError> {
+        let api: Api<Ingress> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list.items.into_iter().filter_map(ingress_to_info).collect())
+    }
+
+    /// List config maps in `namespace`, or across all namespaces when `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_configmaps(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<ConfigMapInfo>, KubeconfigError> {
+        let api: Api<ConfigMap> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list
+            .items
+            .into_iter()
+            .filter_map(configmap_to_info)
+            .collect())
+    }
+
+    /// List secrets in `namespace`, or across all namespaces when `None`.
+    ///
+    /// Values are base64-decoded locally and never leave the machine.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_secrets(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<SecretInfo>, KubeconfigError> {
+        let api: Api<Secret> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list.items.into_iter().filter_map(secret_to_info).collect())
     }
 }
