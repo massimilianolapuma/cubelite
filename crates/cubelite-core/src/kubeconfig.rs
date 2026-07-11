@@ -191,10 +191,16 @@ impl KubeConfig {
     /// This mirrors how `kubectl` behaves when `KUBECONFIG` specifies multiple
     /// paths.
     ///
+    /// Only the `current-context` key of the primary file is patched: the
+    /// document is round-tripped as raw YAML so fields our typed model does
+    /// not know about (`exec` credential plugins, `auth-provider`,
+    /// extensions, …) are preserved verbatim, and a merged multi-file
+    /// KUBECONFIG is never flattened into the primary file.
+    ///
     /// # Errors
     ///
     /// Returns [`KubeconfigError::FileNotFound`] when no load path is known,
-    /// [`KubeconfigError::ParseError`] if serialisation fails, or
+    /// [`KubeconfigError::ParseError`] if (de)serialisation fails, or
     /// [`KubeconfigError::Io`] on write failure.
     pub fn save(&self) -> Result<(), KubeconfigError> {
         let primary = self
@@ -203,7 +209,20 @@ impl KubeConfig {
             .ok_or_else(|| KubeconfigError::FileNotFound {
                 path: "(no kubeconfig paths known — cannot save)".to_string(),
             })?;
-        let yaml = serde_yaml::to_string(&self.raw)?;
+
+        let content = std::fs::read_to_string(primary)?;
+        let mut doc: serde_yaml::Value = serde_yaml::from_str(&content)?;
+        let mapping = doc
+            .as_mapping_mut()
+            .ok_or_else(|| KubeconfigError::MergeError {
+                reason: format!("kubeconfig root is not a mapping: {}", primary.display()),
+            })?;
+        mapping.insert(
+            serde_yaml::Value::String("current-context".to_string()),
+            serde_yaml::Value::String(self.raw.current_context.clone().unwrap_or_default()),
+        );
+
+        let yaml = serde_yaml::to_string(&doc)?;
         std::fs::write(primary, yaml)?;
         Ok(())
     }
@@ -514,6 +533,52 @@ contexts:
     }
 
     // -- Persistence ---------------------------------------------------------
+
+    #[test]
+    fn save_preserves_exec_credential_plugins() {
+        let yaml = r#"
+apiVersion: v1
+kind: Config
+current-context: aks
+contexts:
+  - name: aks
+    context: { cluster: aks, user: aks-user }
+  - name: kind
+    context: { cluster: kind, user: kind-user }
+clusters:
+  - name: aks
+    cluster: { server: "https://aks:443" }
+  - name: kind
+    cluster: { server: "https://127.0.0.1:6443" }
+users:
+  - name: aks-user
+    user:
+      exec:
+        apiVersion: client.authentication.k8s.io/v1beta1
+        command: kubelogin
+        args: ["get-token", "--login", "azurecli"]
+        env: null
+        interactiveMode: IfAvailable
+        provideClusterInfo: false
+  - name: kind-user
+    user:
+      auth-provider:
+        name: oidc
+        config:
+          idp-issuer-url: https://issuer.example.com
+"#;
+        let f = write_temp(yaml);
+        let mut cfg = KubeConfig::load_from_paths(&[f.path().to_path_buf()]).expect("load");
+        cfg.set_active_context("kind").expect("switch");
+        cfg.save().expect("save");
+
+        let written = std::fs::read_to_string(f.path()).expect("read back");
+        assert!(written.contains("current-context: kind"));
+        assert!(written.contains("command: kubelogin"), "exec block dropped");
+        assert!(written.contains("interactiveMode: IfAvailable"));
+        assert!(written.contains("auth-provider"), "auth-provider dropped");
+        assert!(written.contains("idp-issuer-url"));
+    }
 
     #[test]
     fn save_persists_context_switch() {

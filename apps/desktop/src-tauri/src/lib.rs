@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod env;
 
 use commands::kubernetes::{
     cluster_capacity, delete_pod, get_current_context, get_resource_yaml, list_configmaps,
@@ -11,6 +12,9 @@ use commands::kubernetes::{
 
 /// Entry point for the Tauri application.
 pub fn run() {
+    // Must run before anything can spawn kubeconfig exec plugins.
+    env::fix_path();
+
     if let Err(e) = tauri::Builder::default()
         .manage(WatchState::default())
         .manage(LogState::default())
