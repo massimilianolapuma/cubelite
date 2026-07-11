@@ -214,6 +214,50 @@ export function stopLogs(streamId: string): Promise<void> {
   return invoke("stop_logs", { streamId });
 }
 
+export function deletePod(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  context?: string,
+): Promise<void> {
+  return invoke("delete_pod", {
+    kubeconfigPath,
+    namespace,
+    name,
+    context: context ?? null,
+  });
+}
+
+export function restartDeployment(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  context?: string,
+): Promise<void> {
+  return invoke("restart_deployment", {
+    kubeconfigPath,
+    namespace,
+    name,
+    context: context ?? null,
+  });
+}
+
+export function scaleDeployment(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  replicas: number,
+  context?: string,
+): Promise<void> {
+  return invoke("scale_deployment", {
+    kubeconfigPath,
+    namespace,
+    name,
+    replicas,
+    context: context ?? null,
+  });
+}
+
 export function watchResources(
   kubeconfigPath: string,
   resourceType: string,

@@ -1,8 +1,22 @@
 <script lang="ts">
 	import PodTable from '$lib/components/PodTable.svelte';
+	import DeletePodDialog from '$lib/components/DeletePodDialog.svelte';
 	import PodDrawer from '$lib/components/pods/PodDrawer.svelte';
 	import { app } from '$lib/stores/app.svelte';
+	import { mutations } from '$lib/stores/mutations.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
+	import type { PodInfo } from '$lib/tauri';
+
+	let deleteTarget = $state<PodInfo | null>(null);
+
+	async function confirmDelete() {
+		if (!deleteTarget) return;
+		const ok = await mutations.deletePod(deleteTarget.namespace, deleteTarget.name);
+		if (ok) {
+			deleteTarget = null;
+			app.selectedPod = null;
+		}
+	}
 
 	const filtered = $derived(
 		app.podFilter
@@ -31,5 +45,18 @@
 </div>
 
 {#if app.selectedPod}
-	<PodDrawer pod={app.selectedPod} onClose={() => (app.selectedPod = null)} />
+	<PodDrawer
+		pod={app.selectedPod}
+		onClose={() => (app.selectedPod = null)}
+		onDelete={(pod) => (deleteTarget = pod)}
+	/>
+{/if}
+
+{#if deleteTarget}
+	<DeletePodDialog
+		pod={deleteTarget}
+		confirmDisabled={false}
+		onCancel={() => (deleteTarget = null)}
+		onConfirm={() => void confirmDelete()}
+	/>
 {/if}

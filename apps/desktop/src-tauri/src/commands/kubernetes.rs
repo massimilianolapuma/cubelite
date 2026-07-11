@@ -240,6 +240,61 @@ pub async fn watch_resources(
     Ok(watch_id)
 }
 
+/// Delete a pod (the owning controller will recreate it).
+#[tauri::command]
+pub async fn delete_pod(
+    kubeconfig_path: String,
+    namespace: String,
+    name: String,
+    context: Option<String>,
+) -> Result<(), String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .delete_pod(&namespace, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Trigger a rolling restart of a deployment (kubectl rollout restart).
+#[tauri::command]
+pub async fn restart_deployment(
+    kubeconfig_path: String,
+    namespace: String,
+    name: String,
+    context: Option<String>,
+) -> Result<(), String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .restart_deployment(&namespace, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Scale a deployment to the given number of replicas.
+#[tauri::command]
+pub async fn scale_deployment(
+    kubeconfig_path: String,
+    namespace: String,
+    name: String,
+    replicas: i32,
+    context: Option<String>,
+) -> Result<(), String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .scale_deployment(&namespace, &name, replicas)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Start an aggregated log stream over the given pods (capped at 20).
 ///
 /// Each line is parsed (timestamp + severity) and emitted as a `"log-line"`

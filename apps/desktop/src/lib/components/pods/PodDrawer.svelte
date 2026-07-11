@@ -1,5 +1,6 @@
 <script lang="ts">
 	import FileText from '@lucide/svelte/icons/file-text';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Drawer from '$lib/components/ui/Drawer.svelte';
@@ -8,11 +9,22 @@
 	import { podStatusLabel, podTone } from '$lib/status';
 	import { app } from '$lib/stores/app.svelte';
 	import { logs } from '$lib/stores/logs.svelte';
+	import { mutations } from '$lib/stores/mutations.svelte';
 	import type { PodInfo } from '$lib/tauri';
 
-	let { pod, onClose }: { pod: PodInfo; onClose: () => void } = $props();
+	let {
+		pod,
+		onClose,
+		onDelete
+	}: { pod: PodInfo; onClose: () => void; onDelete?: (pod: PodInfo) => void } = $props();
 
-	const disabledTitle = 'Requires backend support';
+	const restarting = $derived(mutations.isDeleting(pod.namespace, pod.name));
+
+	async function restart() {
+		// A pod "restart" is a delete; the owning controller recreates it.
+		const ok = await mutations.deletePod(pod.namespace, pod.name);
+		if (ok) onClose();
+	}
 	// Fields the backend does not expose yet render as "—" (layout per spec).
 	const meta = $derived<[string, string][]>([
 		['Namespace', pod.namespace],
@@ -70,19 +82,22 @@
 		</button>
 		<button
 			type="button"
-			disabled
-			title={disabledTitle}
-			class="type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised text-text-tertiary opacity-45"
+			disabled={restarting}
+			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
+			onclick={() => void restart()}
 		>
-			<RotateCw class="h-3 w-3" />
+			{#if restarting}
+				<LoaderCircle class="h-3 w-3 animate-spin" />
+			{:else}
+				<RotateCw class="h-3 w-3" />
+			{/if}
 			Restart
 		</button>
 		<button
 			type="button"
-			disabled
-			title={disabledTitle}
-			class="type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border text-status-err opacity-45"
+			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border text-status-err hover:brightness-110"
 			style="border-color: color-mix(in srgb, var(--color-status-err) 40%, transparent);"
+			onclick={() => onDelete?.(pod)}
 		>
 			<Trash2 class="h-3 w-3" />
 			Delete
