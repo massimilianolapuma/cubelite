@@ -6,7 +6,10 @@
 	import Sidebar from '$lib/components/shell/Sidebar.svelte';
 	import StatusBar from '$lib/components/shell/StatusBar.svelte';
 	import CommandPalette from '$lib/components/CommandPalette.svelte';
+	import OnboardingModal from '$lib/components/OnboardingModal.svelte';
+	import PreferencesModal from '$lib/components/PreferencesModal.svelte';
 	import ConnectingOverlay from '$lib/components/ui/ConnectingOverlay.svelte';
+	import Toaster from '$lib/components/ui/Toaster.svelte';
 	import UnreachableView from '$lib/components/views/UnreachableView.svelte';
 	import { viewRegistry } from '$lib/components/views';
 	import { matchShortcut } from '$lib/keyboard';
@@ -84,4 +87,11 @@
 </div>
 
 <CommandPalette />
+{#if app.preferencesOpen}
+	<PreferencesModal />
+{/if}
+{#if app.onboardingOpen}
+	<OnboardingModal />
+{/if}
+<Toaster />
 <ConnectingOverlay />
