@@ -11,40 +11,44 @@
   --font-sans: "Geist", system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --color-surface-window: #0b0b0d;
-  --color-surface-sunken: #0d0d10;
-  --color-surface-panel: #101013;
-  --color-surface-surface: #131316;
-  --color-surface-raised: #1a1a1f;
-  --color-surface-overlay: #161619;
-  --color-surface-row-hover: #16161a;
+  --color-surface-window: var(--cl-color-surface-window);
+  --color-surface-sunken: var(--cl-color-surface-sunken);
+  --color-surface-panel: var(--cl-color-surface-panel);
+  --color-surface-surface: var(--cl-color-surface-surface);
+  --color-surface-raised: var(--cl-color-surface-raised);
+  --color-surface-overlay: var(--cl-color-surface-overlay);
+  --color-surface-row-hover: var(--cl-color-surface-row-hover);
 
-  --color-border-default: #26262b;
-  --color-border-strong: #34343b;
-  --color-border-faint: #1e1e23;
+  --color-border-default: var(--cl-color-border-default);
+  --color-border-strong: var(--cl-color-border-strong);
+  --color-border-faint: var(--cl-color-border-faint);
 
-  --color-text-primary: #f4f4f5;
-  --color-text-secondary: #9c9ca6;
-  --color-text-tertiary: #71717a;
-  --color-text-disabled: #5c5c66;
-  --color-text-data-bright: #e4e4e7;
-  --color-text-log: #c8c8d0;
+  --color-text-primary: var(--cl-color-text-primary);
+  --color-text-secondary: var(--cl-color-text-secondary);
+  --color-text-tertiary: var(--cl-color-text-tertiary);
+  --color-text-disabled: var(--cl-color-text-disabled);
+  --color-text-data-bright: var(--cl-color-text-data-bright);
+  --color-text-log: var(--cl-color-text-log);
 
-  --color-accent: #6e9bf5;
-  --color-accent-alt-violet: #a78bfa;
-  --color-accent-alt-teal: #2dd4bf;
+  --color-status-ok: var(--cl-color-status-ok);
+  --color-status-warn: var(--cl-color-status-warn);
+  --color-status-err: var(--cl-color-status-err);
+  --color-status-err-solid: var(--cl-color-status-err-solid);
+  --color-status-info: var(--cl-color-status-info);
 
-  --color-status-ok: #34d399;
-  --color-status-warn: #fbbf24;
-  --color-status-err: #f87171;
-  --color-status-err-solid: #dc4646;
-  --color-status-info: #7dd3fc;
+  --color-cluster-blue: var(--cl-color-cluster-blue);
+  --color-cluster-amber: var(--cl-color-cluster-amber);
+  --color-cluster-pink: var(--cl-color-cluster-pink);
+  --color-cluster-violet: var(--cl-color-cluster-violet);
+  --color-cluster-teal: var(--cl-color-cluster-teal);
 
-  --color-cluster-blue: #60a5fa;
-  --color-cluster-amber: #f59e0b;
-  --color-cluster-pink: #f472b6;
-  --color-cluster-violet: #a78bfa;
-  --color-cluster-teal: #2dd4bf;
+  --shadow-overlay: var(--cl-shadow-overlay);
+  --shadow-drawer: var(--cl-shadow-drawer);
+  --shadow-toast: var(--cl-shadow-toast);
+
+  --color-accent: var(--cl-color-accent);
+  --color-accent-alt-violet: var(--cl-color-accent-alt-violet);
+  --color-accent-alt-teal: var(--cl-color-accent-alt-teal);
 
   --spacing-1: 4px;
   --spacing-2: 8px;
@@ -60,16 +64,45 @@
   --radius-xl: 10px;
   --radius-2xl: 12px;
   --radius-full: 9999px;
-
-  --shadow-overlay: 0 24px 80px rgba(0,0,0,.7);
-  --shadow-drawer: -16px 0 40px rgba(0,0,0,.45);
-  --shadow-toast: 0 10px 34px rgba(0,0,0,.5);
 }
 /* @generated:theme-end */
 
 /* @generated:layer-start */
 @layer base {
   :root {
+    --cl-color-surface-window: #fafafa;
+    --cl-color-surface-sunken: #f1f1f4;
+    --cl-color-surface-panel: #f5f5f7;
+    --cl-color-surface-surface: #ffffff;
+    --cl-color-surface-raised: #ececef;
+    --cl-color-surface-overlay: #ffffff;
+    --cl-color-surface-row-hover: #efeff2;
+    --cl-color-border-default: #e1e1e6;
+    --cl-color-border-strong: #c9c9d2;
+    --cl-color-border-faint: #ececf1;
+    --cl-color-text-primary: #18181b;
+    --cl-color-text-secondary: #52525b;
+    --cl-color-text-tertiary: #6e6e78;
+    --cl-color-text-disabled: #a0a0ab;
+    --cl-color-text-data-bright: #27272a;
+    --cl-color-text-log: #3a3a44;
+    --cl-color-status-ok: #0a9a6b;
+    --cl-color-status-warn: #c47b09;
+    --cl-color-status-err: #dc3f3f;
+    --cl-color-status-err-solid: #c93535;
+    --cl-color-status-info: #0f7fbd;
+    --cl-color-cluster-blue: #3b82f6;
+    --cl-color-cluster-amber: #d97706;
+    --cl-color-cluster-pink: #db2777;
+    --cl-color-cluster-violet: #7c3aed;
+    --cl-color-cluster-teal: #0d9488;
+    --cl-shadow-overlay: 0 24px 80px rgba(20,20,30,.16);
+    --cl-shadow-drawer: -16px 0 40px rgba(20,20,30,.12);
+    --cl-shadow-toast: 0 10px 34px rgba(20,20,30,.14);
+    --cl-color-accent: #4e77e5;
+    --cl-color-accent-alt-violet: #7c5ce8;
+    --cl-color-accent-alt-teal: #0f9e8e;
+
     --alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);
     --alpha-active-nav-bg: color-mix(in srgb, var(--color-accent) 14%, transparent);
     --alpha-pill-ok: color-mix(in srgb, var(--color-status-ok) 10%, transparent);
@@ -89,35 +122,68 @@
     --motion-drawer: 160ms ease;
     --motion-toast: 180ms ease;
 
-    --background: 240 8.3% 4.7%;
-    --foreground: 240 4.8% 95.9%;
-    --card: 240 7.3% 8%;
-    --card-foreground: 240 4.8% 95.9%;
-    --popover: 240 6.4% 9.2%;
-    --popover-foreground: 240 4.8% 95.9%;
-    --primary: 220 87.1% 69.6%;
-    --primary-foreground: 240 8.3% 4.7%;
-    --secondary: 240 8.8% 11.2%;
-    --secondary-foreground: 240 4.8% 95.9%;
-    --muted: 240 8.8% 11.2%;
-    --muted-foreground: 240 5.3% 63.1%;
-    --accent: 240 8.8% 11.2%;
-    --accent-foreground: 240 4.8% 95.9%;
-    --destructive: 0 68.2% 56.9%;
-    --destructive-foreground: 240 4.8% 95.9%;
-    --border: 240 6.2% 15.9%;
-    --input: 240 6.2% 15.9%;
-    --ring: 220 87.1% 69.6%;
-    --sidebar-background: 240 8.6% 6.9%;
-    --sidebar-foreground: 240 5.3% 63.1%;
-    --sidebar-primary: 220 87.1% 69.6%;
-    --sidebar-primary-foreground: 240 8.3% 4.7%;
-    --sidebar-accent: 240 8.8% 11.2%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 7.7% 12.7%;
-    --sidebar-ring: 220 87.1% 69.6%;
+    --background: 0 0% 98%;
+    --foreground: 240 5.9% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 5.9% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 5.9% 10%;
+    --primary: 223.7 74.4% 60.2%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 8.6% 93.1%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 8.6% 93.1%;
+    --muted-foreground: 240 5.2% 33.9%;
+    --accent: 240 8.6% 93.1%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 58.3% 49.8%;
+    --destructive-foreground: 240 5.9% 10%;
+    --border: 240 9.1% 89.2%;
+    --input: 240 9.1% 89.2%;
+    --ring: 223.7 74.4% 60.2%;
+    --sidebar-background: 240 11.1% 96.5%;
+    --sidebar-foreground: 240 5.2% 33.9%;
+    --sidebar-primary: 223.7 74.4% 60.2%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 8.6% 93.1%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 240 15.2% 93.5%;
+    --sidebar-ring: 223.7 74.4% 60.2%;
   }
   .dark {
+    --cl-color-surface-window: #0b0b0d;
+    --cl-color-surface-sunken: #0d0d10;
+    --cl-color-surface-panel: #101013;
+    --cl-color-surface-surface: #131316;
+    --cl-color-surface-raised: #1a1a1f;
+    --cl-color-surface-overlay: #161619;
+    --cl-color-surface-row-hover: #16161a;
+    --cl-color-border-default: #26262b;
+    --cl-color-border-strong: #34343b;
+    --cl-color-border-faint: #1e1e23;
+    --cl-color-text-primary: #f4f4f5;
+    --cl-color-text-secondary: #9c9ca6;
+    --cl-color-text-tertiary: #71717a;
+    --cl-color-text-disabled: #5c5c66;
+    --cl-color-text-data-bright: #e4e4e7;
+    --cl-color-text-log: #c8c8d0;
+    --cl-color-status-ok: #34d399;
+    --cl-color-status-warn: #fbbf24;
+    --cl-color-status-err: #f87171;
+    --cl-color-status-err-solid: #dc4646;
+    --cl-color-status-info: #7dd3fc;
+    --cl-color-cluster-blue: #60a5fa;
+    --cl-color-cluster-amber: #f59e0b;
+    --cl-color-cluster-pink: #f472b6;
+    --cl-color-cluster-violet: #a78bfa;
+    --cl-color-cluster-teal: #2dd4bf;
+    --cl-shadow-overlay: 0 24px 80px rgba(0,0,0,.7);
+    --cl-shadow-drawer: -16px 0 40px rgba(0,0,0,.45);
+    --cl-shadow-toast: 0 10px 34px rgba(0,0,0,.5);
+    --cl-color-accent: #6e9bf5;
+    --cl-color-accent-alt-violet: #a78bfa;
+    --cl-color-accent-alt-teal: #2dd4bf;
+
     --background: 240 8.3% 4.7%;
     --foreground: 240 4.8% 95.9%;
     --card: 240 7.3% 8%;

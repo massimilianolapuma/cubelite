@@ -20,7 +20,11 @@ vi.mock("$lib/tauri", () => ({
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
+vi.mock("mode-watcher", () => ({
+  setMode: vi.fn(),
+}));
 
+import { setMode } from "mode-watcher";
 import Toaster from "./ui/Toaster.svelte";
 import DeletePodDialog from "./DeletePodDialog.svelte";
 import PreferencesModal from "./PreferencesModal.svelte";
@@ -92,12 +96,16 @@ describe("DeletePodDialog", () => {
 });
 
 describe("PreferencesModal", () => {
-  it("disables Light and System and keeps Dark active", () => {
+  it("offers all three appearance modes and applies the choice", async () => {
     app.preferencesOpen = true;
     render(PreferencesModal);
-    expect(screen.getByText("Light")).toBeDisabled();
-    expect(screen.getByText("System")).toBeDisabled();
     expect(screen.getByText("Dark")).not.toBeDisabled();
+    await fireEvent.click(screen.getByText("Light"));
+    expect(settings.theme.value).toBe("light");
+    expect(setMode).toHaveBeenCalledWith("light");
+    await fireEvent.click(screen.getByText("System"));
+    expect(settings.theme.value).toBe("system");
+    expect(setMode).toHaveBeenCalledWith("system");
   });
 
   it("persists the auto-refresh choice", async () => {
