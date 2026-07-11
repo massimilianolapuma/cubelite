@@ -8,27 +8,37 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   clusterCapacity,
   listConfigMaps,
+  listCronJobs,
   listDeployments,
   listEvents,
   listHelmReleases,
   listIngresses,
+  listJobs,
   listNamespaces,
+  listNodes,
   listPods,
   listPodMetrics,
+  listPvcs,
   listSecrets,
   listServices,
+  listStatefulSets,
   unwatchResources,
   watchResources,
   type ConfigMapInfo,
+  type CronJobInfo,
   type DeploymentInfo,
   type EventInfo,
   type HelmReleaseInfo,
   type IngressInfo,
+  type JobInfo,
   type NamespaceInfo,
   type NodeCapacityInfo,
+  type NodeInfo,
   type PodInfo,
   type PodMetricsInfo,
+  type PvcInfo,
   type SecretInfo,
+  type StatefulSetInfo,
   type ServiceInfo,
 } from "$lib/tauri";
 import { errorMessage } from "$lib/errors";
@@ -38,7 +48,17 @@ import { settings } from "./settings.svelte";
 const RELOAD_DEBOUNCE_MS = 300;
 
 /** Resource kinds loaded on demand when their view is opened. */
-export type ExtraKind = "services" | "ingresses" | "configmaps" | "secrets" | "helm";
+export type ExtraKind =
+  | "services"
+  | "ingresses"
+  | "configmaps"
+  | "secrets"
+  | "helm"
+  | "statefulsets"
+  | "jobs"
+  | "cronjobs"
+  | "pvcs"
+  | "nodes";
 
 const EXTRA_KINDS: readonly ExtraKind[] = [
   "services",
@@ -46,6 +66,11 @@ const EXTRA_KINDS: readonly ExtraKind[] = [
   "configmaps",
   "secrets",
   "helm",
+  "statefulsets",
+  "jobs",
+  "cronjobs",
+  "pvcs",
+  "nodes",
 ];
 
 export function isExtraKind(v: unknown): v is ExtraKind {
@@ -62,6 +87,11 @@ class ResourcesStore {
   configmaps = $state<ConfigMapInfo[]>([]);
   secrets = $state<SecretInfo[]>([]);
   helmReleases = $state<HelmReleaseInfo[]>([]);
+  statefulsets = $state<StatefulSetInfo[]>([]);
+  jobs = $state<JobInfo[]>([]);
+  cronjobs = $state<CronJobInfo[]>([]);
+  pvcs = $state<PvcInfo[]>([]);
+  nodeInventory = $state<NodeInfo[]>([]);
   /** ns/name → usage; null until metrics-server answers, {} when it 404s. */
   podMetrics = $state<Record<string, PodMetricsInfo>>({});
   nodes = $state<NodeCapacityInfo[]>([]);
@@ -239,6 +269,31 @@ class ResourcesStore {
           if (seq === this.#extraSeq) this.helmReleases = list;
           break;
         }
+        case "statefulsets": {
+          const list = await listStatefulSets(kc, ns, cluster);
+          if (seq === this.#extraSeq) this.statefulsets = list;
+          break;
+        }
+        case "jobs": {
+          const list = await listJobs(kc, ns, cluster);
+          if (seq === this.#extraSeq) this.jobs = list;
+          break;
+        }
+        case "cronjobs": {
+          const list = await listCronJobs(kc, ns, cluster);
+          if (seq === this.#extraSeq) this.cronjobs = list;
+          break;
+        }
+        case "pvcs": {
+          const list = await listPvcs(kc, ns, cluster);
+          if (seq === this.#extraSeq) this.pvcs = list;
+          break;
+        }
+        case "nodes": {
+          const list = await listNodes(kc, cluster);
+          if (seq === this.#extraSeq) this.nodeInventory = list;
+          break;
+        }
       }
     } catch (e) {
       if (seq === this.#extraSeq) this.extraError = errorMessage(e);
@@ -260,6 +315,11 @@ class ResourcesStore {
     this.configmaps = [];
     this.secrets = [];
     this.helmReleases = [];
+    this.statefulsets = [];
+    this.jobs = [];
+    this.cronjobs = [];
+    this.pvcs = [];
+    this.nodeInventory = [];
     this.podMetrics = {};
     this.nodes = [];
     this.metricsAvailable = false;

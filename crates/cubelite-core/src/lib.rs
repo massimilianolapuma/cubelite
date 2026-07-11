@@ -47,8 +47,8 @@ pub use kubeconfig::KubeConfig;
 pub use logs::{LogLevel, LogLine};
 pub use metrics::{NodeCapacityInfo, PodMetricsInfo};
 pub use resources::{
-    ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
-    ServiceInfo,
+    ConfigMapInfo, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo, NamespaceInfo,
+    NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,
 };
 pub use types::{
     ClusterDetails, ContextDetails, ContextInfo, KubeConfigFile, NamedCluster, NamedContext,

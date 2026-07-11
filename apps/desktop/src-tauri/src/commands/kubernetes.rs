@@ -4,8 +4,8 @@ use cubelite_core::{
     logs::stream_pod_logs,
     metrics::{NodeCapacityInfo, PodMetricsInfo},
     resources::{
-        ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
-        ServiceInfo,
+        ConfigMapInfo, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo, NamespaceInfo,
+        NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,
     },
     ResourceType, ResourceWatcher, WatchEvent,
 };
@@ -344,6 +344,87 @@ pub async fn probe_cluster(
             error: Some(e.to_string()),
         }),
     }
+}
+
+/// List jobs in the given namespace (all namespaces when `None`).
+#[tauri::command]
+pub async fn list_jobs(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<JobInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_jobs(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List cron jobs in the given namespace (all namespaces when `None`).
+#[tauri::command]
+pub async fn list_cronjobs(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<CronJobInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_cronjobs(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List stateful sets in the given namespace (all namespaces when `None`).
+#[tauri::command]
+pub async fn list_statefulsets(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<StatefulSetInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_statefulsets(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List persistent volume claims in the given namespace (all namespaces when `None`).
+#[tauri::command]
+pub async fn list_pvcs(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<PvcInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .list_pvcs(namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// List cluster nodes (read-only inventory).
+#[tauri::command]
+pub async fn list_nodes(
+    kubeconfig_path: String,
+    context: Option<String>,
+) -> Result<Vec<NodeInfo>, String> {
+    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client.list_nodes().await.map_err(|e| e.to_string())
 }
 
 /// Delete a pod (the owning controller will recreate it).

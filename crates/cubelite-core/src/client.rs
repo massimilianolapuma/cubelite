@@ -3,8 +3,11 @@
 //! [`KubeClient`] wraps a configured `kube::Client` and exposes high-level
 //! methods for listing the most common Kubernetes resources.
 
-use k8s_openapi::api::apps::v1::Deployment;
-use k8s_openapi::api::core::v1::{ConfigMap, Event, Namespace, Node, Pod, Secret, Service};
+use k8s_openapi::api::apps::v1::{Deployment, StatefulSet};
+use k8s_openapi::api::batch::v1::{CronJob, Job};
+use k8s_openapi::api::core::v1::{
+    ConfigMap, Event, Namespace, Node, PersistentVolumeClaim, Pod, Secret, Service,
+};
 use k8s_openapi::api::networking::v1::Ingress;
 use kube::{
     api::{DeleteParams, ListParams, Patch, PatchParams},
@@ -22,12 +25,13 @@ use crate::{
         PodMetricsInfo,
     },
     resources::{
-        ConfigMapInfo, DeploymentInfo, EventInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo,
-        ServiceInfo,
+        ConfigMapInfo, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo, NamespaceInfo,
+        NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,
     },
     watcher::{
-        configmap_to_info, deployment_to_info, ingress_to_info, namespace_to_info, pod_to_info,
-        secret_to_info, service_to_info,
+        configmap_to_info, cronjob_to_info, deployment_to_info, ingress_to_info, job_to_info,
+        namespace_to_info, node_to_info, pod_to_info, pvc_to_info, secret_to_info, service_to_info,
+        statefulset_to_info,
     },
 };
 
@@ -429,6 +433,114 @@ impl KubeClient {
             .map_err(|e| KubeconfigError::ClientError {
                 reason: e.to_string(),
             })
+    }
+
+    /// List jobs in `namespace`, or across all namespaces when `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_jobs(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<JobInfo>, KubeconfigError> {
+        let api: Api<Job> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list.items.into_iter().filter_map(job_to_info).collect())
+    }
+
+    /// List cron jobs in `namespace`, or across all namespaces when `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_cronjobs(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<CronJobInfo>, KubeconfigError> {
+        let api: Api<CronJob> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list.items.into_iter().filter_map(cronjob_to_info).collect())
+    }
+
+    /// List stateful sets in `namespace`, or across all namespaces when `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_statefulsets(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<StatefulSetInfo>, KubeconfigError> {
+        let api: Api<StatefulSet> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list
+            .items
+            .into_iter()
+            .filter_map(statefulset_to_info)
+            .collect())
+    }
+
+    /// List persistent volume claims in `namespace`, or across all namespaces when `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_pvcs(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<PvcInfo>, KubeconfigError> {
+        let api: Api<PersistentVolumeClaim> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list.items.into_iter().filter_map(pvc_to_info).collect())
+    }
+
+    /// List nodes (read-only inventory).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_nodes(&self) -> Result<Vec<NodeInfo>, KubeconfigError> {
+        let api: Api<Node> = Api::all(self.inner.clone());
+        let list =
+            api.list(&Default::default())
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })?;
+        Ok(list.items.into_iter().filter_map(node_to_info).collect())
     }
 
     /// List events in `namespace`, or across all namespaces when `None`,

@@ -22,16 +22,18 @@ use std::pin::Pin;
 
 use futures::{Stream, StreamExt};
 use k8s_openapi::api::{
-    apps::v1::Deployment,
-    core::v1::{ConfigMap, Namespace, Pod, Secret, Service},
+    apps::v1::{Deployment, StatefulSet},
+    batch::v1::{CronJob, Job},
+    core::v1::{ConfigMap, Namespace, Node, PersistentVolumeClaim, Pod, Secret, Service},
     networking::v1::Ingress,
 };
 use kube::{runtime::watcher, Api, Client};
 use serde::{Deserialize, Serialize};
 
 use crate::resources::{
-    ConfigMapInfo, ContainerInfo, DeploymentConditionInfo, DeploymentInfo, IngressInfo,
-    NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
+    ConfigMapInfo, ContainerInfo, CronJobInfo, DeploymentConditionInfo, DeploymentInfo,
+    IngressInfo, JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo,
+    StatefulSetInfo,
 };
 
 /// Selects which Kubernetes resource type to watch.
@@ -462,6 +464,154 @@ pub(crate) fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
     })
 }
 
+/// Convert a raw [`Job`] object into a [`JobInfo`], returning `None` if
+/// there is no name.
+pub(crate) fn job_to_info(j: Job) -> Option<JobInfo> {
+    let name = j.metadata.name.clone()?;
+    let namespace = j.metadata.namespace.clone().unwrap_or_default();
+    let creation = creation_timestamp(&j.metadata);
+    let completions = j.spec.as_ref().and_then(|s| s.completions).unwrap_or(1);
+    let (succeeded, active, failed) = j
+        .status
+        .map(|st| {
+            (
+                st.succeeded.unwrap_or(0),
+                st.active.unwrap_or(0),
+                st.failed.unwrap_or(0),
+            )
+        })
+        .unwrap_or((0, 0, 0));
+    Some(JobInfo {
+        name,
+        namespace,
+        completions,
+        succeeded,
+        active,
+        failed,
+        creation_timestamp: creation,
+    })
+}
+
+/// Convert a raw [`CronJob`] object into a [`CronJobInfo`], returning `None`
+/// if there is no name.
+pub(crate) fn cronjob_to_info(cj: CronJob) -> Option<CronJobInfo> {
+    let name = cj.metadata.name.clone()?;
+    let namespace = cj.metadata.namespace.clone().unwrap_or_default();
+    let creation = creation_timestamp(&cj.metadata);
+    let (schedule, suspend) = cj
+        .spec
+        .map(|s| (s.schedule, s.suspend.unwrap_or(false)))
+        .unwrap_or_default();
+    let (active, last_schedule) = cj
+        .status
+        .map(|st| {
+            (
+                st.active.map(|a| a.len() as i32).unwrap_or(0),
+                st.last_schedule_time.map(|t| t.0.to_rfc3339()),
+            )
+        })
+        .unwrap_or((0, None));
+    Some(CronJobInfo {
+        name,
+        namespace,
+        schedule,
+        suspend,
+        active,
+        last_schedule,
+        creation_timestamp: creation,
+    })
+}
+
+/// Convert a raw [`StatefulSet`] object into a [`StatefulSetInfo`],
+/// returning `None` if there is no name.
+pub(crate) fn statefulset_to_info(ss: StatefulSet) -> Option<StatefulSetInfo> {
+    let name = ss.metadata.name.clone()?;
+    let namespace = ss.metadata.namespace.clone().unwrap_or_default();
+    let creation = creation_timestamp(&ss.metadata);
+    let replicas = ss.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0);
+    let ready_replicas = ss
+        .status
+        .as_ref()
+        .and_then(|s| s.ready_replicas)
+        .unwrap_or(0);
+    Some(StatefulSetInfo {
+        name,
+        namespace,
+        replicas,
+        ready_replicas,
+        creation_timestamp: creation,
+    })
+}
+
+/// Convert a raw [`Node`] object into a [`NodeInfo`], returning `None` if
+/// there is no name.
+pub(crate) fn node_to_info(n: Node) -> Option<NodeInfo> {
+    let name = n.metadata.name.clone()?;
+    let creation = creation_timestamp(&n.metadata);
+    let roles = n
+        .metadata
+        .labels
+        .as_ref()
+        .map(|labels| {
+            labels
+                .keys()
+                .filter_map(|k| k.strip_prefix("node-role.kubernetes.io/"))
+                .filter(|r| !r.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let ready = n
+        .status
+        .as_ref()
+        .and_then(|s| s.conditions.as_ref())
+        .and_then(|conds| conds.iter().find(|c| c.type_ == "Ready"))
+        .map(|c| c.status == "True")
+        .unwrap_or(false);
+    let version = n
+        .status
+        .and_then(|s| s.node_info)
+        .map(|ni| ni.kubelet_version);
+    Some(NodeInfo {
+        name,
+        status: if ready { "Ready" } else { "NotReady" }.to_string(),
+        roles,
+        version,
+        creation_timestamp: creation,
+    })
+}
+
+/// Convert a raw [`PersistentVolumeClaim`] into a [`PvcInfo`], returning
+/// `None` if there is no name.
+pub(crate) fn pvc_to_info(pvc: PersistentVolumeClaim) -> Option<PvcInfo> {
+    let name = pvc.metadata.name.clone()?;
+    let namespace = pvc.metadata.namespace.clone().unwrap_or_default();
+    let creation = creation_timestamp(&pvc.metadata);
+    let storage_class = pvc.spec.as_ref().and_then(|s| s.storage_class_name.clone());
+    let volume = pvc.spec.as_ref().and_then(|s| s.volume_name.clone());
+    let (status, capacity, access_modes) = pvc
+        .status
+        .map(|st| {
+            let capacity = st
+                .capacity
+                .as_ref()
+                .and_then(|c| c.get("storage"))
+                .map(|q| q.0.clone());
+            (st.phase, capacity, st.access_modes.unwrap_or_default())
+        })
+        .unwrap_or((None, None, Vec::new()));
+    Some(PvcInfo {
+        name,
+        namespace,
+        status,
+        volume,
+        capacity,
+        access_modes,
+        storage_class,
+        creation_timestamp: creation,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -746,6 +896,155 @@ mod tests {
             Some("hunter2")
         );
         assert_eq!(info.data.get("cert").map(String::as_str), Some("(binary)"));
+    }
+
+    #[test]
+    fn job_to_info_conversion() {
+        use k8s_openapi::api::batch::v1::{Job, JobSpec, JobStatus};
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+        let j = Job {
+            metadata: ObjectMeta {
+                name: Some("migrate".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            spec: Some(JobSpec {
+                completions: Some(2),
+                ..Default::default()
+            }),
+            status: Some(JobStatus {
+                succeeded: Some(1),
+                active: Some(1),
+                ..Default::default()
+            }),
+        };
+        let info = job_to_info(j).unwrap();
+        assert_eq!(info.completions, 2);
+        assert_eq!(info.succeeded, 1);
+        assert_eq!(info.active, 1);
+        assert_eq!(info.failed, 0);
+    }
+
+    #[test]
+    fn cronjob_to_info_conversion() {
+        use k8s_openapi::api::batch::v1::{CronJob, CronJobSpec, CronJobStatus};
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+        let cj = CronJob {
+            metadata: ObjectMeta {
+                name: Some("backup".to_string()),
+                namespace: Some("ops".to_string()),
+                ..Default::default()
+            },
+            spec: Some(CronJobSpec {
+                schedule: "0 3 * * *".to_string(),
+                suspend: Some(true),
+                ..Default::default()
+            }),
+            status: Some(CronJobStatus::default()),
+        };
+        let info = cronjob_to_info(cj).unwrap();
+        assert_eq!(info.schedule, "0 3 * * *");
+        assert!(info.suspend);
+        assert_eq!(info.active, 0);
+    }
+
+    #[test]
+    fn statefulset_to_info_conversion() {
+        use k8s_openapi::api::apps::v1::{StatefulSet, StatefulSetSpec, StatefulSetStatus};
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+        let ss = StatefulSet {
+            metadata: ObjectMeta {
+                name: Some("db".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            spec: Some(StatefulSetSpec {
+                replicas: Some(3),
+                ..Default::default()
+            }),
+            status: Some(StatefulSetStatus {
+                ready_replicas: Some(2),
+                ..Default::default()
+            }),
+        };
+        let info = statefulset_to_info(ss).unwrap();
+        assert_eq!(info.replicas, 3);
+        assert_eq!(info.ready_replicas, 2);
+    }
+
+    #[test]
+    fn node_to_info_conversion() {
+        use k8s_openapi::api::core::v1::{Node, NodeCondition, NodeStatus, NodeSystemInfo};
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+        use std::collections::BTreeMap;
+
+        let n = Node {
+            metadata: ObjectMeta {
+                name: Some("node-1".to_string()),
+                labels: Some(BTreeMap::from([(
+                    "node-role.kubernetes.io/control-plane".to_string(),
+                    "".to_string(),
+                )])),
+                ..Default::default()
+            },
+            status: Some(NodeStatus {
+                conditions: Some(vec![NodeCondition {
+                    type_: "Ready".to_string(),
+                    status: "True".to_string(),
+                    ..Default::default()
+                }]),
+                node_info: Some(NodeSystemInfo {
+                    kubelet_version: "v1.30.2".to_string(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let info = node_to_info(n).unwrap();
+        assert_eq!(info.status, "Ready");
+        assert_eq!(info.roles, vec!["control-plane"]);
+        assert_eq!(info.version.as_deref(), Some("v1.30.2"));
+    }
+
+    #[test]
+    fn pvc_to_info_conversion() {
+        use k8s_openapi::api::core::v1::{
+            PersistentVolumeClaim, PersistentVolumeClaimSpec, PersistentVolumeClaimStatus,
+        };
+        use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+        use std::collections::BTreeMap;
+
+        let pvc = PersistentVolumeClaim {
+            metadata: ObjectMeta {
+                name: Some("data".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            spec: Some(PersistentVolumeClaimSpec {
+                storage_class_name: Some("fast".to_string()),
+                volume_name: Some("pv-1".to_string()),
+                ..Default::default()
+            }),
+            status: Some(PersistentVolumeClaimStatus {
+                phase: Some("Bound".to_string()),
+                access_modes: Some(vec!["ReadWriteOnce".to_string()]),
+                capacity: Some(BTreeMap::from([(
+                    "storage".to_string(),
+                    Quantity("10Gi".to_string()),
+                )])),
+                ..Default::default()
+            }),
+        };
+        let info = pvc_to_info(pvc).unwrap();
+        assert_eq!(info.status.as_deref(), Some("Bound"));
+        assert_eq!(info.capacity.as_deref(), Some("10Gi"));
+        assert_eq!(info.access_modes, vec!["ReadWriteOnce"]);
+        assert_eq!(info.storage_class.as_deref(), Some("fast"));
     }
 
     #[test]
