@@ -40,7 +40,9 @@ pub mod watcher;
 pub use client::KubeClient;
 pub use error::{ContextError, KubeconfigError};
 pub use kubeconfig::KubeConfig;
-pub use resources::{DeploymentInfo, NamespaceInfo, PodInfo};
+pub use resources::{
+    ConfigMapInfo, DeploymentInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
+};
 pub use types::{
     ClusterDetails, ContextDetails, ContextInfo, KubeConfigFile, NamedCluster, NamedContext,
     NamedUser, UserDetails,

@@ -23,12 +23,15 @@ use std::pin::Pin;
 use futures::{Stream, StreamExt};
 use k8s_openapi::api::{
     apps::v1::Deployment,
-    core::v1::{Namespace, Pod},
+    core::v1::{ConfigMap, Namespace, Pod, Secret, Service},
+    networking::v1::Ingress,
 };
 use kube::{runtime::watcher, Api, Client};
 use serde::{Deserialize, Serialize};
 
-use crate::resources::{DeploymentInfo, NamespaceInfo, PodInfo};
+use crate::resources::{
+    ConfigMapInfo, DeploymentInfo, IngressInfo, NamespaceInfo, PodInfo, SecretInfo, ServiceInfo,
+};
 
 /// Selects which Kubernetes resource type to watch.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +43,14 @@ pub enum ResourceType {
     Namespace,
     /// Watch deployments.
     Deployment,
+    /// Watch services.
+    Service,
+    /// Watch ingresses.
+    Ingress,
+    /// Watch config maps.
+    ConfigMap,
+    /// Watch secrets.
+    Secret,
 }
 
 /// A Kubernetes resource payload, discriminated by type.
@@ -54,6 +65,14 @@ pub enum ResourceInfo {
     Namespace(NamespaceInfo),
     /// A deployment resource.
     Deployment(DeploymentInfo),
+    /// A service resource.
+    Service(ServiceInfo),
+    /// An ingress resource.
+    Ingress(IngressInfo),
+    /// A config map resource.
+    ConfigMap(ConfigMapInfo),
+    /// A secret resource.
+    Secret(SecretInfo),
 }
 
 /// A single watch event emitted from a [`ResourceWatcher`] stream.
@@ -132,6 +151,42 @@ impl ResourceWatcher {
                     map_event(ev, deployment_to_info, ResourceInfo::Deployment)
                 }))
             }
+            ResourceType::Service => {
+                let api: Api<Service> = match ns.as_deref() {
+                    Some(n) => Api::namespaced(client, n),
+                    None => Api::all(client),
+                };
+                Box::pin(watcher::watcher(api, config).filter_map(|ev| async move {
+                    map_event(ev, service_to_info, ResourceInfo::Service)
+                }))
+            }
+            ResourceType::Ingress => {
+                let api: Api<Ingress> = match ns.as_deref() {
+                    Some(n) => Api::namespaced(client, n),
+                    None => Api::all(client),
+                };
+                Box::pin(watcher::watcher(api, config).filter_map(|ev| async move {
+                    map_event(ev, ingress_to_info, ResourceInfo::Ingress)
+                }))
+            }
+            ResourceType::ConfigMap => {
+                let api: Api<ConfigMap> = match ns.as_deref() {
+                    Some(n) => Api::namespaced(client, n),
+                    None => Api::all(client),
+                };
+                Box::pin(watcher::watcher(api, config).filter_map(|ev| async move {
+                    map_event(ev, configmap_to_info, ResourceInfo::ConfigMap)
+                }))
+            }
+            ResourceType::Secret => {
+                let api: Api<Secret> = match ns.as_deref() {
+                    Some(n) => Api::namespaced(client, n),
+                    None => Api::all(client),
+                };
+                Box::pin(watcher::watcher(api, config).filter_map(|ev| async move {
+                    map_event(ev, secret_to_info, ResourceInfo::Secret)
+                }))
+            }
         }
     }
 }
@@ -193,6 +248,141 @@ fn namespace_to_info(ns: Namespace) -> Option<NamespaceInfo> {
     Some(NamespaceInfo { name, phase })
 }
 
+/// RFC 3339 creation timestamp from object metadata, if present.
+fn creation_timestamp(
+    meta: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+) -> Option<String> {
+    meta.creation_timestamp.as_ref().map(|t| t.0.to_rfc3339())
+}
+
+/// Convert a raw [`Service`] object into a [`ServiceInfo`], returning `None`
+/// if there is no name.
+pub(crate) fn service_to_info(s: Service) -> Option<ServiceInfo> {
+    let name = s.metadata.name.clone()?;
+    let namespace = s.metadata.namespace.clone().unwrap_or_default();
+    let creation = creation_timestamp(&s.metadata);
+    let spec = s.spec.unwrap_or_default();
+
+    let mut external_ips: Vec<String> = spec.external_ips.unwrap_or_default();
+    if let Some(lb) = s.status.and_then(|st| st.load_balancer) {
+        for ing in lb.ingress.unwrap_or_default() {
+            if let Some(ip) = ing.ip {
+                external_ips.push(ip);
+            } else if let Some(host) = ing.hostname {
+                external_ips.push(host);
+            }
+        }
+    }
+
+    let ports = spec
+        .ports
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| {
+            let protocol = p.protocol.unwrap_or_else(|| "TCP".to_string());
+            match p.node_port {
+                Some(np) => format!("{}:{np}/{protocol}", p.port),
+                None => format!("{}/{protocol}", p.port),
+            }
+        })
+        .collect();
+
+    Some(ServiceInfo {
+        name,
+        namespace,
+        service_type: spec.type_,
+        cluster_ip: spec.cluster_ip,
+        external_ips,
+        ports,
+        creation_timestamp: creation,
+    })
+}
+
+/// Convert a raw [`Ingress`] object into an [`IngressInfo`], returning `None`
+/// if there is no name.
+pub(crate) fn ingress_to_info(i: Ingress) -> Option<IngressInfo> {
+    let name = i.metadata.name.clone()?;
+    let namespace = i.metadata.namespace.clone().unwrap_or_default();
+    let creation = creation_timestamp(&i.metadata);
+
+    let (class, hosts, tls) = match i.spec {
+        Some(spec) => {
+            let hosts = spec
+                .rules
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|r| r.host)
+                .collect();
+            let tls = spec.tls.is_some_and(|t| !t.is_empty());
+            (spec.ingress_class_name, hosts, tls)
+        }
+        None => (None, Vec::new(), false),
+    };
+
+    let addresses = i
+        .status
+        .and_then(|st| st.load_balancer)
+        .and_then(|lb| lb.ingress)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|ing| ing.ip.or(ing.hostname))
+        .collect();
+
+    Some(IngressInfo {
+        name,
+        namespace,
+        class,
+        hosts,
+        addresses,
+        tls,
+        creation_timestamp: creation,
+    })
+}
+
+/// Convert a raw [`ConfigMap`] object into a [`ConfigMapInfo`], returning
+/// `None` if there is no name.
+pub(crate) fn configmap_to_info(cm: ConfigMap) -> Option<ConfigMapInfo> {
+    let name = cm.metadata.name.clone()?;
+    let namespace = cm.metadata.namespace.clone().unwrap_or_default();
+    let creation = creation_timestamp(&cm.metadata);
+    let data_count = cm.data.map_or(0, |d| d.len()) + cm.binary_data.map_or(0, |d| d.len());
+
+    Some(ConfigMapInfo {
+        name,
+        namespace,
+        data_count,
+        creation_timestamp: creation,
+    })
+}
+
+/// Convert a raw [`Secret`] object into a [`SecretInfo`], returning `None`
+/// if there is no name.
+///
+/// Values are decoded to UTF-8 locally; non-UTF-8 payloads are replaced with
+/// a `"(binary)"` placeholder so raw bytes never cross the IPC boundary.
+pub(crate) fn secret_to_info(s: Secret) -> Option<SecretInfo> {
+    let name = s.metadata.name.clone()?;
+    let namespace = s.metadata.namespace.clone().unwrap_or_default();
+    let creation = creation_timestamp(&s.metadata);
+
+    let mut data = std::collections::BTreeMap::new();
+    for (key, value) in s.data.unwrap_or_default() {
+        let decoded = String::from_utf8(value.0).unwrap_or_else(|_| "(binary)".to_string());
+        data.insert(key, decoded);
+    }
+    for (key, value) in s.string_data.unwrap_or_default() {
+        data.insert(key, value);
+    }
+
+    Some(SecretInfo {
+        name,
+        namespace,
+        secret_type: s.type_,
+        data,
+        creation_timestamp: creation,
+    })
+}
+
 /// Convert a raw [`Deployment`] object into a [`DeploymentInfo`], returning
 /// `None` if there is no name.
 fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
@@ -230,6 +420,10 @@ mod tests {
             (ResourceType::Pod, "\"pod\""),
             (ResourceType::Namespace, "\"namespace\""),
             (ResourceType::Deployment, "\"deployment\""),
+            (ResourceType::Service, "\"service\""),
+            (ResourceType::Ingress, "\"ingress\""),
+            (ResourceType::ConfigMap, "\"configmap\""),
+            (ResourceType::Secret, "\"secret\""),
         ];
         for (rt, expected_json) in cases {
             let json = serde_json::to_string(&rt).unwrap();
@@ -334,6 +528,143 @@ mod tests {
         let info = namespace_to_info(ns).unwrap();
         assert_eq!(info.name, "production");
         assert_eq!(info.phase.as_deref(), Some("Active"));
+    }
+
+    #[test]
+    fn service_to_info_conversion() {
+        use k8s_openapi::api::core::v1::{
+            LoadBalancerIngress, LoadBalancerStatus, Service, ServicePort, ServiceSpec,
+            ServiceStatus,
+        };
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+        let svc = Service {
+            metadata: ObjectMeta {
+                name: Some("web".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            spec: Some(ServiceSpec {
+                type_: Some("LoadBalancer".to_string()),
+                cluster_ip: Some("10.0.0.1".to_string()),
+                ports: Some(vec![
+                    ServicePort {
+                        port: 80,
+                        ..Default::default()
+                    },
+                    ServicePort {
+                        port: 443,
+                        node_port: Some(30443),
+                        protocol: Some("TCP".to_string()),
+                        ..Default::default()
+                    },
+                ]),
+                ..Default::default()
+            }),
+            status: Some(ServiceStatus {
+                load_balancer: Some(LoadBalancerStatus {
+                    ingress: Some(vec![LoadBalancerIngress {
+                        ip: Some("203.0.113.9".to_string()),
+                        ..Default::default()
+                    }]),
+                }),
+                ..Default::default()
+            }),
+        };
+
+        let info = service_to_info(svc).unwrap();
+        assert_eq!(info.name, "web");
+        assert_eq!(info.service_type.as_deref(), Some("LoadBalancer"));
+        assert_eq!(info.cluster_ip.as_deref(), Some("10.0.0.1"));
+        assert_eq!(info.external_ips, vec!["203.0.113.9"]);
+        assert_eq!(info.ports, vec!["80/TCP", "443:30443/TCP"]);
+    }
+
+    #[test]
+    fn ingress_to_info_conversion() {
+        use k8s_openapi::api::networking::v1::{Ingress, IngressRule, IngressSpec, IngressTLS};
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+
+        let ing = Ingress {
+            metadata: ObjectMeta {
+                name: Some("web".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            spec: Some(IngressSpec {
+                ingress_class_name: Some("nginx".to_string()),
+                rules: Some(vec![IngressRule {
+                    host: Some("app.example.com".to_string()),
+                    ..Default::default()
+                }]),
+                tls: Some(vec![IngressTLS::default()]),
+                ..Default::default()
+            }),
+            status: None,
+        };
+
+        let info = ingress_to_info(ing).unwrap();
+        assert_eq!(info.class.as_deref(), Some("nginx"));
+        assert_eq!(info.hosts, vec!["app.example.com"]);
+        assert!(info.tls);
+        assert!(info.addresses.is_empty());
+    }
+
+    #[test]
+    fn configmap_to_info_counts_data_and_binary_data() {
+        use k8s_openapi::api::core::v1::ConfigMap;
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+        use k8s_openapi::ByteString;
+        use std::collections::BTreeMap;
+
+        let cm = ConfigMap {
+            metadata: ObjectMeta {
+                name: Some("settings".to_string()),
+                ..Default::default()
+            },
+            data: Some(BTreeMap::from([(
+                "config.yaml".to_string(),
+                "a: 1".to_string(),
+            )])),
+            binary_data: Some(BTreeMap::from([(
+                "blob".to_string(),
+                ByteString(vec![0xff]),
+            )])),
+            ..Default::default()
+        };
+
+        let info = configmap_to_info(cm).unwrap();
+        assert_eq!(info.data_count, 2);
+    }
+
+    #[test]
+    fn secret_to_info_decodes_utf8_and_masks_binary() {
+        use k8s_openapi::api::core::v1::Secret;
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+        use k8s_openapi::ByteString;
+        use std::collections::BTreeMap;
+
+        let secret = Secret {
+            metadata: ObjectMeta {
+                name: Some("creds".to_string()),
+                namespace: Some("default".to_string()),
+                ..Default::default()
+            },
+            type_: Some("Opaque".to_string()),
+            data: Some(BTreeMap::from([
+                ("password".to_string(), ByteString(b"hunter2".to_vec())),
+                ("cert".to_string(), ByteString(vec![0xff, 0xfe])),
+            ])),
+            ..Default::default()
+        };
+
+        let info = secret_to_info(secret).unwrap();
+        assert_eq!(info.secret_type.as_deref(), Some("Opaque"));
+        assert_eq!(
+            info.data.get("password").map(String::as_str),
+            Some("hunter2")
+        );
+        assert_eq!(info.data.get("cert").map(String::as_str), Some("(binary)"));
     }
 
     #[test]

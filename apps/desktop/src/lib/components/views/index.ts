@@ -7,10 +7,14 @@
 import type { Component } from "svelte";
 import type { View } from "$lib/stores/app.svelte";
 import AllClustersView from "./AllClustersView.svelte";
+import ConfigMapsView from "./ConfigMapsView.svelte";
 import DeploymentsView from "./DeploymentsView.svelte";
 import EmptyStateView from "./EmptyStateView.svelte";
+import IngressesView from "./IngressesView.svelte";
 import OverviewView from "./OverviewView.svelte";
 import PodsView from "./PodsView.svelte";
+import SecretsView from "./SecretsView.svelte";
+import ServicesView from "./ServicesView.svelte";
 
 export interface ViewEntry {
   component: Component<Record<string, unknown>>;
@@ -36,10 +40,10 @@ export const viewRegistry: Record<View, ViewEntry> = {
   pods: asEntry(PodsView),
   deployments: asEntry(DeploymentsView),
   helm: emptyState("The Helm Releases view"),
-  services: emptyState("The Services view"),
-  ingresses: emptyState("The Ingresses view"),
-  configmaps: emptyState("The ConfigMaps view"),
-  secrets: emptyState("The Secrets view"),
+  services: asEntry(ServicesView),
+  ingresses: asEntry(IngressesView),
+  configmaps: asEntry(ConfigMapsView),
+  secrets: asEntry(SecretsView),
   events: emptyState("The Events view"),
   logs: emptyState("The Logs view"),
 };
