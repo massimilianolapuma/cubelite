@@ -42,3 +42,7 @@ apps/desktop/src-tauri/gen/
 # rules on throwaway prototype markup). The bundle README + tokens-v2
 # remain tracked.
 design/design_handoff_cubelite_ui/*.dc.html
+
+# Playwright
+apps/desktop/test-results/
+apps/desktop/playwright-report/
