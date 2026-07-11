@@ -183,6 +183,37 @@ export function listEvents(
   });
 }
 
+export type LogLevel = "info" | "warn" | "error";
+
+export type LogLine = {
+  pod: string;
+  namespace: string;
+  time: string | null;
+  level: LogLevel;
+  message: string;
+};
+
+export type PodRef = {
+  namespace: string;
+  name: string;
+};
+
+export function streamLogs(
+  kubeconfigPath: string,
+  pods: PodRef[],
+  context?: string,
+): Promise<string> {
+  return invoke<string>("stream_logs", {
+    kubeconfigPath,
+    pods,
+    context: context ?? null,
+  });
+}
+
+export function stopLogs(streamId: string): Promise<void> {
+  return invoke("stop_logs", { streamId });
+}
+
 export function watchResources(
   kubeconfigPath: string,
   resourceType: string,
