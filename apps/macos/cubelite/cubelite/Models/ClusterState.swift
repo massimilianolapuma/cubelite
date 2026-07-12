@@ -22,6 +22,10 @@ final class ClusterState {
 
     /// Deployments in the selected namespace.
     var deployments: [DeploymentInfo] = []
+    /// Batch jobs in the selected namespace.
+    var jobs: [JobInfo] = []
+    /// Stateful sets in the selected namespace.
+    var statefulSets: [StatefulSetInfo] = []
 
     /// Services in the selected namespace.
     var services: [ServiceInfo] = []
@@ -87,6 +91,10 @@ enum ResourceType: String, CaseIterable, Identifiable {
     case ingresses = "Ingresses"
     /// Helm Releases resource type.
     case helmReleases = "Helm Releases"
+    /// Stateful sets.
+    case statefulSets = "StatefulSets"
+    /// Batch jobs.
+    case jobs = "Jobs"
     /// Cluster nodes (read-only).
     case nodes = "Nodes"
 
@@ -102,6 +110,8 @@ enum ResourceType: String, CaseIterable, Identifiable {
         case .configMaps: "doc.text"
         case .ingresses: "globe"
         case .helmReleases: "shippingbox"
+        case .statefulSets: "externaldrive.badge.timemachine"
+        case .jobs: "checklist"
         case .nodes: "server.rack"
         }
     }

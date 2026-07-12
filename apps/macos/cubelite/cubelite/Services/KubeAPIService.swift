@@ -346,11 +346,104 @@ actor KubeAPIService {
         return data
     }
 
+    /// Lists batch jobs, optionally scoped to a namespace and/or context.
+    func listJobs(namespace: String? = nil, inContext contextName: String? = nil) async throws
+        -> [JobInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/apis/batch/v1/namespaces/\(encoded)/jobs"
+        } else {
+            path = "/apis/batch/v1/jobs"
+        }
+        let response: K8sListResponse<K8sJob> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toJobInfo() }
+    }
+
+    /// Lists stateful sets, optionally scoped to a namespace and/or context.
+    func listStatefulSets(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [StatefulSetInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/apis/apps/v1/namespaces/\(encoded)/statefulsets"
+        } else {
+            path = "/apis/apps/v1/statefulsets"
+        }
+        let response: K8sListResponse<K8sStatefulSet> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toStatefulSetInfo() }
+    }
+
     /// Lists cluster nodes (read-only; requires nodes RBAC).
     func listNodes(inContext contextName: String? = nil) async throws -> [NodeInfo] {
         let response: K8sListResponse<K8sNode> = try await fetch(
             path: "/api/v1/nodes", contextName: contextName)
         return response.items.map { $0.toNodeInfo() }
+    }
+
+    // MARK: - Log Streaming
+
+    /// Follows a pod's log as an async stream of raw lines
+    /// (`tailLines` history first, then live lines until cancelled).
+    func streamPodLogs(
+        namespace: String,
+        pod: String,
+        tailLines: Int = 100,
+        inContext contextName: String? = nil
+    ) async throws -> AsyncThrowingStream<String, Error> {
+        let config = try await kubeconfigService.load()
+        let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
+
+        guard let serverString = cluster.server, !serverString.isEmpty else {
+            throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
+        }
+        let base = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
+        let path =
+            "/api/v1/namespaces/\(namespace)/pods/\(pod)/log"
+            + "?follow=true&timestamps=true&tailLines=\(tailLines)"
+        guard let url = URL(string: base + path) else {
+            throw CubeliteError.clientError(reason: "Invalid URL: \(base + path)")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let token = user.token, !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let session: URLSession
+        if let cached = sessionCache[base] {
+            session = cached
+        } else {
+            let newSession = try makeSession(cluster: cluster, user: user)
+            sessionCache[base] = newSession
+            session = newSession
+        }
+
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode)
+        else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+            throw CubeliteError.clientError(reason: "Log stream failed: HTTP \(code)")
+        }
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await line in bytes.lines {
+                        continuation.yield(line)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     // MARK: - Mutations

@@ -117,6 +117,102 @@ struct DeploymentCondition: Codable, Sendable, Identifiable {
 // MARK: - Kubernetes API Response Types
 
 /// Generic list response from the Kubernetes API.
+/// Display model for a batch Job.
+struct JobInfo: Codable, Sendable, Identifiable {
+    var id: String { "\(namespace)/\(name)" }
+
+    let name: String
+    let namespace: String
+    /// Desired completions (spec.completions, defaults to 1).
+    let completions: Int
+    /// Pods completed successfully.
+    let succeeded: Int
+    /// Pods currently running.
+    let active: Int
+    /// Pods that failed.
+    let failed: Int
+    /// ISO 8601 creation timestamp.
+    let creationTimestamp: String?
+}
+
+/// Raw Kubernetes job as returned by the API.
+struct K8sJob: Codable, Sendable {
+    let metadata: K8sObjectMeta?
+    let spec: K8sJobSpec?
+    let status: K8sJobStatus?
+}
+
+/// Job spec subset.
+struct K8sJobSpec: Codable, Sendable {
+    let completions: Int?
+}
+
+/// Job status counters.
+struct K8sJobStatus: Codable, Sendable {
+    let succeeded: Int?
+    let active: Int?
+    let failed: Int?
+}
+
+extension K8sJob {
+    /// Maps the raw job onto the display model.
+    func toJobInfo() -> JobInfo {
+        JobInfo(
+            name: metadata?.name ?? "",
+            namespace: metadata?.namespace ?? "",
+            completions: spec?.completions ?? 1,
+            succeeded: status?.succeeded ?? 0,
+            active: status?.active ?? 0,
+            failed: status?.failed ?? 0,
+            creationTimestamp: metadata?.creationTimestamp
+        )
+    }
+}
+
+/// Display model for a StatefulSet.
+struct StatefulSetInfo: Codable, Sendable, Identifiable {
+    var id: String { "\(namespace)/\(name)" }
+
+    let name: String
+    let namespace: String
+    /// Desired replicas.
+    let replicas: Int
+    /// Replicas currently reporting ready.
+    let readyReplicas: Int
+    /// ISO 8601 creation timestamp.
+    let creationTimestamp: String?
+}
+
+/// Raw Kubernetes stateful set as returned by the API.
+struct K8sStatefulSet: Codable, Sendable {
+    let metadata: K8sObjectMeta?
+    let spec: K8sStatefulSetSpec?
+    let status: K8sStatefulSetStatus?
+}
+
+/// StatefulSet spec subset.
+struct K8sStatefulSetSpec: Codable, Sendable {
+    let replicas: Int?
+}
+
+/// StatefulSet status subset.
+struct K8sStatefulSetStatus: Codable, Sendable {
+    let readyReplicas: Int?
+}
+
+extension K8sStatefulSet {
+    /// Maps the raw stateful set onto the display model.
+    func toStatefulSetInfo() -> StatefulSetInfo {
+        StatefulSetInfo(
+            name: metadata?.name ?? "",
+            namespace: metadata?.namespace ?? "",
+            replicas: spec?.replicas ?? 0,
+            readyReplicas: status?.readyReplicas ?? 0,
+            creationTimestamp: metadata?.creationTimestamp
+        )
+    }
+}
+
 /// Display model for a cluster node (read-only inventory).
 struct NodeInfo: Codable, Sendable, Identifiable {
     var id: String { name }

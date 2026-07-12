@@ -22,7 +22,7 @@ struct UnifiedSidebarView: View {
                 items: [.dashboard, .nodes]),
             Section(
                 label: "Workloads", dot: DesignTokens.clusterBlue,
-                items: [.pods, .deployments, .helmReleases]),
+                items: [.pods, .deployments, .statefulSets, .jobs, .helmReleases]),
             Section(
                 label: "Network", dot: DesignTokens.clusterViolet,
                 items: [.services, .ingresses]),
