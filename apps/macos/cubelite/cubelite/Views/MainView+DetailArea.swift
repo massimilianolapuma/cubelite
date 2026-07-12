@@ -143,8 +143,12 @@ extension MainView {
     private func detailPanel(for resource: SelectedResource) -> some View {
         switch resource {
         case .deployment(let dep):
-            DeploymentDetailView(deployment: dep)
-                .frame(minWidth: 320, idealWidth: 460, maxWidth: 600)
+            DeploymentDetailView(
+                deployment: dep,
+                kubeAPIService: kubeAPIService,
+                context: sidebarSelection?.context ?? selectedContext
+            )
+            .frame(minWidth: 320, idealWidth: 460, maxWidth: 600)
         case .pod:
             ResourceDetailView(
                 resource: resource,

@@ -10,6 +10,18 @@ import SwiftUI
 struct DeploymentDetailView: View {
 
     let deployment: DeploymentInfo
+    /// Backend used by the manifest action; nil renders read-only.
+    var kubeAPIService: KubeAPIService?
+    /// Context the deployment belongs to (required for the manifest fetch).
+    var context: String?
+
+    @State private var manifest: ManifestPayload?
+    @State private var manifestError: String?
+
+    private struct ManifestPayload: Identifiable {
+        let id = UUID()
+        let text: String
+    }
 
     var body: some View {
         ScrollView {
@@ -23,10 +35,41 @@ struct DeploymentDetailView: View {
                         .padding(.vertical, 12)
                     DeploymentConditionsSection(conditions: conditions)
                 }
+                if let service = kubeAPIService {
+                    Divider().padding(.vertical, 12)
+                    Button {
+                        Task {
+                            do {
+                                let text = try await service.deploymentManifestJSON(
+                                    namespace: deployment.namespace,
+                                    name: deployment.name,
+                                    inContext: context)
+                                manifest = ManifestPayload(text: text)
+                            } catch {
+                                manifestError = error.localizedDescription
+                            }
+                        }
+                    } label: {
+                        Label("Manifest", systemImage: "doc.text.magnifyingglass")
+                    }
+                    .controlSize(.small)
+                }
             }
             .padding(20)
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .sheet(item: $manifest) { payload in
+            ManifestSheetView(
+                title: "\(deployment.name) — manifest",
+                text: payload.text,
+                onClose: { manifest = nil }
+            )
+        }
+        .alert(
+            "Manifest failed", isPresented: .constant(manifestError != nil),
+            actions: { Button("OK") { manifestError = nil } },
+            message: { Text(manifestError ?? "") }
+        )
     }
 }
 
