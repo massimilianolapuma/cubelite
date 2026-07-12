@@ -71,7 +71,15 @@ struct ResourceDetailView: View {
             ManifestSheetView(
                 title: "\(resourceName) — manifest",
                 text: item.text,
-                onClose: { manifestItem = nil }
+                onClose: { manifestItem = nil },
+                onApply: { json in
+                    guard let service = kubeAPIService, let pod = currentPod else { return }
+                    try await service.applyManifestJSON(
+                        apiPath: "/api/v1/namespaces/\(pod.namespace)/pods/\(pod.name)",
+                        json: json,
+                        inContext: context)
+                    onPodMutated?()
+                }
             )
         }
         .sheet(isPresented: $showLogs) {
