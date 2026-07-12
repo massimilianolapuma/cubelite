@@ -8,18 +8,20 @@
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <title>CubeLite — Kubernetes Context Aggregator</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⎈</text></svg>">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
+  <link rel="apple-touch-icon" href="assets/icon-128.png">
 </head>
 <body>
   <a href="#main" class="skip-link">Skip to main content</a>
 
   <header class="site-header">
     <nav aria-label="Main navigation">
-      <a href="#" class="logo" aria-label="CubeLite home">⎈ CubeLite</a>
+      <a href="#" class="logo" aria-label="CubeLite home"><img src="assets/icon-32.png" alt="" width="20" height="20"> CubeLite</a>
       <ul role="list">
+        <li><a href="#download">Download</a></li>
         <li><a href="#features">Features</a></li>
+        <li><a href="docs/index.html">Docs</a></li>
         <li><a href="#architecture">Architecture</a></li>
-        <li><a href="#get-started">Get Started</a></li>
         <li><a href="https://github.com/massimilianolapuma/cubelite" class="btn btn-sm" rel="noopener noreferrer">GitHub</a></li>
       </ul>
     </nav>
@@ -33,9 +35,10 @@
         <p class="tagline">Kubernetes Context Aggregator</p>
         <p class="subtitle">Discover, switch, and manage Kubernetes contexts from a unified interface&nbsp;— fast, local&#8209;first, and privacy&#8209;respecting.</p>
         <div class="hero-actions">
-          <a href="#get-started" class="btn btn-primary">Get Started</a>
-          <a href="https://github.com/massimilianolapuma/cubelite" class="btn btn-outline" rel="noopener noreferrer">View on GitHub</a>
+          <a href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-macOS.dmg" class="btn btn-primary">Download for macOS</a>
+          <a href="#download" class="btn btn-outline">All platforms</a>
         </div>
+        <p class="hero-version"><span id="latest-version" aria-live="polite"></span></p>
         <div class="screenshot-placeholder" role="img" aria-label="Application screenshot coming soon">
           <span>📸 Screenshot coming soon</span>
         </div>
@@ -114,6 +117,51 @@
       </div>
     </section>
 
+    <!-- Download -->
+    <section id="download" class="download" aria-labelledby="download-title">
+      <div class="container">
+        <h2 id="download-title">Download</h2>
+        <p>Grab the latest release — links always point at the newest version. Builds are not yet signed; see the <a href="docs/installation.html">installation guide</a> for the one-time Gatekeeper/SmartScreen step.</p>
+        <div class="download-grid">
+          <article class="download-card">
+            <img src="assets/icon-128.png" alt="" width="56" height="56">
+            <h3>CubeLite for macOS</h3>
+            <p class="download-desc">Native Swift 6 + SwiftUI app with menu-bar quick-switch. macOS 14+. The complete experience.</p>
+            <div class="download-links">
+              <a class="btn btn-primary" href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-macOS.dmg">DMG</a>
+              <a class="btn btn-outline" href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-macOS.zip">ZIP</a>
+            </div>
+          </article>
+          <article class="download-card">
+            <img src="assets/icon-128.png" alt="" width="56" height="56">
+            <h3>CubeLite Desktop <span class="tag-preview">early preview</span></h3>
+            <p class="download-desc">Cross-platform app built with Tauri v2 + Svelte 5. Reduced feature set for now.</p>
+            <div class="download-links">
+              <a class="btn btn-outline" href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-Desktop-macOS.dmg">macOS</a>
+              <a class="btn btn-outline" href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-Desktop-Linux.AppImage">Linux AppImage</a>
+              <a class="btn btn-outline" href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-Desktop-Linux.deb">Linux deb</a>
+              <a class="btn btn-outline" href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-Desktop-Windows.msi">Windows</a>
+            </div>
+          </article>
+        </div>
+        <p class="download-all"><a href="https://github.com/massimilianolapuma/cubelite/releases" rel="noopener noreferrer">All releases and checksums →</a></p>
+      </div>
+    </section>
+
+    <!-- Docs -->
+    <section id="docs" class="docs" aria-labelledby="docs-title">
+      <div class="container">
+        <h2 id="docs-title">Documentation</h2>
+        <div class="docs-grid">
+          <a class="docs-card" href="docs/installation.html"><h3>Installation</h3><p>Download, install, and get past the unsigned-build warnings.</p></a>
+          <a class="docs-card" href="docs/quickstart.html"><h3>Quickstart</h3><p>Zero to a live cluster view in five minutes.</p></a>
+          <a class="docs-card" href="docs/features.html"><h3>Features</h3><p>Contexts, resources, logs, shell, port-forward, manifest edit.</p></a>
+          <a class="docs-card" href="docs/faq.html"><h3>FAQ</h3><p>Gatekeeper, RBAC limits, offline clusters, credentials.</p></a>
+        </div>
+        <p class="docs-alt">Prefer markdown? The same guide lives in the repo: <a href="https://github.com/massimilianolapuma/cubelite/tree/main/docs/guide" rel="noopener noreferrer">docs/guide</a>.</p>
+      </div>
+    </section>
+
     <!-- Getting Started -->
     <section id="get-started" class="get-started" aria-labelledby="start-title">
       <div class="container">
@@ -167,8 +215,21 @@ pnpm --filter desktop dev</code></pre>
         ·
         <a href="https://github.com/massimilianolapuma/cubelite/blob/main/CONTRIBUTING.md" rel="noopener noreferrer">Contributing</a>
       </p>
-      <p class="copyright">© 2025 CubeLite contributors</p>
+      <p class="copyright">© 2025–2026 CubeLite contributors</p>
     </div>
   </footer>
+
+  <script>
+    // Show the latest release tag next to the hero CTA; fails silently offline.
+    fetch("https://api.github.com/repos/massimilianolapuma/cubelite/releases/latest")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (release) {
+        if (!release || !release.tag_name) { return; }
+        var el = document.getElementById("latest-version");
+        el.textContent = "Latest release: " + release.tag_name;
+        el.parentElement.classList.add("visible");
+      })
+      .catch(function () { /* offline or rate-limited: keep the badge hidden */ });
+  </script>
 </body>
 </html>
