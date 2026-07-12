@@ -407,3 +407,192 @@ button:focus-visible {
     justify-content: center;
   }
 }
+
+/* ---------- Hero version badge ---------- */
+.hero-version {
+  min-height: 1.4rem;
+  margin-top: 0.9rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.hero-version.visible {
+  opacity: 1;
+}
+.logo img {
+  vertical-align: -0.2em;
+  border-radius: 0.2rem;
+}
+
+/* ---------- Download ---------- */
+.download {
+  padding: 4rem 0;
+  background: var(--color-surface);
+}
+.download > .container > p {
+  color: var(--color-text-muted);
+  max-width: 46rem;
+}
+.download-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.75rem;
+}
+.download-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+.download-card img {
+  border-radius: 0.75rem;
+}
+.download-desc {
+  color: var(--color-text-muted);
+  font-size: 0.92rem;
+  flex-grow: 1;
+}
+.download-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.tag-preview {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
+.download-all {
+  margin-top: 1.5rem;
+}
+.download-all a,
+.docs-alt a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+.download-all a:hover,
+.docs-alt a:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Docs ---------- */
+.docs {
+  padding: 4rem 0;
+}
+.docs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.75rem;
+}
+.docs-card {
+  display: block;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.4rem;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.docs-card:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
+}
+.docs-card h3 {
+  font-size: 1.02rem;
+  margin-bottom: 0.35rem;
+}
+.docs-card p {
+  color: var(--color-text-muted);
+  font-size: 0.88rem;
+}
+.docs-alt {
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .docs-card,
+  .hero-version {
+    transition: none;
+  }
+  .docs-card:hover {
+    transform: none;
+  }
+}
+
+/* ---------- Rendered guide pages ---------- */
+.doc-page {
+  max-width: 46rem;
+  margin-inline: auto;
+  padding: 3rem 1.5rem 4rem;
+}
+.doc-page h1 {
+  font-size: 2rem;
+  margin-bottom: 1.25rem;
+}
+.doc-page h2 {
+  font-size: 1.35rem;
+  margin: 2rem 0 0.75rem;
+}
+.doc-page p,
+.doc-page li {
+  margin-bottom: 0.6rem;
+}
+.doc-page ul,
+.doc-page ol {
+  padding-left: 1.4rem;
+  margin-bottom: 1rem;
+}
+.doc-page table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+}
+.doc-page th,
+.doc-page td {
+  border: 1px solid var(--color-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+.doc-page th {
+  background: var(--color-surface);
+}
+.doc-page pre {
+  background: var(--color-code-bg);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+.doc-page a {
+  color: var(--color-primary);
+}
+.doc-nav {
+  margin-bottom: 2rem;
+  font-size: 0.9rem;
+}
+.doc-nav a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+.doc-nav a:hover {
+  text-decoration: underline;
+}

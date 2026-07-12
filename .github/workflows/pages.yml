@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "docs/guide/**"
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +29,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install pandoc
+        run: sudo apt-get update && sudo apt-get install -y pandoc
+
+      - name: Render user guide (docs/guide/*.md → site/docs/*.html)
+        run: |
+          mkdir -p site/docs
+          for md in docs/guide/*.md; do
+            base="$(basename "$md" .md)"
+            out="$base.html"
+            if [ "$base" = "README" ]; then out="index.html"; fi
+            pandoc "$md" \
+              --from gfm --to html5 \
+              --template site/doc-template.html \
+              --metadata title="$(head -1 "$md" | sed 's/^# //')" \
+              --output "site/docs/$out"
+          done
+          # Rewrite relative .md links to their rendered .html counterparts
+          sed -i -E 's/href="([^"#:]+)\.md(#[^"]*)?"/href="\1.html\2"/g' site/docs/*.html
+          sed -i 's/href="README.html/href="index.html/g' site/docs/*.html
 
       - name: Setup Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0

@@ -1,6 +1,9 @@
 # CubeLite
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/massimilianolapuma/cubelite?label=release)](https://github.com/massimilianolapuma/cubelite/releases/latest)
+
+**[Website](https://massimilianolapuma.github.io/cubelite/) · [Download](https://massimilianolapuma.github.io/cubelite/#download) · [User Guide](docs/guide/README.md)**
 
 > Discover, switch, and manage Kubernetes contexts from a unified interface — fast, local-first, and privacy-respecting.
 
