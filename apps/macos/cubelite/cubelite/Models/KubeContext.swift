@@ -78,6 +78,20 @@ struct UserDetails: Codable, Sendable {
         case clientCertificate = "client-certificate"
         case clientKey = "client-key"
     }
+
+    /// A copy of these credentials with the bearer token removed.
+    ///
+    /// Used after the token has been migrated to the Keychain so the
+    /// in-memory kubeconfig model never carries it past load time.
+    func redactingToken() -> UserDetails {
+        UserDetails(
+            token: nil,
+            clientCertificateData: clientCertificateData,
+            clientKeyData: clientKeyData,
+            clientCertificate: clientCertificate,
+            clientKey: clientKey
+        )
+    }
 }
 
 // MARK: - Processed KubeConfig

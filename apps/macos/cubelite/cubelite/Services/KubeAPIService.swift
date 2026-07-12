@@ -420,9 +420,11 @@ actor KubeAPIService {
         return response.items.map { $0.toNodeInfo() }
     }
 
-    /// Bearer token for a request: the keychain copy wins; on first use the
-    /// kubeconfig token is imported into the keychain (keyed by the cluster
-    /// server URL) so subsequent requests never read it from the file again.
+    /// Bearer token for a request: the keychain copy wins. `KubeconfigService`
+    /// migrates file tokens into the keychain (keyed by the cluster server
+    /// URL) at load time and redacts them from the in-memory model, so
+    /// `user.token` is normally nil here; the import fallback remains for
+    /// callers that construct `UserDetails` directly.
     private func bearerToken(for user: UserDetails, account: String) async -> String? {
         if let stored = try? await keychain.retrieveString(tag: .bearerToken, account: account),
             !stored.isEmpty

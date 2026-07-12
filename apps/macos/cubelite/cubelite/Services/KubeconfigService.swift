@@ -5,7 +5,23 @@ import Yams
 ///
 /// Mirrors the logic of `cubelite-core`'s `kubeconfig.rs` — resolves KUBECONFIG
 /// environment paths, merges multiple configs, and manages the active context.
+///
+/// # Credential handling
+///
+/// Bearer tokens found in kubeconfig files are migrated to the macOS Keychain
+/// during every load (keyed by cluster server URL; an existing Keychain copy
+/// always wins) and then stripped from the returned in-memory model, so no
+/// token outlives the load call outside the Keychain. `save(_:)` re-reads the
+/// on-disk file and only rewrites `current-context`, leaving file credentials
+/// untouched.
 actor KubeconfigService {
+
+    /// Keychain used as the durable home for bearer tokens found in kubeconfig files.
+    private let keychain: KeychainService
+
+    init(keychain: KeychainService = KeychainService()) {
+        self.keychain = keychain
+    }
 
     // MARK: - Path Resolution
 
@@ -107,16 +123,18 @@ actor KubeconfigService {
     ///
     /// Uses `customPaths` when non-empty; otherwise falls back to `KUBECONFIG`
     /// env-var resolution and `~/.kube/config`.
-    func load() throws -> KubeConfig {
+    func load() async throws -> KubeConfig {
         let paths = customPaths.isEmpty ? Self.resolveKubeconfigPaths() : customPaths
-        return try loadFromPaths(paths)
+        return try await loadFromPaths(paths)
     }
 
     /// Loads and merges kubeconfig from the given file paths.
     ///
     /// - The first file's `current-context` wins.
     /// - Contexts are merged; duplicate names from later files are skipped.
-    func loadFromPaths(_ paths: [URL]) throws -> KubeConfig {
+    /// - Bearer tokens are migrated to the Keychain and stripped from the
+    ///   returned model (see the type-level documentation).
+    func loadFromPaths(_ paths: [URL]) async throws -> KubeConfig {
         guard !paths.isEmpty else {
             throw CubeliteError.fileNotFound(path: "No kubeconfig paths resolved")
         }
@@ -178,10 +196,14 @@ actor KubeconfigService {
             )
         }
 
-        // Store the fully merged collections into the raw config
+        await migrateTokensToKeychain(
+            contexts: mergedContexts, clusters: mergedClusters, users: mergedUsers)
+
+        // Store the fully merged collections into the raw config, with bearer
+        // tokens redacted now that the Keychain holds them.
         raw.contexts = mergedContexts
         raw.clusters = mergedClusters
-        raw.users = mergedUsers
+        raw.users = mergedUsers.map { NamedUser(name: $0.name, user: $0.user?.redactingToken()) }
         raw.currentContext = currentContext
 
         return KubeConfig(
@@ -190,6 +212,45 @@ actor KubeconfigService {
             raw: raw,
             paths: paths
         )
+    }
+
+    // MARK: - Credential Migration
+
+    /// Imports every bearer token referenced by a context into the Keychain,
+    /// keyed by the cluster's server URL (trailing slash dropped, matching
+    /// `KubeAPIService` session accounts). An existing Keychain entry always
+    /// wins over the file copy, so user edits made via "Reset stored
+    /// credentials" or the Keychain itself are never clobbered.
+    private func migrateTokensToKeychain(
+        contexts: [NamedContext],
+        clusters: [NamedCluster],
+        users: [NamedUser]
+    ) async {
+        let serversByCluster = Dictionary(
+            clusters.compactMap { named in named.cluster?.server.map { (named.name, $0) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let tokensByUser = Dictionary(
+            users.compactMap { named in named.user?.token.map { (named.name, $0) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        for context in contexts {
+            guard
+                let clusterName = context.context?.cluster,
+                let userName = context.context?.user,
+                let server = serversByCluster[clusterName], !server.isEmpty,
+                let token = tokensByUser[userName], !token.isEmpty
+            else { continue }
+            let account = server.hasSuffix("/") ? String(server.dropLast()) : server
+
+            if let existing = try? await keychain.retrieveString(
+                tag: .bearerToken, account: account), !existing.isEmpty
+            {
+                continue
+            }
+            try? await keychain.storeString(token, tag: .bearerToken, account: account)
+        }
     }
 
     // MARK: - Context Management
@@ -208,15 +269,28 @@ actor KubeconfigService {
 
     // MARK: - Save
 
-    /// Saves the config back to YAML, writing to the first path.
+    /// Persists the config's `current-context` to the first kubeconfig file.
+    ///
+    /// The on-disk file is re-read and only `current-context` is rewritten:
+    /// the in-memory model has bearer tokens redacted, so encoding it directly
+    /// would strip credentials from the user's kubeconfig (and merge entries
+    /// from other files into it).
     func save(_ config: KubeConfig) throws {
         guard let firstPath = config.paths.first else {
             throw CubeliteError.ioError(reason: "No kubeconfig path available for saving")
         }
 
-        let encoder = YAMLEncoder()
-        let yamlString = try encoder.encode(config.raw)
+        var onDisk: RawKubeConfig
+        do {
+            let data = try Data(contentsOf: firstPath)
+            onDisk = try YAMLDecoder().decode(RawKubeConfig.self, from: data)
+        } catch {
+            throw CubeliteError.ioError(
+                reason: "Cannot re-read kubeconfig for saving: \(firstPath.path)")
+        }
+        onDisk.currentContext = config.currentContext
 
+        let yamlString = try YAMLEncoder().encode(onDisk)
         guard let data = yamlString.data(using: .utf8) else {
             throw CubeliteError.ioError(reason: "Failed to encode YAML to UTF-8 data")
         }
