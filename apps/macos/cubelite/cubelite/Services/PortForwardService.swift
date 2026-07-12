@@ -170,7 +170,11 @@ final class PortForwardRelay: @unchecked Sendable {
                 }
                 if channel == 0, !payload.isEmpty {
                     self.connection.send(
-                        content: payload, completion: .contentProcessed { _ in })
+                        content: payload,
+                        completion: .contentProcessed { _ in
+                            // Best-effort relay: a failed local write surfaces
+                            // as the connection closing, handled by pumpLocal.
+                        })
                 }
                 self.pumpWebSocket()
             case .success(.string):
