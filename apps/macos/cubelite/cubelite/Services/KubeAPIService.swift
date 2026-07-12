@@ -528,12 +528,32 @@ actor KubeAPIService {
     func podManifestJSON(namespace: String, name: String, inContext contextName: String? = nil)
         async throws -> String
     {
-        let data = try await send(
-            path: "/api/v1/namespaces/\(namespace)/pods/\(name)",
-            method: "GET",
-            contextName: contextName
-        )
-        let object = try JSONSerialization.jsonObject(with: data)
+        try await manifestJSON(
+            apiPath: "/api/v1/namespaces/\(namespace)/pods/\(name)", inContext: contextName)
+    }
+
+    /// Fetches the raw deployment manifest as pretty-printed JSON.
+    func deploymentManifestJSON(
+        namespace: String, name: String, inContext contextName: String? = nil
+    ) async throws -> String {
+        try await manifestJSON(
+            apiPath: "/apis/apps/v1/namespaces/\(namespace)/deployments/\(name)",
+            inContext: contextName)
+    }
+
+    /// Fetches any resource at `apiPath` as pretty-printed JSON with the
+    /// server-side bookkeeping (`metadata.managedFields`) stripped.
+    func manifestJSON(apiPath: String, inContext contextName: String? = nil)
+        async throws -> String
+    {
+        let data = try await send(path: apiPath, method: "GET", contextName: contextName)
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CubeliteError.clientError(reason: "Manifest is not a JSON object")
+        }
+        if var meta = object["metadata"] as? [String: Any] {
+            meta.removeValue(forKey: "managedFields")
+            object["metadata"] = meta
+        }
         let pretty = try JSONSerialization.data(
             withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         return String(decoding: pretty, as: UTF8.self)

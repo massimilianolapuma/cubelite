@@ -62,7 +62,11 @@ struct ResourceDetailView: View {
                 + "The workload controller may recreate it.")
         }
         .sheet(item: $manifestItem) { item in
-            manifestSheet(item.text)
+            ManifestSheetView(
+                title: "\(resourceName) — manifest",
+                text: item.text,
+                onClose: { manifestItem = nil }
+            )
         }
         .sheet(isPresented: $showLogs) {
             if let service = kubeAPIService, let pod = currentPod {
@@ -138,29 +142,6 @@ struct ResourceDetailView: View {
         let text: String
     }
 
-    private func manifestSheet(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("\(resourceName) — manifest")
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer()
-                Button("Done") { manifestItem = nil }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(12)
-            Divider()
-            ScrollView([.vertical, .horizontal]) {
-                Text(text)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(DesignTokens.textLog)
-                    .textSelection(.enabled)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .background(DesignTokens.surfaceSunken)
-        }
-        .frame(minWidth: 560, minHeight: 420)
-    }
 
     /// Runs a mutation with the shared spinner/error handling; reloads on success.
     private func runAction(
