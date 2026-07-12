@@ -15,6 +15,9 @@ import Security
 actor KubeAPIService {
 
     private let kubeconfigService: KubeconfigService
+    /// OS keychain wrapper for bearer tokens (client identities already go
+    /// through the keychain via SecIdentity import).
+    private let keychain = KeychainService()
 
     /// Cached URLSessions keyed by cluster server base URL.
     ///
@@ -292,8 +295,8 @@ actor KubeAPIService {
             request.setValue(contentType ?? "application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        // Bearer token authentication
-        if let token = user.token, !token.isEmpty {
+        // Bearer token authentication (keychain-backed).
+        if let token = await bearerToken(for: user, account: base) {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -378,11 +381,73 @@ actor KubeAPIService {
         return response.items.map { $0.toStatefulSetInfo() }
     }
 
+    /// Lists cron jobs, optionally scoped to a namespace and/or context.
+    func listCronJobs(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [CronJobInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/apis/batch/v1/namespaces/\(encoded)/cronjobs"
+        } else {
+            path = "/apis/batch/v1/cronjobs"
+        }
+        let response: K8sListResponse<K8sCronJob> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toCronJobInfo() }
+    }
+
+    /// Lists persistent volume claims, optionally scoped to a namespace and/or context.
+    func listPvcs(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [PvcInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/api/v1/namespaces/\(encoded)/persistentvolumeclaims"
+        } else {
+            path = "/api/v1/persistentvolumeclaims"
+        }
+        let response: K8sListResponse<K8sPvc> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toPvcInfo() }
+    }
+
     /// Lists cluster nodes (read-only; requires nodes RBAC).
     func listNodes(inContext contextName: String? = nil) async throws -> [NodeInfo] {
         let response: K8sListResponse<K8sNode> = try await fetch(
             path: "/api/v1/nodes", contextName: contextName)
         return response.items.map { $0.toNodeInfo() }
+    }
+
+    /// Bearer token for a request: the keychain copy wins; on first use the
+    /// kubeconfig token is imported into the keychain (keyed by the cluster
+    /// server URL) so subsequent requests never read it from the file again.
+    private func bearerToken(for user: UserDetails, account: String) async -> String? {
+        if let stored = try? await keychain.retrieveString(tag: .bearerToken, account: account),
+            !stored.isEmpty
+        {
+            return stored
+        }
+        guard let token = user.token, !token.isEmpty else { return nil }
+        try? await keychain.storeString(token, tag: .bearerToken, account: account)
+        return token
+    }
+
+    /// Removes every stored credential for the clusters in the current
+    /// kubeconfig and drops the cached sessions (Settings "Reset stored
+    /// credentials").
+    func resetStoredCredentials() async {
+        if let config = try? await kubeconfigService.load() {
+            for cluster in config.raw.clusters ?? [] {
+                guard let server = cluster.cluster?.server, !server.isEmpty else { continue }
+                let base = server.hasSuffix("/") ? String(server.dropLast()) : server
+                try? await keychain.delete(tag: .bearerToken, account: base)
+                try? await keychain.delete(tag: .clientCertificate, account: base)
+                try? await keychain.delete(tag: .clientKey, account: base)
+            }
+        }
+        invalidateSession()
     }
 
     // MARK: - Log Streaming
@@ -411,7 +476,7 @@ actor KubeAPIService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        if let token = user.token, !token.isEmpty {
+        if let token = await bearerToken(for: user, account: base) {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 

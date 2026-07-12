@@ -82,7 +82,7 @@ struct CubeliteApp: App {
         }
 
         Settings {
-            PreferencesView()
+            PreferencesView(kubeAPIService: kubeAPIService)
                 .environment(appSettings)
                 .environment(loginItemController)
         }
