@@ -99,6 +99,9 @@ struct MainView: View {
     /// watcher's `start`/`stop` lifecycle ties to view appearance.
     @State var watcherBox = WatcherBox()
 
+    /// Holds the live pod watch stream task (see MainView+Watch).
+    @State var watchTaskBox = WatchTaskBox()
+
     /// Drives the periodic refresh of cluster resources based on
     /// `AppSettings.autoRefreshInterval`. Held in `@State` so its underlying
     /// task survives view re-evaluations.
@@ -258,6 +261,7 @@ struct MainView: View {
         .onDisappear {
             watcherBox.watcher?.stop()
             autoRefreshCoordinator.cancel()
+            watchTaskBox.task?.cancel()
         }
         .onChange(of: selectedContext) { _, newValue in
             // Only exit All Clusters mode when selecting a specific context.
@@ -298,7 +302,12 @@ struct MainView: View {
             selectedIngressID = nil
             selectedHelmReleaseID = nil
             if let sel = newValue {
-                Task { await loadResources(context: sel.context, namespace: sel.namespace) }
+                Task {
+                    await loadResources(context: sel.context, namespace: sel.namespace)
+                    startResourceWatch()
+                }
+            } else {
+                watchTaskBox.task?.cancel()
             }
         }
     }
