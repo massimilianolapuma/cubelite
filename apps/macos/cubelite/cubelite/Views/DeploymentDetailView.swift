@@ -62,7 +62,15 @@ struct DeploymentDetailView: View {
             ManifestSheetView(
                 title: "\(deployment.name) — manifest",
                 text: payload.text,
-                onClose: { manifest = nil }
+                onClose: { manifest = nil },
+                onApply: { json in
+                    guard let service = kubeAPIService else { return }
+                    try await service.applyManifestJSON(
+                        apiPath:
+                            "/apis/apps/v1/namespaces/\(deployment.namespace)/deployments/\(deployment.name)",
+                        json: json,
+                        inContext: context)
+                }
             )
         }
         .alert(

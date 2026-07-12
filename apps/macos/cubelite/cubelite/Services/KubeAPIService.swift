@@ -649,6 +649,21 @@ actor KubeAPIService {
             inContext: contextName)
     }
 
+    /// Replaces a resource with the edited manifest (PUT, like
+    /// `kubectl replace`). `json` must be the full object including
+    /// metadata.resourceVersion for optimistic concurrency.
+    func applyManifestJSON(
+        apiPath: String, json: String, inContext contextName: String? = nil
+    ) async throws {
+        _ = try await send(
+            path: apiPath,
+            method: "PUT",
+            body: Data(json.utf8),
+            contentType: "application/json",
+            contextName: contextName
+        )
+    }
+
     /// Fetches any resource at `apiPath` as pretty-printed JSON with the
     /// server-side bookkeeping (`metadata.managedFields`) stripped.
     func manifestJSON(apiPath: String, inContext contextName: String? = nil)
