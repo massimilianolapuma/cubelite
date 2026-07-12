@@ -1,0 +1,178 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-macos-native:
+    name: Build macOS app
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build (Release)
+        run: |
+          xcodebuild build \
+            -project apps/macos/cubelite/cubelite.xcodeproj \
+            -scheme cubelite \
+            -destination 'platform=macOS' \
+            -configuration Release \
+            -derivedDataPath dd \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Ad-hoc sign & package (ZIP + DMG)
+        # Apple Silicon refuses to run fully unsigned binaries; an ad-hoc
+        # signature is the floor until Developer ID signing lands (#121).
+        run: |
+          APP="dd/Build/Products/Release/cubelite.app"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep "$APP"
+
+          ditto -c -k --keepParent "$APP" CubeLite-macOS.zip
+
+          mkdir dmg-staging
+          cp -R "$APP" dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "CubeLite" -srcfolder dmg-staging \
+            -ov -format UDZO CubeLite-macOS.dmg
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-native
+          path: |
+            CubeLite-macOS.zip
+            CubeLite-macOS.dmg
+          if-no-files-found: error
+
+  build-desktop:
+    name: Build desktop (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS
+            os: macos-15
+          - platform: Linux
+            os: ubuntu-22.04
+          - platform: Windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install system dependencies (Tauri / WebKit)
+        if: matrix.platform == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri bundles
+        run: pnpm --filter desktop tauri:build
+
+      - name: Collect artifacts with stable names
+        shell: bash
+        run: |
+          mkdir -p out
+          bundle_dir="target/release/bundle"
+          case "${{ matrix.platform }}" in
+            macOS)
+              cp "$(find "$bundle_dir/dmg" -name '*.dmg' | head -1)" out/CubeLite-Desktop-macOS.dmg
+              ;;
+            Linux)
+              cp "$(find "$bundle_dir/appimage" -name '*.AppImage' | head -1)" out/CubeLite-Desktop-Linux.AppImage
+              cp "$(find "$bundle_dir/deb" -name '*.deb' | head -1)" out/CubeLite-Desktop-Linux.deb
+              cp "$(find "$bundle_dir/rpm" -name '*.rpm' | head -1)" out/CubeLite-Desktop-Linux.rpm
+              ;;
+            Windows)
+              cp "$(find "$bundle_dir/msi" -name '*.msi' | head -1)" out/CubeLite-Desktop-Windows.msi
+              cp "$(find "$bundle_dir/nsis" -name '*.exe' | head -1)" out/CubeLite-Desktop-Windows-setup.exe
+              ;;
+          esac
+          ls -la out
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-${{ matrix.platform }}
+          path: out/*
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-macos-native, build-desktop]
+    # Publish as long as the native macOS app built; a broken desktop
+    # platform must not hold the whole release hostage.
+    if: always() && needs.build-macos-native.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Compose release notes from CHANGELOG
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          # Pull the "## [X.Y.Z]" section out of CHANGELOG.md when present.
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "_No CHANGELOG section for ${VERSION} — see the commit history below._" > notes.md
+          fi
+          {
+            echo ""
+            echo "---"
+            echo "[Installation guide](https://massimilianolapuma.github.io/cubelite/docs/installation.html) · builds are not yet notarized/signed; see the guide for the one-time Gatekeeper/SmartScreen step."
+          } >> notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PRERELEASE_FLAG=""
+          case "$TAG" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
+          gh release create "$TAG" \
+            --title "CubeLite $TAG" \
+            --notes-file notes.md \
+            --verify-tag \
+            $PRERELEASE_FLAG \
+            assets/*
