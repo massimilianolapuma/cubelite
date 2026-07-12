@@ -102,26 +102,6 @@ struct ResourceDetailView: View {
                 )
             }
         }
-        .sheet(isPresented: $showLogs) {
-            if let service = kubeAPIService, let pod = currentPod {
-                PodLogsView(
-                    pod: pod,
-                    kubeAPIService: service,
-                    context: context,
-                    onClose: { showLogs = false }
-                )
-            }
-        }
-        .sheet(isPresented: $showShell) {
-            if let service = kubeAPIService, let pod = currentPod {
-                PodExecView(
-                    pod: pod,
-                    kubeAPIService: service,
-                    context: context,
-                    onClose: { showShell = false }
-                )
-            }
-        }
         .alert(
             "Action failed", isPresented: .constant(actionError != nil),
             actions: {
