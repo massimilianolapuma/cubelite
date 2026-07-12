@@ -117,6 +117,58 @@ struct DeploymentCondition: Codable, Sendable, Identifiable {
 // MARK: - Kubernetes API Response Types
 
 /// Generic list response from the Kubernetes API.
+/// Display model for a batch Job.
+struct JobInfo: Codable, Sendable, Identifiable {
+    var id: String { "\(namespace)/\(name)" }
+
+    let name: String
+    let namespace: String
+    /// Desired completions (spec.completions, defaults to 1).
+    let completions: Int
+    /// Pods completed successfully.
+    let succeeded: Int
+    /// Pods currently running.
+    let active: Int
+    /// Pods that failed.
+    let failed: Int
+    /// ISO 8601 creation timestamp.
+    let creationTimestamp: String?
+}
+
+/// Raw Kubernetes job as returned by the API.
+struct K8sJob: Codable, Sendable {
+    let metadata: K8sObjectMeta?
+    let spec: K8sJobSpec?
+    let status: K8sJobStatus?
+}
+
+/// Job spec subset.
+struct K8sJobSpec: Codable, Sendable {
+    let completions: Int?
+}
+
+/// Job status counters.
+struct K8sJobStatus: Codable, Sendable {
+    let succeeded: Int?
+    let active: Int?
+    let failed: Int?
+}
+
+extension K8sJob {
+    /// Maps the raw job onto the display model.
+    func toJobInfo() -> JobInfo {
+        JobInfo(
+            name: metadata?.name ?? "",
+            namespace: metadata?.namespace ?? "",
+            completions: spec?.completions ?? 1,
+            succeeded: status?.succeeded ?? 0,
+            active: status?.active ?? 0,
+            failed: status?.failed ?? 0,
+            creationTimestamp: metadata?.creationTimestamp
+        )
+    }
+}
+
 /// Display model for a cluster node (read-only inventory).
 struct NodeInfo: Codable, Sendable, Identifiable {
     var id: String { name }

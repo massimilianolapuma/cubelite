@@ -63,6 +63,16 @@ extension MainView {
             return
         }
 
+        // Jobs
+        if let jobs = await fetchResource("jobs", {
+            try await kubeAPIService.listJobs(namespace: namespace, inContext: context)
+        }) {
+            clusterState.jobs = jobs
+        } else if fatalError != nil {
+            finishResourceLoad(fatalError: fatalError, forbidden: forbidden, namespace: namespace)
+            return
+        }
+
         // Nodes (cluster-scoped, best-effort: RBAC commonly denies them and
         // the rest of the views must keep working).
         clusterState.nodes = (try? await kubeAPIService.listNodes(inContext: context)) ?? []

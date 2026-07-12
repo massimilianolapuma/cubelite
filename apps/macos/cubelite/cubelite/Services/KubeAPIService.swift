@@ -346,6 +346,22 @@ actor KubeAPIService {
         return data
     }
 
+    /// Lists batch jobs, optionally scoped to a namespace and/or context.
+    func listJobs(namespace: String? = nil, inContext contextName: String? = nil) async throws
+        -> [JobInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/apis/batch/v1/namespaces/\(encoded)/jobs"
+        } else {
+            path = "/apis/batch/v1/jobs"
+        }
+        let response: K8sListResponse<K8sJob> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toJobInfo() }
+    }
+
     /// Lists cluster nodes (read-only; requires nodes RBAC).
     func listNodes(inContext contextName: String? = nil) async throws -> [NodeInfo] {
         let response: K8sListResponse<K8sNode> = try await fetch(
