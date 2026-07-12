@@ -15,6 +15,9 @@ import Security
 actor KubeAPIService {
 
     private let kubeconfigService: KubeconfigService
+    /// OS keychain wrapper for bearer tokens (client identities already go
+    /// through the keychain via SecIdentity import).
+    private let keychain = KeychainService()
 
     /// Cached URLSessions keyed by cluster server base URL.
     ///
@@ -292,8 +295,8 @@ actor KubeAPIService {
             request.setValue(contentType ?? "application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        // Bearer token authentication
-        if let token = user.token, !token.isEmpty {
+        // Bearer token authentication (keychain-backed).
+        if let token = await bearerToken(for: user, account: base) {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -385,6 +388,36 @@ actor KubeAPIService {
         return response.items.map { $0.toNodeInfo() }
     }
 
+    /// Bearer token for a request: the keychain copy wins; on first use the
+    /// kubeconfig token is imported into the keychain (keyed by the cluster
+    /// server URL) so subsequent requests never read it from the file again.
+    private func bearerToken(for user: UserDetails, account: String) async -> String? {
+        if let stored = try? await keychain.retrieveString(tag: .bearerToken, account: account),
+            !stored.isEmpty
+        {
+            return stored
+        }
+        guard let token = user.token, !token.isEmpty else { return nil }
+        try? await keychain.storeString(token, tag: .bearerToken, account: account)
+        return token
+    }
+
+    /// Removes every stored credential for the clusters in the current
+    /// kubeconfig and drops the cached sessions (Settings "Reset stored
+    /// credentials").
+    func resetStoredCredentials() async {
+        if let config = try? await kubeconfigService.load() {
+            for cluster in config.raw.clusters ?? [] {
+                guard let server = cluster.cluster?.server, !server.isEmpty else { continue }
+                let base = server.hasSuffix("/") ? String(server.dropLast()) : server
+                try? await keychain.delete(tag: .bearerToken, account: base)
+                try? await keychain.delete(tag: .clientCertificate, account: base)
+                try? await keychain.delete(tag: .clientKey, account: base)
+            }
+        }
+        invalidateSession()
+    }
+
     // MARK: - Log Streaming
 
     /// Follows a pod's log as an async stream of raw lines
@@ -411,7 +444,7 @@ actor KubeAPIService {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        if let token = user.token, !token.isEmpty {
+        if let token = await bearerToken(for: user, account: base) {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 

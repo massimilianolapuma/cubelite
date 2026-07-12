@@ -6,13 +6,16 @@ import SwiftUI
 /// implemented as a separate sub-view to keep individual `body`s concise.
 struct PreferencesView: View {
 
+    /// Backend used by the credential-reset action; nil hides that section.
+    var kubeAPIService: KubeAPIService?
+
     var body: some View {
         TabView {
             GeneralPreferencesTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
             AppearancePreferencesTab()
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
-            AdvancedPreferencesTab()
+            AdvancedPreferencesTab(kubeAPIService: kubeAPIService)
                 .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
         }
         .frame(width: 480, height: 360)
@@ -108,6 +111,8 @@ private struct AppearancePreferencesTab: View {
 private struct AdvancedPreferencesTab: View {
 
     @Environment(AppSettings.self) private var settings
+    let kubeAPIService: KubeAPIService?
+    @State private var credentialsReset = false
 
     var body: some View {
         @Bindable var s = settings
@@ -116,6 +121,23 @@ private struct AdvancedPreferencesTab: View {
                 KubeconfigPathsSection(paths: $s.kubeconfigPaths)
             }
             Stepper("API timeout: \(s.apiTimeout) s", value: $s.apiTimeout, in: 5...120, step: 5)
+            if let service = kubeAPIService {
+                Section("Credentials") {
+                    Button("Reset stored credentials") {
+                        Task {
+                            await service.resetStoredCredentials()
+                            credentialsReset = true
+                        }
+                    }
+                    Text(
+                        credentialsReset
+                            ? "Keychain entries removed — they will be re-imported on next use."
+                            : "Removes bearer tokens and client identities from the Keychain."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
             Section {
                 Toggle("Skip TLS certificate verification", isOn: $s.skipTLSVerification)
                 Text(
