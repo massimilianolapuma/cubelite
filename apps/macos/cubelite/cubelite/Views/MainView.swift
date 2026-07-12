@@ -35,6 +35,8 @@ struct MainView: View {
 
     let kubeconfigService: KubeconfigService
     let kubeAPIService: KubeAPIService
+    /// Port-forward session manager (owned by the app scene).
+    var portForwardService: PortForwardService?
 
     @Environment(ClusterState.self) var clusterState
     @Environment(LogStore.self) var logStore

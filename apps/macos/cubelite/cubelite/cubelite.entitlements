@@ -8,6 +8,9 @@
         <!-- Outbound network connections (K8s API calls via URLSession) -->
         <key>com.apple.security.network.client</key>
         <true/>
+        <!-- Local listener for pod port-forward sessions -->
+        <key>com.apple.security.network.server</key>
+        <true/>
         <!--
         Temporary exception: read/write access to ~/.kube/ outside the sandbox container.
         Required because FileManager.homeDirectoryForCurrentUser is redirected to the

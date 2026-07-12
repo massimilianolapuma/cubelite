@@ -153,6 +153,7 @@ extension MainView {
             ResourceDetailView(
                 resource: resource,
                 kubeAPIService: kubeAPIService,
+                portForwardService: portForwardService,
                 context: sidebarSelection?.context ?? selectedContext,
                 onPodMutated: {
                     selectedPodID = nil

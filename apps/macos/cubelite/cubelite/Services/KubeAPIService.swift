@@ -470,6 +470,47 @@ actor KubeAPIService {
             path: path, timeout: 3600, failurePrefix: "Watch failed", contextName: contextName)
     }
 
+    /// Opens the Kubernetes port-forward WebSocket for one pod port using
+    /// the SPDY-over-WebSocket channel protocol (`v4.channel.k8s.io`).
+    /// The caller owns the returned task (resume/cancel).
+    func portForwardWebSocket(
+        namespace: String,
+        pod: String,
+        remotePort: Int,
+        inContext contextName: String? = nil
+    ) async throws -> URLSessionWebSocketTask {
+        let config = try await kubeconfigService.load()
+        let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
+
+        guard let serverString = cluster.server, !serverString.isEmpty else {
+            throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
+        }
+        var base = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
+        base = base.replacingOccurrences(of: "https://", with: "wss://")
+        let path = "/api/v1/namespaces/\(namespace)/pods/\(pod)/portforward?ports=\(remotePort)"
+        guard let url = URL(string: base + path) else {
+            throw CubeliteError.clientError(reason: "Invalid URL: \(base + path)")
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("v4.channel.k8s.io", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        let httpBase = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
+        if let token = await bearerToken(for: user, account: httpBase) {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let session: URLSession
+        if let cached = sessionCache[httpBase] {
+            session = cached
+        } else {
+            let newSession = try makeSession(cluster: cluster, user: user)
+            sessionCache[httpBase] = newSession
+            session = newSession
+        }
+
+        return session.webSocketTask(with: request)
+    }
+
     // MARK: - Log Streaming
 
     /// Follows a pod's log as an async stream of raw lines

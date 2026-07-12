@@ -13,11 +13,14 @@ struct CubeliteApp: App {
     /// Persists whether the user has completed the first-launch onboarding flow.
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var logStore = LogStore()
+    @State private var portForwardService: PortForwardService
 
     init() {
         let ks = KubeconfigService()
         self.kubeconfigService = ks
-        self.kubeAPIService = KubeAPIService(kubeconfigService: ks)
+        let api = KubeAPIService(kubeconfigService: ks)
+        self.kubeAPIService = api
+        self._portForwardService = State(initialValue: PortForwardService(kubeAPIService: api))
         // Default-initialised; the real `onError` closure is bound in `.task`
         // once `logStore` and `appSettings` are available in scope.
         self._loginItemController = State(initialValue: LoginItemController())
@@ -26,7 +29,11 @@ struct CubeliteApp: App {
     var body: some Scene {
         WindowGroup("CubeLite") {
             if hasCompletedOnboarding {
-                MainView(kubeconfigService: kubeconfigService, kubeAPIService: kubeAPIService)
+                MainView(
+                    kubeconfigService: kubeconfigService,
+                    kubeAPIService: kubeAPIService,
+                    portForwardService: portForwardService
+                )
                     .environment(clusterState)
                     .environment(appSettings)
                     .environment(logStore)
