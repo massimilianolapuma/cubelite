@@ -11,6 +11,7 @@
 ## Security
 
 - **Keychain-backed credentials** — bearer tokens are migrated into the OS keychain on load (keyed by cluster server URL) and stripped from memory; client certificates become `SecIdentity` entries. Reset anytime from Settings → Advanced.
+- **Exec credential plugins** — `exec` blocks (EKS `aws eks get-token`, GKE `gke-gcloud-auth-plugin`, OIDC `kubelogin`, …) run exactly as kubectl runs them, with results cached until their expiration. Plugin binaries are resolved against your PATH plus common install locations (Homebrew, cloud SDKs).
 - **No telemetry** — no analytics, no call-home, no accounts.
 - **Secrets stay opaque** — the Secrets list shows names and key counts only; values are never fetched or displayed.
 

@@ -70,6 +70,8 @@ struct UserDetails: Codable, Sendable {
     let clientKeyData: String?
     let clientCertificate: String?
     let clientKey: String?
+    let exec: ExecConfig?
+    let authProvider: AuthProviderConfig?
 
     enum CodingKeys: String, CodingKey {
         case token
@@ -77,6 +79,26 @@ struct UserDetails: Codable, Sendable {
         case clientKeyData = "client-key-data"
         case clientCertificate = "client-certificate"
         case clientKey = "client-key"
+        case exec
+        case authProvider = "auth-provider"
+    }
+
+    init(
+        token: String? = nil,
+        clientCertificateData: String? = nil,
+        clientKeyData: String? = nil,
+        clientCertificate: String? = nil,
+        clientKey: String? = nil,
+        exec: ExecConfig? = nil,
+        authProvider: AuthProviderConfig? = nil
+    ) {
+        self.token = token
+        self.clientCertificateData = clientCertificateData
+        self.clientKeyData = clientKeyData
+        self.clientCertificate = clientCertificate
+        self.clientKey = clientKey
+        self.exec = exec
+        self.authProvider = authProvider
     }
 
     /// A copy of these credentials with the bearer token removed.
@@ -85,13 +107,37 @@ struct UserDetails: Codable, Sendable {
     /// in-memory kubeconfig model never carries it past load time.
     func redactingToken() -> UserDetails {
         UserDetails(
-            token: nil,
             clientCertificateData: clientCertificateData,
             clientKeyData: clientKeyData,
             clientCertificate: clientCertificate,
-            clientKey: clientKey
+            clientKey: clientKey,
+            exec: exec,
+            authProvider: authProvider
         )
     }
+}
+
+/// An `users[].user.exec` credential-plugin block
+/// (client.authentication.k8s.io ExecConfig).
+struct ExecConfig: Codable, Sendable {
+    let apiVersion: String?
+    let command: String
+    let args: [String]?
+    let env: [ExecEnvVar]?
+    let interactiveMode: String?
+    let provideClusterInfo: Bool?
+}
+
+/// A single environment variable entry inside an exec block.
+struct ExecEnvVar: Codable, Sendable {
+    let name: String
+    let value: String
+}
+
+/// A legacy `users[].user.auth-provider` block. Parsed only so the app can
+/// surface a targeted "migrate to exec" error instead of a silent auth miss.
+struct AuthProviderConfig: Codable, Sendable {
+    let name: String?
 }
 
 // MARK: - Processed KubeConfig

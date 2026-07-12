@@ -18,6 +18,9 @@ actor KubeAPIService {
     /// OS keychain wrapper for bearer tokens (client identities already go
     /// through the keychain via SecIdentity import).
     private let keychain = KeychainService()
+    /// Runner + cache for kubeconfig exec credential plugins (kubelogin,
+    /// aws, gke-gcloud-auth-plugin, …).
+    private let execCredentials = ExecCredentialService()
 
     /// Cached URLSessions keyed by cluster server base URL.
     ///
@@ -275,16 +278,9 @@ actor KubeAPIService {
         contentType: String? = nil,
         contextName: String? = nil
     ) async throws -> Data {
-        let config = try await kubeconfigService.load()
-        let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
-
-        guard let serverString = cluster.server, !serverString.isEmpty else {
-            throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
-        }
-
-        let base = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
-        guard let url = URL(string: base + path) else {
-            throw CubeliteError.clientError(reason: "Invalid URL: \(base + path)")
+        let conn = try await connection(contextName: contextName)
+        guard let url = URL(string: conn.base + path) else {
+            throw CubeliteError.clientError(reason: "Invalid URL: \(conn.base + path)")
         }
 
         var request = URLRequest(url: url)
@@ -294,25 +290,10 @@ actor KubeAPIService {
             request.httpBody = body
             request.setValue(contentType ?? "application/json", forHTTPHeaderField: "Content-Type")
         }
-
-        // Bearer token authentication (keychain-backed).
-        if let token = await bearerToken(for: user, account: base) {
+        if let token = conn.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-
-        // Reuse the cached session for this cluster server when available.
-        // Each server keeps its own URLSession so that parallel fetches to
-        // different clusters (e.g. via withTaskGroup) never cancel each other's
-        // in-flight requests. This also prevents repeated TLS handshakes that
-        // cause authentication failures on client-certificate clusters (e.g. minikube).
-        let session: URLSession
-        if let cached = sessionCache[base] {
-            session = cached
-        } else {
-            let newSession = try makeSession(cluster: cluster, user: user)
-            sessionCache[base] = newSession
-            session = newSession
-        }
+        let session = conn.session
 
         let (data, response): (Data, URLResponse)
         do {
@@ -420,6 +401,65 @@ actor KubeAPIService {
         return response.items.map { $0.toNodeInfo() }
     }
 
+    /// Per-request connection state shared by REST calls, WebSockets, and
+    /// line streams: the server base URL, the Authorization bearer token, and
+    /// a cached URLSession whose TLS identity matches the credential source.
+    ///
+    /// Exec-plugin users bypass the keychain entirely — their tokens are
+    /// short-lived and refreshing them from the plugin must always win.
+    /// Sessions are cached per server; when a plugin returns client
+    /// certificates the cache key also carries the certificate hash so a
+    /// rotated identity gets a fresh TLS session.
+    private func connection(
+        contextName: String?
+    ) async throws -> (base: String, token: String?, session: URLSession) {
+        let config = try await kubeconfigService.load()
+        let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
+
+        guard let serverString = cluster.server, !serverString.isEmpty else {
+            throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
+        }
+        let base = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
+
+        var effectiveUser = user
+        var token: String?
+        var sessionKey = base
+        if let exec = user.exec {
+            let cred = try await execCredentials.credentials(for: exec, cacheKey: base)
+            token = cred.token
+            if let certPEM = cred.clientCertificatePEM, let keyPEM = cred.clientKeyPEM {
+                // Feed the PEM pair through the existing inline-data identity
+                // path, which base64-decodes and falls back to PEM parsing.
+                effectiveUser = UserDetails(
+                    clientCertificateData: Data(certPEM.utf8).base64EncodedString(),
+                    clientKeyData: Data(keyPEM.utf8).base64EncodedString()
+                )
+                sessionKey = "\(base)#exec-\(certPEM.hashValue)"
+            }
+        } else {
+            token = await bearerToken(for: user, account: base)
+            if token == nil, let provider = user.authProvider {
+                throw CubeliteError.clientError(
+                    reason:
+                        "Legacy auth-provider '\(provider.name ?? "unknown")' is not supported — migrate this kubeconfig user to an exec plugin (e.g. kubelogin, gke-gcloud-auth-plugin)"
+                )
+            }
+        }
+
+        // Reuse the cached session per server so parallel fetches to different
+        // clusters never cancel each other's in-flight requests, and repeated
+        // TLS handshakes don't trip client-certificate clusters (e.g. minikube).
+        let session: URLSession
+        if let cached = sessionCache[sessionKey] {
+            session = cached
+        } else {
+            let newSession = try makeSession(cluster: cluster, user: effectiveUser)
+            sessionCache[sessionKey] = newSession
+            session = newSession
+        }
+        return (base, token, session)
+    }
+
     /// Bearer token for a request: the keychain copy wins. `KubeconfigService`
     /// migrates file tokens into the keychain (keyed by the cluster server
     /// URL) at load time and redacts them from the in-memory model, so
@@ -449,6 +489,7 @@ actor KubeAPIService {
                 try? await keychain.delete(tag: .clientKey, account: base)
             }
         }
+        await execCredentials.invalidateCache()
         invalidateSession()
     }
 
@@ -513,34 +554,19 @@ actor KubeAPIService {
         path: String,
         inContext contextName: String? = nil
     ) async throws -> URLSessionWebSocketTask {
-        let config = try await kubeconfigService.load()
-        let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
-
-        guard let serverString = cluster.server, !serverString.isEmpty else {
-            throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
-        }
-        let httpBase = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
-        let wsBase = httpBase.replacingOccurrences(of: "https://", with: "wss://")
+        let conn = try await connection(contextName: contextName)
+        let wsBase = conn.base.replacingOccurrences(of: "https://", with: "wss://")
         guard let url = URL(string: wsBase + path) else {
             throw CubeliteError.clientError(reason: "Invalid URL: \(wsBase + path)")
         }
 
         var request = URLRequest(url: url)
         request.setValue("v4.channel.k8s.io", forHTTPHeaderField: "Sec-WebSocket-Protocol")
-        if let token = await bearerToken(for: user, account: httpBase) {
+        if let token = conn.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let session: URLSession
-        if let cached = sessionCache[httpBase] {
-            session = cached
-        } else {
-            let newSession = try makeSession(cluster: cluster, user: user)
-            sessionCache[httpBase] = newSession
-            session = newSession
-        }
-
-        return session.webSocketTask(with: request)
+        return conn.session.webSocketTask(with: request)
     }
 
     // MARK: - Log Streaming
@@ -570,15 +596,9 @@ actor KubeAPIService {
         failurePrefix: String,
         contextName: String?
     ) async throws -> AsyncThrowingStream<String, Error> {
-        let config = try await kubeconfigService.load()
-        let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
-
-        guard let serverString = cluster.server, !serverString.isEmpty else {
-            throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
-        }
-        let base = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
-        guard let url = URL(string: base + path) else {
-            throw CubeliteError.clientError(reason: "Invalid URL: \(base + path)")
+        let conn = try await connection(contextName: contextName)
+        guard let url = URL(string: conn.base + path) else {
+            throw CubeliteError.clientError(reason: "Invalid URL: \(conn.base + path)")
         }
 
         var request = URLRequest(url: url)
@@ -586,20 +606,11 @@ actor KubeAPIService {
         if let timeout {
             request.timeoutInterval = timeout
         }
-        if let token = await bearerToken(for: user, account: base) {
+        if let token = conn.token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let session: URLSession
-        if let cached = sessionCache[base] {
-            session = cached
-        } else {
-            let newSession = try makeSession(cluster: cluster, user: user)
-            sessionCache[base] = newSession
-            session = newSession
-        }
-
-        let (bytes, response) = try await session.bytes(for: request)
+        let (bytes, response) = try await conn.session.bytes(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode)
         else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
