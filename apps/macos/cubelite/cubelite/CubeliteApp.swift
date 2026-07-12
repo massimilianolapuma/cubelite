@@ -78,7 +78,7 @@ struct CubeliteApp: App {
             height: hasCompletedOnboarding ? 700 : 400
         )
 
-        MenuBarExtra("CubeLite", systemImage: "square.3.layers.3d") {
+        MenuBarExtra("CubeLite", image: "TrayIcon") {
             MenuBarContextView(
                 clusterState: clusterState,
                 kubeconfigService: kubeconfigService,
