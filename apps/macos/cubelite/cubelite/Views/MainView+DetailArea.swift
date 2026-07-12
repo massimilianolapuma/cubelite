@@ -29,7 +29,8 @@ extension MainView {
             switch selectedResourceType ?? .dashboard {
             case .dashboard:
                 DashboardView()
-            case .pods, .deployments, .services, .secrets, .configMaps, .ingresses, .helmReleases:
+            case .pods, .deployments, .services, .secrets, .configMaps, .ingresses,
+                .helmReleases, .nodes:
                 resourceBrowserView(context: sel.context, namespace: sel.namespace)
             }
         } else {
@@ -115,6 +116,8 @@ extension MainView {
                             selectedPodID = nil
                             selectedDeploymentID = nil
                         }
+                case .nodes:
+                    NodeListView()
                 case .dashboard:
                     EmptyView()
                 }

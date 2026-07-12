@@ -63,6 +63,10 @@ extension MainView {
             return
         }
 
+        // Nodes (cluster-scoped, best-effort: RBAC commonly denies them and
+        // the rest of the views must keep working).
+        clusterState.nodes = (try? await kubeAPIService.listNodes(inContext: context)) ?? []
+
         // Deployments
         if let deployments = await fetchResource("deployments", {
             try await kubeAPIService.listDeployments(namespace: namespace, inContext: context)

@@ -234,8 +234,8 @@ final class MainViewStateTests: XCTestCase {
         XCTAssertEqual(ResourceType.deployments.rawValue, "Deployments")
     }
 
-    func testResourceType_allCases_countIsThree() {
-        XCTAssertEqual(ResourceType.allCases.count, 8)
+    func testResourceType_allCases_matchesEnum() {
+        XCTAssertEqual(ResourceType.allCases.count, 9)
     }
 
     func testResourceType_pods_hasSystemImage() {

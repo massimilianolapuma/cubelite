@@ -346,6 +346,13 @@ actor KubeAPIService {
         return data
     }
 
+    /// Lists cluster nodes (read-only; requires nodes RBAC).
+    func listNodes(inContext contextName: String? = nil) async throws -> [NodeInfo] {
+        let response: K8sListResponse<K8sNode> = try await fetch(
+            path: "/api/v1/nodes", contextName: contextName)
+        return response.items.map { $0.toNodeInfo() }
+    }
+
     // MARK: - Mutations
 
     /// Deletes a pod; the owning controller (if any) recreates it.

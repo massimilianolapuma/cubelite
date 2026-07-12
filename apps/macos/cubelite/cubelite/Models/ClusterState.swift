@@ -14,6 +14,8 @@ final class ClusterState {
 
     /// Pods in the selected namespace (or all namespaces).
     var pods: [PodInfo] = []
+    /// Cluster nodes (read-only inventory; empty when RBAC denies nodes).
+    var nodes: [NodeInfo] = []
 
     /// Available namespaces for the currently browsed context.
     var namespaces: [NamespaceInfo] = []
@@ -85,6 +87,8 @@ enum ResourceType: String, CaseIterable, Identifiable {
     case ingresses = "Ingresses"
     /// Helm Releases resource type.
     case helmReleases = "Helm Releases"
+    /// Cluster nodes (read-only).
+    case nodes = "Nodes"
 
     var id: String { rawValue }
 
@@ -98,6 +102,7 @@ enum ResourceType: String, CaseIterable, Identifiable {
         case .configMaps: "doc.text"
         case .ingresses: "globe"
         case .helmReleases: "shippingbox"
+        case .nodes: "server.rack"
         }
     }
 }

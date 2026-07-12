@@ -117,6 +117,63 @@ struct DeploymentCondition: Codable, Sendable, Identifiable {
 // MARK: - Kubernetes API Response Types
 
 /// Generic list response from the Kubernetes API.
+/// Display model for a cluster node (read-only inventory).
+struct NodeInfo: Codable, Sendable, Identifiable {
+    var id: String { name }
+
+    let name: String
+    /// `"Ready"` / `"NotReady"` from the Ready condition.
+    let status: String
+    /// Roles from `node-role.kubernetes.io/*` labels.
+    let roles: [String]
+    /// Kubelet version.
+    let version: String?
+    /// ISO 8601 creation timestamp.
+    let creationTimestamp: String?
+}
+
+/// Raw Kubernetes node as returned by the API.
+struct K8sNode: Codable, Sendable {
+    let metadata: K8sObjectMeta?
+    let status: K8sNodeStatus?
+}
+
+/// Node status: conditions + kubelet info.
+struct K8sNodeStatus: Codable, Sendable {
+    let conditions: [K8sNodeCondition]?
+    let nodeInfo: K8sNodeSystemInfo?
+}
+
+/// One node condition entry.
+struct K8sNodeCondition: Codable, Sendable {
+    let type: String
+    let status: String
+}
+
+/// Subset of the node system info.
+struct K8sNodeSystemInfo: Codable, Sendable {
+    let kubeletVersion: String?
+}
+
+extension K8sNode {
+    /// Maps the raw node onto the display model.
+    func toNodeInfo() -> NodeInfo {
+        let ready = status?.conditions?.first(where: { $0.type == "Ready" })?.status == "True"
+        let roles = (metadata?.labels ?? [:])
+            .keys
+            .compactMap { $0.hasPrefix("node-role.kubernetes.io/") ? String($0.dropFirst(24)) : nil }
+            .filter { !$0.isEmpty }
+            .sorted()
+        return NodeInfo(
+            name: metadata?.name ?? "",
+            status: ready ? "Ready" : "NotReady",
+            roles: roles,
+            version: status?.nodeInfo?.kubeletVersion,
+            creationTimestamp: metadata?.creationTimestamp
+        )
+    }
+}
+
 struct K8sListResponse<T: Codable & Sendable>: Codable, Sendable {
     let kind: String?
     let apiVersion: String?

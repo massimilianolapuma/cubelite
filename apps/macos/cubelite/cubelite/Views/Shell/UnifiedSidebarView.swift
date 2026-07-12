@@ -17,7 +17,9 @@ struct UnifiedSidebarView: View {
 
     private var sections: [Section] {
         [
-            Section(label: "Cluster", dot: DesignTokens.accentDefault, items: [.dashboard]),
+            Section(
+                label: "Cluster", dot: DesignTokens.accentDefault,
+                items: [.dashboard, .nodes]),
             Section(
                 label: "Workloads", dot: DesignTokens.clusterBlue,
                 items: [.pods, .deployments, .helmReleases]),
