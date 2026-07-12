@@ -64,6 +64,7 @@ struct CommandPaletteView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
                     TextField("Search clusters, views, actions…", text: $query)
+                        .accessibilityIdentifier("palette-input")
                         .textFieldStyle(.plain)
                         .font(.system(size: 13.5))
                         .focused($inputFocused)

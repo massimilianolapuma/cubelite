@@ -30,6 +30,7 @@ struct ClusterRailView: View {
             }
             .buttonStyle(.plain)
             .help("All Clusters")
+            .accessibilityIdentifier("rail-all-clusters")
 
             Rectangle()
                 .fill(DesignTokens.borderFaint)
@@ -87,5 +88,6 @@ struct ClusterRailView: View {
         }
         .buttonStyle(.plain)
         .help(context)
+        .accessibilityIdentifier("rail-context-\(context)")
     }
 }
