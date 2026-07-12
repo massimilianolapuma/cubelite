@@ -362,6 +362,22 @@ actor KubeAPIService {
         return response.items.map { $0.toJobInfo() }
     }
 
+    /// Lists stateful sets, optionally scoped to a namespace and/or context.
+    func listStatefulSets(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [StatefulSetInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/apis/apps/v1/namespaces/\(encoded)/statefulsets"
+        } else {
+            path = "/apis/apps/v1/statefulsets"
+        }
+        let response: K8sListResponse<K8sStatefulSet> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toStatefulSetInfo() }
+    }
+
     /// Lists cluster nodes (read-only; requires nodes RBAC).
     func listNodes(inContext contextName: String? = nil) async throws -> [NodeInfo] {
         let response: K8sListResponse<K8sNode> = try await fetch(

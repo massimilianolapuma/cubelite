@@ -63,6 +63,16 @@ extension MainView {
             return
         }
 
+        // StatefulSets
+        if let statefulSets = await fetchResource("statefulsets", {
+            try await kubeAPIService.listStatefulSets(namespace: namespace, inContext: context)
+        }) {
+            clusterState.statefulSets = statefulSets
+        } else if fatalError != nil {
+            finishResourceLoad(fatalError: fatalError, forbidden: forbidden, namespace: namespace)
+            return
+        }
+
         // Jobs
         if let jobs = await fetchResource("jobs", {
             try await kubeAPIService.listJobs(namespace: namespace, inContext: context)
