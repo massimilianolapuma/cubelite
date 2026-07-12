@@ -450,6 +450,26 @@ actor KubeAPIService {
         invalidateSession()
     }
 
+    // MARK: - Watch Streaming
+
+    /// Watches pods in `namespace` (all namespaces when nil) and yields one
+    /// element per ADDED/MODIFIED/DELETED event line. Callers typically
+    /// debounce and reload; the payload is the raw watch event JSON.
+    func watchPods(
+        namespace: String? = nil,
+        inContext contextName: String? = nil
+    ) async throws -> AsyncThrowingStream<String, Error> {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/api/v1/namespaces/\(encoded)/pods?watch=true"
+        } else {
+            path = "/api/v1/pods?watch=true"
+        }
+        return try await openLineStream(
+            path: path, timeout: 3600, failurePrefix: "Watch failed", contextName: contextName)
+    }
+
     // MARK: - Log Streaming
 
     /// Follows a pod's log as an async stream of raw lines
@@ -460,6 +480,23 @@ actor KubeAPIService {
         tailLines: Int = 100,
         inContext contextName: String? = nil
     ) async throws -> AsyncThrowingStream<String, Error> {
+        let path =
+            "/api/v1/namespaces/\(namespace)/pods/\(pod)/log"
+            + "?follow=true&timestamps=true&tailLines=\(tailLines)"
+        return try await openLineStream(
+            path: path, failurePrefix: "Log stream failed", contextName: contextName)
+    }
+
+    /// Opens a long-lived line-oriented HTTP stream against the cluster API
+    /// (watches, log follows): resolves the connection, authenticates via
+    /// the keychain-backed bearer token, reuses the per-server session and
+    /// yields one element per line until cancelled.
+    private func openLineStream(
+        path: String,
+        timeout: TimeInterval? = nil,
+        failurePrefix: String,
+        contextName: String?
+    ) async throws -> AsyncThrowingStream<String, Error> {
         let config = try await kubeconfigService.load()
         let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
 
@@ -467,15 +504,15 @@ actor KubeAPIService {
             throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
         }
         let base = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
-        let path =
-            "/api/v1/namespaces/\(namespace)/pods/\(pod)/log"
-            + "?follow=true&timestamps=true&tailLines=\(tailLines)"
         guard let url = URL(string: base + path) else {
             throw CubeliteError.clientError(reason: "Invalid URL: \(base + path)")
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
+        if let timeout {
+            request.timeoutInterval = timeout
+        }
         if let token = await bearerToken(for: user, account: base) {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -493,7 +530,7 @@ actor KubeAPIService {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode)
         else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw CubeliteError.clientError(reason: "Log stream failed: HTTP \(code)")
+            throw CubeliteError.clientError(reason: "\(failurePrefix): HTTP \(code)")
         }
 
         return AsyncThrowingStream { continuation in
