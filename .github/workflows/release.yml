@@ -2,14 +2,49 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths:
+      - "Cargo.toml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  version:
+    name: Detect releasable version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+      should_release: ${{ steps.check.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Compare workspace version against existing tags
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(awk -F '"' '/^version = /{print $2; exit}' Cargo.toml)"
+          if [ -z "$VERSION" ]; then
+            echo "Could not read workspace version from Cargo.toml" >&2
+            exit 1
+          fi
+          TAG="v$VERSION"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $TAG already exists — nothing to do."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Will release $TAG."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build-macos-native:
     name: Build macOS app
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
     runs-on: macos-15
     timeout-minutes: 45
     steps:
@@ -52,6 +87,8 @@ jobs:
 
   build-desktop:
     name: Build desktop (${{ matrix.platform }})
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -122,14 +159,15 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
-    needs: [build-macos-native, build-desktop]
+    needs: [version, build-macos-native, build-desktop]
     # Publish as long as the native macOS app built; a broken desktop
     # platform must not hold the whole release hostage.
-    if: always() && needs.build-macos-native.result == 'success'
+    if: always() && needs.version.outputs.should_release == 'true' && needs.build-macos-native.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -145,8 +183,9 @@ jobs:
           cat SHA256SUMS.txt
 
       - name: Compose release notes from CHANGELOG
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
           # Pull the "## [X.Y.Z]" section out of CHANGELOG.md when present.
           awk -v ver="$VERSION" '
@@ -163,16 +202,24 @@ jobs:
             echo "[Installation guide](https://massimilianolapuma.github.io/cubelite/docs/installation.html) · builds are not yet notarized/signed; see the guide for the one-time Gatekeeper/SmartScreen step."
           } >> notes.md
 
-      - name: Create release
+      - name: Create tag + release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
           PRERELEASE_FLAG=""
           case "$TAG" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
+          # --target creates the tag at this commit; no manual tagging needed.
           gh release create "$TAG" \
             --title "CubeLite $TAG" \
             --notes-file notes.md \
-            --verify-tag \
+            --target "$GITHUB_SHA" \
             $PRERELEASE_FLAG \
             assets/*
+
+      - name: Redeploy GitHub Pages
+        # Releases created with GITHUB_TOKEN don't emit workflow-triggering
+        # events (recursion guard), so kick the Pages deploy explicitly.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main
