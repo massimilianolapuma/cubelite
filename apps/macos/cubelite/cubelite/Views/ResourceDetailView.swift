@@ -25,6 +25,7 @@ struct ResourceDetailView: View {
     var onPodMutated: (() -> Void)?
 
     @State private var showDeleteConfirm = false
+    @State private var showLogs = false
     @State private var manifest: String?
     @State private var actionError: String?
     @State private var isActing = false
@@ -63,6 +64,16 @@ struct ResourceDetailView: View {
         .sheet(item: $manifestItem) { item in
             manifestSheet(item.text)
         }
+        .sheet(isPresented: $showLogs) {
+            if let service = kubeAPIService, let pod = currentPod {
+                PodLogsView(
+                    pod: pod,
+                    kubeAPIService: service,
+                    context: context,
+                    onClose: { showLogs = false }
+                )
+            }
+        }
         .alert(
             "Action failed", isPresented: .constant(actionError != nil),
             actions: {
@@ -83,6 +94,11 @@ struct ResourceDetailView: View {
         VStack(alignment: .leading, spacing: 8) {
             Divider().padding(.vertical, 8)
             HStack(spacing: 8) {
+                Button {
+                    showLogs = true
+                } label: {
+                    Label("Logs", systemImage: "doc.plaintext")
+                }
                 Button {
                     runAction { service, ctx in
                         let text = try await service.podManifestJSON(
