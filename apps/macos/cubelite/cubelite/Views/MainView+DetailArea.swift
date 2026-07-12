@@ -30,7 +30,7 @@ extension MainView {
             case .dashboard:
                 DashboardView()
             case .pods, .deployments, .services, .secrets, .configMaps, .ingresses,
-                .helmReleases, .nodes, .jobs:
+                .helmReleases, .nodes, .jobs, .statefulSets:
                 resourceBrowserView(context: sel.context, namespace: sel.namespace)
             }
         } else {
@@ -116,6 +116,8 @@ extension MainView {
                             selectedPodID = nil
                             selectedDeploymentID = nil
                         }
+                case .statefulSets:
+                    StatefulSetListView()
                 case .jobs:
                     JobListView()
                 case .nodes:

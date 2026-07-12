@@ -235,7 +235,7 @@ final class MainViewStateTests: XCTestCase {
     }
 
     func testResourceType_allCases_matchesEnum() {
-        XCTAssertEqual(ResourceType.allCases.count, 10)
+        XCTAssertEqual(ResourceType.allCases.count, 11)
     }
 
     func testResourceType_pods_hasSystemImage() {
