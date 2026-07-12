@@ -22,7 +22,7 @@ macOS 14 Sonoma and later.
 Check that `~/.kube/config` exists or `KUBECONFIG` is set. In Settings you can point CubeLite at explicit kubeconfig paths. If `kubectl` works in your terminal but CubeLite finds nothing, your `KUBECONFIG` is probably set only in your shell profile — launch CubeLite from that shell or configure the paths in Settings.
 
 **A cluster shows as offline but kubectl reaches it.**
-CubeLite talks to the API server directly. VPN-only clusters need the VPN up. Clusters using exec credential plugins (`kubelogin`, `aws eks get-token`, `gcloud`) are not supported yet — tracked in [#108](https://github.com/massimilianolapuma/cubelite/issues/108).
+CubeLite talks to the API server directly. VPN-only clusters need the VPN up. Clusters using exec credential plugins (`kubelogin`, `aws eks get-token`, `gke-gcloud-auth-plugin`) are supported: CubeLite runs the plugin exactly like kubectl does and caches the returned token until it expires. If the plugin binary isn't found, CubeLite shows which command is missing — install it or use an absolute path in the kubeconfig's `exec.command`. Legacy `auth-provider` blocks (pre-exec OIDC/GCP) are not supported; migrate them to an exec plugin.
 
 **"Your RBAC role cannot list namespaces."**
 Normal on locked-down clusters. Set a default namespace (`kubectl config set-context <ctx> --namespace=<ns>`) or add namespaces manually in the sidebar; resource views then work within those namespaces.
