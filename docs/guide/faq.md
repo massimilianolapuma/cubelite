@@ -2,8 +2,13 @@
 
 ## Installation
 
-**macOS says the app "cannot be opened because the developer cannot be verified".**
-The builds are not notarized yet ([#121](https://github.com/massimilianolapuma/cubelite/issues/121)). Right-click the app → **Open** → **Open**, or run `xattr -dr com.apple.quarantine /Applications/cubelite.app`.
+**macOS says the app "is damaged and can't be opened. You should eject the disk image."**
+It isn't damaged — this is Gatekeeper's message for unsigned downloads on recent macOS, and the right-click → Open trick does not bypass it. The builds are not signed/notarized yet ([#121](https://github.com/massimilianolapuma/cubelite/issues/121)). Drag the app to Applications, then clear the quarantine flag:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/cubelite.app        # native app
+xattr -dr com.apple.quarantine /Applications/CubeLite.app        # desktop app
+```
 
 **Windows SmartScreen blocks the desktop installer.**
 The installer is unsigned for now. **More info → Run anyway**.

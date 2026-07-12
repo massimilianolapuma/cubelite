@@ -8,7 +8,7 @@ Requires macOS 14 Sonoma or later.
 
 1. Download [`CubeLite-macOS.dmg`](https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-macOS.dmg) (or the [zip](https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-macOS.zip)).
 2. Open the DMG and drag **CubeLite** into **Applications**.
-3. First launch: CubeLite is not yet notarized, so macOS Gatekeeper will warn you. Either **right-click the app → Open → Open**, or clear the quarantine flag:
+3. First launch: CubeLite is not yet signed or notarized, so macOS Gatekeeper blocks it with **"CubeLite is damaged and can't be opened. You should eject the disk image."** The app is not actually damaged — this is what recent macOS versions say about unsigned downloads, and the right-click → Open trick does *not* help here. Clear the quarantine flag instead:
 
    ```sh
    xattr -dr com.apple.quarantine /Applications/cubelite.app
@@ -27,6 +27,7 @@ Requires macOS 14 Sonoma or later.
 | Linux (Debian/Ubuntu) | [`CubeLite-Desktop-Linux.deb`](https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-Desktop-Linux.deb) |
 | Windows | [`CubeLite-Desktop-Windows.msi`](https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-Desktop-Windows.msi) |
 
+macOS: same Gatekeeper "damaged" warning as the native app — after dragging to Applications run `xattr -dr com.apple.quarantine /Applications/CubeLite.app`.
 Linux AppImage: make it executable first (`chmod +x CubeLite-Desktop-Linux.AppImage`).
 Windows: SmartScreen may warn about an unsigned installer — choose **More info → Run anyway**.
 
