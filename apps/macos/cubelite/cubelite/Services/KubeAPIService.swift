@@ -470,6 +470,26 @@ actor KubeAPIService {
             path: path, timeout: 3600, failurePrefix: "Watch failed", contextName: contextName)
     }
 
+    /// Opens a Kubernetes exec WebSocket for a shell in the pod's first
+    /// container (`v4.channel.k8s.io`: 0=stdin, 1=stdout, 2=stderr, 3=error).
+    /// The caller owns the returned task (resume/cancel).
+    func execWebSocket(
+        namespace: String,
+        pod: String,
+        command: [String] = ["/bin/sh"],
+        inContext contextName: String? = nil
+    ) async throws -> URLSessionWebSocketTask {
+        var query = "stdin=true&stdout=true&stderr=true&tty=false"
+        for part in command {
+            let encoded =
+                part.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? part
+            query += "&command=\(encoded)"
+        }
+        return try await channelWebSocket(
+            path: "/api/v1/namespaces/\(namespace)/pods/\(pod)/exec?\(query)",
+            inContext: contextName)
+    }
+
     /// Opens the Kubernetes port-forward WebSocket for one pod port using
     /// the SPDY-over-WebSocket channel protocol (`v4.channel.k8s.io`).
     /// The caller owns the returned task (resume/cancel).
@@ -479,22 +499,32 @@ actor KubeAPIService {
         remotePort: Int,
         inContext contextName: String? = nil
     ) async throws -> URLSessionWebSocketTask {
+        try await channelWebSocket(
+            path: "/api/v1/namespaces/\(namespace)/pods/\(pod)/portforward?ports=\(remotePort)",
+            inContext: contextName)
+    }
+
+    /// Opens a `v4.channel.k8s.io` WebSocket against the cluster API
+    /// (exec, attach, port-forward) with keychain-backed bearer auth and
+    /// the per-server session cache.
+    private func channelWebSocket(
+        path: String,
+        inContext contextName: String? = nil
+    ) async throws -> URLSessionWebSocketTask {
         let config = try await kubeconfigService.load()
         let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
 
         guard let serverString = cluster.server, !serverString.isEmpty else {
             throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
         }
-        var base = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
-        base = base.replacingOccurrences(of: "https://", with: "wss://")
-        let path = "/api/v1/namespaces/\(namespace)/pods/\(pod)/portforward?ports=\(remotePort)"
-        guard let url = URL(string: base + path) else {
-            throw CubeliteError.clientError(reason: "Invalid URL: \(base + path)")
+        let httpBase = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
+        let wsBase = httpBase.replacingOccurrences(of: "https://", with: "wss://")
+        guard let url = URL(string: wsBase + path) else {
+            throw CubeliteError.clientError(reason: "Invalid URL: \(wsBase + path)")
         }
 
         var request = URLRequest(url: url)
         request.setValue("v4.channel.k8s.io", forHTTPHeaderField: "Sec-WebSocket-Protocol")
-        let httpBase = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
         if let token = await bearerToken(for: user, account: httpBase) {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }

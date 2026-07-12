@@ -28,6 +28,7 @@ struct ResourceDetailView: View {
 
     @State private var showDeleteConfirm = false
     @State private var showLogs = false
+    @State private var showShell = false
     @State private var manifest: String?
     @State private var actionError: String?
     @State private var isActing = false
@@ -83,6 +84,16 @@ struct ResourceDetailView: View {
                 )
             }
         }
+        .sheet(isPresented: $showShell) {
+            if let service = kubeAPIService, let pod = currentPod {
+                PodExecView(
+                    pod: pod,
+                    kubeAPIService: service,
+                    context: context,
+                    onClose: { showShell = false }
+                )
+            }
+        }
         .sheet(isPresented: $showLogs) {
             if let service = kubeAPIService, let pod = currentPod {
                 PodLogsView(
@@ -90,6 +101,16 @@ struct ResourceDetailView: View {
                     kubeAPIService: service,
                     context: context,
                     onClose: { showLogs = false }
+                )
+            }
+        }
+        .sheet(isPresented: $showShell) {
+            if let service = kubeAPIService, let pod = currentPod {
+                PodExecView(
+                    pod: pod,
+                    kubeAPIService: service,
+                    context: context,
+                    onClose: { showShell = false }
                 )
             }
         }
@@ -117,6 +138,11 @@ struct ResourceDetailView: View {
                     showLogs = true
                 } label: {
                     Label("Logs", systemImage: "doc.plaintext")
+                }
+                Button {
+                    showShell = true
+                } label: {
+                    Label("Shell", systemImage: "terminal")
                 }
                 Button {
                     runAction { service, ctx in
