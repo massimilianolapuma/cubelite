@@ -213,6 +213,119 @@ extension K8sStatefulSet {
     }
 }
 
+/// Display model for a CronJob.
+struct CronJobInfo: Codable, Sendable, Identifiable {
+    var id: String { "\(namespace)/\(name)" }
+
+    let name: String
+    let namespace: String
+    /// Cron schedule expression.
+    let schedule: String
+    /// `true` when the cron job is suspended.
+    let suspend: Bool
+    /// Number of currently active jobs.
+    let active: Int
+    /// ISO 8601 timestamp of the last scheduled run.
+    let lastSchedule: String?
+    /// ISO 8601 creation timestamp.
+    let creationTimestamp: String?
+}
+
+/// Raw Kubernetes cron job as returned by the API.
+struct K8sCronJob: Codable, Sendable {
+    let metadata: K8sObjectMeta?
+    let spec: K8sCronJobSpec?
+    let status: K8sCronJobStatus?
+}
+
+/// CronJob spec subset.
+struct K8sCronJobSpec: Codable, Sendable {
+    let schedule: String?
+    let suspend: Bool?
+}
+
+/// CronJob status subset.
+struct K8sCronJobStatus: Codable, Sendable {
+    let active: [K8sObjectReference]?
+    let lastScheduleTime: String?
+}
+
+/// Minimal object reference (used by CronJob active entries).
+struct K8sObjectReference: Codable, Sendable {
+    let name: String?
+}
+
+extension K8sCronJob {
+    /// Maps the raw cron job onto the display model.
+    func toCronJobInfo() -> CronJobInfo {
+        CronJobInfo(
+            name: metadata?.name ?? "",
+            namespace: metadata?.namespace ?? "",
+            schedule: spec?.schedule ?? "",
+            suspend: spec?.suspend ?? false,
+            active: status?.active?.count ?? 0,
+            lastSchedule: status?.lastScheduleTime,
+            creationTimestamp: metadata?.creationTimestamp
+        )
+    }
+}
+
+/// Display model for a PersistentVolumeClaim.
+struct PvcInfo: Codable, Sendable, Identifiable {
+    var id: String { "\(namespace)/\(name)" }
+
+    let name: String
+    let namespace: String
+    /// Claim phase (`"Bound"`, `"Pending"`, `"Lost"`).
+    let status: String?
+    /// Bound volume name, when bound.
+    let volume: String?
+    /// Actual storage capacity (e.g. `"10Gi"`).
+    let capacity: String?
+    /// Access modes.
+    let accessModes: [String]
+    /// Storage class name, when set.
+    let storageClass: String?
+    /// ISO 8601 creation timestamp.
+    let creationTimestamp: String?
+}
+
+/// Raw Kubernetes persistent volume claim as returned by the API.
+struct K8sPvc: Codable, Sendable {
+    let metadata: K8sObjectMeta?
+    let spec: K8sPvcSpec?
+    let status: K8sPvcStatus?
+}
+
+/// PVC spec subset.
+struct K8sPvcSpec: Codable, Sendable {
+    let storageClassName: String?
+    let volumeName: String?
+}
+
+/// PVC status subset.
+struct K8sPvcStatus: Codable, Sendable {
+    let phase: String?
+    let accessModes: [String]?
+    let capacity: [String: String]?
+}
+
+extension K8sPvc {
+    /// Maps the raw claim onto the display model.
+    func toPvcInfo() -> PvcInfo {
+        PvcInfo(
+            name: metadata?.name ?? "",
+            namespace: metadata?.namespace ?? "",
+            status: status?.phase,
+            volume: spec?.volumeName,
+            capacity: status?.capacity?["storage"],
+            accessModes: status?.accessModes ?? [],
+            storageClass: spec?.storageClassName,
+            creationTimestamp: metadata?.creationTimestamp
+        )
+    }
+}
+
 /// Display model for a cluster node (read-only inventory).
 struct NodeInfo: Codable, Sendable, Identifiable {
     var id: String { name }

@@ -22,13 +22,13 @@ struct UnifiedSidebarView: View {
                 items: [.dashboard, .nodes]),
             Section(
                 label: "Workloads", dot: DesignTokens.clusterBlue,
-                items: [.pods, .deployments, .statefulSets, .jobs, .helmReleases]),
+                items: [.pods, .deployments, .statefulSets, .jobs, .cronJobs, .helmReleases]),
             Section(
                 label: "Network", dot: DesignTokens.clusterViolet,
                 items: [.services, .ingresses]),
             Section(
                 label: "Config", dot: DesignTokens.statusWarn,
-                items: [.configMaps, .secrets]),
+                items: [.configMaps, .secrets, .pvcs]),
         ]
     }
 

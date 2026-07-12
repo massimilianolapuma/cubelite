@@ -24,6 +24,10 @@ final class ClusterState {
     var deployments: [DeploymentInfo] = []
     /// Batch jobs in the selected namespace.
     var jobs: [JobInfo] = []
+    /// Cron jobs in the selected namespace.
+    var cronJobs: [CronJobInfo] = []
+    /// Persistent volume claims in the selected namespace.
+    var pvcs: [PvcInfo] = []
     /// Stateful sets in the selected namespace.
     var statefulSets: [StatefulSetInfo] = []
 
@@ -95,6 +99,10 @@ enum ResourceType: String, CaseIterable, Identifiable {
     case statefulSets = "StatefulSets"
     /// Batch jobs.
     case jobs = "Jobs"
+    /// Cron jobs.
+    case cronJobs = "CronJobs"
+    /// Persistent volume claims.
+    case pvcs = "PVCs"
     /// Cluster nodes (read-only).
     case nodes = "Nodes"
 
@@ -112,6 +120,8 @@ enum ResourceType: String, CaseIterable, Identifiable {
         case .helmReleases: "shippingbox"
         case .statefulSets: "externaldrive.badge.timemachine"
         case .jobs: "checklist"
+        case .cronJobs: "clock.arrow.circlepath"
+        case .pvcs: "externaldrive"
         case .nodes: "server.rack"
         }
     }

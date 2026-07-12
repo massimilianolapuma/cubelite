@@ -381,6 +381,38 @@ actor KubeAPIService {
         return response.items.map { $0.toStatefulSetInfo() }
     }
 
+    /// Lists cron jobs, optionally scoped to a namespace and/or context.
+    func listCronJobs(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [CronJobInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/apis/batch/v1/namespaces/\(encoded)/cronjobs"
+        } else {
+            path = "/apis/batch/v1/cronjobs"
+        }
+        let response: K8sListResponse<K8sCronJob> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toCronJobInfo() }
+    }
+
+    /// Lists persistent volume claims, optionally scoped to a namespace and/or context.
+    func listPvcs(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [PvcInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/api/v1/namespaces/\(encoded)/persistentvolumeclaims"
+        } else {
+            path = "/api/v1/persistentvolumeclaims"
+        }
+        let response: K8sListResponse<K8sPvc> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toPvcInfo() }
+    }
+
     /// Lists cluster nodes (read-only; requires nodes RBAC).
     func listNodes(inContext contextName: String? = nil) async throws -> [NodeInfo] {
         let response: K8sListResponse<K8sNode> = try await fetch(
