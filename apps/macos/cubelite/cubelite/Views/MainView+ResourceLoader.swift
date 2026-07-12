@@ -83,6 +83,26 @@ extension MainView {
             return
         }
 
+        // CronJobs
+        if let cronJobs = await fetchResource("cronjobs", {
+            try await kubeAPIService.listCronJobs(namespace: namespace, inContext: context)
+        }) {
+            clusterState.cronJobs = cronJobs
+        } else if fatalError != nil {
+            finishResourceLoad(fatalError: fatalError, forbidden: forbidden, namespace: namespace)
+            return
+        }
+
+        // PVCs
+        if let pvcs = await fetchResource("persistentvolumeclaims", {
+            try await kubeAPIService.listPvcs(namespace: namespace, inContext: context)
+        }) {
+            clusterState.pvcs = pvcs
+        } else if fatalError != nil {
+            finishResourceLoad(fatalError: fatalError, forbidden: forbidden, namespace: namespace)
+            return
+        }
+
         // Nodes (cluster-scoped, best-effort: RBAC commonly denies them and
         // the rest of the views must keep working).
         clusterState.nodes = (try? await kubeAPIService.listNodes(inContext: context)) ?? []

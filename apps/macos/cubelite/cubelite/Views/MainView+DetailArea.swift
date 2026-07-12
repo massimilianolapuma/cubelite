@@ -30,7 +30,7 @@ extension MainView {
             case .dashboard:
                 DashboardView()
             case .pods, .deployments, .services, .secrets, .configMaps, .ingresses,
-                .helmReleases, .nodes, .jobs, .statefulSets:
+                .helmReleases, .nodes, .jobs, .statefulSets, .cronJobs, .pvcs:
                 resourceBrowserView(context: sel.context, namespace: sel.namespace)
             }
         } else {
@@ -120,6 +120,10 @@ extension MainView {
                     StatefulSetListView()
                 case .jobs:
                     JobListView()
+                case .cronJobs:
+                    CronJobListView()
+                case .pvcs:
+                    PvcListView()
                 case .nodes:
                     NodeListView()
                 case .dashboard:
