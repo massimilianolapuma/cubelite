@@ -252,6 +252,26 @@ actor KubeAPIService {
     private func fetch<T: Codable & Sendable>(path: String, contextName: String? = nil) async throws
         -> T
     {
+        let data = try await send(path: path, method: "GET", contextName: contextName)
+        do {
+            let decoder = JSONDecoder()
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            throw CubeliteError.clientError(
+                reason: "Failed to decode API response: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    /// Performs an HTTP request against the cluster API server and returns
+    /// the raw response body. Shared by reads (`fetch`) and mutations.
+    private func send(
+        path: String,
+        method: String,
+        body: Data? = nil,
+        contentType: String? = nil,
+        contextName: String? = nil
+    ) async throws -> Data {
         let config = try await kubeconfigService.load()
         let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
 
@@ -265,8 +285,12 @@ actor KubeAPIService {
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body {
+            request.httpBody = body
+            request.setValue(contentType ?? "application/json", forHTTPHeaderField: "Content-Type")
+        }
 
         // Bearer token authentication
         if let token = user.token, !token.isEmpty {
@@ -319,14 +343,35 @@ actor KubeAPIService {
             )
         }
 
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(T.self, from: data)
-        } catch {
-            throw CubeliteError.clientError(
-                reason: "Failed to decode API response: \(error.localizedDescription)"
-            )
-        }
+        return data
+    }
+
+    // MARK: - Mutations
+
+    /// Deletes a pod; the owning controller (if any) recreates it.
+    func deletePod(namespace: String, name: String, inContext contextName: String? = nil)
+        async throws
+    {
+        _ = try await send(
+            path: "/api/v1/namespaces/\(namespace)/pods/\(name)",
+            method: "DELETE",
+            contextName: contextName
+        )
+    }
+
+    /// Fetches the raw pod manifest as pretty-printed JSON (Describe panel).
+    func podManifestJSON(namespace: String, name: String, inContext contextName: String? = nil)
+        async throws -> String
+    {
+        let data = try await send(
+            path: "/api/v1/namespaces/\(namespace)/pods/\(name)",
+            method: "GET",
+            contextName: contextName
+        )
+        let object = try JSONSerialization.jsonObject(with: data)
+        let pretty = try JSONSerialization.data(
+            withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        return String(decoding: pretty, as: UTF8.self)
     }
 
     /// URL error codes that indicate the cluster server is unreachable.

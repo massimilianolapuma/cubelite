@@ -16,6 +16,18 @@ enum SelectedResource: Sendable {
 struct ResourceDetailView: View {
 
     let resource: SelectedResource
+    /// Backend used by the pod actions; nil renders the detail read-only
+    /// (previews, tests).
+    var kubeAPIService: KubeAPIService?
+    /// Context the resource belongs to (required for actions).
+    var context: String?
+    /// Invoked after a successful mutation so the parent can reload.
+    var onPodMutated: (() -> Void)?
+
+    @State private var showDeleteConfirm = false
+    @State private var manifest: String?
+    @State private var actionError: String?
+    @State private var isActing = false
 
     var body: some View {
         ScrollView {
@@ -27,10 +39,128 @@ struct ResourceDetailView: View {
                 case .pod(let pod): podDetail(pod)
                 case .deployment(let dep): deploymentDetail(dep)
                 }
+                if case .pod(let pod) = resource, kubeAPIService != nil {
+                    podActions(pod)
+                }
             }
             .padding(20)
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .alert(
+            "Delete Pod", isPresented: $showDeleteConfirm, presenting: currentPod
+        ) { pod in
+            Button("Cancel", role: .cancel) {}
+            Button("Delete Pod", role: .destructive) {
+                runAction { service, ctx in
+                    try await service.deletePod(
+                        namespace: pod.namespace, name: pod.name, inContext: ctx)
+                }
+            }
+        } message: { pod in
+            Text("This will delete \(pod.name) in namespace \(pod.namespace). "
+                + "The workload controller may recreate it.")
+        }
+        .sheet(item: $manifestItem) { item in
+            manifestSheet(item.text)
+        }
+        .alert(
+            "Action failed", isPresented: .constant(actionError != nil),
+            actions: {
+                Button("OK") { actionError = nil }
+            },
+            message: { Text(actionError ?? "") }
+        )
+    }
+
+    private var currentPod: PodInfo? {
+        if case .pod(let pod) = resource { return pod }
+        return nil
+    }
+
+    // MARK: - Pod Actions
+
+    private func podActions(_ pod: PodInfo) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider().padding(.vertical, 8)
+            HStack(spacing: 8) {
+                Button {
+                    runAction { service, ctx in
+                        let text = try await service.podManifestJSON(
+                            namespace: pod.namespace, name: pod.name, inContext: ctx)
+                        manifestItem = ManifestItem(text: text)
+                    }
+                } label: {
+                    Label("Describe", systemImage: "doc.text.magnifyingglass")
+                }
+                Button {
+                    // A pod "restart" is a delete; the controller recreates it.
+                    runAction { service, ctx in
+                        try await service.deletePod(
+                            namespace: pod.namespace, name: pod.name, inContext: ctx)
+                    }
+                } label: {
+                    Label("Restart", systemImage: "arrow.clockwise")
+                }
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+            .controlSize(.small)
+            .disabled(isActing)
+            if isActing {
+                ProgressView().controlSize(.small)
+            }
+        }
+    }
+
+    @State private var manifestItem: ManifestItem?
+
+    private struct ManifestItem: Identifiable {
+        let id = UUID()
+        let text: String
+    }
+
+    private func manifestSheet(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("\(resourceName) — manifest")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button("Done") { manifestItem = nil }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(12)
+            Divider()
+            ScrollView([.vertical, .horizontal]) {
+                Text(text)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(DesignTokens.textLog)
+                    .textSelection(.enabled)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(DesignTokens.surfaceSunken)
+        }
+        .frame(minWidth: 560, minHeight: 420)
+    }
+
+    /// Runs a mutation with the shared spinner/error handling; reloads on success.
+    private func runAction(
+        _ operation: @escaping (KubeAPIService, String?) async throws -> Void
+    ) {
+        guard let service = kubeAPIService else { return }
+        isActing = true
+        Task {
+            defer { isActing = false }
+            do {
+                try await operation(service, context)
+                onPodMutated?()
+            } catch {
+                actionError = error.localizedDescription
+            }
+        }
     }
 
     // MARK: - Header

@@ -135,8 +135,18 @@ extension MainView {
             DeploymentDetailView(deployment: dep)
                 .frame(minWidth: 320, idealWidth: 460, maxWidth: 600)
         case .pod:
-            ResourceDetailView(resource: resource)
-                .frame(minWidth: 260, idealWidth: 340, maxWidth: 420)
+            ResourceDetailView(
+                resource: resource,
+                kubeAPIService: kubeAPIService,
+                context: sidebarSelection?.context ?? selectedContext,
+                onPodMutated: {
+                    selectedPodID = nil
+                    if let sel = sidebarSelection {
+                        Task { await loadResources(context: sel.context, namespace: sel.namespace) }
+                    }
+                }
+            )
+            .frame(minWidth: 260, idealWidth: 340, maxWidth: 420)
         }
     }
 
