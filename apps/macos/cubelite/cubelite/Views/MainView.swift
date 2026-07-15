@@ -223,6 +223,7 @@ struct MainView: View {
                     errorBannerInset
                     detailArea
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    LogPanelView()
                 }
                 .background(DesignTokens.surfaceWindow)
             }
