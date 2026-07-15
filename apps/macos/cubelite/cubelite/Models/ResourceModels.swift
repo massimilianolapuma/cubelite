@@ -412,35 +412,118 @@ struct K8sPodStatus: Codable, Sendable {
     let podIP: String?
     let hostIP: String?
     let containerStatuses: [K8sContainerStatus]?
+    let initContainerStatuses: [K8sContainerStatus]?
 
     init(
         phase: String? = nil,
         podIP: String? = nil,
         hostIP: String? = nil,
-        containerStatuses: [K8sContainerStatus]? = nil
+        containerStatuses: [K8sContainerStatus]? = nil,
+        initContainerStatuses: [K8sContainerStatus]? = nil
     ) {
         self.phase = phase
         self.podIP = podIP
         self.hostIP = hostIP
         self.containerStatuses = containerStatuses
+        self.initContainerStatuses = initContainerStatuses
     }
 }
 
 /// Container status within a pod.
 struct K8sContainerStatus: Codable, Sendable {
+    let name: String?
     let ready: Bool?
     let restartCount: Int?
+    let state: K8sContainerState?
+    let lastState: K8sContainerState?
+
+    init(
+        name: String? = nil,
+        ready: Bool? = nil,
+        restartCount: Int? = nil,
+        state: K8sContainerState? = nil,
+        lastState: K8sContainerState? = nil
+    ) {
+        self.name = name
+        self.ready = ready
+        self.restartCount = restartCount
+        self.state = state
+        self.lastState = lastState
+    }
+}
+
+/// One of the three mutually exclusive container-state branches.
+struct K8sContainerState: Codable, Sendable {
+    let running: K8sContainerStateRunning?
+    let waiting: K8sContainerStateWaiting?
+    let terminated: K8sContainerStateTerminated?
+
+    init(
+        running: K8sContainerStateRunning? = nil,
+        waiting: K8sContainerStateWaiting? = nil,
+        terminated: K8sContainerStateTerminated? = nil
+    ) {
+        self.running = running
+        self.waiting = waiting
+        self.terminated = terminated
+    }
+}
+
+/// `state.running` details.
+struct K8sContainerStateRunning: Codable, Sendable {
+    let startedAt: String?
+    init(startedAt: String? = nil) { self.startedAt = startedAt }
+}
+
+/// `state.waiting` details (e.g. `CrashLoopBackOff`).
+struct K8sContainerStateWaiting: Codable, Sendable {
+    let reason: String?
+    init(reason: String? = nil) { self.reason = reason }
+}
+
+/// `state.terminated` details (e.g. `OOMKilled`, `Completed`).
+struct K8sContainerStateTerminated: Codable, Sendable {
+    let reason: String?
+    let finishedAt: String?
+    init(reason: String? = nil, finishedAt: String? = nil) {
+        self.reason = reason
+        self.finishedAt = finishedAt
+    }
 }
 
 /// Pod spec from the Kubernetes API.
 struct K8sPodSpec: Codable, Sendable {
     let nodeName: String?
     let containers: [K8sContainer]?
+    let initContainers: [K8sContainer]?
+
+    init(
+        nodeName: String? = nil,
+        containers: [K8sContainer]? = nil,
+        initContainers: [K8sContainer]? = nil
+    ) {
+        self.nodeName = nodeName
+        self.containers = containers
+        self.initContainers = initContainers
+    }
 }
 
 /// Container definition within a pod spec.
 struct K8sContainer: Codable, Sendable {
+    let name: String?
+    /// `Always` on an init container marks a native sidecar (K8s ≥ 1.28).
+    let restartPolicy: String?
     let resources: K8sResourceRequirements?
+
+    init(
+        name: String? = nil,
+        restartPolicy: String? = nil,
+        resources: K8sResourceRequirements? = nil
+    ) {
+        self.name = name
+        self.restartPolicy = restartPolicy
+        self.resources = resources
+    }
 }
 
 /// Resource requirements (requests and limits) for a container.
