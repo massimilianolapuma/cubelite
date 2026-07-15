@@ -45,8 +45,10 @@ final class LogSessionStoreTests: XCTestCase {
     private var streamer: MockLogStreamer!
     private var store: LogSessionStore!
 
-    override func setUp() {
-        super.setUp()
+    // Async so the override inherits the class's MainActor isolation
+    // (a sync setUp() override stays nonisolated and cannot touch the
+    // actor-isolated fixtures on older toolchains).
+    override func setUp() async throws {
         defaults = UserDefaults(suiteName: "LogSessionStoreTests")!
         defaults.removePersistentDomain(forName: "LogSessionStoreTests")
         streamer = MockLogStreamer()
