@@ -12,6 +12,34 @@ pub struct ContainerInfo {
     pub ready: bool,
 }
 
+/// Full per-container detail for the log-panel container picker.
+///
+/// Ordering contract of producers: app containers first (spec order), then
+/// native sidecars (init containers with `restartPolicy: Always`), then
+/// plain init containers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ContainerDetail {
+    /// Container name.
+    pub name: String,
+    /// Plain init container (runs to completion before the pod starts).
+    pub init: bool,
+    /// Native sidecar: `initContainers` entry with `restartPolicy: Always`.
+    pub sidecar: bool,
+    /// Restart count from the container status (0 when unknown).
+    pub restarts: i32,
+    /// `true` when the container reports ready.
+    pub ready: bool,
+    /// Current state bucket: `"running"`, `"waiting"` or `"terminated"`.
+    pub state: String,
+    /// Reason of the current state (e.g. `CrashLoopBackOff`, `Completed`).
+    pub state_reason: Option<String>,
+    /// Reason of the last terminated instance (e.g. `OOMKilled`), for the
+    /// previous-logs affordance.
+    pub last_terminated_reason: Option<String>,
+    /// RFC 3339 finish time of the last terminated instance.
+    pub last_terminated_at: Option<String>,
+}
+
 /// Lightweight representation of a Kubernetes Pod for display purposes.
 ///
 /// Fields added after v0.1 carry `#[serde(default)]` so older payloads
