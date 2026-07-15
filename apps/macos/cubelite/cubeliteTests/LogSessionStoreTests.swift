@@ -82,12 +82,12 @@ final class LogSessionStoreTests: XCTestCase {
         streamer.containers = [makeContainer("worker"), makeContainer("envoy")]
         streamer.liveLines = ["2026-07-15T10:00:00Z hello"]
         store.open(pod: makePod(), context: nil)
-        try await waitUntil { self.store.session?.buffer.lines.count == 1 }
-        XCTAssertEqual(store.session?.containers.map(\.name), ["worker", "envoy"])
-        XCTAssertEqual(store.session?.selectedContainer, "worker")
+        try await waitUntil { self.store.activeSession?.buffer.lines.count == 1 }
+        XCTAssertEqual(store.activeSession?.containers.map(\.name), ["worker", "envoy"])
+        XCTAssertEqual(store.activeSession?.selectedContainer, "worker")
         XCTAssertEqual(streamer.streamCalls.first?.container, "worker")
         XCTAssertEqual(streamer.streamCalls.first?.tailLines, 500)
-        XCTAssertEqual(store.session?.buffer.lines.first?.message, "hello")
+        XCTAssertEqual(store.activeSession?.buffer.lines.first?.message, "hello")
     }
 
     func testOpen_samePod_refocusesWithoutSecondStream() async throws {
@@ -102,21 +102,21 @@ final class LogSessionStoreTests: XCTestCase {
     func testOpen_remembersContainerChoicePerPod() async throws {
         streamer.containers = [makeContainer("worker"), makeContainer("envoy")]
         store.open(pod: makePod(), context: nil)
-        try await waitUntil { self.store.session?.selectedContainer != nil }
-        store.session?.switchContainer(to: "envoy")
+        try await waitUntil { self.store.activeSession?.selectedContainer != nil }
+        store.activeSession?.switchContainer(to: "envoy")
         try await waitUntil { self.streamer.streamCalls.count == 2 }
-        store.close()
+        store.closeAll()
         store.open(pod: makePod(), context: nil)
-        try await waitUntil { self.store.session?.selectedContainer != nil }
-        XCTAssertEqual(store.session?.selectedContainer, "envoy")
+        try await waitUntil { self.store.activeSession?.selectedContainer != nil }
+        XCTAssertEqual(store.activeSession?.selectedContainer, "envoy")
     }
 
     func testSwitchContainer_restartsStreamAndClearsBuffer() async throws {
         streamer.containers = [makeContainer("worker"), makeContainer("envoy")]
         streamer.liveLines = ["2026-07-15T10:00:00Z from-worker"]
         store.open(pod: makePod(), context: nil)
-        try await waitUntil { self.store.session?.buffer.lines.count == 1 }
-        store.session?.switchContainer(to: "envoy")
+        try await waitUntil { self.store.activeSession?.buffer.lines.count == 1 }
+        store.activeSession?.switchContainer(to: "envoy")
         try await waitUntil { self.streamer.streamCalls.count == 2 }
         XCTAssertEqual(streamer.streamCalls.last?.container, "envoy")
     }
@@ -125,19 +125,19 @@ final class LogSessionStoreTests: XCTestCase {
         streamer.containers = [makeContainer("worker", restarts: 3)]
         streamer.previousLines = ["2026-07-15T09:00:00Z old line"]
         store.open(pod: makePod(), context: nil)
-        try await waitUntil { self.store.session?.selectedContainer != nil }
-        store.session?.setPrevious(true)
-        try await waitUntil { self.store.session?.buffer.lines.count == 1 }
+        try await waitUntil { self.store.activeSession?.selectedContainer != nil }
+        store.activeSession?.setPrevious(true)
+        try await waitUntil { self.store.activeSession?.buffer.lines.count == 1 }
         XCTAssertEqual(streamer.previousCalls.count, 1)
-        XCTAssertEqual(store.session?.buffer.lines.first?.message, "old line")
-        XCTAssertEqual(store.session?.isFollowing, false)
+        XCTAssertEqual(store.activeSession?.buffer.lines.first?.message, "old line")
+        XCTAssertEqual(store.activeSession?.isFollowing, false)
     }
 
     func testSetTail_restartsStreamWithNewTail() async throws {
         streamer.containers = [makeContainer("worker")]
         store.open(pod: makePod(), context: nil)
         try await waitUntil { !self.streamer.streamCalls.isEmpty }
-        store.session?.setTail(1000)
+        store.activeSession?.setTail(1000)
         try await waitUntil { self.streamer.streamCalls.count == 2 }
         XCTAssertEqual(streamer.streamCalls.last?.tailLines, 1000)
     }
@@ -146,17 +146,74 @@ final class LogSessionStoreTests: XCTestCase {
         streamer.containers = [makeContainer("worker")]
         streamer.liveLines = ["2026-07-15T10:00:00Z hello"]
         store.open(pod: makePod(), context: nil)
-        try await waitUntil { self.store.session?.buffer.lines.count == 1 }
-        store.session?.clear()
-        XCTAssertEqual(store.session?.buffer.lines.count, 0)
-        XCTAssertEqual(store.session?.hasCleared, true)
+        try await waitUntil { self.store.activeSession?.buffer.lines.count == 1 }
+        store.activeSession?.clear()
+        XCTAssertEqual(store.activeSession?.buffer.lines.count, 0)
+        XCTAssertEqual(store.activeSession?.hasCleared, true)
     }
 
     func testClose_cancelsSession() async throws {
         streamer.containers = [makeContainer("worker")]
         store.open(pod: makePod(), context: nil)
-        try await waitUntil { self.store.session != nil }
-        store.close()
-        XCTAssertNil(store.session)
+        try await waitUntil { self.store.activeSession != nil }
+        store.closeAll()
+        XCTAssertNil(store.activeSession)
+        XCTAssertTrue(store.sessions.isEmpty)
+    }
+
+    func testOpen_secondPod_addsSessionAndActivates() async throws {
+        streamer.containers = [makeContainer("worker")]
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        try await waitUntil { self.store.sessions.count == 2 }
+        XCTAssertEqual(store.activeSession?.pod.name, "web-2")
+    }
+
+    func testOpen_existingPod_focusesWithoutDuplicate() async throws {
+        streamer.containers = [makeContainer("worker")]
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        store.open(pod: makePod("web-1"), context: nil)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(store.sessions.count, 2)
+        XCTAssertEqual(store.activeSession?.pod.name, "web-1")
+    }
+
+    func testClose_activeTab_activatesRightNeighborThenLeft() async throws {
+        streamer.containers = [makeContainer("worker")]
+        store.open(pod: makePod("a"), context: nil)
+        store.open(pod: makePod("b"), context: nil)
+        store.open(pod: makePod("c"), context: nil)
+        store.activeSessionID = "default/b"
+        store.close(sessionID: "default/b")
+        XCTAssertEqual(store.activeSession?.pod.name, "c")
+        store.close(sessionID: "default/c")
+        XCTAssertEqual(store.activeSession?.pod.name, "a")
+        store.close(sessionID: "default/a")
+        XCTAssertTrue(store.sessions.isEmpty)
+        XCTAssertNil(store.activeSession)
+    }
+
+    func testPause_countsNewLines_resumeResets() async throws {
+        streamer.containers = [makeContainer("worker")]
+        streamer.liveLines = ["2026-07-15T10:00:00Z one", "2026-07-15T10:00:01Z two"]
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.buffer.lines.count == 2 }
+        let session = try XCTUnwrap(store.activeSession)
+        session.isFollowing = false
+        XCTAssertEqual(session.newLinesSincePause, 0)
+        session.simulateAppendForTesting("2026-07-15T10:00:02Z three")
+        XCTAssertEqual(session.newLinesSincePause, 1)
+        session.isFollowing = true
+        XCTAssertEqual(session.newLinesSincePause, 0)
+    }
+
+    func testPanelHeight_clampedAndPersisted() {
+        store.panelHeight = 100
+        XCTAssertEqual(store.panelHeight, 160)
+        store.panelHeight = 900
+        XCTAssertEqual(store.panelHeight, 560)
+        store.panelHeight = 320
+        XCTAssertEqual(defaults.double(forKey: "logPanel.height"), 320)
     }
 }

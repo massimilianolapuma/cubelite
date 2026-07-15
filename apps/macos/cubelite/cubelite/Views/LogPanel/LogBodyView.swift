@@ -92,6 +92,27 @@ struct LogBodyView: View {
                     proxy.scrollTo(id, anchor: .center)
                 }
             }
+            .overlay(alignment: .bottom) {
+                if !session.isFollowing, session.newLinesSincePause > 0 {
+                    Button {
+                        session.isFollowing = true
+                        if let last = session.buffer.lines.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    } label: {
+                        Text("↓ \(session.newLinesSincePause) new lines")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(DesignTokens.accentDefault)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(DesignTokens.surfaceOverlay)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(DesignTokens.borderStrong, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 10)
+                }
+            }
         }
     }
 
