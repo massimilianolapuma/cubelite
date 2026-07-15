@@ -8,18 +8,23 @@ final class MockLogStreamer: PodLogStreaming, @unchecked Sendable {
     var containers: [ContainerInfo] = []
     var liveLines: [String] = []
     var previousLines: [String] = []
-    private(set) var streamCalls: [(container: String?, tailLines: Int)] = []
+    /// The first N stream calls end right after yielding (dropped stream);
+    /// later calls stay open like a healthy follow.
+    var failFirstNStreams = 0
+    private(set) var streamCalls: [(container: String?, tailLines: Int, sinceTime: String?)] = []
     private(set) var previousCalls: [(container: String?, tailLines: Int)] = []
 
     func streamPodLogs(
         namespace: String, pod: String, container: String?, tailLines: Int,
         sinceTime: String?, inContext contextName: String?
     ) async throws -> AsyncThrowingStream<String, Error> {
-        streamCalls.append((container, tailLines))
+        streamCalls.append((container, tailLines, sinceTime))
         let lines = liveLines
+        let shouldDrop = streamCalls.count <= failFirstNStreams
         return AsyncThrowingStream { continuation in
             for line in lines { continuation.yield(line) }
-            // Leave the stream open like a real follow — no finish().
+            if shouldDrop { continuation.finish() }
+            // Otherwise leave the stream open like a real follow.
         }
     }
 
@@ -215,5 +220,44 @@ final class LogSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.panelHeight, 560)
         store.panelHeight = 320
         XCTAssertEqual(defaults.double(forKey: "logPanel.height"), 320)
+    }
+
+    // MARK: - Reconnect
+
+    func testStreamDrop_entersReconnectingAndRecovers() async throws {
+        streamer.containers = [makeContainer("worker")]
+        streamer.liveLines = ["2026-07-15T10:00:00Z hello"]
+        streamer.failFirstNStreams = 1
+        store = LogSessionStore(streamer: streamer, defaults: defaults, backoffBase: 0.02)
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.streamer.streamCalls.count >= 2 }
+        let session = try XCTUnwrap(store.activeSession)
+        // Second stream yields a line → the attempt counter resets.
+        try await waitUntil { session.reconnectAttempt == 0 }
+        XCTAssertNil(session.streamError)
+    }
+
+    func testReconnect_passesSinceTimeOfLastLine() async throws {
+        streamer.containers = [makeContainer("worker")]
+        streamer.liveLines = ["2026-07-15T10:00:00Z hello"]
+        streamer.failFirstNStreams = 1
+        store = LogSessionStore(streamer: streamer, defaults: defaults, backoffBase: 0.02)
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.streamer.streamCalls.count >= 2 }
+        XCTAssertNil(streamer.streamCalls[0].sinceTime)
+        XCTAssertEqual(streamer.streamCalls[1].sinceTime, "2026-07-15T10:00:00Z")
+    }
+
+    func testRetryNow_shortcutsBackoff() async throws {
+        streamer.containers = [makeContainer("worker")]
+        streamer.failFirstNStreams = 1
+        // 5s base backoff: without retryNow the second call would not arrive
+        // within the polling window.
+        store = LogSessionStore(streamer: streamer, defaults: defaults, backoffBase: 5)
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.isReconnecting == true }
+        store.activeSession?.retryNow()
+        try await waitUntil { self.streamer.streamCalls.count >= 2 }
+        XCTAssertEqual(streamer.streamCalls.count, 2)
     }
 }

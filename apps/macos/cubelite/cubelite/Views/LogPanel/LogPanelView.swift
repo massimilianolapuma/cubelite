@@ -19,6 +19,9 @@ struct LogPanelView: View {
                     Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)
                     LogToolbar(session: session)
                     Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)
+                    if session.isReconnecting {
+                        reconnectBanner(session)
+                    }
                     LogBodyView(session: session)
                         .frame(height: store.panelHeight)
                 }
@@ -40,6 +43,33 @@ struct LogPanelView: View {
                         .transition(.opacity)
                 }
             }
+        }
+    }
+
+    private func reconnectBanner(_ session: LogSession) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(DesignTokens.statusWarn)
+                .frame(width: 7, height: 7)
+                .modifier(PulseEffect())
+            Text(
+                "stream lost — reconnecting (attempt \(session.reconnectAttempt), "
+                    + "next retry \(session.nextRetrySeconds)s)"
+            )
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(DesignTokens.statusWarn)
+            Spacer()
+            Button("retry now") { session.retryNow() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(DesignTokens.statusWarn)
+                .underline()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(DesignTokens.statusWarn.opacity(0.08))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(DesignTokens.statusWarn.opacity(0.25)).frame(height: 1)
         }
     }
 
@@ -65,5 +95,17 @@ struct LogPanelView: View {
                     }
                     .onEnded { _ in dragStartHeight = nil }
             )
+    }
+}
+
+/// Slow opacity pulse for the reconnect banner's status dot.
+private struct PulseEffect: ViewModifier {
+    @State private var dimmed = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(dimmed ? 0.35 : 1)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: dimmed)
+            .onAppear { dimmed = true }
     }
 }

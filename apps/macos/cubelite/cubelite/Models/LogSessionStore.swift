@@ -33,22 +33,44 @@ final class LogSession {
         return buffer.totalAppended - pausedAtCount
     }
 
+    /// Consecutive failed reconnect attempts; 0 while the stream is healthy.
+    private(set) var reconnectAttempt = 0
+    /// Backoff of the pending retry, for the banner countdown.
+    private(set) var nextRetrySeconds = 0
+    var isReconnecting: Bool { reconnectAttempt > 0 }
+
+    /// Skips the current backoff sleep and retries immediately.
+    func retryNow() {
+        retryNowRequested = true
+    }
+
     /// Test hook: routes through the private `append` used by the stream.
     func simulateAppendForTesting(_ raw: String) { append(raw) }
 
     private let streamer: any PodLogStreaming
     private let defaults: UserDefaults
+    /// Base of the exponential reconnect backoff (2s·2ⁿ, capped at 30s);
+    /// injectable so tests don't wait real seconds.
+    private let backoffBase: Double
     private var streamTask: Task<Void, Never>?
     private var nextLineID = 0
+    /// Full RFC 3339 prefix of the last received line, resent as
+    /// `sinceTime` on reconnect so history isn't duplicated.
+    private var lastRawTimestamp: String?
+    private var retryNowRequested = false
 
     /// UserDefaults key remembering the last-picked container for this pod.
     private var containerMemoryKey: String { "logPanel.container.\(pod.namespace)/\(pod.name)" }
 
-    init(pod: PodInfo, context: String?, streamer: any PodLogStreaming, defaults: UserDefaults) {
+    init(
+        pod: PodInfo, context: String?, streamer: any PodLogStreaming,
+        defaults: UserDefaults, backoffBase: Double = 2
+    ) {
         self.pod = pod
         self.context = context
         self.streamer = streamer
         self.defaults = defaults
+        self.backoffBase = backoffBase
     }
 
     func start() {
@@ -112,6 +134,8 @@ final class LogSession {
         buffer.removeAll()
         hasCleared = false
         streamError = nil
+        reconnectAttempt = 0
+        lastRawTimestamp = nil
         search.recompute(over: [])
         streamTask = Task { [weak self] in
             await self?.stream(container: self?.selectedContainer)
@@ -119,27 +143,65 @@ final class LogSession {
     }
 
     private func stream(container: String?) async {
-        do {
-            if showingPrevious {
+        if showingPrevious {
+            do {
                 let lines = try await streamer.fetchPreviousPodLogs(
                     namespace: pod.namespace, pod: pod.name, container: container,
                     tailLines: tailLines, inContext: context)
                 for raw in lines { append(raw) }
-            } else {
+            } catch is CancellationError {
+            } catch {
+                streamError = error.localizedDescription
+            }
+            return
+        }
+        await followWithReconnect(container: container)
+    }
+
+    /// Live follow loop: reopens the stream with exponential backoff when
+    /// the server drops it, resuming from the last seen timestamp.
+    private func followWithReconnect(container: String?) async {
+        while !Task.isCancelled {
+            do {
                 let stream = try await streamer.streamPodLogs(
                     namespace: pod.namespace, pod: pod.name, container: container,
-                    tailLines: tailLines, sinceTime: nil, inContext: context)
+                    tailLines: tailLines,
+                    sinceTime: lastRawTimestamp, inContext: context)
                 for try await raw in stream {
+                    reconnectAttempt = 0
                     append(raw)
                 }
+                // Stream ended without error: server closed it — reconnect.
+            } catch is CancellationError {
+                return
+            } catch {
+                // Drop — fall through to backoff.
             }
-        } catch is CancellationError {
-        } catch {
-            streamError = error.localizedDescription
+            if Task.isCancelled { return }
+            reconnectAttempt += 1
+            let delay = min(30, backoffBase * pow(2, Double(reconnectAttempt - 1)))
+            nextRetrySeconds = max(1, Int(delay.rounded()))
+            await sleepInterruptibly(seconds: delay)
+        }
+    }
+
+    /// Sleeps in 50ms slices so `retryNow()` (and cancellation) cut the
+    /// backoff short.
+    private func sleepInterruptibly(seconds: Double) async {
+        retryNowRequested = false
+        let deadline = ContinuousClock.now.advanced(by: .seconds(seconds))
+        while ContinuousClock.now < deadline {
+            if Task.isCancelled || retryNowRequested { return }
+            try? await Task.sleep(nanoseconds: 50_000_000)
         }
     }
 
     private func append(_ raw: String) {
+        if let space = raw.firstIndex(of: " "), raw.hasPrefix("2"),
+            raw[raw.startIndex..<space].contains("T")
+        {
+            lastRawTimestamp = String(raw[raw.startIndex..<space])
+        }
         buffer.append(LogLine.parse(raw, id: nextLineID))
         nextLineID += 1
         if !buffer.lines.isEmpty { hasCleared = false }
@@ -182,11 +244,16 @@ final class LogSessionStore {
 
     private let streamer: any PodLogStreaming
     private let defaults: UserDefaults
+    private let backoffBase: Double
     private var toastTask: Task<Void, Never>?
 
-    init(streamer: any PodLogStreaming, defaults: UserDefaults = .standard) {
+    init(
+        streamer: any PodLogStreaming, defaults: UserDefaults = .standard,
+        backoffBase: Double = 2
+    ) {
         self.streamer = streamer
         self.defaults = defaults
+        self.backoffBase = backoffBase
         self.showTimestamps =
             defaults.object(forKey: "logPanel.showTimestamps") as? Bool ?? true
         self.wrapLines = defaults.bool(forKey: "logPanel.wrapLines")
@@ -202,7 +269,9 @@ final class LogSessionStore {
             activeSessionID = existing.pod.id
             return
         }
-        let new = LogSession(pod: pod, context: context, streamer: streamer, defaults: defaults)
+        let new = LogSession(
+            pod: pod, context: context, streamer: streamer, defaults: defaults,
+            backoffBase: backoffBase)
         sessions.append(new)
         activeSessionID = new.pod.id
         new.start()
