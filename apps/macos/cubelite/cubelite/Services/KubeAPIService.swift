@@ -576,14 +576,50 @@ actor KubeAPIService {
     func streamPodLogs(
         namespace: String,
         pod: String,
-        tailLines: Int = 100,
+        container: String? = nil,
+        tailLines: Int = 500,
+        sinceTime: String? = nil,
         inContext contextName: String? = nil
     ) async throws -> AsyncThrowingStream<String, Error> {
-        let path =
-            "/api/v1/namespaces/\(namespace)/pods/\(pod)/log"
-            + "?follow=true&timestamps=true&tailLines=\(tailLines)"
+        let query = PodLogQuery(
+            namespace: namespace, pod: pod, container: container,
+            tailLines: tailLines, sinceTime: sinceTime)
         return try await openLineStream(
-            path: path, failurePrefix: "Log stream failed", contextName: contextName)
+            path: query.path, failurePrefix: "Log stream failed", contextName: contextName)
+    }
+
+    /// Fetches the previous instance's logs (crash-looped container) as a
+    /// bounded, non-following line array.
+    func fetchPreviousPodLogs(
+        namespace: String,
+        pod: String,
+        container: String? = nil,
+        tailLines: Int = 500,
+        inContext contextName: String? = nil
+    ) async throws -> [String] {
+        let query = PodLogQuery(
+            namespace: namespace, pod: pod, container: container,
+            previous: true, tailLines: tailLines)
+        let stream = try await openLineStream(
+            path: query.path, failurePrefix: "Previous logs fetch failed",
+            contextName: contextName)
+        var lines: [String] = []
+        for try await line in stream { lines.append(line) }
+        return lines
+    }
+
+    /// Lists a pod's containers (app, sidecar, init) with live status.
+    func fetchPodContainers(
+        namespace: String,
+        pod: String,
+        inContext contextName: String? = nil
+    ) async throws -> [ContainerInfo] {
+        let encodedNS =
+            namespace.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? namespace
+        let encodedPod = pod.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? pod
+        let raw: K8sPod = try await fetch(
+            path: "/api/v1/namespaces/\(encodedNS)/pods/\(encodedPod)", contextName: contextName)
+        return raw.toContainerInfos()
     }
 
     /// Opens a long-lived line-oriented HTTP stream against the cluster API
