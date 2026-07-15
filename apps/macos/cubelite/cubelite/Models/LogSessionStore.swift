@@ -16,6 +16,9 @@ final class LogSession {
     private(set) var streamError: String?
     private(set) var hasCleared = false
     var isFollowing = true
+    /// Search state scoped to this session; the query survives container
+    /// switches and stream restarts (matches recompute against the new buffer).
+    let search = LogSearchModel()
 
     private let streamer: any PodLogStreaming
     private let defaults: UserDefaults
@@ -93,6 +96,7 @@ final class LogSession {
         buffer.removeAll()
         hasCleared = false
         streamError = nil
+        search.recompute(over: [])
         streamTask = Task { [weak self] in
             await self?.stream(container: self?.selectedContainer)
         }
