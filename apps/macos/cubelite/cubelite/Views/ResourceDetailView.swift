@@ -26,8 +26,9 @@ struct ResourceDetailView: View {
     /// Invoked after a successful mutation so the parent can reload.
     var onPodMutated: (() -> Void)?
 
+    @Environment(LogSessionStore.self) private var logSessionStore
+
     @State private var showDeleteConfirm = false
-    @State private var showLogs = false
     @State private var showShell = false
     @State private var manifest: String?
     @State private var actionError: String?
@@ -82,16 +83,6 @@ struct ResourceDetailView: View {
                 }
             )
         }
-        .sheet(isPresented: $showLogs) {
-            if let service = kubeAPIService, let pod = currentPod {
-                PodLogsView(
-                    pod: pod,
-                    kubeAPIService: service,
-                    context: context,
-                    onClose: { showLogs = false }
-                )
-            }
-        }
         .sheet(isPresented: $showShell) {
             if let service = kubeAPIService, let pod = currentPod {
                 PodExecView(
@@ -123,7 +114,7 @@ struct ResourceDetailView: View {
             Divider().padding(.vertical, 8)
             HStack(spacing: 8) {
                 Button {
-                    showLogs = true
+                    logSessionStore.open(pod: pod, context: context)
                 } label: {
                     Label("Logs", systemImage: "doc.plaintext")
                 }
