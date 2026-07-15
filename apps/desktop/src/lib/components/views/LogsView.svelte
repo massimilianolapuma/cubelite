@@ -30,6 +30,7 @@
 	];
 
 	const levelColor: Record<LogLevel, string> = {
+		debug: 'var(--color-text-tertiary)',
 		info: 'var(--color-status-info)',
 		warn: 'var(--color-status-warn)',
 		error: 'var(--color-status-err)'
