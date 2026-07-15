@@ -41,6 +41,7 @@ struct MainView: View {
     @Environment(ClusterState.self) var clusterState
     @Environment(LogStore.self) var logStore
     @Environment(AppSettings.self) var appSettings
+    @Environment(LogSessionStore.self) var logSessionStore
 
     // MARK: - Navigation State
 
@@ -247,6 +248,10 @@ struct MainView: View {
                     onSelectResource: { type in
                         showAllClusters = false
                         selectedResourceType = type
+                    },
+                    selectedPod: clusterState.pods.first { $0.id == selectedPodID },
+                    onOpenPodLogs: { pod in
+                        logSessionStore.open(pod: pod, context: selectedContext)
                     },
                     onClose: { showingPalette = false }
                 )

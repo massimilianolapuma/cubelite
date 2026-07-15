@@ -280,6 +280,9 @@ struct LogToolbar: View {
             Toggle("Timestamps", isOn: Bindable(store).showTimestamps)
             Toggle("Wrap lines", isOn: Bindable(store).wrapLines)
             Divider()
+            Button("Export visible…") { export(full: false) }
+            Button("Export full buffer…") { export(full: true) }
+            Divider()
             Button("Clear buffer") { session.clear() }
         } label: {
             Image(systemName: "ellipsis")
@@ -290,5 +293,30 @@ struct LogToolbar: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .accessibilityLabel("More log options")
+    }
+
+    /// Writes the visible (filtered) or full buffer to ~/Downloads and
+    /// confirms via toast.
+    private func export(full: Bool) {
+        let lines =
+            full
+            ? session.buffer.lines
+            : session.search.visibleLines(from: session.buffer.lines)
+        guard
+            let downloads = FileManager.default.urls(
+                for: .downloadsDirectory, in: .userDomainMask
+            ).first
+        else {
+            store.showToast("export failed: Downloads folder unavailable")
+            return
+        }
+        do {
+            let url = try LogExporter.write(
+                lines, pod: session.pod.name, container: session.selectedContainer,
+                full: full, directory: downloads)
+            store.showToast("saved \(url.lastPathComponent) to Downloads")
+        } catch {
+            store.showToast("export failed: \(error.localizedDescription)")
+        }
     }
 }
