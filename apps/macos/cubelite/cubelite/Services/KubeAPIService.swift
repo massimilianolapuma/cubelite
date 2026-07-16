@@ -1075,56 +1075,116 @@ actor KubeAPIService {
         let importedKeyAttrs = SecKeyCopyAttributes(privateKey) as? [CFString: Any]
         let applicationLabel = importedKeyAttrs?[kSecAttrApplicationLabel] as? Data
 
-        // Replace any existing key with this tag.
         let keySearchQuery: [CFString: Any] = [
             kSecClass: kSecClassKey,
             kSecAttrApplicationTag: keyTag,
             kSecAttrKeyClass: kSecAttrKeyClassPrivate,
         ]
-        SecItemDelete(keySearchQuery as CFDictionary)
 
-        // Add the private key to the keychain with the correct application label.
-        var addKeyQuery: [CFString: Any] = [
-            kSecClass: kSecClassKey,
-            kSecAttrApplicationTag: keyTag,
-            kSecAttrKeyClass: kSecAttrKeyClassPrivate,
-            kSecValueRef: privateKey,
-            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
-        ]
-        if let label = applicationLabel {
-            addKeyQuery[kSecAttrApplicationLabel] = label
-        }
-        let keyStatus = SecItemAdd(addKeyQuery as CFDictionary, nil)
-        guard keyStatus == errSecSuccess else {
-            throw CubeliteError.clientError(
-                reason: "Failed to add client key to keychain: OSStatus \(keyStatus)"
-            )
-        }
-
-        // Add certificate; duplicates are accepted because the cert may already be present.
-        let addCertQuery: [CFString: Any] = [
-            kSecClass: kSecClassCertificate,
-            kSecValueRef: certificate,
-        ]
-        let certStatus = SecItemAdd(addCertQuery as CFDictionary, nil)
-        guard certStatus == errSecSuccess || certStatus == errSecDuplicateItem else {
+        /// Replace the tagged key, (re-)add the certificate and pair them.
+        func addAndPair() throws -> SecIdentity {
             SecItemDelete(keySearchQuery as CFDictionary)
-            throw CubeliteError.clientError(
-                reason: "Failed to add client certificate to keychain: OSStatus \(certStatus)"
-            )
+
+            var addKeyQuery: [CFString: Any] = [
+                kSecClass: kSecClassKey,
+                kSecAttrApplicationTag: keyTag,
+                kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+                kSecValueRef: privateKey,
+                kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+            ]
+            if let label = applicationLabel {
+                addKeyQuery[kSecAttrApplicationLabel] = label
+            }
+            let keyStatus = SecItemAdd(addKeyQuery as CFDictionary, nil)
+            guard keyStatus == errSecSuccess else {
+                throw CubeliteError.clientError(
+                    reason: "Failed to add client key to keychain: OSStatus \(keyStatus)"
+                )
+            }
+
+            // Add certificate; duplicates are accepted because the cert may already be present.
+            let addCertQuery: [CFString: Any] = [
+                kSecClass: kSecClassCertificate,
+                kSecValueRef: certificate,
+            ]
+            let certStatus = SecItemAdd(addCertQuery as CFDictionary, nil)
+            guard certStatus == errSecSuccess || certStatus == errSecDuplicateItem else {
+                SecItemDelete(keySearchQuery as CFDictionary)
+                throw CubeliteError.clientError(
+                    reason: "Failed to add client certificate to keychain: OSStatus \(certStatus)"
+                )
+            }
+
+            // Find the identity using SecIdentityCreateWithCertificate which searches
+            // the default keychain list for a private key matching the certificate.
+            var identity: SecIdentity?
+            let identityStatus = SecIdentityCreateWithCertificate(nil, certificate, &identity)
+            guard identityStatus == errSecSuccess, let identity else {
+                throw CubeliteError.clientError(
+                    reason:
+                        "Client identity not found in keychain after import (OSStatus \(identityStatus))"
+                )
+            }
+            return identity
         }
 
-        // Find the identity using SecIdentityCreateWithCertificate which searches
-        // the default keychain list for a private key matching the certificate.
-        var identity: SecIdentity?
-        let identityStatus = SecIdentityCreateWithCertificate(nil, certificate, &identity)
-        guard identityStatus == errSecSuccess, let identity else {
+        // `SecIdentityCreateWithCertificate` pairs the certificate with ANY
+        // matching private key in the keychain — including a stale copy
+        // created by a previous (differently code-signed) build, whose ACL
+        // denies signing to this one. TLS 1.3 needs the key to sign the
+        // CertificateVerify, so an unusable pairing kills every handshake
+        // with a raw -1200 while curl/kubectl work (#309). Probe before
+        // trusting the identity.
+        let identity = try addAndPair()
+        if identityCanSign(identity) {
+            return identity
+        }
+
+        // Purge every private key sharing this certificate's public-key hash
+        // (any tag, any creator) plus the certificate copy, then re-pair.
+        if let label = applicationLabel {
+            SecItemDelete(
+                [
+                    kSecClass: kSecClassKey,
+                    kSecAttrApplicationLabel: label,
+                    kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+                    kSecMatchLimit: kSecMatchLimitAll,
+                ] as CFDictionary)
+        }
+        SecItemDelete(
+            [
+                kSecClass: kSecClassCertificate,
+                kSecValueRef: certificate,
+            ] as CFDictionary)
+
+        let retried = try addAndPair()
+        guard identityCanSign(retried) else {
             throw CubeliteError.clientError(
                 reason:
-                    "Client identity not found in keychain after import (OSStatus \(identityStatus))"
+                    "The stored client identity cannot sign (keychain ACL denied). "
+                    + "Use Preferences → Advanced → Reset stored credentials and retry."
             )
         }
-        return identity
+        return retried
+    }
+
+    /// `true` when the identity's private key can actually produce a
+    /// signature — the capability TLS 1.3 needs for CertificateVerify.
+    /// Stale keychain pairings fail here with `errSecAuthFailed` (#309).
+    private static func identityCanSign(_ identity: SecIdentity) -> Bool {
+        var key: SecKey?
+        guard SecIdentityCopyPrivateKey(identity, &key) == errSecSuccess, let key else {
+            return false
+        }
+        let probe = Data("cubelite-tls-signing-probe".utf8) as CFData
+        for algorithm in [
+            SecKeyAlgorithm.rsaSignatureMessagePKCS1v15SHA256,
+            SecKeyAlgorithm.ecdsaSignatureMessageX962SHA256,
+        ] where SecKeyIsAlgorithmSupported(key, .sign, algorithm) {
+            var error: Unmanaged<CFError>?
+            return SecKeyCreateSignature(key, algorithm, probe, &error) != nil
+        }
+        return false
     }
 
     /// Converts PEM-encoded certificate data to DER format.
