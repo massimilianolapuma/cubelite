@@ -140,6 +140,14 @@ private struct AdvancedPreferencesTab: View {
             }
             Section {
                 Toggle("Skip TLS certificate verification", isOn: $s.skipTLSVerification)
+                    .onChange(of: s.skipTLSVerification) { _, newValue in
+                        // Sync the actor here, not only from MainView: the
+                        // Settings scene outlives the main window, and a toggle
+                        // flipped while it is closed must still reach the
+                        // session factory (#309).
+                        guard let service = kubeAPIService else { return }
+                        Task { await service.updateSkipTLS(newValue) }
+                    }
                 Text(
                     "⚠️ Accepts self-signed certificates from all clusters. Only enable for local development (e.g., minikube)."
                 )
