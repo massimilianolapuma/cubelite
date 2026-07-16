@@ -1,75 +1,53 @@
+import AppKit
 import SwiftUI
 
-/// Persistent bottom log panel (single session): header strip, toolbar,
-/// log body. Collapses to the 34pt strip. Hidden when no session is open.
+/// Persistent bottom log panel: resize handle, session tab strip, toolbar,
+/// log body. Collapses to the 34pt strip (⌘L). Hidden when no session is
+/// open.
 struct LogPanelView: View {
 
     @Environment(LogSessionStore.self) private var store
 
+    @State private var dragStartHeight: Double?
+
     var body: some View {
-        if let session = store.session {
+        if let session = store.activeSession {
             VStack(spacing: 0) {
-                Rectangle().fill(DesignTokens.borderStrong).frame(height: 1)
-                headerStrip(session)
+                resizeHandle
+                LogTabStrip()
                 if !store.isCollapsed {
                     Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)
                     LogToolbar(session: session)
                     Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)
                     LogBodyView(session: session)
-                        .frame(height: 280)
+                        .frame(height: store.panelHeight)
                 }
             }
             .background(DesignTokens.surfacePanel)
         }
     }
 
-    private func headerStrip(_ session: LogSession) -> some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(session.pod.ready ? DesignTokens.statusOk : DesignTokens.statusWarn)
-                .frame(width: 7, height: 7)
-            Text(session.pod.name)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(DesignTokens.textDataBright)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 190, alignment: .leading)
-            if let container = session.selectedContainer {
-                Text(container)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(DesignTokens.textTertiary)
+    /// 6pt grab zone on the top edge; dragging up grows the panel.
+    private var resizeHandle: some View {
+        Rectangle()
+            .fill(DesignTokens.borderStrong)
+            .frame(height: 1)
+            .padding(.vertical, 2.5)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeUpDown.push()
+                } else {
+                    NSCursor.pop()
+                }
             }
-            Spacer()
-            Text(lineCountLabel(session))
-                .font(.system(size: 10.5, design: .monospaced))
-                .foregroundStyle(DesignTokens.textTertiary)
-            Button {
-                store.isCollapsed.toggle()
-            } label: {
-                Image(systemName: store.isCollapsed ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 10))
-                    .foregroundStyle(DesignTokens.textTertiary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(store.isCollapsed ? "Expand log panel" : "Collapse log panel")
-            Button {
-                store.close()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10))
-                    .foregroundStyle(DesignTokens.textTertiary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close log panel")
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 34)
-        .background(DesignTokens.surfaceRaised)
-    }
-
-    private func lineCountLabel(_ session: LogSession) -> String {
-        let visible = session.buffer.lines.count
-        let total = session.buffer.totalAppended
-        return total > visible ? "\(visible) lines · \(total) buffered" : "\(visible) lines"
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        if dragStartHeight == nil { dragStartHeight = store.panelHeight }
+                        store.panelHeight = (dragStartHeight ?? 280) - value.translation.height
+                    }
+                    .onEnded { _ in dragStartHeight = nil }
+            )
     }
 }

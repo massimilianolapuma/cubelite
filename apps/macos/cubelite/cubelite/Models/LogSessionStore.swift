@@ -15,10 +15,26 @@ final class LogSession {
     private(set) var tailLines = 500
     private(set) var streamError: String?
     private(set) var hasCleared = false
-    var isFollowing = true
+    var isFollowing = true {
+        didSet {
+            guard oldValue != isFollowing else { return }
+            pausedAtCount = isFollowing ? nil : buffer.totalAppended
+        }
+    }
+    /// Buffer total at the moment the user paused; nil while following.
+    private(set) var pausedAtCount: Int?
     /// Search state scoped to this session; the query survives container
     /// switches and stream restarts (matches recompute against the new buffer).
     let search = LogSearchModel()
+
+    /// Lines appended since the user paused (drives the "new lines" pill).
+    var newLinesSincePause: Int {
+        guard let pausedAtCount else { return 0 }
+        return buffer.totalAppended - pausedAtCount
+    }
+
+    /// Test hook: routes through the private `append` used by the stream.
+    func simulateAppendForTesting(_ raw: String) { append(raw) }
 
     private let streamer: any PodLogStreaming
     private let defaults: UserDefaults
@@ -130,13 +146,29 @@ final class LogSession {
     }
 }
 
-/// Shell-level owner of the log panel: the open session and panel chrome
-/// state. Single-session for now; becomes multi-tab in the session-tabs PR.
+/// Shell-level owner of the log panel: the open sessions (one tab each),
+/// the active tab, and panel chrome state.
 @Observable @MainActor
 final class LogSessionStore {
 
-    private(set) var session: LogSession?
+    private(set) var sessions: [LogSession] = []
+    var activeSessionID: String?
     var isCollapsed = false
+
+    var activeSession: LogSession? {
+        sessions.first { $0.pod.id == activeSessionID }
+    }
+
+    var panelHeight: Double {
+        didSet {
+            let clamped = min(560, max(160, panelHeight))
+            if clamped != panelHeight {
+                panelHeight = clamped
+                return
+            }
+            defaults.set(panelHeight, forKey: "logPanel.height")
+        }
+    }
 
     var showTimestamps: Bool {
         didSet { defaults.set(showTimestamps, forKey: "logPanel.showTimestamps") }
@@ -154,20 +186,41 @@ final class LogSessionStore {
         self.showTimestamps =
             defaults.object(forKey: "logPanel.showTimestamps") as? Bool ?? true
         self.wrapLines = defaults.bool(forKey: "logPanel.wrapLines")
+        let storedHeight = defaults.double(forKey: "logPanel.height")
+        self.panelHeight = storedHeight == 0 ? 280 : min(560, max(160, storedHeight))
     }
 
-    /// Opens (or refocuses) the log session for `pod` and expands the panel.
+    /// Opens the log session for `pod` (or focuses its existing tab) and
+    /// expands the panel.
     func open(pod: PodInfo, context: String?) {
         isCollapsed = false
-        if let session, session.pod.id == pod.id { return }
-        session?.stop()
+        if let existing = sessions.first(where: { $0.pod.id == pod.id }) {
+            activeSessionID = existing.pod.id
+            return
+        }
         let new = LogSession(pod: pod, context: context, streamer: streamer, defaults: defaults)
-        session = new
+        sessions.append(new)
+        activeSessionID = new.pod.id
         new.start()
     }
 
-    func close() {
-        session?.stop()
-        session = nil
+    /// Closes one tab; if it was active, the right neighbor (else the last
+    /// remaining tab) becomes active.
+    func close(sessionID: String) {
+        guard let index = sessions.firstIndex(where: { $0.pod.id == sessionID }) else { return }
+        sessions[index].stop()
+        let wasActive = activeSessionID == sessionID
+        sessions.remove(at: index)
+        if wasActive {
+            activeSessionID =
+                sessions.indices.contains(index)
+                ? sessions[index].pod.id : sessions.last?.pod.id
+        }
+    }
+
+    func closeAll() {
+        sessions.forEach { $0.stop() }
+        sessions = []
+        activeSessionID = nil
     }
 }
