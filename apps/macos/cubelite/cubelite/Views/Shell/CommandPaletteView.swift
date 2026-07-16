@@ -10,6 +10,9 @@ struct CommandPaletteView: View {
     let onSelectContext: (String) -> Void
     let onSelectAllClusters: () -> Void
     let onSelectResource: (ResourceType) -> Void
+    /// Currently selected pod (if any) — surfaces the "Pod logs" action.
+    var selectedPod: PodInfo?
+    var onOpenPodLogs: ((PodInfo) -> Void)?
     let onClose: () -> Void
 
     @State private var query = ""
@@ -22,12 +25,14 @@ struct CommandPaletteView: View {
         case cluster(String, shortcut: Int?)
         case allClusters
         case resource(ResourceType)
+        case podLogs(PodInfo)
 
         var id: String {
             switch self {
             case .cluster(let name, _): "cluster-\(name)"
             case .allClusters: "all-clusters"
             case .resource(let type): "resource-\(type.rawValue)"
+            case .podLogs(let pod): "pod-logs-\(pod.id)"
             }
         }
 
@@ -36,6 +41,7 @@ struct CommandPaletteView: View {
             case .cluster(let name, _): name
             case .allClusters: "All Clusters dashboard"
             case .resource(let type): "Go to \(type.rawValue)"
+            case .podLogs(let pod): "Pod logs: \(pod.name)"
             }
         }
     }
@@ -47,7 +53,8 @@ struct CommandPaletteView: View {
     }
 
     private var actionItems: [Item] {
-        ([Item.allClusters] + ResourceType.allCases.map { Item.resource($0) })
+        let podLogs = selectedPod.map { [Item.podLogs($0)] } ?? []
+        return (podLogs + [Item.allClusters] + ResourceType.allCases.map { Item.resource($0) })
             .filter { query.isEmpty || $0.label.localizedCaseInsensitiveContains(query) }
     }
 
@@ -189,6 +196,15 @@ struct CommandPaletteView: View {
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(DesignTokens.textSecondary)
                     Spacer(minLength: 0)
+                case .podLogs:
+                    Image(systemName: "doc.plaintext")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DesignTokens.textTertiary)
+                        .frame(width: 14)
+                    Text(item.label)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(DesignTokens.textSecondary)
+                    Spacer(minLength: 0)
                 }
             }
             .padding(.horizontal, 10)
@@ -230,6 +246,8 @@ struct CommandPaletteView: View {
             onSelectAllClusters()
         case .resource(let type):
             onSelectResource(type)
+        case .podLogs(let pod):
+            onOpenPodLogs?(pod)
         }
         onClose()
     }

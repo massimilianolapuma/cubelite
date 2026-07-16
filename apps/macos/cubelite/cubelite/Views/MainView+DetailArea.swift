@@ -75,7 +75,10 @@ extension MainView {
                 // Resource list based on selected type
                 switch selectedResourceType ?? .dashboard {
                 case .pods:
-                    PodListView(selectedPodID: $selectedPodID)
+                    PodListView(
+                        selectedPodID: $selectedPodID,
+                        onOpenLogs: { logSessionStore.open(pod: $0, context: selectedContext) }
+                    )
                         .onChange(of: selectedPodID) { _, _ in
                             selectedDeploymentID = nil
                             selectedServiceID = nil

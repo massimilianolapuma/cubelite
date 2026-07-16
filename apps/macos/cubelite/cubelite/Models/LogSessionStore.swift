@@ -177,8 +177,12 @@ final class LogSessionStore {
         didSet { defaults.set(wrapLines, forKey: "logPanel.wrapLines") }
     }
 
+    /// Transient confirmation message (export result); auto-clears after 3s.
+    private(set) var toast: String?
+
     private let streamer: any PodLogStreaming
     private let defaults: UserDefaults
+    private var toastTask: Task<Void, Never>?
 
     init(streamer: any PodLogStreaming, defaults: UserDefaults = .standard) {
         self.streamer = streamer
@@ -222,5 +226,16 @@ final class LogSessionStore {
         sessions.forEach { $0.stop() }
         sessions = []
         activeSessionID = nil
+    }
+
+    /// Shows a transient confirmation in the panel, replacing any pending one.
+    func showToast(_ message: String) {
+        toastTask?.cancel()
+        toast = message
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.toast = nil
+        }
     }
 }
