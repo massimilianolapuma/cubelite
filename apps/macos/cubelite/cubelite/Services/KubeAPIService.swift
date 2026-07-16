@@ -36,17 +36,20 @@ actor KubeAPIService {
 
     /// Whether to skip TLS certificate verification for all clusters.
     ///
-    /// Set from `AppSettings.skipTLSVerification` via `updateSkipTLS(_:)`.
-    /// Reading `UserDefaults` directly in `makeSession()` is unreliable under
-    /// the sandbox (Xcode re-installs can wipe the container) and has timing
-    /// issues on first launch. Keeping the flag in-memory avoids both problems.
-    private var skipTLSVerification: Bool = false
+    /// Seeded from the persisted setting at init and updated live via
+    /// `updateSkipTLS(_:)`. Seeding at init removes the startup race where
+    /// concurrent loaders created (and cached) sessions before the MainView
+    /// task pushed the persisted value into this actor (#309).
+    private var skipTLSVerification: Bool
 
     /// Creates a new API service backed by the given kubeconfig service.
     ///
-    /// - Parameter kubeconfigService: The service used to load kubeconfig state.
-    init(kubeconfigService: KubeconfigService) {
+    /// - Parameters:
+    ///   - kubeconfigService: The service used to load kubeconfig state.
+    ///   - defaults: Source of the persisted TLS-skip flag (tests override).
+    init(kubeconfigService: KubeconfigService, defaults: UserDefaults = .standard) {
         self.kubeconfigService = kubeconfigService
+        self.skipTLSVerification = defaults.bool(forKey: AppSettings.Keys.skipTLSVerification)
     }
 
     /// Invalidates and discards all cached URLSessions.
@@ -69,6 +72,9 @@ actor KubeAPIService {
         skipTLSVerification = skip
         invalidateSession()
     }
+
+    /// Current TLS-skip state (test hook for the seeding contract, #309).
+    var isSkippingTLSVerification: Bool { skipTLSVerification }
 
     // MARK: - Public API
 
