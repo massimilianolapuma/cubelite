@@ -288,7 +288,7 @@ export type ClusterHealthInfo = {
   error: string | null;
 };
 
-export type LogLevel = "info" | "warn" | "error";
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export type LogLine = {
   pod: string;
@@ -301,6 +301,26 @@ export type LogLine = {
 export type PodRef = {
   namespace: string;
   name: string;
+};
+
+/// Full per-container detail for the log-panel container picker.
+export type ContainerDetail = {
+  name: string;
+  init: boolean;
+  sidecar: boolean;
+  restarts: number;
+  ready: boolean;
+  state: "running" | "waiting" | "terminated";
+  state_reason: string | null;
+  last_terminated_reason: string | null;
+  last_terminated_at: string | null;
+};
+
+export type PodLogStreamOptions = {
+  container?: string;
+  previous?: boolean;
+  tailLines?: number;
+  sinceTime?: string;
 };
 
 export function listHelmReleases(
@@ -440,6 +460,47 @@ export function streamLogs(
 
 export function stopLogs(streamId: string): Promise<void> {
   return invoke("stop_logs", { streamId });
+}
+
+/**
+ * Start a single-container log stream for the log panel.
+ *
+ * Lines arrive as `pod-log-line:{streamId}` events; a final
+ * `pod-log-end:{streamId}` event signals that the stream ended (server drop
+ * or completed previous-instance fetch). Tear down with {@link stopLogs}.
+ */
+export function streamPodLog(
+  kubeconfigPath: string,
+  namespace: string,
+  pod: string,
+  opts: PodLogStreamOptions = {},
+  context?: string,
+): Promise<string> {
+  return invoke<string>("stream_pod_log", {
+    kubeconfigPath,
+    namespace,
+    pod,
+    container: opts.container ?? null,
+    previous: opts.previous ?? false,
+    tailLines: opts.tailLines ?? null,
+    sinceTime: opts.sinceTime ?? null,
+    context: context ?? null,
+  });
+}
+
+/** Fetch one pod's containers (app, sidecar, init) with live status. */
+export function getPodContainers(
+  kubeconfigPath: string,
+  namespace: string,
+  pod: string,
+  context?: string,
+): Promise<ContainerDetail[]> {
+  return invoke<ContainerDetail[]>("get_pod_containers", {
+    kubeconfigPath,
+    namespace,
+    pod,
+    context: context ?? null,
+  });
 }
 
 export function deletePod(

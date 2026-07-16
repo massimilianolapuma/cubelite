@@ -12,10 +12,12 @@ use k8s_openapi::api::core::v1::Pod;
 use kube::{api::LogParams, Api, Client};
 use serde::{Deserialize, Serialize};
 
-/// Severity bucket for a log line (UI filter chips: INFO / WARN / ERROR).
+/// Severity bucket for a log line (UI filter chips: DEBUG / INFO / WARN / ERROR).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
+    /// Verbose markers (`DEBUG`, `TRACE`).
+    Debug,
     /// Informational output (default when no marker is found).
     Info,
     /// Warning markers (`WARN`, `WARNING`).
@@ -49,8 +51,58 @@ fn detect_level(message: &str) -> LogLevel {
         LogLevel::Error
     } else if upper.contains("WARN") {
         LogLevel::Warn
+    } else if upper.contains("DEBUG") || upper.contains("TRACE") {
+        LogLevel::Debug
     } else {
         LogLevel::Info
+    }
+}
+
+/// Options for a single-container log stream (the log panel).
+///
+/// `previous` implies a non-following fetch of the prior instance's output;
+/// `since_time` (RFC 3339) resumes a dropped stream without re-sending
+/// history. Timestamps are always requested.
+#[derive(Debug, Clone)]
+pub struct LogStreamOptions {
+    /// Container to read; `None` lets the API pick the single container.
+    pub container: Option<String>,
+    /// Read the previous instance's logs (crash-looped container).
+    pub previous: bool,
+    /// Follow the live stream; forced off when `previous` is set.
+    pub follow: bool,
+    /// History window.
+    pub tail_lines: i64,
+    /// RFC 3339 lower bound; invalid values are ignored.
+    pub since_time: Option<String>,
+}
+
+impl Default for LogStreamOptions {
+    fn default() -> Self {
+        Self {
+            container: None,
+            previous: false,
+            follow: true,
+            tail_lines: 500,
+            since_time: None,
+        }
+    }
+}
+
+/// Map [`LogStreamOptions`] to kube-rs [`LogParams`] (pure, unit-tested).
+pub fn log_params(opts: &LogStreamOptions) -> LogParams {
+    LogParams {
+        follow: opts.follow && !opts.previous,
+        previous: opts.previous,
+        timestamps: true,
+        tail_lines: Some(opts.tail_lines),
+        container: opts.container.clone(),
+        since_time: opts.since_time.as_deref().and_then(|raw| {
+            k8s_openapi::chrono::DateTime::parse_from_rfc3339(raw)
+                .ok()
+                .map(|dt| dt.with_timezone(&k8s_openapi::chrono::Utc))
+        }),
+        ..Default::default()
     }
 }
 
@@ -84,15 +136,31 @@ pub fn stream_pod_logs(
     pod: String,
     tail_lines: i64,
 ) -> Pin<Box<dyn Stream<Item = LogLine> + Send>> {
+    stream_pod_logs_opts(
+        client,
+        namespace,
+        pod,
+        LogStreamOptions {
+            tail_lines,
+            ..Default::default()
+        },
+    )
+}
+
+/// Follow (or statically fetch, for `previous`) one container's logs as a
+/// stream of parsed [`LogLine`] items, honoring [`LogStreamOptions`].
+///
+/// Same error semantics as [`stream_pod_logs`].
+pub fn stream_pod_logs_opts(
+    client: Client,
+    namespace: String,
+    pod: String,
+    opts: LogStreamOptions,
+) -> Pin<Box<dyn Stream<Item = LogLine> + Send>> {
     Box::pin(
         futures::stream::once(async move {
             let api: Api<Pod> = Api::namespaced(client, &namespace);
-            let params = LogParams {
-                follow: true,
-                timestamps: true,
-                tail_lines: Some(tail_lines),
-                ..Default::default()
-            };
+            let params = log_params(&opts);
 
             match api.log_stream(&pod, &params).await {
                 Ok(reader) => {
@@ -150,6 +218,50 @@ mod tests {
         assert_eq!(detect_level("panic: index out of range"), LogLevel::Error);
         assert_eq!(detect_level("warning: deprecated flag"), LogLevel::Warn);
         assert_eq!(detect_level("all good"), LogLevel::Info);
+        assert_eq!(detect_level("DEBUG verbose dump"), LogLevel::Debug);
+        assert_eq!(detect_level("trace: enter handler"), LogLevel::Debug);
+    }
+
+    #[test]
+    fn log_params_defaults_follow_with_timestamps_and_tail() {
+        let params = log_params(&LogStreamOptions::default());
+        assert!(params.follow);
+        assert!(params.timestamps);
+        assert!(!params.previous);
+        assert_eq!(params.tail_lines, Some(500));
+        assert_eq!(params.container, None);
+        assert_eq!(params.since_time, None);
+    }
+
+    #[test]
+    fn log_params_previous_forces_non_follow() {
+        let params = log_params(&LogStreamOptions {
+            previous: true,
+            ..Default::default()
+        });
+        assert!(!params.follow);
+        assert!(params.previous);
+        assert!(params.timestamps);
+    }
+
+    #[test]
+    fn log_params_passes_container_and_valid_since_time() {
+        let params = log_params(&LogStreamOptions {
+            container: Some("envoy".into()),
+            since_time: Some("2026-07-15T10:00:00Z".into()),
+            ..Default::default()
+        });
+        assert_eq!(params.container.as_deref(), Some("envoy"));
+        assert!(params.since_time.is_some());
+    }
+
+    #[test]
+    fn log_params_ignores_invalid_since_time() {
+        let params = log_params(&LogStreamOptions {
+            since_time: Some("not-a-date".into()),
+            ..Default::default()
+        });
+        assert_eq!(params.since_time, None);
     }
 
     #[test]

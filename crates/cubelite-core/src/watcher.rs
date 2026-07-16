@@ -264,6 +264,74 @@ pub(crate) fn pod_to_info(pod: Pod) -> Option<PodInfo> {
     })
 }
 
+/// Extract picker-ready [`ContainerDetail`] rows from a raw [`Pod`].
+///
+/// Order: app containers (spec order), native sidecars (init containers
+/// with `restartPolicy: Always`), plain init containers.
+pub fn pod_to_container_details(pod: &Pod) -> Vec<crate::resources::ContainerDetail> {
+    use k8s_openapi::api::core::v1::ContainerStatus;
+
+    let spec = pod.spec.clone().unwrap_or_default();
+    let status = pod.status.clone().unwrap_or_default();
+    let statuses: Vec<ContainerStatus> = status
+        .container_statuses
+        .unwrap_or_default()
+        .into_iter()
+        .chain(status.init_container_statuses.unwrap_or_default())
+        .collect();
+
+    let detail = |name: &str, init: bool, sidecar: bool| {
+        let cs = statuses.iter().find(|s| s.name == name);
+        let raw_state = cs.and_then(|s| s.state.clone()).unwrap_or_default();
+        let (state, state_reason) = if raw_state.running.is_some() {
+            ("running".to_string(), None)
+        } else if let Some(terminated) = raw_state.terminated {
+            ("terminated".to_string(), terminated.reason)
+        } else {
+            (
+                "waiting".to_string(),
+                raw_state.waiting.and_then(|w| w.reason),
+            )
+        };
+        let last_terminated = cs
+            .and_then(|s| s.last_state.clone())
+            .and_then(|s| s.terminated);
+        crate::resources::ContainerDetail {
+            name: name.to_string(),
+            init: init && !sidecar,
+            sidecar,
+            restarts: cs.map(|s| s.restart_count).unwrap_or(0),
+            ready: cs.map(|s| s.ready).unwrap_or(false),
+            state,
+            state_reason,
+            last_terminated_reason: last_terminated.as_ref().and_then(|t| t.reason.clone()),
+            last_terminated_at: last_terminated
+                .as_ref()
+                .and_then(|t| t.finished_at.as_ref().map(|ts| ts.0.to_rfc3339())),
+        }
+    };
+
+    let app: Vec<_> = spec
+        .containers
+        .iter()
+        .map(|c| detail(&c.name, false, false))
+        .collect();
+    let init_containers = spec.init_containers.unwrap_or_default();
+    let (sidecars, plain_init): (Vec<_>, Vec<_>) = init_containers
+        .iter()
+        .partition(|c| c.restart_policy.as_deref() == Some("Always"));
+    let sidecars: Vec<_> = sidecars
+        .iter()
+        .map(|c| detail(&c.name, true, true))
+        .collect();
+    let plain_init: Vec<_> = plain_init
+        .iter()
+        .map(|c| detail(&c.name, true, false))
+        .collect();
+
+    app.into_iter().chain(sidecars).chain(plain_init).collect()
+}
+
 /// Convert a raw [`Namespace`] object into a [`NamespaceInfo`], returning
 /// `None` if there is no name.
 pub(crate) fn namespace_to_info(ns: Namespace) -> Option<NamespaceInfo> {
@@ -1132,5 +1200,147 @@ mod tests {
         assert_eq!(info.conditions.len(), 1);
         assert_eq!(info.conditions[0].condition_type, "Available");
         assert_eq!(info.conditions[0].status, "True");
+    }
+
+    /// Pod with an app container (crash-looping), a native sidecar init
+    /// container and a plain init container — the handoff example pod.
+    fn multi_container_pod() -> k8s_openapi::api::core::v1::Pod {
+        use k8s_openapi::api::core::v1::{
+            Container, ContainerState, ContainerStateRunning, ContainerStateTerminated,
+            ContainerStateWaiting, ContainerStatus, Pod, PodSpec, PodStatus,
+        };
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
+
+        let finished = Time(
+            k8s_openapi::chrono::DateTime::parse_from_rfc3339("2026-07-15T10:00:00Z")
+                .expect("valid ts")
+                .with_timezone(&k8s_openapi::chrono::Utc),
+        );
+
+        Pod {
+            spec: Some(PodSpec {
+                containers: vec![Container {
+                    name: "worker".into(),
+                    ..Default::default()
+                }],
+                init_containers: Some(vec![
+                    Container {
+                        name: "envoy".into(),
+                        restart_policy: Some("Always".into()),
+                        ..Default::default()
+                    },
+                    Container {
+                        name: "init-migrate".into(),
+                        ..Default::default()
+                    },
+                ]),
+                ..Default::default()
+            }),
+            status: Some(PodStatus {
+                container_statuses: Some(vec![ContainerStatus {
+                    name: "worker".into(),
+                    ready: false,
+                    restart_count: 7,
+                    state: Some(ContainerState {
+                        waiting: Some(ContainerStateWaiting {
+                            reason: Some("CrashLoopBackOff".into()),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                    last_state: Some(ContainerState {
+                        terminated: Some(ContainerStateTerminated {
+                            reason: Some("OOMKilled".into()),
+                            finished_at: Some(finished),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }]),
+                init_container_statuses: Some(vec![
+                    ContainerStatus {
+                        name: "envoy".into(),
+                        ready: true,
+                        restart_count: 0,
+                        state: Some(ContainerState {
+                            running: Some(ContainerStateRunning::default()),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    ContainerStatus {
+                        name: "init-migrate".into(),
+                        ready: false,
+                        restart_count: 0,
+                        state: Some(ContainerState {
+                            terminated: Some(ContainerStateTerminated {
+                                reason: Some("Completed".into()),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                ]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn container_details_orders_app_sidecar_then_init() {
+        let details = pod_to_container_details(&multi_container_pod());
+        let names: Vec<_> = details.iter().map(|d| d.name.as_str()).collect();
+        assert_eq!(names, ["worker", "envoy", "init-migrate"]);
+    }
+
+    #[test]
+    fn container_details_flags_sidecar_and_init() {
+        let details = pod_to_container_details(&multi_container_pod());
+        let envoy = &details[1];
+        assert!(envoy.sidecar);
+        assert!(!envoy.init);
+        assert_eq!(envoy.state, "running");
+        let init = &details[2];
+        assert!(init.init);
+        assert!(!init.sidecar);
+        assert_eq!(init.state, "terminated");
+        assert_eq!(init.state_reason.as_deref(), Some("Completed"));
+    }
+
+    #[test]
+    fn container_details_maps_state_restarts_and_last_termination() {
+        let details = pod_to_container_details(&multi_container_pod());
+        let worker = &details[0];
+        assert_eq!(worker.restarts, 7);
+        assert_eq!(worker.state, "waiting");
+        assert_eq!(worker.state_reason.as_deref(), Some("CrashLoopBackOff"));
+        assert_eq!(worker.last_terminated_reason.as_deref(), Some("OOMKilled"));
+        assert_eq!(
+            worker.last_terminated_at.as_deref(),
+            Some("2026-07-15T10:00:00+00:00")
+        );
+    }
+
+    #[test]
+    fn container_details_missing_status_defaults_to_waiting() {
+        use k8s_openapi::api::core::v1::{Container, Pod, PodSpec};
+        let pod = Pod {
+            spec: Some(PodSpec {
+                containers: vec![Container {
+                    name: "app".into(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let details = pod_to_container_details(&pod);
+        assert_eq!(details.len(), 1);
+        assert_eq!(details[0].state, "waiting");
+        assert_eq!(details[0].restarts, 0);
+        assert!(!details[0].ready);
     }
 }
