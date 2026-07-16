@@ -14,6 +14,7 @@ struct CubeliteApp: App {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var logStore = LogStore()
     @State private var portForwardService: PortForwardService
+    @State private var logSessionStore: LogSessionStore
 
     init() {
         let ks = KubeconfigService()
@@ -21,6 +22,7 @@ struct CubeliteApp: App {
         let api = KubeAPIService(kubeconfigService: ks)
         self.kubeAPIService = api
         self._portForwardService = State(initialValue: PortForwardService(kubeAPIService: api))
+        self._logSessionStore = State(initialValue: LogSessionStore(streamer: api))
         // Default-initialised; the real `onError` closure is bound in `.task`
         // once `logStore` and `appSettings` are available in scope.
         self._loginItemController = State(initialValue: LoginItemController())
@@ -37,6 +39,7 @@ struct CubeliteApp: App {
                     .environment(clusterState)
                     .environment(appSettings)
                     .environment(logStore)
+                    .environment(logSessionStore)
                     .environment(loginItemController)
                     .preferredColorScheme(appSettings.colorScheme)
                     .onChange(of: appSettings.appearanceMode) { _, newMode in

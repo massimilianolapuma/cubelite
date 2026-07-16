@@ -26,9 +26,11 @@ struct ResourceDetailView: View {
     /// Invoked after a successful mutation so the parent can reload.
     var onPodMutated: (() -> Void)?
 
+    @Environment(LogSessionStore.self) private var logSessionStore
+
     @State private var showDeleteConfirm = false
-    @State private var showLogs = false
     @State private var showShell = false
+    @State private var containers: [ContainerInfo] = []
     @State private var manifest: String?
     @State private var actionError: String?
     @State private var isActing = false
@@ -82,16 +84,6 @@ struct ResourceDetailView: View {
                 }
             )
         }
-        .sheet(isPresented: $showLogs) {
-            if let service = kubeAPIService, let pod = currentPod {
-                PodLogsView(
-                    pod: pod,
-                    kubeAPIService: service,
-                    context: context,
-                    onClose: { showLogs = false }
-                )
-            }
-        }
         .sheet(isPresented: $showShell) {
             if let service = kubeAPIService, let pod = currentPod {
                 PodExecView(
@@ -123,7 +115,7 @@ struct ResourceDetailView: View {
             Divider().padding(.vertical, 8)
             HStack(spacing: 8) {
                 Button {
-                    showLogs = true
+                    logSessionStore.open(pod: pod, context: context)
                 } label: {
                     Label("Logs", systemImage: "doc.plaintext")
                 }
@@ -301,22 +293,82 @@ struct ResourceDetailView: View {
     // MARK: - Pod Detail
 
     private func podDetail(_ pod: PodInfo) -> some View {
-        DetailGrid {
-            DetailRow(label: "Namespace", value: pod.namespace)
-            DetailRow(label: "Phase") {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(Color.podPhase(pod.phase))
-                        .frame(width: 8, height: 8)
-                    Text(pod.phase ?? "Unknown")
+        VStack(alignment: .leading, spacing: 0) {
+            DetailGrid {
+                DetailRow(label: "Namespace", value: pod.namespace)
+                DetailRow(label: "Phase") {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color.podPhase(pod.phase))
+                            .frame(width: 8, height: 8)
+                        Text(pod.phase ?? "Unknown")
+                    }
+                }
+                DetailRow(label: "Ready", value: pod.ready ? "Yes" : "No")
+                DetailRow(label: "Restarts", value: "\(pod.restarts)")
+                DetailRow(label: "Age", value: pod.creationTimestamp.k8sAge)
+                if let ts = pod.creationTimestamp {
+                    DetailRow(label: "Created", value: friendlyDate(ts))
                 }
             }
-            DetailRow(label: "Ready", value: pod.ready ? "Yes" : "No")
-            DetailRow(label: "Restarts", value: "\(pod.restarts)")
-            DetailRow(label: "Age", value: pod.creationTimestamp.k8sAge)
-            if let ts = pod.creationTimestamp {
-                DetailRow(label: "Created", value: friendlyDate(ts))
+            if !containers.isEmpty {
+                containersSection
             }
+        }
+        .task(id: pod.id) {
+            containers = (try? await kubeAPIService?.fetchPodContainers(
+                namespace: pod.namespace, pod: pod.name, inContext: context)) ?? []
+        }
+    }
+
+    /// Containers of the selected pod (app, sidecar, init) with live state.
+    private var containersSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Divider().padding(.vertical, 8)
+            Text("CONTAINERS")
+                .font(.system(size: 9.5, weight: .semibold))
+                .kerning(0.7)
+                .foregroundStyle(DesignTokens.textTertiary)
+            ForEach(containers) { container in
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(containerStateColor(container))
+                        .frame(width: 6, height: 6)
+                    Text(container.name)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(DesignTokens.textSecondary)
+                        .lineLimit(1)
+                    if container.isSidecar {
+                        Text("sidecar")
+                            .font(.system(size: 10))
+                            .foregroundStyle(DesignTokens.textTertiary)
+                    } else if container.isInit {
+                        Text("init")
+                            .font(.system(size: 10))
+                            .foregroundStyle(DesignTokens.textTertiary)
+                    }
+                    Spacer()
+                    Text(containerStateLabel(container))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(containerStateColor(container))
+                }
+            }
+        }
+    }
+
+    private func containerStateLabel(_ container: ContainerInfo) -> String {
+        switch container.state {
+        case .running: "Running"
+        case .waiting(let reason): reason ?? "Waiting"
+        case .terminated(let reason): reason ?? "Terminated"
+        }
+    }
+
+    private func containerStateColor(_ container: ContainerInfo) -> Color {
+        switch container.state {
+        case .running: DesignTokens.statusOk
+        case .terminated: DesignTokens.textTertiary
+        case .waiting: DesignTokens.statusErr
         }
     }
 

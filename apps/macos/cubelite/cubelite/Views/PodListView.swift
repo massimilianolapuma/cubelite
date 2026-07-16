@@ -9,6 +9,8 @@ struct PodListView: View {
 
     @Environment(ClusterState.self) private var clusterState
     @Binding var selectedPodID: PodInfo.ID?
+    /// Opens the log panel for the tapped pod (selected-row `logs ⏎` chip).
+    var onOpenLogs: ((PodInfo) -> Void)?
 
     var body: some View {
         Group {
@@ -49,9 +51,25 @@ struct PodListView: View {
             .width(16)
 
             TableColumn("Name") { pod in
-                Text(pod.name)
-                    .font(.callout.monospaced())
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(pod.name)
+                        .font(.callout.monospaced())
+                        .lineLimit(1)
+                    if pod.id == selectedPodID {
+                        Text("logs ⏎")
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(DesignTokens.accentDefault)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(DesignTokens.accentDefault.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4).stroke(
+                                    DesignTokens.accentDefault.opacity(0.3), lineWidth: 1))
+                            .onTapGesture { onOpenLogs?(pod) }
+                            .accessibilityLabel("Open logs for \(pod.name)")
+                    }
+                }
             }
             .width(min: 120, ideal: 200)
 
