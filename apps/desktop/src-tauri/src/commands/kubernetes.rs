@@ -1,11 +1,12 @@
 use cubelite_core::{
     client::KubeClient,
     helm::HelmReleaseInfo,
-    logs::stream_pod_logs,
+    logs::{stream_pod_logs, stream_pod_logs_opts, LogStreamOptions},
     metrics::{NodeCapacityInfo, PodMetricsInfo},
     resources::{
-        ConfigMapInfo, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo, NamespaceInfo,
-        NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,
+        ConfigMapInfo, ContainerDetail, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo,
+        JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo,
+        StatefulSetInfo,
     },
     ResourceType, ResourceWatcher, WatchEvent,
 };
@@ -544,6 +545,77 @@ pub async fn stream_logs(
         .insert(stream_id.clone(), handles);
 
     Ok(stream_id)
+}
+
+/// Start a single-container log stream for the log panel.
+///
+/// Lines are emitted as `pod-log-line:{stream_id}` events (a `LogLine`
+/// payload each); when the stream ends — server drop, previous-instance
+/// fetch completed — a final `pod-log-end:{stream_id}` event fires so the
+/// frontend session store can reconnect with backoff. Returns the stream ID
+/// for [`stop_logs`].
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn stream_pod_log(
+    app: AppHandle,
+    kubeconfig_path: String,
+    namespace: String,
+    pod: String,
+    container: Option<String>,
+    previous: bool,
+    tail_lines: Option<i64>,
+    since_time: Option<String>,
+    context: Option<String>,
+) -> Result<String, String> {
+    let kube_client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let client = kube_client.client();
+
+    let stream_id = LOG_COUNTER.fetch_add(1, Ordering::SeqCst).to_string();
+    let opts = LogStreamOptions {
+        container,
+        previous,
+        follow: !previous,
+        tail_lines: tail_lines.unwrap_or(500),
+        since_time,
+    };
+
+    let app_clone = app.clone();
+    let id_clone = stream_id.clone();
+    let mut stream = stream_pod_logs_opts(client, namespace, pod, opts);
+    let handle = tokio::spawn(async move {
+        while let Some(line) = stream.next().await {
+            // Ignore emit errors — the frontend window may have been closed.
+            let _ = app_clone.emit(&format!("pod-log-line:{id_clone}"), line);
+        }
+        let _ = app_clone.emit(&format!("pod-log-end:{id_clone}"), ());
+    });
+
+    app.state::<LogState>()
+        .handles
+        .lock()
+        .await
+        .insert(stream_id.clone(), vec![handle]);
+
+    Ok(stream_id)
+}
+
+/// Fetch one pod's containers (app, sidecar, init) with live status.
+#[tauri::command]
+pub async fn get_pod_containers(
+    kubeconfig_path: String,
+    namespace: String,
+    pod: String,
+    context: Option<String>,
+) -> Result<Vec<ContainerDetail>, String> {
+    let kube_client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    kube_client
+        .get_pod_containers(&namespace, &pod)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Stop an aggregated log stream by its stream ID.

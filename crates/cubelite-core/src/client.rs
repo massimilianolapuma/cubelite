@@ -169,6 +169,27 @@ impl KubeClient {
         Ok(pod_list.items.into_iter().filter_map(pod_to_info).collect())
     }
 
+    /// Fetch one pod's containers (app, sidecar, init) with live status,
+    /// for the log-panel container picker.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn get_pod_containers(
+        &self,
+        namespace: &str,
+        pod: &str,
+    ) -> Result<Vec<crate::resources::ContainerDetail>, KubeconfigError> {
+        let api: Api<Pod> = Api::namespaced(self.inner.clone(), namespace);
+        let raw = api
+            .get(pod)
+            .await
+            .map_err(|e| KubeconfigError::ClientError {
+                reason: e.to_string(),
+            })?;
+        Ok(crate::watcher::pod_to_container_details(&raw))
+    }
+
     /// List all namespaces visible to the authenticated user.
     ///
     /// # Errors
