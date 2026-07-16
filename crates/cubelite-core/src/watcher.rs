@@ -320,7 +320,10 @@ pub fn pod_to_container_details(pod: &Pod) -> Vec<crate::resources::ContainerDet
     let (sidecars, plain_init): (Vec<_>, Vec<_>) = init_containers
         .iter()
         .partition(|c| c.restart_policy.as_deref() == Some("Always"));
-    let sidecars: Vec<_> = sidecars.iter().map(|c| detail(&c.name, true, true)).collect();
+    let sidecars: Vec<_> = sidecars
+        .iter()
+        .map(|c| detail(&c.name, true, true))
+        .collect();
     let plain_init: Vec<_> = plain_init
         .iter()
         .map(|c| detail(&c.name, true, false))
