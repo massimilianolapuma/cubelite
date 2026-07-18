@@ -25,6 +25,8 @@ struct ResourceDetailView: View {
     var context: String?
     /// Invoked after a successful mutation so the parent can reload.
     var onPodMutated: (() -> Void)?
+    /// Invoked when the user dismisses the panel with the close button.
+    var onClose: (() -> Void)?
 
     @Environment(LogSessionStore.self) private var logSessionStore
 
@@ -125,7 +127,7 @@ struct ResourceDetailView: View {
                     Label("Shell", systemImage: "terminal")
                 }
                 Button {
-                    runAction { service, ctx in
+                    runAction(notifyMutation: false) { service, ctx in
                         let text = try await service.podManifestJSON(
                             namespace: pod.namespace, name: pod.name, inContext: ctx)
                         manifestItem = ManifestItem(text: text)
@@ -231,8 +233,12 @@ struct ResourceDetailView: View {
     }
 
 
-    /// Runs a mutation with the shared spinner/error handling; reloads on success.
+    /// Runs an operation with the shared spinner/error handling.
+    /// `notifyMutation` reloads the parent on success — read-only actions
+    /// (Describe) must pass `false` or the reload deselects the pod and
+    /// tears down this panel before its sheet can present.
     private func runAction(
+        notifyMutation: Bool = true,
         _ operation: @escaping (KubeAPIService, String?) async throws -> Void
     ) {
         guard let service = kubeAPIService else { return }
@@ -241,7 +247,7 @@ struct ResourceDetailView: View {
             defer { isActing = false }
             do {
                 try await operation(service, context)
-                onPodMutated?()
+                if notifyMutation { onPodMutated?() }
             } catch {
                 actionError = error.localizedDescription
             }
@@ -265,6 +271,16 @@ struct ResourceDetailView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignTokens.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Close details")
+                .accessibilityLabel("Close details")
+            }
         }
         .padding(.bottom, 14)
     }

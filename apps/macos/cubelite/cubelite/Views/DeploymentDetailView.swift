@@ -14,6 +14,8 @@ struct DeploymentDetailView: View {
     var kubeAPIService: KubeAPIService?
     /// Context the deployment belongs to (required for the manifest fetch).
     var context: String?
+    /// Invoked when the user dismisses the panel with the close button.
+    var onClose: (() -> Void)?
 
     @State private var manifest: ManifestPayload?
     @State private var manifestError: String?
@@ -27,6 +29,18 @@ struct DeploymentDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 DeploymentDetailHeader(deployment: deployment)
+                    .overlay(alignment: .topTrailing) {
+                        if let onClose {
+                            Button(action: onClose) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(DesignTokens.textTertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Close details")
+                            .accessibilityLabel("Close details")
+                        }
+                    }
                 Divider()
                     .padding(.vertical, 12)
                 DeploymentSpecGrid(deployment: deployment)
