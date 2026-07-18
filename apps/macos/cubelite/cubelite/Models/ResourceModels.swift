@@ -21,6 +21,8 @@ struct PodInfo: Codable, Sendable, Identifiable {
     var cpuRequest: String?
     /// Memory resource request from the first container (e.g. `"128Mi"`).
     var memoryRequest: String?
+    /// Pod labels, used for label-selector filtering.
+    var labels: [String: String]?
 
     /// Creates a ``PodInfo`` with core scheduling fields.
     ///
@@ -729,6 +731,7 @@ extension K8sPod {
         info.podIP = status?.podIP
         info.cpuRequest = firstContainer?.resources?.requests?["cpu"]
         info.memoryRequest = firstContainer?.resources?.requests?["memory"]
+        info.labels = metadata?.labels
         return info
     }
 }
