@@ -111,6 +111,8 @@ enum ResourceType: String, CaseIterable, Identifiable {
     case pvcs = "PVCs"
     /// Cluster nodes (read-only).
     case nodes = "Nodes"
+    /// Aggregated multi-pod log stream.
+    case logs = "Logs"
 
     var id: String { rawValue }
 
@@ -129,6 +131,7 @@ enum ResourceType: String, CaseIterable, Identifiable {
         case .cronJobs: "clock.arrow.circlepath"
         case .pvcs: "externaldrive"
         case .nodes: "server.rack"
+        case .logs: "text.alignleft"
         }
     }
 }
