@@ -35,6 +35,7 @@ pub mod helm;
 pub mod kubeconfig;
 pub mod logs;
 pub mod metrics;
+pub mod portforward;
 pub mod resources;
 pub mod types;
 pub mod watcher;
