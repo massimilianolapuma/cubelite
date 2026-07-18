@@ -311,6 +311,9 @@ struct MainView: View {
         }
         .onChange(of: sidebarSelection) { _, newValue in
             clusterState.pods = []
+            clusterState.nodeMetrics = []
+            clusterState.capacity = nil
+            clusterState.warningEvents = []
             clusterState.deployments = []
             clusterState.services = []
             clusterState.secrets = []
