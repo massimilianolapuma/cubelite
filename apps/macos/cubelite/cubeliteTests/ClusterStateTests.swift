@@ -147,7 +147,7 @@ final class ResourceTypeTests: XCTestCase {
 
     func testCaseIterable_containsAllCases() {
         let all = ResourceType.allCases
-        XCTAssertEqual(all.count, 13)
+        XCTAssertEqual(all.count, 14)
         XCTAssertTrue(all.contains(.dashboard))
         XCTAssertTrue(all.contains(.pods))
         XCTAssertTrue(all.contains(.deployments))
