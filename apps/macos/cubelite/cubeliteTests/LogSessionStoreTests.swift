@@ -4,23 +4,49 @@ import XCTest
 
 /// Scripted PodLogStreaming double: yields canned containers and lines,
 /// records the query parameters of every call.
+///
+/// The protocol's async methods are nonisolated, so AggregatedLogStore's
+/// 20-pod fan-out invokes them concurrently from the cooperative pool —
+/// all mutable state is guarded by a lock (the unguarded version crashed
+/// the CI test runner with a data race on `streamCalls`).
 final class MockLogStreamer: PodLogStreaming, @unchecked Sendable {
+    private let lock = NSLock()
+
     var containers: [ContainerInfo] = []
     var liveLines: [String] = []
     var previousLines: [String] = []
     /// The first N stream calls end right after yielding (dropped stream);
     /// later calls stay open like a healthy follow.
     var failFirstNStreams = 0
-    private(set) var streamCalls: [(container: String?, tailLines: Int, sinceTime: String?)] = []
-    private(set) var previousCalls: [(container: String?, tailLines: Int)] = []
+
+    private var recordedStreamCalls: [(container: String?, tailLines: Int, sinceTime: String?)] =
+        []
+    private var recordedPreviousCalls: [(container: String?, tailLines: Int)] = []
+
+    /// Synchronous critical section — callable from async contexts because
+    /// the lock never spans a suspension point.
+    private func withLock<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+
+    var streamCalls: [(container: String?, tailLines: Int, sinceTime: String?)] {
+        withLock { recordedStreamCalls }
+    }
+
+    var previousCalls: [(container: String?, tailLines: Int)] {
+        withLock { recordedPreviousCalls }
+    }
 
     func streamPodLogs(
         namespace: String, pod: String, container: String?, tailLines: Int,
         sinceTime: String?, inContext contextName: String?
     ) async throws -> AsyncThrowingStream<String, Error> {
-        streamCalls.append((container, tailLines, sinceTime))
-        let lines = liveLines
-        let shouldDrop = streamCalls.count <= failFirstNStreams
+        let (lines, shouldDrop) = withLock {
+            recordedStreamCalls.append((container, tailLines, sinceTime))
+            return (liveLines, recordedStreamCalls.count <= failFirstNStreams)
+        }
         return AsyncThrowingStream { continuation in
             for line in lines { continuation.yield(line) }
             if shouldDrop { continuation.finish() }
@@ -32,8 +58,10 @@ final class MockLogStreamer: PodLogStreaming, @unchecked Sendable {
         namespace: String, pod: String, container: String?, tailLines: Int,
         inContext contextName: String?
     ) async throws -> [String] {
-        previousCalls.append((container, tailLines))
-        return previousLines
+        withLock {
+            recordedPreviousCalls.append((container, tailLines))
+            return previousLines
+        }
     }
 
     func fetchPodContainers(
