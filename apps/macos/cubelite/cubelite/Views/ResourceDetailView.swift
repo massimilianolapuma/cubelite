@@ -173,6 +173,10 @@ struct ResourceDetailView: View {
                     .font(.system(size: 9.5, weight: .semibold))
                     .kerning(0.7)
                     .foregroundStyle(DesignTokens.textTertiary)
+                let remotePort = PortForwardInput.parsePort(forwardRemotePort)
+                let localPort = remotePort.flatMap {
+                    PortForwardInput.resolveLocalPort(forwardLocalPort, remotePort: $0)
+                }
                 HStack(spacing: 6) {
                     TextField("remote", text: $forwardRemotePort)
                         .textFieldStyle(.roundedBorder)
@@ -184,8 +188,7 @@ struct ResourceDetailView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 60)
                     Button("Forward") {
-                        let remote = Int(forwardRemotePort) ?? 80
-                        let local = UInt16(forwardLocalPort) ?? UInt16(clamping: remote)
+                        guard let remote = remotePort, let local = localPort else { return }
                         do {
                             try service.start(
                                 context: context, namespace: pod.namespace, pod: pod.name,
@@ -195,13 +198,19 @@ struct ResourceDetailView: View {
                         }
                     }
                     .controlSize(.small)
+                    .disabled(remotePort == nil || localPort == nil)
+                }
+                if remotePort == nil || localPort == nil {
+                    Text("Ports must be numbers between 1 and 65535")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DesignTokens.statusErr)
                 }
                 ForEach(service.sessions(namespace: pod.namespace, pod: pod.name)) { session in
                     HStack(spacing: 6) {
                         Circle()
                             .fill(sessionColor(session.state))
                             .frame(width: 6, height: 6)
-                        Text("localhost:\(session.localPort) → \(session.remotePort)")
+                        Text(verbatim: "localhost:\(session.localPort) → \(session.remotePort)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(DesignTokens.textSecondary)
                         if case .failed(let reason) = session.state {
