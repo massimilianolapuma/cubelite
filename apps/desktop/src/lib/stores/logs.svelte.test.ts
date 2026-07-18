@@ -121,6 +121,26 @@ describe("logs filters", () => {
 });
 
 describe("start/stop", () => {
+  it("start clears lines from the previous scope, even with no pods to stream", async () => {
+    logs.push(line({ pod: "ingress-nginx-1", message: "old scope" }));
+    vi.advanceTimersByTime(FLUSH_MS);
+    expect(logs.lines).toHaveLength(1);
+
+    await logs.start([]);
+
+    expect(logs.lines).toHaveLength(0);
+    expect(logs.bufferedWhilePaused).toBe(0);
+  });
+
+  it("start with pods also begins from an empty buffer", async () => {
+    logs.push(line({ message: "stale" }));
+    vi.advanceTimersByTime(FLUSH_MS);
+
+    await logs.start([{ namespace: "default", name: "api-0" }]);
+
+    expect(logs.lines).toHaveLength(0);
+  });
+
   it("starts a stream with the given pods", async () => {
     await logs.start([{ namespace: "default", name: "api-0" }]);
     expect(streamLogs).toHaveBeenCalledWith(

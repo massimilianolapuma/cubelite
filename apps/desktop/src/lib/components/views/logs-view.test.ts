@@ -69,11 +69,14 @@ describe("LogsView", () => {
     expect(screen.getByText("Clear")).toBeInTheDocument();
   });
 
-  it("renders lines with time, level, pod and message", () => {
+  it("renders lines with time, level, pod and message", async () => {
+    render(LogsView);
+    // Mounting restarts the stream, which clears the buffer — let the
+    // restart settle, then seed lines and wait for the flush to publish.
+    await new Promise((r) => setTimeout(r, 0));
     logs.push(line());
     logs.push(line({ pod: "worker-1", level: "error", message: "ERROR boom" }));
-    render(LogsView);
-    expect(screen.getByText("listening on :8080")).toBeInTheDocument();
+    expect(await screen.findByText("listening on :8080")).toBeInTheDocument();
     expect(screen.getByText("ERROR boom")).toBeInTheDocument();
     expect(screen.getByText("worker-1")).toBeInTheDocument();
     const errorRow = screen.getByText("ERROR boom").closest("div");
@@ -81,9 +84,11 @@ describe("LogsView", () => {
   });
 
   it("filters by severity chip", async () => {
+    render(LogsView);
+    await new Promise((r) => setTimeout(r, 0));
     logs.push(line({ message: "info line" }));
     logs.push(line({ level: "warn", message: "warn line" }));
-    render(LogsView);
+    await screen.findByText("warn line");
     await fireEvent.click(screen.getByText("WARN"));
     expect(screen.queryByText("info line")).toBeNull();
     expect(screen.getByText("warn line")).toBeInTheDocument();
