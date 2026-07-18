@@ -107,6 +107,11 @@ class LogsStore {
   /** Start streaming the given pods (restarts any previous stream). */
   async start(pods: PodRef[]): Promise<void> {
     await this.stop();
+    // A restart means the scope changed (cluster/namespace/selector) or
+    // the pod set did: begin from an empty buffer so stale lines from the
+    // previous scope never linger. The per-pod tail re-delivers recent
+    // history anyway.
+    this.clear();
     const kc = app.kubeconfigPath;
     const cluster = app.activeCluster;
     if (!kc || !cluster || pods.length === 0) return;
