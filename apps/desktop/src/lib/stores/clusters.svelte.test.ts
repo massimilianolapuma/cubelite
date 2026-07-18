@@ -46,6 +46,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   installLocalStorageMock();
   vi.mocked(probeCluster).mockResolvedValue({
+    context: "staging",
     reachable: true,
     version: "v1.30.0",
     node_count: 1,
@@ -132,6 +133,7 @@ describe("switchCluster", () => {
   it("fails fast to unreachable when the probe reports the cluster down", async () => {
     vi.mocked(setContext).mockResolvedValue(undefined);
     vi.mocked(probeCluster).mockResolvedValue({
+      context: "staging",
       reachable: false,
       version: null,
       node_count: null,
@@ -176,7 +178,7 @@ describe("switchCluster", () => {
     vi.mocked(probeCluster).mockReturnValue(
       new Promise((resolve) => {
         releaseProbe = () =>
-          resolve({ reachable: false, version: null, node_count: null, error: "late" });
+          resolve({ context: "staging", reachable: false, version: null, node_count: null, error: "late" });
       }),
     );
 

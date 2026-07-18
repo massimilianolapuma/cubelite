@@ -2,14 +2,38 @@
 	import { logs, type LevelFilter } from '$lib/stores/logs.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 	import { app } from '$lib/stores/app.svelte';
+	import { matchesSelector, parseLabelSelector } from '$lib/k8s-match';
 	import type { LogLevel } from '$lib/tauri';
 
-	let container = $state<HTMLDivElement | null>(null);
+	/** Backend streams at most this many pods (MAX_LOG_PODS in Rust). */
+	const MAX_STREAMED_PODS = 20;
 
-	// (Re)start the aggregated stream when cluster/namespace change.
+	let container = $state<HTMLDivElement | null>(null);
+	let labelSelector = $state('');
+	let debouncedSelector = $state('');
+	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+	// Debounce selector edits so each keystroke doesn't restart the stream.
+	$effect(() => {
+		const value = labelSelector;
+		clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(() => (debouncedSelector = value), 300);
+		return () => clearTimeout(debounceTimer);
+	});
+
+	const streamedPods = $derived.by(() => {
+		const selector = parseLabelSelector(debouncedSelector);
+		const matched =
+			Object.keys(selector).length === 0
+				? resources.pods
+				: resources.pods.filter((p) => matchesSelector(p.labels, selector));
+		return matched.map((p) => ({ namespace: p.namespace, name: p.name }));
+	});
+
+	// (Re)start the aggregated stream when cluster/namespace/selector change.
 	$effect(() => {
 		void [app.activeCluster, app.namespace];
-		const pods = resources.pods.map((p) => ({ namespace: p.namespace, name: p.name }));
+		const pods = streamedPods;
 		void logs.start(pods);
 		return () => void logs.stop();
 	});
@@ -53,7 +77,20 @@
 
 <div class="flex min-h-0 flex-1 flex-col gap-3 p-4">
 	<div class="flex items-center gap-2">
-		<h1 class="type-title flex-1">Logs</h1>
+		<h1 class="type-title">Logs</h1>
+		<span class="type-caption flex-1 text-text-tertiary">
+			streaming {Math.min(streamedPods.length, MAX_STREAMED_PODS)}{streamedPods.length >
+			MAX_STREAMED_PODS
+				? ` of ${streamedPods.length}`
+				: ''} pods
+		</span>
+
+		<input
+			type="text"
+			placeholder="label=value,…"
+			bind:value={labelSelector}
+			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 font-mono text-[11px] text-text-primary placeholder:text-text-disabled"
+		/>
 
 		<div class="flex overflow-hidden rounded-md border border-border-default">
 			{#each chips as chip (chip.value)}
@@ -118,7 +155,7 @@
 					{logs.lines.length === 0 ? 'Waiting for log lines…' : 'No lines match the filter.'}
 				</p>
 			{:else}
-				{#each logs.filtered as line, i (i)}
+				{#each logs.filtered as line (line.id)}
 					<div class="flex items-baseline gap-2.5 px-2.5 py-px" style={rowStyle(line.level)}>
 						<span class="shrink-0 font-mono text-[10.5px] text-text-disabled">{clock(line.time)}</span>
 						<span
