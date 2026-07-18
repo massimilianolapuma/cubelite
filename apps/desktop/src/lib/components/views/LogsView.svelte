@@ -118,7 +118,7 @@
 					{logs.lines.length === 0 ? 'Waiting for log lines…' : 'No lines match the filter.'}
 				</p>
 			{:else}
-				{#each logs.filtered as line, i (i)}
+				{#each logs.filtered as line (line.id)}
 					<div class="flex items-baseline gap-2.5 px-2.5 py-px" style={rowStyle(line.level)}>
 						<span class="shrink-0 font-mono text-[10.5px] text-text-disabled">{clock(line.time)}</span>
 						<span
