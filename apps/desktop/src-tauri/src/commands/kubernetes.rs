@@ -3,6 +3,7 @@ use cubelite_core::{
     helm::HelmReleaseInfo,
     logs::{stream_pod_logs, stream_pod_logs_opts, LogStreamOptions},
     metrics::{NodeCapacityInfo, PodMetricsInfo},
+    portforward::forward_pod_port,
     resources::{
         ConfigMapInfo, ContainerDetail, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo,
         JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo,
@@ -44,6 +45,80 @@ pub struct PodRef {
     pub namespace: String,
     /// Pod name.
     pub name: String,
+}
+
+/// Monotonically increasing counter for generating unique forward IDs.
+static FORWARD_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Tauri managed state holding all active port-forward accept loops.
+///
+/// Keyed by the session ID returned from [`start_port_forward`].
+#[derive(Default)]
+pub struct PortForwardState {
+    handles: Mutex<HashMap<String, JoinHandle<()>>>,
+}
+
+/// Result of starting a port-forward session.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForwardStartResult {
+    /// Session ID for [`stop_port_forward`].
+    pub id: String,
+    /// The actually-bound local port (relevant when 0 = auto was requested).
+    pub local_port: u16,
+}
+
+/// Starts forwarding `127.0.0.1:<local_port>` → `<pod>:<remote_port>`.
+///
+/// `local_port == 0` auto-assigns a free port; the bound port is returned.
+/// Errors (kubeconfig, port in use) are returned as strings for the UI.
+#[tauri::command]
+pub async fn start_port_forward(
+    app: AppHandle,
+    kubeconfig_path: String,
+    context: Option<String>,
+    namespace: String,
+    pod: String,
+    local_port: u16,
+    remote_port: u16,
+) -> Result<ForwardStartResult, String> {
+    let kube_client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let (bound, handle) =
+        forward_pod_port(kube_client.client(), namespace, pod, local_port, remote_port)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    let id = FORWARD_COUNTER.fetch_add(1, Ordering::SeqCst).to_string();
+    app.state::<PortForwardState>()
+        .handles
+        .lock()
+        .await
+        .insert(id.clone(), handle);
+
+    Ok(ForwardStartResult {
+        id,
+        local_port: bound,
+    })
+}
+
+/// Stops a port-forward session: aborts the accept loop and drops the
+/// local listener. Connections already established keep relaying until
+/// either side closes.
+#[tauri::command]
+pub async fn stop_port_forward(app: AppHandle, id: String) -> Result<(), String> {
+    if let Some(handle) = app
+        .state::<PortForwardState>()
+        .handles
+        .lock()
+        .await
+        .remove(&id)
+    {
+        handle.abort();
+    }
+    Ok(())
 }
 
 /// Tauri managed state holding all active watch task handles.
