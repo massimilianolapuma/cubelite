@@ -86,10 +86,15 @@ pub async fn start_port_forward(
         .await
         .map_err(|e| e.to_string())?;
 
-    let (bound, handle) =
-        forward_pod_port(kube_client.client(), namespace, pod, local_port, remote_port)
-            .await
-            .map_err(|e| e.to_string())?;
+    let (bound, handle) = forward_pod_port(
+        kube_client.client(),
+        namespace,
+        pod,
+        local_port,
+        remote_port,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
 
     let id = FORWARD_COUNTER.fetch_add(1, Ordering::SeqCst).to_string();
     app.state::<PortForwardState>()
