@@ -16,6 +16,12 @@ final class ClusterState {
     var pods: [PodInfo] = []
     /// Cluster nodes (read-only inventory; empty when RBAC denies nodes).
     var nodes: [NodeInfo] = []
+    /// Live node usage from metrics-server; empty when unavailable.
+    var nodeMetrics: [NodeMetricsInfo] = []
+    /// Aggregated usage vs allocatable; nil when metrics are unavailable.
+    var capacity: ClusterCapacity?
+    /// Recent Warning events for the browsed scope, most recent first.
+    var warningEvents: [EventInfo] = []
 
     /// Available namespaces for the currently browsed context.
     var namespaces: [NamespaceInfo] = []
@@ -83,7 +89,7 @@ final class ClusterState {
 
 /// Resource categories available in the browse pane.
 enum ResourceType: String, CaseIterable, Identifiable {
-    case dashboard = "Dashboard"
+    case dashboard = "Overview"
     case pods = "Pods"
     case deployments = "Deployments"
     case services = "Services"

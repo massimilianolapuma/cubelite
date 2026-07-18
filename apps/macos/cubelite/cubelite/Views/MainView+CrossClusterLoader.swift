@@ -71,7 +71,30 @@ extension MainView {
                     }
 
                     let isReachable = anySucceeded || (fatalErr == nil && !forbidden.isEmpty)
-                    return ClusterHealthSnapshot(
+
+                    // Best-effort telemetry for the cluster card; skipped
+                    // entirely for unreachable clusters.
+                    var nodeCount: Int?
+                    var version: String?
+                    var warningCount: Int?
+                    var cpuFraction: Double?
+                    var memFraction: Double?
+                    if isReachable {
+                        let nodes = try? await apiService.listNodes(inContext: ctx)
+                        nodeCount = nodes?.count
+                        version = try? await apiService.clusterVersion(inContext: ctx) ?? nil
+                        warningCount =
+                            (try? await apiService.listWarningEvents(inContext: ctx))?.count
+                        if let nodes,
+                            let metrics = try? await apiService.listNodeMetrics(inContext: ctx),
+                            let capacity = ClusterCapacity.from(nodes: nodes, metrics: metrics)
+                        {
+                            cpuFraction = capacity.cpuFraction
+                            memFraction = capacity.memFraction
+                        }
+                    }
+
+                    var snapshot = ClusterHealthSnapshot(
                         contextName: ctx,
                         isReachable: isReachable,
                         error: fatalErr,
@@ -91,6 +114,12 @@ extension MainView {
                         notReadyPods: pods.filter { !$0.ready }.count,
                         forbiddenResources: forbidden
                     )
+                    snapshot.nodeCount = nodeCount
+                    snapshot.version = version
+                    snapshot.warningCount = warningCount
+                    snapshot.cpuFraction = cpuFraction
+                    snapshot.memFraction = memFraction
+                    return snapshot
                 }
             }
             for await snapshot in group {

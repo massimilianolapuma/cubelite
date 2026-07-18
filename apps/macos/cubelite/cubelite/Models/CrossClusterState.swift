@@ -20,6 +20,19 @@ struct ClusterHealthSnapshot: Sendable {
     /// Resource types that returned HTTP 403 for this cluster.
     let forbiddenResources: [String]
 
+    // Best-effort telemetry (nil when the probe failed or is unavailable).
+
+    /// Number of cluster nodes.
+    var nodeCount: Int?
+    /// Kubernetes server version (gitVersion).
+    var version: String?
+    /// Count of cluster-wide Warning events.
+    var warningCount: Int?
+    /// CPU usage fraction (0...1) from metrics-server.
+    var cpuFraction: Double?
+    /// Memory usage fraction (0...1) from metrics-server.
+    var memFraction: Double?
+
     /// Whether this cluster has RBAC limitations (some resources forbidden).
     var isRBACLimited: Bool { !forbiddenResources.isEmpty }
 }

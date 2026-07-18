@@ -107,6 +107,16 @@ extension MainView {
         // the rest of the views must keep working).
         clusterState.nodes = (try? await kubeAPIService.listNodes(inContext: context)) ?? []
 
+        // Telemetry for the Overview (best-effort: metrics-server may be
+        // absent and events may be RBAC-denied; both degrade to empty/nil).
+        clusterState.nodeMetrics =
+            (try? await kubeAPIService.listNodeMetrics(inContext: context)) ?? []
+        clusterState.capacity = ClusterCapacity.from(
+            nodes: clusterState.nodes, metrics: clusterState.nodeMetrics)
+        clusterState.warningEvents =
+            (try? await kubeAPIService.listWarningEvents(
+                namespace: namespace, inContext: context)) ?? []
+
         // Deployments
         if let deployments = await fetchResource("deployments", {
             try await kubeAPIService.listDeployments(namespace: namespace, inContext: context)
