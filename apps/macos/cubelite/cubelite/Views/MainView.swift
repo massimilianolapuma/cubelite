@@ -187,6 +187,7 @@ struct MainView: View {
                 unreadErrorCount: logStore.unreadErrorCount,
                 onSelectNamespace: { namespace in
                     if let context = selectedContext {
+                        appSettings.rememberNamespace(namespace, for: context)
                         sidebarSelection = SidebarSelection(context: context, namespace: namespace)
                     }
                 },
@@ -284,13 +285,27 @@ struct MainView: View {
             clusterState.deployments = []
             clusterState.namespacePodCounts = [:]
             if let context = newValue {
+                // Restore the last namespace the user picked for this context
+                // immediately so the dashboard never sits on an empty
+                // selection; fall back to the kubeconfig default namespace.
+                let recalled = appSettings.recallNamespace(for: context)
+                switch recalled {
+                case .all:
+                    sidebarSelection = SidebarSelection(context: context, namespace: nil)
+                case .named(let ns):
+                    sidebarSelection = SidebarSelection(context: context, namespace: ns)
+                case .none:
+                    break
+                }
                 Task {
                     await loadNamespaces(for: context)
-                    // Use the kubeconfig default namespace for this context, if set.
-                    // This avoids cluster-scope requests that fail with 403 when RBAC
-                    // only grants namespace-scoped access.
-                    let defaultNS = await resolveDefaultNamespace(for: context)
-                    sidebarSelection = SidebarSelection(context: context, namespace: defaultNS)
+                    if recalled == .none {
+                        // Use the kubeconfig default namespace for this context, if set.
+                        // This avoids cluster-scope requests that fail with 403 when RBAC
+                        // only grants namespace-scoped access.
+                        let defaultNS = await resolveDefaultNamespace(for: context)
+                        sidebarSelection = SidebarSelection(context: context, namespace: defaultNS)
+                    }
                 }
             }
         }
