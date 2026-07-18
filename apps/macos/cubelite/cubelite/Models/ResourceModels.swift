@@ -339,6 +339,10 @@ struct NodeInfo: Codable, Sendable, Identifiable {
     let version: String?
     /// ISO 8601 creation timestamp.
     let creationTimestamp: String?
+    /// Allocatable CPU in cores, parsed from `status.allocatable.cpu`.
+    var allocatableCPUCores: Double?
+    /// Allocatable memory in bytes, parsed from `status.allocatable.memory`.
+    var allocatableMemoryBytes: Double?
 }
 
 /// Raw Kubernetes node as returned by the API.
@@ -347,10 +351,11 @@ struct K8sNode: Codable, Sendable {
     let status: K8sNodeStatus?
 }
 
-/// Node status: conditions + kubelet info.
+/// Node status: conditions + kubelet info + allocatable capacity.
 struct K8sNodeStatus: Codable, Sendable {
     let conditions: [K8sNodeCondition]?
     let nodeInfo: K8sNodeSystemInfo?
+    let allocatable: [String: String]?
 }
 
 /// One node condition entry.
@@ -373,13 +378,111 @@ extension K8sNode {
             .compactMap { $0.hasPrefix("node-role.kubernetes.io/") ? String($0.dropFirst(24)) : nil }
             .filter { !$0.isEmpty }
             .sorted()
-        return NodeInfo(
+        var info = NodeInfo(
             name: metadata?.name ?? "",
             status: ready ? "Ready" : "NotReady",
             roles: roles,
             version: status?.nodeInfo?.kubeletVersion,
             creationTimestamp: metadata?.creationTimestamp
         )
+        info.allocatableCPUCores = (status?.allocatable?["cpu"]).flatMap(K8sQuantity.cpuCores)
+        info.allocatableMemoryBytes = (status?.allocatable?["memory"]).flatMap(K8sQuantity.bytes)
+        return info
+    }
+}
+
+// MARK: - Node Metrics (metrics.k8s.io)
+
+/// Display model for one node's live resource usage from metrics-server.
+struct NodeMetricsInfo: Codable, Sendable, Identifiable {
+    var id: String { name }
+
+    let name: String
+    /// CPU usage in cores, nil when unparseable.
+    let cpuCores: Double?
+    /// Memory usage in bytes, nil when unparseable.
+    let memoryBytes: Double?
+}
+
+/// Raw node metrics item as returned by `/apis/metrics.k8s.io/v1beta1/nodes`.
+struct K8sNodeMetrics: Codable, Sendable {
+    let metadata: K8sObjectMeta?
+    let usage: Usage?
+
+    struct Usage: Codable, Sendable {
+        let cpu: String?
+        let memory: String?
+    }
+}
+
+extension K8sNodeMetrics {
+    /// Maps the raw metrics item onto the display model.
+    func toNodeMetricsInfo() -> NodeMetricsInfo {
+        NodeMetricsInfo(
+            name: metadata?.name ?? "",
+            cpuCores: (usage?.cpu).flatMap(K8sQuantity.cpuCores),
+            memoryBytes: (usage?.memory).flatMap(K8sQuantity.bytes)
+        )
+    }
+}
+
+// MARK: - Events
+
+/// Display model for a Kubernetes event (Warning events on the Overview).
+struct EventInfo: Codable, Sendable, Identifiable {
+    var id: String { "\(namespace)/\(name)" }
+
+    let name: String
+    let namespace: String
+    let reason: String?
+    let message: String?
+    /// Kind of the object the event refers to (Pod, Deployment, …).
+    let objectKind: String?
+    /// Name of the object the event refers to.
+    let objectName: String?
+    /// Number of occurrences aggregated into this event.
+    let count: Int?
+    /// ISO 8601 timestamp of the last occurrence.
+    let lastTimestamp: String?
+}
+
+/// Raw Kubernetes event as returned by the core events API.
+struct K8sEvent: Codable, Sendable {
+    let metadata: K8sObjectMeta?
+    let reason: String?
+    let message: String?
+    let type: String?
+    let count: Int?
+    let lastTimestamp: String?
+    let involvedObject: InvolvedObject?
+
+    struct InvolvedObject: Codable, Sendable {
+        let kind: String?
+        let name: String?
+    }
+}
+
+extension K8sEvent {
+    /// Maps the raw event onto the display model.
+    func toEventInfo() -> EventInfo {
+        EventInfo(
+            name: metadata?.name ?? "",
+            namespace: metadata?.namespace ?? "",
+            reason: reason,
+            message: message,
+            objectKind: involvedObject?.kind,
+            objectName: involvedObject?.name,
+            count: count,
+            lastTimestamp: lastTimestamp ?? metadata?.creationTimestamp
+        )
+    }
+}
+
+extension [EventInfo] {
+    /// Most recent first; events without a timestamp sink to the end.
+    /// RFC 3339 UTC timestamps compare correctly as strings.
+    func sortedMostRecentFirst() -> [EventInfo] {
+        sorted { ($0.lastTimestamp ?? "") > ($1.lastTimestamp ?? "") }
     }
 }
 

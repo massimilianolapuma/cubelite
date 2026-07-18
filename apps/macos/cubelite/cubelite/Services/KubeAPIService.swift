@@ -407,6 +407,43 @@ actor KubeAPIService {
         return response.items.map { $0.toNodeInfo() }
     }
 
+    /// Lists live node usage from metrics-server (metrics.k8s.io).
+    ///
+    /// Throws when the metrics API is not installed or is forbidden;
+    /// callers treat any failure as "metrics unavailable".
+    func listNodeMetrics(inContext contextName: String? = nil) async throws -> [NodeMetricsInfo] {
+        let response: K8sListResponse<K8sNodeMetrics> = try await fetch(
+            path: "/apis/metrics.k8s.io/v1beta1/nodes", contextName: contextName)
+        return response.items.map { $0.toNodeMetricsInfo() }
+    }
+
+    /// Returns the cluster's Kubernetes version (`gitVersion` from `/version`).
+    func clusterVersion(inContext contextName: String? = nil) async throws -> String? {
+        struct VersionInfo: Codable, Sendable {
+            let gitVersion: String?
+        }
+        let info: VersionInfo = try await fetch(path: "/version", contextName: contextName)
+        return info.gitVersion
+    }
+
+    /// Lists Warning events, most recent first. Scoped to `namespace` when
+    /// given, cluster-wide otherwise.
+    func listWarningEvents(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [EventInfo]
+    {
+        let selector = "fieldSelector=type%3DWarning"
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/api/v1/namespaces/\(encoded)/events?\(selector)"
+        } else {
+            path = "/api/v1/events?\(selector)"
+        }
+        let response: K8sListResponse<K8sEvent> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toEventInfo() }.sortedMostRecentFirst()
+    }
+
     /// Per-request connection state shared by REST calls, WebSockets, and
     /// line streams: the server base URL, the Authorization bearer token, and
     /// a cached URLSession whose TLS identity matches the credential source.
