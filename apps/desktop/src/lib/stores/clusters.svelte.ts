@@ -8,6 +8,7 @@ import { listContexts, probeCluster, setContext, type ContextInfo } from "$lib/t
 import { assignIdentityColors, type IdentityColor } from "$lib/cluster-identity";
 import { errorMessage } from "$lib/errors";
 import { app } from "./app.svelte";
+import { portforward } from "./portforward.svelte";
 import { resources } from "./resources.svelte";
 import { settings } from "./settings.svelte";
 import { toasts } from "./toasts.svelte";
@@ -66,6 +67,8 @@ class ClustersStore {
       await resources.stopWatching();
       if (epoch !== this.#switchEpoch) return;
       resources.clear();
+      // Forward sessions target pods of the old cluster — tear them down.
+      void portforward.stopAll();
       try {
         await setContext(name);
       } catch (e) {

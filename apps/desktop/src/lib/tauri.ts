@@ -564,3 +564,32 @@ export function watchResources(
 export function unwatchResources(watchId: string): Promise<void> {
   return invoke("unwatch_resources", { watchId });
 }
+
+/** Result of starting a port-forward session. */
+export interface ForwardStartResult {
+  id: string;
+  /** The actually-bound local port (relevant when 0 = auto was requested). */
+  localPort: number;
+}
+
+export function startPortForward(
+  kubeconfigPath: string,
+  namespace: string,
+  pod: string,
+  localPort: number,
+  remotePort: number,
+  context?: string,
+): Promise<ForwardStartResult> {
+  return invoke<ForwardStartResult>("start_port_forward", {
+    kubeconfigPath,
+    context: context ?? null,
+    namespace,
+    pod,
+    localPort,
+    remotePort,
+  });
+}
+
+export function stopPortForward(id: string): Promise<void> {
+  return invoke("stop_port_forward", { id });
+}
