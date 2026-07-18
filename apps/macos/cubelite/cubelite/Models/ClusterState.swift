@@ -89,7 +89,7 @@ final class ClusterState {
 
 /// Resource categories available in the browse pane.
 enum ResourceType: String, CaseIterable, Identifiable {
-    case dashboard = "Dashboard"
+    case dashboard = "Overview"
     case pods = "Pods"
     case deployments = "Deployments"
     case services = "Services"

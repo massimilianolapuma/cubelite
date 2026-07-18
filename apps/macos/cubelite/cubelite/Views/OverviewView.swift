@@ -1,15 +1,175 @@
 import SwiftUI
 
-/// Dashboard overview for the selected cluster/namespace.
+/// Overview for the selected cluster/namespace (parity with desktop).
 ///
-/// Displays summary cards with key cluster metrics: pod counts by status,
-/// deployment health, namespace overview, and resource utilization.
-struct DashboardView: View {
+/// Top-to-bottom: stat row (nodes / running pods / healthy deployments /
+/// warnings), capacity CPU+MEM meters, recent Warning events, then the
+/// per-resource summary cards.
+struct OverviewView: View {
 
     @Environment(ClusterState.self) private var clusterState
 
     var body: some View {
         ScrollView {
+            VStack(spacing: 16) {
+                statRow
+                capacityCard
+                warningsCard
+                resourceGrid
+            }
+            .padding(20)
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    // MARK: - Stat Row
+
+    private var statRow: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 4),
+            spacing: 16
+        ) {
+            statCard(
+                "Nodes", value: "\(clusterState.nodes.count)", icon: "server.rack",
+                color: .teal)
+            statCard(
+                "Pods running",
+                value:
+                    "\(clusterState.pods.filter { $0.phase == "Running" }.count)/\(clusterState.pods.count)",
+                icon: "cube.box", color: .blue)
+            statCard(
+                "Deploys healthy",
+                value:
+                    "\(clusterState.deployments.filter { $0.readyReplicas == $0.replicas }.count)/\(clusterState.deployments.count)",
+                icon: "arrow.triangle.2.circlepath", color: .purple)
+            statCard(
+                "Warnings", value: "\(clusterState.warningEvents.count)",
+                icon: "exclamationmark.triangle",
+                color: clusterState.warningEvents.isEmpty ? .secondary : .orange)
+        }
+    }
+
+    private func statCard(_ title: String, value: String, icon: String, color: Color)
+        -> some View
+    {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Text(value)
+                .font(.title3.monospacedDigit().weight(.semibold))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .windowBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Capacity
+
+    private var capacityCard: some View {
+        DashboardCard(title: "Capacity", icon: "gauge", color: .green) {
+            if let capacity = clusterState.capacity {
+                VStack(alignment: .leading, spacing: 12) {
+                    MeterBarView(
+                        label: "CPU",
+                        fraction: capacity.cpuFraction,
+                        detail: coresDetail(capacity)
+                    )
+                    MeterBarView(
+                        label: "MEM",
+                        fraction: capacity.memFraction,
+                        detail: memoryDetail(capacity)
+                    )
+                }
+            } else {
+                Text("Metrics unavailable — metrics-server not detected")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            }
+        }
+    }
+
+    private func coresDetail(_ capacity: ClusterCapacity) -> String? {
+        guard capacity.cpuAllocatableCores > 0 else { return nil }
+        return String(
+            format: "%.1f / %.1f cores", capacity.cpuUsedCores, capacity.cpuAllocatableCores)
+    }
+
+    private func memoryDetail(_ capacity: ClusterCapacity) -> String? {
+        guard capacity.memAllocatableBytes > 0 else { return nil }
+        let gib = 1_073_741_824.0
+        return String(
+            format: "%.1f / %.1f GiB", capacity.memUsedBytes / gib,
+            capacity.memAllocatableBytes / gib)
+    }
+
+    // MARK: - Recent Warnings
+
+    private var warningsCard: some View {
+        DashboardCard(title: "Recent warnings", icon: "exclamationmark.triangle", color: .orange)
+        {
+            if clusterState.warningEvents.isEmpty {
+                Text("No recent warnings")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(clusterState.warningEvents.prefix(5)) { event in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(event.reason ?? "Warning")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.orange)
+                                .frame(width: 110, alignment: .leading)
+                                .lineLimit(1)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(verbatim: eventObjectLabel(event))
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text(event.message ?? "")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                            Spacer(minLength: 0)
+                            if let count = event.count, count > 1 {
+                                Text(verbatim: "×\(count)")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func eventObjectLabel(_ event: EventInfo) -> String {
+        guard let name = event.objectName else { return event.namespace }
+        let kind = event.objectKind.map { "\($0)/" } ?? ""
+        return "\(kind)\(name)"
+    }
+
+    // MARK: - Resource Grid
+
+    private var resourceGrid: some View {
             LazyVGrid(
                 columns: [
                     GridItem(.flexible(), spacing: 16),
@@ -278,9 +438,6 @@ struct DashboardView: View {
                     }
                 }
             }
-            .padding(20)
-        }
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     /// "No access" overlay shown when RBAC forbids a resource type.
@@ -361,7 +518,7 @@ struct DashboardMetric: View {
 
 // MARK: - Preview
 
-#Preview("Dashboard") {
+#Preview("Overview") {
     let state = ClusterState()
     state.pods = [
         PodInfo(
@@ -384,7 +541,7 @@ struct DashboardMetric: View {
         NamespaceInfo(name: "kube-system", phase: "Active"),
     ]
     state.clusterReachable = true
-    return DashboardView()
+    return OverviewView()
         .environment(state)
         .frame(width: 600, height: 500)
 }

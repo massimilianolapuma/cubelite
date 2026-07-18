@@ -28,7 +28,7 @@ extension MainView {
         } else if let sel = sidebarSelection {
             switch selectedResourceType ?? .dashboard {
             case .dashboard:
-                DashboardView()
+                OverviewView()
             case .pods, .deployments, .services, .secrets, .configMaps, .ingresses,
                 .helmReleases, .nodes, .jobs, .statefulSets, .cronJobs, .pvcs:
                 resourceBrowserView(context: sel.context, namespace: sel.namespace)
