@@ -2,10 +2,25 @@
 	import Search from '@lucide/svelte/icons/search';
 	import Kbd from '$lib/components/ui/Kbd.svelte';
 	import NamespaceDropdown from '$lib/components/ui/NamespaceDropdown.svelte';
+	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
 	import { isMac, modLabel } from '$lib/platform';
 	import { providerOf } from '$lib/provider';
+	import { isDragSurface } from '$lib/window-drag';
+
+	// Explicit drag fallback: Tauri's injected data-tauri-drag-region
+	// handler is unreliable with the Overlay title bar on macOS (#317).
+	function beginDrag(event: MouseEvent) {
+		if (event.button !== 0) return;
+		if (!isDragSurface(event.target as Element | null)) return;
+		const window = getCurrentWindow();
+		if (event.detail === 2) {
+			void window.toggleMaximize();
+		} else {
+			void window.startDragging();
+		}
+	}
 
 	const activeContext = $derived(
 		clusters.contexts.find((c) => c.name === app.activeCluster) ?? null
@@ -18,8 +33,12 @@
 	);
 </script>
 
+<!-- The mousedown handler only begins a window drag — not an
+     interactive control, so no ARIA role applies. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <header
 	data-tauri-drag-region
+	onmousedown={beginDrag}
 	class="flex h-[42px] shrink-0 items-center gap-3 border-b border-border-default bg-surface-surface pr-3"
 	style="padding-left: {isMac ? '78px' : '12px'};"
 >
