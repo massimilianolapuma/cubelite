@@ -132,12 +132,17 @@ private struct ClusterSnapshotRow: View {
     let snapshot: ClusterHealthSnapshot
 
     var body: some View {
-        HStack(spacing: 12) {
-            statusIndicator
-            clusterInfo
-            Spacer()
-            if snapshot.isReachable {
-                metricsGroup
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                statusIndicator
+                clusterInfo
+                Spacer()
+                if snapshot.isReachable {
+                    metricsGroup
+                }
+            }
+            if snapshot.isReachable, hasTelemetry {
+                telemetryRow
             }
         }
         .padding(12)
@@ -193,6 +198,50 @@ private struct ClusterSnapshotRow: View {
             metricBadge(label: "Deploys", value: snapshot.totalDeployments, color: .purple)
             metricBadge(label: "Svc", value: snapshot.totalServices, color: .indigo)
         }
+    }
+
+    /// Whether any best-effort telemetry landed for this cluster.
+    private var hasTelemetry: Bool {
+        snapshot.nodeCount != nil || snapshot.version != nil
+            || snapshot.warningCount != nil || snapshot.cpuFraction != nil
+            || snapshot.memFraction != nil
+    }
+
+    /// Second row: nodes / version / warnings badges + CPU/MEM meters.
+    private var telemetryRow: some View {
+        HStack(alignment: .top, spacing: 16) {
+            textBadge(
+                label: "Nodes",
+                value: snapshot.nodeCount.map { "\($0)" } ?? "—",
+                color: .teal)
+            textBadge(label: "Version", value: snapshot.version ?? "—", color: .secondary)
+            textBadge(
+                label: "Warnings",
+                value: snapshot.warningCount.map { "\($0)" } ?? "—",
+                color: (snapshot.warningCount ?? 0) > 0 ? .orange : .secondary)
+            Spacer()
+            if snapshot.cpuFraction != nil || snapshot.memFraction != nil {
+                VStack(spacing: 6) {
+                    MeterBarView(label: "CPU", fraction: snapshot.cpuFraction)
+                    MeterBarView(label: "MEM", fraction: snapshot.memFraction)
+                }
+                .frame(width: 180)
+            }
+        }
+        .padding(.leading, 22)
+    }
+
+    private func textBadge(label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(verbatim: value)
+                .font(.system(.callout, design: .monospaced).bold())
+                .foregroundStyle(color)
+                .lineLimit(1)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 40)
     }
 
     private func metricBadge(label: String, value: Int, color: Color) -> some View {
