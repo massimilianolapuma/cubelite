@@ -25,6 +25,8 @@ struct ResourceDetailView: View {
     var context: String?
     /// Invoked after a successful mutation so the parent can reload.
     var onPodMutated: (() -> Void)?
+    /// Invoked when the user dismisses the panel with the close button.
+    var onClose: (() -> Void)?
 
     @Environment(LogSessionStore.self) private var logSessionStore
 
@@ -125,7 +127,7 @@ struct ResourceDetailView: View {
                     Label("Shell", systemImage: "terminal")
                 }
                 Button {
-                    runAction { service, ctx in
+                    runAction(notifyMutation: false) { service, ctx in
                         let text = try await service.podManifestJSON(
                             namespace: pod.namespace, name: pod.name, inContext: ctx)
                         manifestItem = ManifestItem(text: text)
@@ -171,6 +173,10 @@ struct ResourceDetailView: View {
                     .font(.system(size: 9.5, weight: .semibold))
                     .kerning(0.7)
                     .foregroundStyle(DesignTokens.textTertiary)
+                let remotePort = PortForwardInput.parsePort(forwardRemotePort)
+                let localPort = remotePort.flatMap {
+                    PortForwardInput.resolveLocalPort(forwardLocalPort, remotePort: $0)
+                }
                 HStack(spacing: 6) {
                     TextField("remote", text: $forwardRemotePort)
                         .textFieldStyle(.roundedBorder)
@@ -182,8 +188,7 @@ struct ResourceDetailView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 60)
                     Button("Forward") {
-                        let remote = Int(forwardRemotePort) ?? 80
-                        let local = UInt16(forwardLocalPort) ?? UInt16(clamping: remote)
+                        guard let remote = remotePort, let local = localPort else { return }
                         do {
                             try service.start(
                                 context: context, namespace: pod.namespace, pod: pod.name,
@@ -193,13 +198,19 @@ struct ResourceDetailView: View {
                         }
                     }
                     .controlSize(.small)
+                    .disabled(remotePort == nil || localPort == nil)
+                }
+                if remotePort == nil || localPort == nil {
+                    Text("Ports must be numbers between 1 and 65535")
+                        .font(.system(size: 10))
+                        .foregroundStyle(DesignTokens.statusErr)
                 }
                 ForEach(service.sessions(namespace: pod.namespace, pod: pod.name)) { session in
                     HStack(spacing: 6) {
                         Circle()
                             .fill(sessionColor(session.state))
                             .frame(width: 6, height: 6)
-                        Text("localhost:\(session.localPort) → \(session.remotePort)")
+                        Text(verbatim: "localhost:\(session.localPort) → \(session.remotePort)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(DesignTokens.textSecondary)
                         if case .failed(let reason) = session.state {
@@ -231,8 +242,12 @@ struct ResourceDetailView: View {
     }
 
 
-    /// Runs a mutation with the shared spinner/error handling; reloads on success.
+    /// Runs an operation with the shared spinner/error handling.
+    /// `notifyMutation` reloads the parent on success — read-only actions
+    /// (Describe) must pass `false` or the reload deselects the pod and
+    /// tears down this panel before its sheet can present.
     private func runAction(
+        notifyMutation: Bool = true,
         _ operation: @escaping (KubeAPIService, String?) async throws -> Void
     ) {
         guard let service = kubeAPIService else { return }
@@ -241,7 +256,7 @@ struct ResourceDetailView: View {
             defer { isActing = false }
             do {
                 try await operation(service, context)
-                onPodMutated?()
+                if notifyMutation { onPodMutated?() }
             } catch {
                 actionError = error.localizedDescription
             }
@@ -265,6 +280,16 @@ struct ResourceDetailView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignTokens.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Close details")
+                .accessibilityLabel("Close details")
+            }
         }
         .padding(.bottom, 14)
     }

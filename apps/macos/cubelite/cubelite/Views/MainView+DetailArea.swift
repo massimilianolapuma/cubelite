@@ -149,7 +149,8 @@ extension MainView {
             DeploymentDetailView(
                 deployment: dep,
                 kubeAPIService: kubeAPIService,
-                context: sidebarSelection?.context ?? selectedContext
+                context: sidebarSelection?.context ?? selectedContext,
+                onClose: { selectedDeploymentID = nil }
             )
             .frame(minWidth: 320, idealWidth: 460, maxWidth: 600)
         case .pod:
@@ -163,7 +164,8 @@ extension MainView {
                     if let sel = sidebarSelection {
                         Task { await loadResources(context: sel.context, namespace: sel.namespace) }
                     }
-                }
+                },
+                onClose: { selectedPodID = nil }
             )
             .frame(minWidth: 260, idealWidth: 340, maxWidth: 420)
         }

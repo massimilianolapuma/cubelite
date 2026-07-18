@@ -80,6 +80,42 @@ final class AppSettings {
         }
     }
 
+    /// Last namespace the user selected per context, restored on cluster
+    /// switch. The empty-string marker records an explicit "All Namespaces"
+    /// choice, distinct from having no record at all.
+    var lastNamespaces: [String: String] = [:] {
+        didSet {
+            if let data = try? JSONEncoder().encode(lastNamespaces) {
+                UserDefaults.standard.set(data, forKey: Keys.lastNamespaces)
+            }
+        }
+    }
+
+    /// Marker stored in `lastNamespaces` for an "All Namespaces" selection.
+    private static let allNamespacesMarker = ""
+
+    /// Outcome of looking up the remembered namespace for a context.
+    enum RecalledNamespace: Equatable {
+        /// No selection has been recorded for this context.
+        case none
+        /// The user last selected "All Namespaces".
+        case all
+        /// The user last selected this specific namespace.
+        case named(String)
+    }
+
+    /// Records the namespace selected for `context`. `nil` records
+    /// an explicit "All Namespaces" choice.
+    func rememberNamespace(_ namespace: String?, for context: String) {
+        lastNamespaces[context] = namespace ?? Self.allNamespacesMarker
+    }
+
+    /// Returns the remembered namespace selection for `context`.
+    func recallNamespace(for context: String) -> RecalledNamespace {
+        guard let stored = lastNamespaces[context] else { return .none }
+        return stored == Self.allNamespacesMarker ? .all : .named(stored)
+    }
+
     /// Whether to skip TLS certificate verification for all clusters.
     /// When enabled, self-signed certificates (e.g., minikube) are accepted.
     /// ⚠️ Security risk — only enable for local development clusters.
@@ -119,6 +155,11 @@ final class AppSettings {
             let decoded = try? JSONDecoder().decode([String: [String]].self, from: data)
         {
             contextNamespaces = decoded
+        }
+        if let data = d.data(forKey: Keys.lastNamespaces),
+            let decoded = try? JSONDecoder().decode([String: String].self, from: data)
+        {
+            lastNamespaces = decoded
         }
     }
 
@@ -168,5 +209,6 @@ final class AppSettings {
         static let apiTimeout = "apiTimeout"
         static let skipTLSVerification = "skipTLSVerification"
         static let contextNamespaces = "contextNamespaces"
+        static let lastNamespaces = "lastNamespaces"
     }
 }
