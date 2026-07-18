@@ -30,7 +30,7 @@ extension MainView {
             case .dashboard:
                 OverviewView()
             case .pods, .deployments, .services, .secrets, .configMaps, .ingresses,
-                .helmReleases, .nodes, .jobs, .statefulSets, .cronJobs, .pvcs:
+                .helmReleases, .nodes, .jobs, .statefulSets, .cronJobs, .pvcs, .logs:
                 resourceBrowserView(context: sel.context, namespace: sel.namespace)
             }
         } else {
@@ -129,6 +129,12 @@ extension MainView {
                     PvcListView()
                 case .nodes:
                     NodeListView()
+                case .logs:
+                    AggregatedLogsView(
+                        streamer: kubeAPIService,
+                        pods: clusterState.pods,
+                        context: context
+                    )
                 case .dashboard:
                     EmptyView()
                 }
