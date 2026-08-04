@@ -771,17 +771,30 @@ pub fn log_export_filename(pod: &str, container: &str, full: bool) -> String {
     format!("{pod}_{container}{}.log", if full { "_full" } else { "" })
 }
 
-/// Keep only the final path component so a hostile filename cannot escape
-/// the Downloads directory.
-pub fn sanitize_filename(name: &str) -> String {
-    name.rsplit(['/', '\\']).next().unwrap_or(name).to_string()
+/// Extract the filename component of a path, rejecting dot-segments and invalid filenames.
+///
+/// Returns `None` if the input is empty, contains only separators, ends with a separator,
+/// or is a dot-segment. This ensures the result cannot escape the Downloads directory or
+/// create special entries.
+pub fn sanitize_filename(name: &str) -> Option<String> {
+    // Reject if name ends with a separator
+    if name.ends_with('/') || name.ends_with('\\') {
+        return None;
+    }
+
+    std::path::Path::new(name)
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .map(|s| s.to_string())
 }
 
 /// Write exported log contents into ~/Downloads; returns the written path.
 #[tauri::command]
 pub async fn export_log(filename: String, contents: String) -> Result<String, String> {
+    let sanitized = sanitize_filename(&filename)
+        .ok_or("Invalid export filename")?;
     let dir = dirs::download_dir().ok_or("No Downloads directory available")?;
-    let path = dir.join(sanitize_filename(&filename));
+    let path = dir.join(sanitized);
     tokio::fs::write(&path, contents)
         .await
         .map_err(|e| e.to_string())?;
@@ -800,7 +813,29 @@ mod export_tests {
 
     #[test]
     fn sanitize_strips_separators() {
-        assert_eq!(sanitize_filename("../../etc/passwd"), "passwd");
-        assert_eq!(sanitize_filename("api_worker.log"), "api_worker.log");
+        assert_eq!(sanitize_filename("../../etc/passwd"), Some("passwd".to_string()));
+        assert_eq!(sanitize_filename("api_worker.log"), Some("api_worker.log".to_string()));
+    }
+
+    #[test]
+    fn sanitize_rejects_invalid_filenames() {
+        // Dot-segments must be rejected
+        assert_eq!(sanitize_filename(".."), None);
+        assert_eq!(sanitize_filename("."), None);
+        // Empty string must be rejected
+        assert_eq!(sanitize_filename(""), None);
+        // Paths ending with forward slash must be rejected
+        assert_eq!(sanitize_filename("foo/"), None);
+        // Absolute paths are sanitized to their basename
+        assert_eq!(sanitize_filename("/etc/passwd"), Some("passwd".to_string()));
+        // On Unix, backslashes are literal filename chars, not separators
+        #[cfg(unix)]
+        assert_eq!(sanitize_filename("\\etc\\passwd"), Some("\\etc\\passwd".to_string()));
+        // On Windows, backslash is a path separator
+        #[cfg(windows)]
+        {
+            assert_eq!(sanitize_filename("foo\\"), None);
+            assert_eq!(sanitize_filename("\\etc\\passwd"), Some("passwd".to_string()));
+        }
     }
 }
