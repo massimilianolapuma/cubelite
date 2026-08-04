@@ -212,12 +212,12 @@
 		</button>
 		<button
 			type="button"
-			aria-label="Logs"
+			aria-label="Log panel"
 			title="Open pod logs panel"
 			class="focus-ring type-body flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110"
 			onclick={() => void logPanel.openFor({ namespace: pod.namespace, name: pod.name })}
 		>
-			<PanelBottom class="h-3 w-3" />
+			<PanelBottom class="h-3 w-3" strokeWidth={1.5} />
 		</button>
 		<button
 			type="button"
