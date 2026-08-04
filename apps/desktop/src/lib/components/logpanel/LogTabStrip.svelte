@@ -38,7 +38,7 @@
 			</button>
 			<button
 				type="button"
-				class="focus-ring rounded p-0.5 text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-text-secondary"
+				class="focus-ring rounded p-0.5 text-text-tertiary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-text-secondary focus-visible:opacity-100"
 				aria-label={`Close ${session.pod} logs`}
 				onclick={() => void logPanel.closeSession(session.key)}
 			>
