@@ -40,3 +40,11 @@ describe("matchShortcut", () => {
     expect(matchShortcut(key({ key: "k" }), true)).toBeNull();
   });
 });
+
+describe("mod+L", () => {
+  it("maps to log-panel on mac (meta) and non-mac (ctrl)", () => {
+    expect(matchShortcut(key({ key: "l", metaKey: true }), true)).toEqual({ type: "log-panel" });
+    expect(matchShortcut(key({ key: "l", ctrlKey: true }), false)).toEqual({ type: "log-panel" });
+    expect(matchShortcut(key({ key: "l" }), true)).toBeNull();
+  });
+});
