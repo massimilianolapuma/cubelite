@@ -92,6 +92,25 @@ describe("LogToolbar search", () => {
     }
   });
 
+  it("recomputes matches as the stream grows, without another setQuery call", async () => {
+    const s = sessionWith(["alpha"]);
+    logPanel.search.attach(() => s.ring.lines);
+    render(LogToolbar, { props: { session: s } });
+    const input = screen.getByPlaceholderText("Search… (⌘F)");
+
+    vi.useFakeTimers();
+    await fireEvent.input(input, { target: { value: "alpha" } });
+    vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+    vi.useRealTimers();
+    expect(screen.getByText("1/1")).toBeInTheDocument();
+
+    // New matching lines arrive from the live tail — no further setQuery call.
+    s.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "alpha two" },
+    ]);
+    expect(await screen.findByText("1/2")).toBeInTheDocument();
+  });
+
   it("shows 0 results for a query with no matches", async () => {
     vi.useFakeTimers();
     try {

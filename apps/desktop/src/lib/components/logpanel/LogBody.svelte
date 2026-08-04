@@ -122,11 +122,15 @@
 				Retry
 			</button>
 		</div>
-	{:else if session.ring.lines.length === 0}
+	{:else if lines.length === 0}
 		<p class="py-8 text-center text-xs text-text-disabled">
-			{session.ring.totalAppended > 0
-				? 'Buffer cleared — waiting for new lines…'
-				: 'Waiting for log lines…'}
+			{#if logPanel.search.filterMode && logPanel.search.query}
+				No matches for "{logPanel.search.query}" — esc clears search
+			{:else if session.ring.totalAppended > 0}
+				Buffer cleared — waiting for new lines…
+			{:else}
+				Waiting for log lines…
+			{/if}
 		</p>
 	{:else}
 		<div bind:this={scrollEl} onwheel={onWheel} class="h-full overflow-y-auto py-1">

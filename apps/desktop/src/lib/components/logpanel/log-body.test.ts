@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/svelte";
+import { render, screen, waitFor } from "@testing-library/svelte";
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -88,6 +88,37 @@ describe("LogBody", () => {
       const mark = await screen.findByText("needle");
       expect(mark.tagName).toBe("MARK");
       expect(mark).toHaveStyle("background: var(--color-status-warn)");
+    });
+
+    it("shows a no-matches message when filter mode yields nothing", async () => {
+      const s = sessionWith(["alpha", "beta"]);
+      logPanel.search.attach(() => s.ring.lines);
+      vi.useFakeTimers();
+      logPanel.search.setQuery("zzz");
+      vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+      vi.useRealTimers();
+      logPanel.search.filterMode = true;
+      render(LogBody, { props: { session: s } });
+      expect(
+        await screen.findByText('No matches for "zzz" — esc clears search'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("alpha")).toBeNull();
+    });
+
+    it("navigating to a match pauses follow", async () => {
+      const s = sessionWith(["alpha", "beta", "alpha two"]);
+      logPanel.search.attach(() => s.ring.lines);
+      vi.useFakeTimers();
+      logPanel.search.setQuery("alpha");
+      vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+      vi.useRealTimers();
+      expect(s.following).toBe(true);
+
+      render(LogBody, { props: { session: s } });
+      await screen.findAllByText("alpha"); // let the initial mount settle
+
+      logPanel.search.next(); // same store call Enter-nav in the toolbar makes
+      await waitFor(() => expect(s.following).toBe(false));
     });
   });
 });
