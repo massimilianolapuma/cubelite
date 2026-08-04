@@ -94,3 +94,77 @@ describe("LogSession", () => {
     expect(listeners.size).toBe(0);
   });
 });
+
+describe("LogSession reconnect", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    listeners.clear();
+    vi.clearAllMocks();
+    app.kubeconfigPath = "/tmp/kubeconfig";
+    app.activeCluster = "prod";
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("server drop while following → reconnecting with 1s backoff, resumes from last timestamp", async () => {
+    const s = new LogSession("default", "api-0");
+    await s.open();
+    emitLine("7", "one", "2026-08-04T10:00:05Z");
+    await vi.advanceTimersByTimeAsync(130);
+    listeners.get("pod-log-end:7")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.status).toBe("reconnecting");
+    expect(s.reconnectAttempt).toBe(1);
+    expect(s.nextRetryAt).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(vi.mocked(streamPodLog).mock.lastCall?.[3]).toMatchObject({
+      sinceTime: "2026-08-04T10:00:05Z",
+    });
+    expect(s.status).toBe("streaming");
+  });
+
+  it("backoff doubles per attempt and caps at 30s", async () => {
+    const s = new LogSession("default", "api-0");
+    await s.open();
+    for (let attempt = 1; attempt <= 7; attempt++) {
+      listeners.get("pod-log-end:7")?.({ payload: undefined });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(s.reconnectAttempt).toBe(attempt);
+      const delay = Math.min(30_000, 1000 * 2 ** (attempt - 1));
+      await vi.advanceTimersByTimeAsync(delay);
+      expect(s.status).toBe("streaming");
+    }
+  });
+
+  it("a received line resets the attempt counter", async () => {
+    const s = new LogSession("default", "api-0");
+    await s.open();
+    listeners.get("pod-log-end:7")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(s.reconnectAttempt).toBe(1);
+    emitLine("7", "back");
+    expect(s.reconnectAttempt).toBe(0);
+  });
+
+  it("retryNow() short-circuits the backoff", async () => {
+    const s = new LogSession("default", "api-0");
+    await s.open();
+    listeners.get("pod-log-end:7")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1);
+    listeners.get("pod-log-end:7")?.({ payload: undefined });
+    // second drop arrives before restart: still one scheduled retry
+    s.retryNow();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.status).toBe("streaming");
+  });
+
+  it("close() during backoff cancels the scheduled retry", async () => {
+    const s = new LogSession("default", "api-0");
+    await s.open();
+    listeners.get("pod-log-end:7")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1);
+    await s.close();
+    vi.clearAllMocks();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(streamPodLog).not.toHaveBeenCalled();
+  });
+});

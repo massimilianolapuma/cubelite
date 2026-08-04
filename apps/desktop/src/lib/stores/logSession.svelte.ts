@@ -43,6 +43,7 @@ export class LogSession {
   #pending: LogLine[] = [];
   #flushTimer: ReturnType<typeof setInterval> | null = null;
   #lastTime: string | undefined;
+  #retryTimer: ReturnType<typeof setTimeout> | null = null;
   /** Bumped on every (re)start so stale async callbacks become no-ops. */
   #generation = 0;
 
@@ -117,10 +118,27 @@ export class LogSession {
     }
   }
 
-  /** Task 3 replaces this with reconnect-with-backoff for live follows. */
   #onStreamEnd(): void {
     this.#flush();
-    this.status = "ended";
+    if (this.previous || !this.following) {
+      // Previous-instance fetch or paused user intent: no auto-reconnect.
+      this.status = "ended";
+      return;
+    }
+    this.#scheduleReconnect();
+  }
+
+  #scheduleReconnect(): void {
+    if (this.#retryTimer !== null) return;
+    this.reconnectAttempt += 1;
+    const delay = Math.min(30_000, 1000 * 2 ** (this.reconnectAttempt - 1));
+    this.status = "reconnecting";
+    this.nextRetryAt = Date.now() + delay;
+    this.#retryTimer = setTimeout(() => {
+      this.#retryTimer = null;
+      this.nextRetryAt = null;
+      void this.#start();
+    }, delay);
   }
 
   #scheduleFlush(): void {
@@ -187,7 +205,13 @@ export class LogSession {
   }
 
   /** Reconnect immediately instead of waiting out the backoff (Task 3). */
-  retryNow(): void {}
+  retryNow(): void {
+    if (this.#retryTimer === null) return;
+    clearTimeout(this.#retryTimer);
+    this.#retryTimer = null;
+    this.nextRetryAt = null;
+    void this.#start();
+  }
 
   clear(): void {
     this.ring.clear();
@@ -213,6 +237,11 @@ export class LogSession {
       } catch {
         // Backend may already have dropped the stream.
       }
+    }
+    if (this.#retryTimer !== null) {
+      clearTimeout(this.#retryTimer);
+      this.#retryTimer = null;
+      this.nextRetryAt = null;
     }
   }
 
