@@ -81,10 +81,10 @@ broad filesystem permissions.
 
 | PR | Branch | Scope |
 |----|--------|-------|
-| 1 | `feat/desktop-logpanel-core` | session store (single session), panel + toolbar + body + line anatomy, tanstack virtualization, follow/pause/autoscroll, tail + load-earlier, container picker, previous, empty/cleared states, start-failure banner |
+| 1 | `feat/desktop-logpanel-core` | session store (single session), panel + toolbar + body + line anatomy, tanstack virtualization, follow/pause/autoscroll, tail + load-earlier, container picker, previous, empty/cleared states, start-failure banner, PodDrawer "Log panel" button (bootstrap entry) |
 | 2 | `feat/desktop-logpanel-search` | ⌘F, highlight, n/N nav, filter mode, 5k-line performance validation |
 | 3 | `feat/desktop-logpanel-tabs` | multi-pod tabs, per-pod container memory, drag-resize/collapse ⌘L, new-lines pill |
-| 4 | `feat/desktop-logpanel-entry-export` | entry points (row chip, detail card, palette), `export_log` + toast, reconnecting banner |
+| 4 | `feat/desktop-logpanel-entry-export` | entry points (row chip, palette), `export_log` + toast, reconnecting banner |
 
 ## Testing
 
