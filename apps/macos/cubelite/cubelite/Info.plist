@@ -1,5 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+	<!--
+	App Transport Security exception (#309): Kubernetes API servers use
+	cluster-internal CAs (minikube, AKS privatelink, kind, …) whose hosts are
+	user-supplied at runtime, so per-domain exceptions are impossible. ATS
+	performs its own system-trust evaluation on app processes even when the
+	URLSession delegate pins the cluster CA or the user enabled skip-TLS,
+	aborting the handshake ("ATS failed system trust" → -1200/-9802).
+	Server trust is still enforced by KubeURLSessionDelegate: pinned
+	kubeconfig CA by default, opt-in global skip via Preferences.
+	-->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+</dict>
 </plist>
