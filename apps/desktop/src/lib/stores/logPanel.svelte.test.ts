@@ -37,13 +37,32 @@ describe("logPanel store", () => {
     for (const s of [...logPanel.sessions]) await logPanel.closeSession(s.key);
   });
 
-  it("openFor creates a session and focuses it; a second pod replaces it (single-session PR)", async () => {
+  it("openFor creates a session and focuses it", async () => {
     await logPanel.openFor({ namespace: "default", name: "api-0" });
     expect(logPanel.open).toBe(true);
     expect(logPanel.activeKey).toBe("default/api-0");
+  });
+
+  it("keeps existing sessions when opening a second pod and focuses the new one", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
     await logPanel.openFor({ namespace: "default", name: "web-1" });
-    expect(logPanel.sessions).toHaveLength(1);
+    expect(logPanel.sessions.map((s) => s.key)).toEqual(["default/api-0", "default/web-1"]);
     expect(logPanel.activeKey).toBe("default/web-1");
+  });
+
+  it("focus() switches the active session and closing the active tab falls back to the last one", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    await logPanel.openFor({ namespace: "default", name: "web-1" });
+    logPanel.focus("default/api-0");
+    expect(logPanel.activeKey).toBe("default/api-0");
+    await logPanel.closeSession("default/api-0");
+    expect(logPanel.activeKey).toBe("default/web-1");
+  });
+
+  it("evicts the least-recently-focused session past the cap of 6", async () => {
+    for (let i = 0; i < 7; i++) await logPanel.openFor({ namespace: "default", name: `p-${i}` });
+    expect(logPanel.sessions).toHaveLength(6);
+    expect(logPanel.sessions.some((s) => s.key === "default/p-0")).toBe(false);
   });
 
   it("openFor on the already-open pod focuses without restarting the stream", async () => {
