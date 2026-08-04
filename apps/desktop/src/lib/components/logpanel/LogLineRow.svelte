@@ -2,8 +2,35 @@
 	import type { KeyedLogLine } from '$lib/stores/logs.svelte';
 	import type { LogLevel } from '$lib/tauri';
 
-	let { line, timestamps, wrap }: { line: KeyedLogLine; timestamps: boolean; wrap: boolean } =
-		$props();
+	let {
+		line,
+		timestamps,
+		wrap,
+		search = null
+	}: {
+		line: KeyedLogLine;
+		timestamps: boolean;
+		wrap: boolean;
+		search?: { query: string; active: boolean } | null;
+	} = $props();
+
+	const segments = $derived.by(() => {
+		if (!search || !search.query) return [{ text: line.message, hit: false }];
+		const q = search.query.toLowerCase();
+		const src = line.message;
+		const out: { text: string; hit: boolean }[] = [];
+		let i = 0;
+		for (;;) {
+			const at = src.toLowerCase().indexOf(q, i);
+			if (at === -1) {
+				out.push({ text: src.slice(i), hit: false });
+				return out;
+			}
+			if (at > i) out.push({ text: src.slice(i, at), hit: false });
+			out.push({ text: src.slice(at, at + q.length), hit: true });
+			i = at + q.length;
+		}
+	});
 
 	const levelColor: Record<LogLevel, string> = {
 		debug: 'var(--color-text-tertiary)',
@@ -37,5 +64,13 @@
 	>
 		{line.level}
 	</span>
-	<span class="type-log text-text-log {wrap ? 'break-all whitespace-pre-wrap' : 'whitespace-pre'}">{line.message}</span>
+	<span class="type-log text-text-log {wrap ? 'break-all whitespace-pre-wrap' : 'whitespace-pre'}">
+		{#each segments as seg, i (i)}
+			{#if seg.hit}<mark
+					style={search?.active
+						? 'background: var(--color-status-warn); color: var(--color-surface-window);'
+						: 'background: var(--alpha-pill-warn); color: inherit;'}>{seg.text}</mark>
+			{:else}{seg.text}{/if}
+		{/each}
+	</span>
 </div>

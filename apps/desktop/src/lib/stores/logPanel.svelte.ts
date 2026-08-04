@@ -1,11 +1,14 @@
 /**
  * Shell-level owner of the log panel: open sessions, active tab, panel
  * chrome (height/collapse) and render toggles, persisted via `persisted()`.
+ * Also owns the single `LogSearch` instance, re-attached to the active
+ * session's buffer whenever `openFor` swaps sessions.
  * PR feat/desktop-logpanel-core keeps a single session; the tab strip PR
  * lifts that restriction.
  */
 import { persisted } from "./settings.svelte";
 import { LogSession } from "./logSession.svelte";
+import { LogSearch } from "./logSearch.svelte";
 
 export const PANEL_MIN = 160;
 export const PANEL_MAX = 560;
@@ -21,7 +24,9 @@ const isStringRecord = (v: unknown): v is Record<string, string> =>
 class LogPanelStore {
   sessions = $state<LogSession[]>([]);
   activeKey = $state<string | null>(null);
+  search = new LogSearch();
 
+  #searchFocus: (() => void) | null = null;
   #height = persisted<number>("logPanel.height", PANEL_DEFAULT, isNumber);
   #collapsed = persisted<boolean>("logPanel.collapsed", false, isBoolean);
   #timestamps = persisted<boolean>("logPanel.timestamps", true, isBoolean);
@@ -69,6 +74,14 @@ class LogPanelStore {
     this.#containers.value = { ...this.#containers.value, [key]: container };
   }
 
+  registerSearchFocus(fn: (() => void) | null): void {
+    this.#searchFocus = fn;
+  }
+
+  focusSearch(): void {
+    this.#searchFocus?.();
+  }
+
   async openFor(pod: { namespace: string; name: string }): Promise<void> {
     const key = `${pod.namespace}/${pod.name}`;
     const existing = this.sessions.find((s) => s.key === key);
@@ -81,6 +94,8 @@ class LogPanelStore {
     const session = new LogSession(pod.namespace, pod.name, this.#containers.value[key] ?? null);
     this.sessions = [...this.sessions, session];
     this.activeKey = key;
+    this.search.clear();
+    this.search.attach(() => session.ring.lines);
     await session.open();
   }
 

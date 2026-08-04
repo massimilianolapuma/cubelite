@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { get } from 'svelte/store';
+	import { untrack } from 'svelte';
 	import { createVirtualizer, type SvelteVirtualizer } from '@tanstack/svelte-virtual';
 	import LogLineRow from './LogLineRow.svelte';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
@@ -8,6 +9,15 @@
 	let { session }: { session: LogSession } = $props();
 
 	let scrollEl = $state<HTMLDivElement | null>(null);
+
+	// The rendered set: all lines, or only search matches when filter mode
+	// is on. The virtualizer's index space always tracks this array, not
+	// the raw ring buffer, so `scrollToIndex` stays in bounds either way.
+	const lines = $derived(
+		logPanel.search.filterMode
+			? session.ring.lines.filter((l) => logPanel.search.matchSet.has(l.id))
+			: session.ring.lines
+	);
 
 	const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
 		count: 0,
@@ -21,17 +31,17 @@
 	// are lines, so this also re-binds the virtualizer to the real element
 	// the first time it appears.
 	//
-	// Reads `session.ring.lines.length` / `scrollEl` (tracked deps) but takes
+	// Reads `lines.length` / `scrollEl` (tracked deps) but takes
 	// the virtualizer instance via `get()` rather than `$virtualizer` —
 	// `setOptions()` unconditionally re-emits the store, so subscribing to it
 	// here (`$virtualizer`) would re-run this same effect on every call and
 	// blow the update-depth limit.
 	$effect(() => {
-		void session.ring.lines.length;
+		void lines.length;
 		void scrollEl;
 		const v = get(virtualizer);
 		v.setOptions({
-			count: session.ring.lines.length,
+			count: lines.length,
 			getScrollElement: () => scrollEl,
 			estimateSize: () => 18,
 			overscan: 20
@@ -44,10 +54,26 @@
 	// Autoscroll to the newest line while following. Same `get()` rationale
 	// as above — scrollToIndex() must not be re-triggered by its own scroll.
 	$effect(() => {
-		void session.ring.lines.length;
+		void lines.length;
 		if (session.following && scrollEl) {
-			get(virtualizer).scrollToIndex(session.ring.lines.length - 1, { align: 'end' });
+			get(virtualizer).scrollToIndex(lines.length - 1, { align: 'end' });
 		}
+	});
+
+	// Jump to the active search match on n/N navigation and pause follow.
+	// Depends only on `cursor` (not `activeId`/`matchIds`/`lines`, which are
+	// read `untrack`ed) so recomputing matches while typing doesn't yank the
+	// view — only an explicit next()/prev() cursor move does.
+	$effect(() => {
+		void logPanel.search.cursor;
+		untrack(() => {
+			const id = logPanel.search.activeId;
+			if (id === null || !scrollEl) return;
+			const idx = lines.findIndex((l) => l.id === id);
+			if (idx === -1) return;
+			if (session.following) session.toggleFollow();
+			get(virtualizer).scrollToIndex(idx, { align: 'center' });
+		});
 	});
 
 	function onWheel(event: WheelEvent) {
@@ -106,13 +132,20 @@
 		<div bind:this={scrollEl} onwheel={onWheel} class="h-full overflow-y-auto py-1">
 			<div style="height: {$virtualizer.getTotalSize()}px; position: relative;">
 				{#each $virtualizer.getVirtualItems() as item (item.key)}
-					{@const line = session.ring.lines[item.index]}
+					{@const line = lines[item.index]}
 					<div
 						data-index={item.index}
 						use:measure={$virtualizer}
 						style="position: absolute; top: 0; left: 0; width: 100%; transform: translateY({item.start}px);"
 					>
-						<LogLineRow {line} timestamps={logPanel.timestamps} wrap={logPanel.wrap} />
+						<LogLineRow
+							{line}
+							timestamps={logPanel.timestamps}
+							wrap={logPanel.wrap}
+							search={logPanel.search.query
+								? { query: logPanel.search.query, active: line.id === logPanel.search.activeId }
+								: null}
+						/>
 					</div>
 				{/each}
 			</div>

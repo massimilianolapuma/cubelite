@@ -66,6 +66,8 @@
 			app.preferencesOpen = true;
 		} else if (action.type === 'log-panel') {
 			if (logPanel.open) logPanel.toggleCollapsed();
+		} else if (action.type === 'log-search') {
+			if (logPanel.open) logPanel.focusSearch();
 		} else {
 			const target = clusters.contexts[action.index];
 			if (target && target.name !== app.activeCluster) {

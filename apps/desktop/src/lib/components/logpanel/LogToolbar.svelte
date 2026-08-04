@@ -9,6 +9,7 @@
 
 	let pickerOpen = $state(false);
 	let overflowOpen = $state(false);
+	let searchInput = $state<HTMLInputElement | null>(null);
 
 	const TAIL_OPTIONS = [100, 500, 1000, 5000] as const;
 
@@ -20,6 +21,30 @@
 		pickerOpen = false;
 		logPanel.rememberContainer(session.key, name);
 		void session.switchContainer(name);
+	}
+
+	// The panel keeps one `LogSearch` for its active session; re-run the
+	// match scan whenever the buffer grows so results follow the live tail.
+	$effect(() => {
+		void session.ring.lines.length;
+		logPanel.search.recompute(session.ring.lines);
+	});
+
+	$effect(() => {
+		logPanel.registerSearchFocus(() => searchInput?.focus());
+		return () => logPanel.registerSearchFocus(null);
+	});
+
+	function onSearchKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			if (event.shiftKey) logPanel.search.prev();
+			else logPanel.search.next();
+			event.preventDefault();
+		} else if (event.key === 'Escape') {
+			event.stopPropagation();
+			if (logPanel.search.query) logPanel.search.clear();
+			else (event.currentTarget as HTMLInputElement).blur();
+		}
 	}
 </script>
 
@@ -82,6 +107,35 @@
 	{/if}
 
 	<span class="flex-1"></span>
+
+	<!-- search -->
+	<div class="flex items-center gap-1">
+		<input
+			bind:this={searchInput}
+			type="text"
+			placeholder="Search… (⌘F)"
+			value={logPanel.search.query}
+			oninput={(e) => logPanel.search.setQuery(e.currentTarget.value)}
+			onkeydown={onSearchKeydown}
+			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 text-[11.5px] text-text-primary placeholder:text-text-disabled"
+		/>
+		{#if logPanel.search.query}
+			<span class="type-caption text-text-tertiary">
+				{logPanel.search.count === 0
+					? '0 results'
+					: `${logPanel.search.cursor + 1}/${logPanel.search.count}`}
+			</span>
+			<button
+				type="button"
+				class="type-caption h-7 rounded-md px-2 {logPanel.search.filterMode
+					? 'bg-surface-sunken text-text-primary'
+					: 'text-text-tertiary'}"
+				onclick={() => (logPanel.search.filterMode = !logPanel.search.filterMode)}
+			>
+				filter
+			</button>
+		{/if}
+	</div>
 
 	<!-- tail size -->
 	<div class="flex overflow-hidden rounded-md border border-border-default">
