@@ -124,7 +124,18 @@ class LogPanelStore {
     await session.close();
     this.sessions = this.sessions.filter((s) => s.key !== key);
     this.#focusOrder = this.#focusOrder.filter((k) => k !== key);
-    if (this.activeKey === key) this.activeKey = this.sessions.at(-1)?.key ?? null;
+    if (this.activeKey === key) {
+      const fallbackKey = this.sessions.at(-1)?.key ?? null;
+      if (fallbackKey) {
+        // Route through focus() so LRU order bumps and `search` re-attaches
+        // to the fallback session's live buffer instead of the dead one.
+        this.focus(fallbackKey);
+      } else {
+        this.activeKey = null;
+        this.search.clear();
+        this.search.attach(() => []);
+      }
+    }
   }
 }
 
