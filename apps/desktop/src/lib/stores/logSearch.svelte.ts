@@ -24,9 +24,7 @@ export class LogSearch {
     return this.matchIds.length;
   }
 
-  get matchSet(): Set<number> {
-    return new Set(this.matchIds);
-  }
+  matchSet = $derived(new Set(this.matchIds));
 
   attach(getLines: () => KeyedLogLine[]): void {
     this.#getLines = getLines;

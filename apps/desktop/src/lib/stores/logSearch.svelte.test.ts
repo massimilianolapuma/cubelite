@@ -50,15 +50,17 @@ describe("LogSearch", () => {
     expect(search.filterMode).toBe(false);
   });
 
-  it("stays under 50ms recomputing over a 5k-line buffer", () => {
+  it("stays under 50ms recomputing over a 5k-line buffer", async () => {
+    vi.useRealTimers();
     const search = new LogSearch();
     const big = lines(...Array.from({ length: 5000 }, (_, i) => `line ${i} ${i % 7 === 0 ? "needle" : ""}`));
     search.attach(() => big);
+    search.setQuery("needle");
+    await new Promise(r => setTimeout(r, SEARCH_DEBOUNCE_MS + 20));
     const start = performance.now();
     search.recompute(big);
-    search.setQuery("needle");
-    vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
-    expect(performance.now() - start).toBeLessThan(50 + SEARCH_DEBOUNCE_MS);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(50);
     expect(search.count).toBe(Math.ceil(5000 / 7));
   });
 
