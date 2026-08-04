@@ -67,4 +67,35 @@ describe("PodTable", () => {
     const row = screen.getByText("api-0").closest("button");
     expect(row?.getAttribute("style")).toContain("--alpha-selection-bg");
   });
+
+  it("shows the 'logs ⏎' chip only on the selected row", () => {
+    const p = pod();
+    const { rerender } = render(PodTable, { props: { pods: [p], selected: null } });
+    expect(screen.queryByText("logs ⏎")).toBeNull();
+
+    rerender({ pods: [p], selected: p });
+    expect(screen.getByText("logs ⏎")).toBeInTheDocument();
+  });
+
+  it("Enter on an already-selected row calls onLogs instead of onRowClick", async () => {
+    const p = pod();
+    const onRowClick = vi.fn();
+    const onLogs = vi.fn();
+    render(PodTable, { props: { pods: [p], selected: p, onRowClick, onLogs } });
+    const row = screen.getByText("api-0").closest("button")!;
+    await fireEvent.keyDown(row, { key: "Enter" });
+    expect(onLogs).toHaveBeenCalledWith(p);
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("Enter on an unselected row calls onRowClick, not onLogs", async () => {
+    const p = pod();
+    const onRowClick = vi.fn();
+    const onLogs = vi.fn();
+    render(PodTable, { props: { pods: [p], selected: null, onRowClick, onLogs } });
+    const row = screen.getByText("api-0").closest("button")!;
+    await fireEvent.keyDown(row, { key: "Enter" });
+    expect(onRowClick).toHaveBeenCalledWith(p);
+    expect(onLogs).not.toHaveBeenCalled();
+  });
 });

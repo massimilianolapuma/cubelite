@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 
@@ -16,6 +16,9 @@ vi.mock("$lib/tauri", () => ({
   clusterCapacity: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
+  streamPodLog: vi.fn(async () => "1"),
+  stopLogs: vi.fn(async () => {}),
+  getPodContainers: vi.fn(async () => []),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -33,17 +36,44 @@ function flush(): Promise<void> {
 import CommandPalette from "./CommandPalette.svelte";
 import { app } from "$lib/stores/app.svelte";
 import { clusters } from "$lib/stores/clusters.svelte";
+import { logPanel } from "$lib/stores/logPanel.svelte";
+import type { PodInfo } from "$lib/tauri";
+
+function pod(overrides: Partial<PodInfo> = {}): PodInfo {
+  return {
+    name: "api-0",
+    namespace: "default",
+    phase: "Running",
+    ready: true,
+    restarts: 0,
+    ready_containers: 1,
+    total_containers: 1,
+    node: null,
+    pod_ip: null,
+    qos_class: null,
+    containers: [],
+    labels: {},
+    creation_timestamp: null,
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   app.paletteOpen = true;
   app.activeCluster = "prod";
   app.preferencesOpen = false;
+  app.selectedPod = null;
   clusters.contexts = [
     { name: "prod", cluster_server: "https://prod:6443", namespace: "default", is_active: true },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
   ];
   clusters.identityColors = { prod: "blue", staging: "amber" };
   clusters.connectionState = "connected";
+});
+
+afterEach(async () => {
+  for (const s of [...logPanel.sessions]) await logPanel.closeSession(s.key);
+  app.selectedPod = null;
 });
 
 describe("CommandPalette", () => {
@@ -90,5 +120,23 @@ describe("CommandPalette", () => {
     if (backdrop) await fireEvent.click(backdrop);
     await flush();
     expect(app.paletteOpen).toBe(false);
+  });
+
+  it("omits 'Open pod logs' when no pod is selected", async () => {
+    render(CommandPalette);
+    await flush();
+    expect(screen.queryByText("Open pod logs")).toBeNull();
+  });
+
+  it("lists 'Open pod logs' when a pod is selected, and opens its log session on select", async () => {
+    app.selectedPod = pod();
+    render(CommandPalette);
+    await flush();
+    expect(screen.getByText("Open pod logs")).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByText("Open pod logs"));
+    await flush();
+    expect(app.paletteOpen).toBe(false);
+    expect(logPanel.activeKey).toBe("default/api-0");
   });
 });

@@ -10,6 +10,7 @@
 import { persisted } from "./settings.svelte";
 import { LogSession } from "./logSession.svelte";
 import { LogSearch } from "./logSearch.svelte";
+import type { KeyedLogLine } from "./logs.svelte";
 
 export const PANEL_MIN = 160;
 export const PANEL_MAX = 560;
@@ -76,6 +77,17 @@ class LogPanelStore {
 
   rememberContainer(key: string, container: string): void {
     this.#containers.value = { ...this.#containers.value, [key]: container };
+  }
+
+  /** `[time] LEVEL message` per line, one per newline; time omitted when the
+   * timestamps toggle is off (export flows — Task 15). */
+  serialize(lines: KeyedLogLine[]): string {
+    return lines
+      .map((l) => {
+        const ts = this.timestamps && l.time ? `${l.time} ` : "";
+        return `${ts}${l.level.toUpperCase()} ${l.message}`;
+      })
+      .join("\n");
   }
 
   registerSearchFocus(fn: (() => void) | null): void {

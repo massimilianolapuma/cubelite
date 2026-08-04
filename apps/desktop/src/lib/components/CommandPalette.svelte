@@ -9,6 +9,7 @@
 	import { app, type View } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
 	import { health } from '$lib/stores/health.svelte';
+	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import { modLabel } from '$lib/platform';
 	import { providerOf } from '$lib/provider';
 	import type { Component } from 'svelte';
@@ -16,9 +17,11 @@
 	interface Action {
 		label: string;
 		icon: Component;
-		view: View;
+		view?: View;
+		/** Takes precedence over `view` navigation in the select handler. */
+		run?: () => void;
 	}
-	const actions: Action[] = [
+	const staticActions: Action[] = [
 		{ label: 'All Clusters dashboard', icon: House, view: 'dashboard' },
 		{ label: 'Go to Overview', icon: Layers, view: 'overview' },
 		{ label: 'Go to Pods', icon: Boxes, view: 'pods' },
@@ -26,6 +29,22 @@
 		{ label: 'Tail logs', icon: FileText, view: 'logs' },
 		{ label: 'Preferences', icon: Settings, view: 'overview' }
 	];
+	const actions = $derived<Action[]>([
+		...staticActions,
+		...(app.selectedPod
+			? [
+					{
+						label: 'Open pod logs',
+						icon: FileText,
+						run: () =>
+							void logPanel.openFor({
+								namespace: app.selectedPod!.namespace,
+								name: app.selectedPod!.name
+							})
+					}
+				]
+			: [])
+	]);
 
 	function close() {
 		app.paletteOpen = false;
@@ -38,11 +57,15 @@
 
 	function selectAction(action: Action) {
 		close();
+		if (action.run) {
+			action.run();
+			return;
+		}
 		if (action.label === 'Preferences') {
 			app.preferencesOpen = true;
 			return;
 		}
-		app.navigate(action.view);
+		if (action.view) app.navigate(action.view);
 	}
 </script>
 

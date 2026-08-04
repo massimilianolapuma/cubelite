@@ -8,11 +8,13 @@
 	let {
 		pods,
 		selected = null,
-		onRowClick
+		onRowClick,
+		onLogs
 	}: {
 		pods: PodInfo[];
 		selected?: PodInfo | null;
 		onRowClick?: (pod: PodInfo) => void;
+		onLogs?: (pod: PodInfo) => void;
 	} = $props();
 
 	// Spec grid: NAME / STATUS / READY / AGE / CPU / MEMORY / RESTARTS
@@ -45,6 +47,13 @@
 						? 'background: var(--alpha-selection-bg);'
 						: ''}"
 					onclick={() => onRowClick?.(pod)}
+					onkeydown={(e) => {
+						if (e.key === 'Enter') {
+							e.preventDefault();
+							if (isSelected) onLogs?.(pod);
+							else onRowClick?.(pod);
+						}
+					}}
 				>
 					<span class="type-data truncate text-text-data-bright">{pod.name}</span>
 					<span class="flex items-center gap-1.5">
@@ -61,11 +70,20 @@
 					<span class="type-data-sm {usage ? 'text-text-secondary' : 'text-text-disabled'}">
 						{usage ? formatBytes(usage.memory_bytes) : '—'}
 					</span>
-					<span
-						class="type-data-sm"
-						style="color: {pod.restarts > 3 ? 'var(--color-status-err)' : 'var(--color-text-secondary)'};"
-					>
-						{pod.restarts}
+					<span class="flex items-center justify-between gap-1.5">
+						<span
+							class="type-data-sm"
+							style="color: {pod.restarts > 3 ? 'var(--color-status-err)' : 'var(--color-text-secondary)'};"
+						>
+							{pod.restarts}
+						</span>
+						{#if isSelected}
+							<span
+								class="type-caption flex h-5 shrink-0 items-center gap-1 rounded-md border border-border-default bg-surface-raised px-1.5 text-text-tertiary"
+							>
+								logs ⏎
+							</span>
+						{/if}
 					</span>
 				</button>
 			{/each}

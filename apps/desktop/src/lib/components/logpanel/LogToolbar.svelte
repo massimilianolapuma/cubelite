@@ -4,6 +4,10 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import type { LogSession } from '$lib/stores/logSession.svelte';
+	import { exportLog } from '$lib/tauri';
+	import { toasts } from '$lib/stores/toasts.svelte';
+	import { errorMessage } from '$lib/errors';
+	import type { KeyedLogLine } from '$lib/stores/logs.svelte';
 
 	let { session }: { session: LogSession } = $props();
 
@@ -34,6 +38,35 @@
 		logPanel.registerSearchFocus(() => searchInput?.focus());
 		return () => logPanel.registerSearchFocus(null);
 	});
+
+	function exportFilename(full: boolean): string {
+		return `${session.pod}_${session.container ?? 'unknown'}${full ? '_full' : ''}.log`;
+	}
+
+	async function doExport(lines: KeyedLogLine[], full: boolean) {
+		overflowOpen = false;
+		const filename = exportFilename(full);
+		const contents = logPanel.serialize(lines);
+		try {
+			const path = await exportLog(filename, contents);
+			toasts.push(`Exported to ${path}`, 'ok');
+		} catch (e) {
+			toasts.push(errorMessage(e), 'err');
+		}
+	}
+
+	// Mirrors LogBody's rendered-set derivation: all lines, or only search
+	// matches when filter mode is on.
+	function exportVisible() {
+		const lines = logPanel.search.filterMode
+			? session.ring.lines.filter((l) => logPanel.search.matchSet.has(l.id))
+			: session.ring.lines;
+		void doExport(lines, false);
+	}
+
+	function exportFull() {
+		void doExport(session.ring.lines, true);
+	}
 
 	function onSearchKeydown(event: KeyboardEvent) {
 		if (event.key === 'Enter') {
@@ -205,6 +238,21 @@
 					}}
 				>
 					{logPanel.wrap ? '✓ ' : ''}Wrap lines
+				</button>
+				<div class="my-1 border-t border-border-default"></div>
+				<button
+					type="button"
+					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-sunken"
+					onclick={exportVisible}
+				>
+					Export visible…
+				</button>
+				<button
+					type="button"
+					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-sunken"
+					onclick={exportFull}
+				>
+					Export full buffer…
 				</button>
 				<div class="my-1 border-t border-border-default"></div>
 				<button

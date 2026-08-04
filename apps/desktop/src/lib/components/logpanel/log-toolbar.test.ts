@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -10,12 +10,14 @@ vi.mock("$lib/tauri", async (importOriginal) => ({
   streamPodLog: vi.fn(async () => "1"),
   stopLogs: vi.fn(async () => {}),
   getPodContainers: vi.fn(async () => []),
+  exportLog: vi.fn(async () => "/tmp/x.log"),
 }));
 
 import LogToolbar from "./LogToolbar.svelte";
 import { LogSession } from "$lib/stores/logSession.svelte";
 import { logPanel } from "$lib/stores/logPanel.svelte";
 import { SEARCH_DEBOUNCE_MS } from "$lib/stores/logSearch.svelte";
+import { toasts } from "$lib/stores/toasts.svelte";
 import type { ContainerDetail } from "$lib/tauri";
 
 function container(overrides: Partial<ContainerDetail> = {}): ContainerDetail {
@@ -173,5 +175,102 @@ describe("LogToolbar search", () => {
       vi.useRealTimers();
       document.removeEventListener("keydown", outerHandler);
     }
+  });
+});
+
+describe("LogToolbar export", () => {
+  afterEach(() => {
+    logPanel.search.clear();
+    toasts.items = [];
+  });
+
+  it("export visible writes via exportLog and toasts the path", async () => {
+    const { exportLog } = await import("$lib/tauri");
+    vi.mocked(exportLog).mockResolvedValueOnce("/Users/x/Downloads/api-0_worker.log");
+    const s = new LogSession("default", "api-0");
+    s.container = "worker";
+    s.ring.append([
+      {
+        pod: "api-0",
+        namespace: "default",
+        time: "2026-08-04T10:00:00Z",
+        level: "info",
+        message: "hello",
+      },
+    ]);
+    render(LogToolbar, { props: { session: s } });
+    await fireEvent.click(screen.getByLabelText("More log options"));
+    await fireEvent.click(screen.getByText("Export visible…"));
+
+    expect(exportLog).toHaveBeenCalledWith("api-0_worker.log", expect.stringContaining("hello"));
+    await waitFor(() =>
+      expect(toasts.items[0]).toMatchObject({
+        tone: "ok",
+        message: "Exported to /Users/x/Downloads/api-0_worker.log",
+      }),
+    );
+  });
+
+  it("export visible respects filter mode — only serializes matching lines", async () => {
+    const { exportLog } = await import("$lib/tauri");
+    vi.mocked(exportLog).mockResolvedValueOnce("/tmp/api-0_worker.log");
+    const s = new LogSession("default", "api-0");
+    s.container = "worker";
+    s.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "keep" },
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "drop-me" },
+    ]);
+    logPanel.search.attach(() => s.ring.lines);
+    logPanel.search.query = "keep";
+    logPanel.search.recompute(s.ring.lines);
+    logPanel.search.filterMode = true;
+
+    render(LogToolbar, { props: { session: s } });
+    await fireEvent.click(screen.getByLabelText("More log options"));
+    await fireEvent.click(screen.getByText("Export visible…"));
+
+    const [, contents] = vi.mocked(exportLog).mock.calls.at(-1)!;
+    expect(contents).toContain("keep");
+    expect(contents).not.toContain("drop-me");
+  });
+
+  it("export full buffer serializes ring.lines regardless of filter mode, with a _full filename", async () => {
+    const { exportLog } = await import("$lib/tauri");
+    vi.mocked(exportLog).mockResolvedValueOnce("/Users/x/Downloads/api-0_worker_full.log");
+    const s = new LogSession("default", "api-0");
+    s.container = "worker";
+    s.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "keep" },
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "filtered-out" },
+    ]);
+    logPanel.search.attach(() => s.ring.lines);
+    logPanel.search.query = "keep";
+    logPanel.search.recompute(s.ring.lines);
+    logPanel.search.filterMode = true;
+
+    render(LogToolbar, { props: { session: s } });
+    await fireEvent.click(screen.getByLabelText("More log options"));
+    await fireEvent.click(screen.getByText("Export full buffer…"));
+
+    expect(exportLog).toHaveBeenCalledWith(
+      "api-0_worker_full.log",
+      expect.stringContaining("filtered-out"),
+    );
+  });
+
+  it("toasts an error message when export fails", async () => {
+    const { exportLog } = await import("$lib/tauri");
+    vi.mocked(exportLog).mockRejectedValueOnce(new Error("disk full"));
+    const s = new LogSession("default", "api-0");
+    s.container = "worker";
+    s.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "hello" },
+    ]);
+    render(LogToolbar, { props: { session: s } });
+    await fireEvent.click(screen.getByLabelText("More log options"));
+    await fireEvent.click(screen.getByText("Export visible…"));
+
+    await waitFor(() => expect(toasts.items[0]?.tone).toBe("err"));
+    expect(toasts.items[0]?.message).toContain("disk full");
   });
 });
