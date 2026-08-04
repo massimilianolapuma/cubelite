@@ -765,3 +765,42 @@ pub async fn set_context(context_name: String) -> Result<(), String> {
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// `<pod>_<container>[_full].log` (spec: export filenames).
+pub fn log_export_filename(pod: &str, container: &str, full: bool) -> String {
+    format!("{pod}_{container}{}.log", if full { "_full" } else { "" })
+}
+
+/// Keep only the final path component so a hostile filename cannot escape
+/// the Downloads directory.
+pub fn sanitize_filename(name: &str) -> String {
+    name.rsplit(['/', '\\']).next().unwrap_or(name).to_string()
+}
+
+/// Write exported log contents into ~/Downloads; returns the written path.
+#[tauri::command]
+pub async fn export_log(filename: String, contents: String) -> Result<String, String> {
+    let dir = dirs::download_dir().ok_or("No Downloads directory available")?;
+    let path = dir.join(sanitize_filename(&filename));
+    tokio::fs::write(&path, contents)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    #[test]
+    fn filename_shapes() {
+        assert_eq!(log_export_filename("api-0", "worker", false), "api-0_worker.log");
+        assert_eq!(log_export_filename("api-0", "worker", true), "api-0_worker_full.log");
+    }
+
+    #[test]
+    fn sanitize_strips_separators() {
+        assert_eq!(sanitize_filename("../../etc/passwd"), "passwd");
+        assert_eq!(sanitize_filename("api_worker.log"), "api_worker.log");
+    }
+}

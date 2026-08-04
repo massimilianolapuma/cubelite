@@ -582,6 +582,7 @@ name = "cubelite-desktop"
 version = "0.3.0"
 dependencies = [
  "cubelite-core",
+ "dirs 6.0.0",
  "futures",
  "serde",
  "serde_json",
