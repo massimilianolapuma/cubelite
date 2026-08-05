@@ -19,15 +19,17 @@ command.
 
 ## State layer
 
-`src/lib/stores/logSessions.svelte.ts`:
+`src/lib/stores/`:
 
-- **`LogSessionStore`** (app-scoped class, Svelte 5 runes): sessions keyed
-  `namespace/pod`, active session key, panel height / collapsed, global toggles
-  (timestamps, wrap, tail size). Toggles, panel height, and per-pod container
-  choice persist to `localStorage`.
-- **`LogSession`**: pod ref, container list, chosen container, previous flag,
-  follow / pausedAt, ring buffer (cap 5000, `totalAppended` counter for the
-  new-lines pill), stream id, reconnect state, event unlisteners.
+- **`logPanel.svelte.ts`** (`LogPanelStore`, app-scoped class, Svelte 5
+  runes): sessions keyed `namespace/pod`, capped at 6 open sessions and
+  LRU-evicted (oldest-focused first) beyond that, active session key, panel
+  height / collapsed, global toggles (timestamps, wrap, tail size). Toggles,
+  panel height, and per-pod container choice persist to `localStorage`.
+- **`logSession.svelte.ts`** (`LogSession`): pod ref, container list, chosen
+  container, previous flag, follow / pausedAt, ring buffer (`logRing.svelte.ts`,
+  cap 5000, `totalAppended` counter for the new-lines pill), stream id,
+  reconnect state, event unlisteners.
 - **Stream lifecycle**: `streamPodLog()` → listen `pod-log-line:{id}` /
   `pod-log-end:{id}`. On end while following: reconnect with exponential
   backoff (1 s doubling to 30 s cap), `since_time` = timestamp of last received
@@ -52,7 +54,9 @@ command.
   status/restarts, init containers; no "all containers" entry — that is #297),
   search input, tail chip (100/500/1000/5000, default 500), `⟲` previous chip
   (visible only when selected container restarts > 0), ● Following/Paused
-  button, overflow ⋯ (timestamps, wrap, previous, export visible/full, clear).
+  button, overflow ⋯ (timestamps, wrap, export visible/full, clear).
+  Deviation: the previous-instance toggle exists only as that toolbar chip —
+  it is not mirrored in the overflow menu.
 - **`LogBody.svelte`** — virtualized list via **`@tanstack/svelte-virtual`**
   (first virtualization dependency in the repo; `measureElement` handles
   variable row heights when wrap is on). Autoscroll only while following;
@@ -93,7 +97,9 @@ broad filesystem permissions.
   search matcher (indices, filter, wrap nav), `streamPodLog` parameter
   mapping.
 - **Component**: panel render, follow/pause interaction, new-lines pill.
-- **E2E (Playwright)**: open panel → navigate other resources → panel persists;
-  container switch swaps stream; search over a 5k buffer stays fluid.
+- **E2E (Playwright)**: open panel → navigate other resources → panel
+  persists. Container switch and the 5k-line search performance check are
+  covered instead by unit/component tests (`logSession.svelte.test.ts`,
+  `logSearch.svelte.test.ts`), not e2e.
 - **Acceptance**: criteria of the parent spec §Testing applied to the desktop
   app.

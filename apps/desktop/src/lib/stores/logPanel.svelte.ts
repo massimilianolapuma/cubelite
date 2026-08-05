@@ -80,7 +80,7 @@ class LogPanelStore {
   }
 
   /** `[time] LEVEL message` per line, one per newline; time omitted when the
-   * timestamps toggle is off (export flows — Task 15). */
+   * timestamps toggle is off (export flows). */
   serialize(lines: KeyedLogLine[]): string {
     return lines
       .map((l) => {
