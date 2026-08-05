@@ -57,6 +57,18 @@ describe("LogBody", () => {
     expect(await screen.findByText("↓ 1 new line")).toBeInTheDocument();
   });
 
+  it("shows the reconnecting banner with attempt count and retry-now", async () => {
+    const s = sessionWith(["a"]);
+    s.status = "reconnecting";
+    s.reconnectAttempt = 3;
+    s.nextRetryAt = Date.now() + 4000;
+    const retry = vi.spyOn(s, "retryNow");
+    const { getByText } = render(LogBody, { props: { session: s } });
+    expect(getByText(/Reconnecting — attempt 3/)).toBeInTheDocument();
+    await getByText("Retry now").click();
+    expect(retry).toHaveBeenCalled();
+  });
+
   describe("search", () => {
     afterEach(() => {
       logPanel.search.clear();

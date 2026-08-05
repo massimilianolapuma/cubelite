@@ -10,6 +10,16 @@
 
 	let scrollEl = $state<HTMLDivElement | null>(null);
 
+	let now = $state(Date.now());
+	$effect(() => {
+		if (session.status !== 'reconnecting') return;
+		const t = setInterval(() => (now = Date.now()), 1000);
+		return () => clearInterval(t);
+	});
+	const retryIn = $derived(
+		session.nextRetryAt ? Math.max(0, Math.ceil((session.nextRetryAt - now) / 1000)) : 0
+	);
+
 	// The rendered set: all lines, or only search matches when filter mode
 	// is on. The virtualizer's index space always tracks this array, not
 	// the raw ring buffer, so `scrollToIndex` stays in bounds either way.
@@ -98,6 +108,19 @@
 </script>
 
 <div class="relative min-h-0 flex-1 overflow-hidden bg-surface-sunken">
+	{#if session.status === 'reconnecting'}
+		<div class="absolute inset-x-0 top-0 z-10 flex items-center justify-center gap-2 border-b border-border-default px-2.5 py-1"
+			style="background: var(--alpha-pill-warn);">
+			<span class="type-caption" style="color: var(--color-status-warn);">
+				Reconnecting — attempt {session.reconnectAttempt} · retrying in {retryIn}s
+			</span>
+			<button type="button" class="type-caption underline" style="color: var(--color-status-warn);"
+				onclick={() => session.retryNow()}>
+				Retry now
+			</button>
+		</div>
+	{/if}
+
 	{#if !session.following && newLines > 0}
 		<div class="pointer-events-auto absolute inset-x-0 bottom-2 z-10 flex justify-center">
 			<button
