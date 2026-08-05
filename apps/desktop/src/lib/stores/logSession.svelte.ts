@@ -197,7 +197,12 @@ export class LogSession {
 
   toggleFollow(): void {
     this.following = !this.following;
-    if (this.following) this.markSeen();
+    if (this.following) {
+      this.markSeen();
+      // The stream ended while paused (not a previous-instance fetch):
+      // resuming follow should resume streaming, not sit on a dead session.
+      if (this.status === "ended" && !this.previous) void this.#start();
+    }
   }
 
   markSeen(): void {

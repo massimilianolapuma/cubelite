@@ -149,6 +149,18 @@ class LogPanelStore {
       }
     }
   }
+
+  /** Closes every session (cluster switch — sessions target pods of the old
+   * cluster, same story as port-forward's `stopAll`). */
+  async closeAll(): Promise<void> {
+    const sessions = this.sessions;
+    this.sessions = [];
+    this.activeKey = null;
+    this.#focusOrder = [];
+    this.search.clear();
+    this.search.attach(() => []);
+    await Promise.allSettled(sessions.map((s) => s.close()));
+  }
 }
 
 export const logPanel = new LogPanelStore();

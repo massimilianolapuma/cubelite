@@ -81,7 +81,7 @@ describe("LogToolbar search", () => {
       const input = screen.getByPlaceholderText("Search… (⌘F)");
 
       await fireEvent.input(input, { target: { value: "alpha" } });
-      vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+      await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 10);
       expect(screen.getByText("1/2")).toBeInTheDocument();
 
       await fireEvent.keyDown(input, { key: "Enter" });
@@ -102,7 +102,7 @@ describe("LogToolbar search", () => {
 
     vi.useFakeTimers();
     await fireEvent.input(input, { target: { value: "alpha" } });
-    vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 10);
     vi.useRealTimers();
     expect(screen.getByText("1/1")).toBeInTheDocument();
 
@@ -111,6 +111,24 @@ describe("LogToolbar search", () => {
       { pod: "api-0", namespace: "default", time: null, level: "info", message: "alpha two" },
     ]);
     expect(await screen.findByText("1/2")).toBeInTheDocument();
+  });
+
+  it("does not recompute on every keystroke — the growth effect stays untracked from query/cursor", async () => {
+    const s = sessionWith(["alpha"]);
+    logPanel.search.attach(() => s.ring.lines);
+    render(LogToolbar, { props: { session: s } });
+    const input = screen.getByPlaceholderText("Search… (⌘F)");
+
+    const recomputeSpy = vi.spyOn(logPanel.search, "recompute");
+    recomputeSpy.mockClear();
+
+    // Typing changes `search.query` (read internally by `recompute`). If the
+    // growth-effect tracked that read, it would re-fire immediately here,
+    // defeating `setQuery`'s own 150ms debounce.
+    await fireEvent.input(input, { target: { value: "a" } });
+    expect(recomputeSpy).not.toHaveBeenCalled();
+
+    recomputeSpy.mockRestore();
   });
 
   it("shows 0 results for a query with no matches", async () => {

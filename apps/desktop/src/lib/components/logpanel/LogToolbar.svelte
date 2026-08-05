@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -29,9 +30,12 @@
 
 	// The panel keeps one `LogSearch` for its active session; re-run the
 	// match scan whenever the buffer grows so results follow the live tail.
+	// `recompute()` reads `search.query`/`search.cursor` internally, so the
+	// call is wrapped `untrack`ed — otherwise this effect would also fire on
+	// every keystroke/cursor move, defeating `setQuery`'s own debounce.
 	$effect(() => {
 		void session.ring.lines.length;
-		logPanel.search.recompute(session.ring.lines);
+		untrack(() => logPanel.search.recompute(session.ring.lines));
 	});
 
 	$effect(() => {

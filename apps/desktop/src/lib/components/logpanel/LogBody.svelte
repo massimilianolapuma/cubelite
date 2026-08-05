@@ -13,6 +13,10 @@
 	let now = $state(Date.now());
 	$effect(() => {
 		if (session.status !== 'reconnecting') return;
+		// Reset immediately: `now` may be stale by up to a full stream's
+		// lifetime since mount, which would flash a huge countdown for up to
+		// 1s until the first tick below corrects it.
+		now = Date.now();
 		const t = setInterval(() => (now = Date.now()), 1000);
 		return () => clearInterval(t);
 	});

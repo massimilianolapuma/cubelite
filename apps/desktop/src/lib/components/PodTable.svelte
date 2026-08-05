@@ -79,7 +79,19 @@
 						</span>
 						{#if isSelected}
 							<span
+								role="button"
+								tabindex="-1"
 								class="type-caption flex h-5 shrink-0 items-center gap-1 rounded-md border border-border-default bg-surface-raised px-1.5 text-text-tertiary"
+								onclick={(e) => {
+									e.stopPropagation();
+									onLogs?.(pod);
+								}}
+								onkeydown={(e) => {
+									if (e.key === 'Enter' || e.key === ' ') {
+										e.stopPropagation();
+										onLogs?.(pod);
+									}
+								}}
 							>
 								logs ⏎
 							</span>

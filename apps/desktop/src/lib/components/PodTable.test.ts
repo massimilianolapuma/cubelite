@@ -98,4 +98,22 @@ describe("PodTable", () => {
     expect(onRowClick).toHaveBeenCalledWith(p);
     expect(onLogs).not.toHaveBeenCalled();
   });
+
+  it("clicking the 'logs ⏎' chip opens logs directly instead of re-selecting the row", async () => {
+    const p = pod();
+    const onRowClick = vi.fn();
+    const onLogs = vi.fn();
+    render(PodTable, { props: { pods: [p], selected: p, onRowClick, onLogs } });
+    await fireEvent.click(screen.getByText("logs ⏎"));
+    expect(onLogs).toHaveBeenCalledWith(p);
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("pressing Enter/Space on the chip also opens logs", async () => {
+    const p = pod();
+    const onLogs = vi.fn();
+    render(PodTable, { props: { pods: [p], selected: p, onLogs } });
+    await fireEvent.keyDown(screen.getByText("logs ⏎"), { key: "Enter" });
+    expect(onLogs).toHaveBeenCalledWith(p);
+  });
 });

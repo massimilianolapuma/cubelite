@@ -61,7 +61,7 @@
 	<button
 		type="button"
 		class="focus-ring flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-tertiary hover:text-text-secondary"
-		aria-label="Close log panel"
+		aria-label="Close active session"
 		onclick={() => logPanel.active && void logPanel.closeSession(logPanel.active.key)}
 	>
 		<X size={14} strokeWidth={1.5} />
