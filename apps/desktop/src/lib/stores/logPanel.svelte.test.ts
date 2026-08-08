@@ -37,13 +37,87 @@ describe("logPanel store", () => {
     for (const s of [...logPanel.sessions]) await logPanel.closeSession(s.key);
   });
 
-  it("openFor creates a session and focuses it; a second pod replaces it (single-session PR)", async () => {
+  it("openFor creates a session and focuses it", async () => {
     await logPanel.openFor({ namespace: "default", name: "api-0" });
     expect(logPanel.open).toBe(true);
     expect(logPanel.activeKey).toBe("default/api-0");
+  });
+
+  it("keeps existing sessions when opening a second pod and focuses the new one", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
     await logPanel.openFor({ namespace: "default", name: "web-1" });
-    expect(logPanel.sessions).toHaveLength(1);
+    expect(logPanel.sessions.map((s) => s.key)).toEqual(["default/api-0", "default/web-1"]);
     expect(logPanel.activeKey).toBe("default/web-1");
+  });
+
+  it("focus() switches the active session and closing the active tab falls back to the last one", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    await logPanel.openFor({ namespace: "default", name: "web-1" });
+    logPanel.focus("default/api-0");
+    expect(logPanel.activeKey).toBe("default/api-0");
+    await logPanel.closeSession("default/api-0");
+    expect(logPanel.activeKey).toBe("default/web-1");
+  });
+
+  it("evicts the least-recently-focused session past the cap of 6, honoring focus() bumps", async () => {
+    for (let i = 0; i < 6; i++) await logPanel.openFor({ namespace: "default", name: `p-${i}` });
+    // p-0 was opened first (least-recently-focused by insertion order), but an
+    // explicit focus() should move it to the back of the LRU order so the
+    // next-opened session evicts p-1 instead.
+    logPanel.focus("default/p-0");
+    await logPanel.openFor({ namespace: "default", name: "p-6" });
+    expect(logPanel.sessions).toHaveLength(6);
+    expect(logPanel.sessions.some((s) => s.key === "default/p-1")).toBe(false);
+    expect(logPanel.sessions.some((s) => s.key === "default/p-0")).toBe(true);
+  });
+
+  it("focus() recomputes the shared query against the newly active session's buffer", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    logPanel.active!.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "no match here" },
+    ]);
+    await logPanel.openFor({ namespace: "default", name: "web-1" });
+    logPanel.active!.ring.append([
+      { pod: "web-1", namespace: "default", time: null, level: "info", message: "alpha line" },
+    ]);
+
+    // Switch to api-0 (no matching line) and set the query while it's active.
+    logPanel.focus("default/api-0");
+    vi.useFakeTimers();
+    logPanel.search.setQuery("alpha");
+    vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+    vi.useRealTimers();
+    expect(logPanel.search.count).toBe(0);
+
+    // Switching back to web-1 must recompute immediately against its buffer.
+    logPanel.focus("default/web-1");
+    expect(logPanel.search.query).toBe("alpha");
+    expect(logPanel.search.count).toBe(1);
+  });
+
+  it("closing the active session re-attaches search to the fallback session's buffer", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    logPanel.active!.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "alpha in api" },
+    ]);
+    await logPanel.openFor({ namespace: "default", name: "web-1" });
+    logPanel.active!.ring.append([
+      { pod: "web-1", namespace: "default", time: null, level: "info", message: "no match" },
+    ]);
+
+    logPanel.focus("default/api-0");
+    vi.useFakeTimers();
+    logPanel.search.setQuery("alpha");
+    vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+    vi.useRealTimers();
+    expect(logPanel.search.count).toBe(1);
+
+    await logPanel.closeSession("default/api-0");
+    expect(logPanel.activeKey).toBe("default/web-1");
+    // The query text survives, but matches must reflect the fallback
+    // session's buffer, not the closed (dead) one's.
+    expect(logPanel.search.query).toBe("alpha");
+    expect(logPanel.search.count).toBe(0);
   });
 
   it("openFor on the already-open pod focuses without restarting the stream", async () => {
