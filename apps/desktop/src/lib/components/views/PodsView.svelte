@@ -3,6 +3,7 @@
 	import DeletePodDialog from '$lib/components/DeletePodDialog.svelte';
 	import PodDrawer from '$lib/components/pods/PodDrawer.svelte';
 	import { app } from '$lib/stores/app.svelte';
+	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import { mutations } from '$lib/stores/mutations.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 	import type { PodInfo } from '$lib/tauri';
@@ -41,6 +42,7 @@
 		pods={filtered}
 		selected={app.selectedPod}
 		onRowClick={(pod) => (app.selectedPod = pod)}
+		onLogs={(pod) => void logPanel.openFor({ namespace: pod.namespace, name: pod.name })}
 	/>
 </div>
 

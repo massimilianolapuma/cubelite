@@ -8,6 +8,7 @@ import { listContexts, probeCluster, setContext, type ContextInfo } from "$lib/t
 import { assignIdentityColors, type IdentityColor } from "$lib/cluster-identity";
 import { errorMessage } from "$lib/errors";
 import { app } from "./app.svelte";
+import { logPanel } from "./logPanel.svelte";
 import { portforward } from "./portforward.svelte";
 import { resources } from "./resources.svelte";
 import { settings } from "./settings.svelte";
@@ -69,6 +70,8 @@ class ClustersStore {
       resources.clear();
       // Forward sessions target pods of the old cluster — tear them down.
       void portforward.stopAll();
+      // Log sessions are pod-scoped too — same story.
+      void logPanel.closeAll();
       try {
         await setContext(name);
       } catch (e) {

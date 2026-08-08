@@ -10,6 +10,7 @@
 import { persisted } from "./settings.svelte";
 import { LogSession } from "./logSession.svelte";
 import { LogSearch } from "./logSearch.svelte";
+import type { KeyedLogLine } from "./logs.svelte";
 
 export const PANEL_MIN = 160;
 export const PANEL_MAX = 560;
@@ -78,6 +79,17 @@ class LogPanelStore {
     this.#containers.value = { ...this.#containers.value, [key]: container };
   }
 
+  /** `[time] LEVEL message` per line, one per newline; time omitted when the
+   * timestamps toggle is off (export flows). */
+  serialize(lines: KeyedLogLine[]): string {
+    return lines
+      .map((l) => {
+        const ts = this.timestamps && l.time ? `${l.time} ` : "";
+        return `${ts}${l.level.toUpperCase()} ${l.message}`;
+      })
+      .join("\n");
+  }
+
   registerSearchFocus(fn: (() => void) | null): void {
     this.#searchFocus = fn;
   }
@@ -136,6 +148,18 @@ class LogPanelStore {
         this.search.attach(() => []);
       }
     }
+  }
+
+  /** Closes every session (cluster switch — sessions target pods of the old
+   * cluster, same story as port-forward's `stopAll`). */
+  async closeAll(): Promise<void> {
+    const sessions = this.sessions;
+    this.sessions = [];
+    this.activeKey = null;
+    this.#focusOrder = [];
+    this.search.clear();
+    this.search.attach(() => []);
+    await Promise.allSettled(sessions.map((s) => s.close()));
   }
 }
 

@@ -86,6 +86,22 @@ describe("LogSession", () => {
     expect(s.status).toBe("ended");
   });
 
+  it("toggling follow back on after a drop-while-paused restarts the stream", async () => {
+    const s = new LogSession("default", "api-0");
+    await s.open();
+    s.toggleFollow(); // pause
+    expect(s.following).toBe(false);
+    listeners.get("pod-log-end:7")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.status).toBe("ended");
+
+    vi.mocked(streamPodLog).mockClear();
+    s.toggleFollow(); // resume
+    await vi.advanceTimersByTimeAsync(1);
+    expect(streamPodLog).toHaveBeenCalledTimes(1);
+    expect(s.status).toBe("streaming");
+  });
+
   it("close() stops the stream and detaches listeners", async () => {
     const s = new LogSession("default", "api-0");
     await s.open();

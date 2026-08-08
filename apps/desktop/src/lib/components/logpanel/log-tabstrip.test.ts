@@ -62,9 +62,9 @@ describe("LogTabStrip", () => {
     await logPanel.openFor({ namespace: "default", name: "api-0" });
     render(LogTabStrip);
     expect(screen.getByLabelText("Collapse log panel")).toBeInTheDocument();
-    expect(screen.getByLabelText("Close log panel")).toBeInTheDocument();
+    expect(screen.getByLabelText("Close active session")).toBeInTheDocument();
 
-    await fireEvent.click(screen.getByLabelText("Close log panel"));
+    await fireEvent.click(screen.getByLabelText("Close active session"));
     await waitFor(() => expect(logPanel.sessions).toHaveLength(0));
   });
 });

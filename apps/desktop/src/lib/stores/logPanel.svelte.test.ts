@@ -136,6 +136,18 @@ describe("logPanel store", () => {
     expect(logPanel.active!.container).toBe("envoy");
   });
 
+  it("closeAll closes every session (cluster switch teardown path)", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    await logPanel.openFor({ namespace: "default", name: "web-1" });
+    expect(logPanel.sessions).toHaveLength(2);
+
+    await logPanel.closeAll();
+
+    expect(logPanel.sessions).toHaveLength(0);
+    expect(logPanel.activeKey).toBeNull();
+    expect(vi.mocked((await import("$lib/tauri")).stopLogs)).toHaveBeenCalledTimes(2);
+  });
+
   it("height persists clamped to bounds", () => {
     logPanel.height = 9999;
     expect(logPanel.height).toBe(PANEL_MAX);
