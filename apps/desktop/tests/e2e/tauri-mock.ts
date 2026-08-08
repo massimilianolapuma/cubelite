@@ -4,12 +4,16 @@
  * before the app boots, so `@tauri-apps/api` calls resolve without a Rust
  * backend.
  */
+import type { Page } from "@playwright/test";
 
 declare global {
   interface Window {
     /** Test hook installed by the mock script: fires a Tauri event to every
      * listener registered for `name` via `@tauri-apps/api/event`'s `listen`. */
     __emitTauriEvent?: (name: string, payload: unknown) => void;
+    /** Test hook: looks up the stream id the mock last handed out for a
+     * `stream_pod_log` call with this container name (see `emitPodLogLine`). */
+    __streamIdFor?: (container: string) => string | null;
   }
 }
 
@@ -72,9 +76,31 @@ export const FIXTURES = {
       name: "worker",
       init: false,
       sidecar: false,
+      restarts: 3,
+      ready: true,
+      state: "running",
+      state_reason: null,
+      last_terminated_reason: null,
+      last_terminated_at: null,
+    },
+    {
+      name: "envoy",
+      init: false,
+      sidecar: false,
       restarts: 0,
       ready: true,
       state: "running",
+      state_reason: null,
+      last_terminated_reason: null,
+      last_terminated_at: null,
+    },
+    {
+      name: "init-migrate",
+      init: true,
+      sidecar: false,
+      restarts: 0,
+      ready: true,
+      state: "terminated",
       state_reason: null,
       last_terminated_reason: null,
       last_terminated_at: null,
@@ -89,6 +115,12 @@ export function tauriMockScript(): string {
 (() => {
   const fixtures = ${fixtures};
   let callbackId = 1;
+  // stream_pod_log id counter + the container each id was last handed out
+  // for, so tests can target the right sub-stream in merged ("all
+  // containers") mode, where LogSession opens one ContainerStream per
+  // container and each gets its own stream id.
+  let streamIdCounter = 1;
+  const streamIdsByContainer = {};
 
   const responses = (cmd, args) => {
     switch (cmd) {
@@ -122,7 +154,11 @@ export function tauriMockScript(): string {
       case "stream_logs": return "l1";
       case "stop_logs": return null;
       case "get_pod_containers": return fixtures.podContainers;
-      case "stream_pod_log": return "1";
+      case "stream_pod_log": {
+        const id = String(streamIdCounter++);
+        streamIdsByContainer[args.container ?? ""] = id;
+        return id;
+      }
       case "export_log": return "/home/test/Downloads/" + args.filename;
       case "get_resource_yaml": return "kind: Pod\\nmetadata:\\n  name: " + args.name + "\\n";
       default: return null;
@@ -169,6 +205,34 @@ export function tauriMockScript(): string {
       callback?.({ event: name, id: eventId, payload });
     }
   };
+
+  // Test hook: look up the stream id last handed out for a given container
+  // by the mocked stream_pod_log, e.g. window.__streamIdFor("worker").
+  window.__streamIdFor = (container) => streamIdsByContainer[container] ?? null;
 })();
 `;
+}
+
+/**
+ * Emits a `pod-log-line` event on whichever stream id the mock last assigned
+ * to `container` via `stream_pod_log` — the per-container sub-stream that
+ * `ContainerStream` opens for each pod container in merged ("all
+ * containers") mode. Waits for that sub-stream to have opened first.
+ */
+export async function emitPodLogLine(
+  page: Page,
+  container: string,
+  message: string,
+  overrides: Partial<{ pod: string; namespace: string; time: string; level: string }> = {},
+): Promise<void> {
+  await page.waitForFunction((c) => Boolean(window.__streamIdFor?.(c)), container);
+  const { pod = "api-0", namespace = "default", time = "2026-08-04T10:00:00Z", level = "info" } =
+    overrides;
+  await page.evaluate(
+    ({ container, message, pod, namespace, time, level }) => {
+      const id = window.__streamIdFor?.(container);
+      window.__emitTauriEvent?.(`pod-log-line:${id}`, { pod, namespace, time, level, message });
+    },
+    { container, message, pod, namespace, time, level },
+  );
 }
