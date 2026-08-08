@@ -23,6 +23,7 @@ vi.mock("$lib/tauri", async (importOriginal) => {
 
 import { app } from "./app.svelte";
 import { logPanel, PANEL_DEFAULT, PANEL_MAX, PANEL_MIN } from "./logPanel.svelte";
+import { ALL_CONTAINERS } from "./logSession.svelte";
 import { SEARCH_DEBOUNCE_MS } from "./logSearch.svelte";
 
 describe("logPanel store", () => {
@@ -146,6 +147,18 @@ describe("logPanel store", () => {
     expect(logPanel.sessions).toHaveLength(0);
     expect(logPanel.activeKey).toBeNull();
     expect(vi.mocked((await import("$lib/tauri")).stopLogs)).toHaveBeenCalledTimes(2);
+  });
+
+  it("switching merged ↔ single preserves the panel search query", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    vi.useFakeTimers();
+    logPanel.search.setQuery("err");
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 1);
+    await logPanel.active!.switchContainer(ALL_CONTAINERS);
+    expect(logPanel.search.query).toBe("err");
+    await logPanel.active!.switchContainer("worker");
+    expect(logPanel.search.query).toBe("err");
+    vi.useRealTimers();
   });
 
   it("height persists clamped to bounds", () => {

@@ -3,7 +3,8 @@
  * buffer with batched flush (FLUSH_MS pattern from logs.svelte.ts).
  * Stream lifecycle (connect, tag, reconnect-on-drop with exponential
  * backoff, teardown) lives in ContainerStream; this class aggregates over
- * its (currently single) sub-stream.
+ * its sub-streams — exactly one in single-container mode, one per pod
+ * container (init included) when `container === ALL_CONTAINERS`.
  */
 import { getPodContainers, type ContainerDetail, type LogLine } from "$lib/tauri";
 import { errorMessage } from "$lib/errors";
@@ -15,6 +16,9 @@ import { ContainerStream, type StreamParams, type StreamStatus } from "./contain
 export const RING_CAP = 5000;
 export const DEFAULT_TAIL = 500;
 
+/** Sentinel container value: merged stream of every container in the pod. */
+export const ALL_CONTAINERS = "*";
+
 export type SessionStatus = StreamStatus; // unchanged union, re-exported for callers
 
 export class LogSession {
@@ -24,6 +28,8 @@ export class LogSession {
 
   containers = $state<ContainerDetail[]>([]);
   container = $state<string | null>(null);
+  /** Merged "all containers" mode: one ContainerStream per pod container. */
+  merged = $derived(this.container === ALL_CONTAINERS);
   previous = $state(false);
   following = $state(true);
   tailLines = $state(DEFAULT_TAIL);
@@ -67,7 +73,10 @@ export class LogSession {
     const ctx = app.activeCluster ?? undefined;
     try {
       this.containers = await getPodContainers(kc, this.namespace, this.pod, ctx);
-      if (!this.container || !this.containers.some((c) => c.name === this.container)) {
+      if (
+        this.container !== ALL_CONTAINERS &&
+        (!this.container || !this.containers.some((c) => c.name === this.container))
+      ) {
         this.container =
           this.containers.find((c) => !c.init)?.name ?? this.containers[0]?.name ?? null;
       }
@@ -94,16 +103,18 @@ export class LogSession {
     this.#openError = null;
     await this.#stopStreams();
     if (generation !== this.#generation) return;
-    const streams = [
-      new ContainerStream(
-        this.namespace,
-        this.pod,
-        this.container,
-        this.#receive,
-        this.#streamParams,
-        () => this.#flush(),
-      ),
-    ];
+    const targets = this.merged ? this.containers.map((c) => c.name) : [this.container];
+    const streams = targets.map(
+      (name) =>
+        new ContainerStream(
+          this.namespace,
+          this.pod,
+          name,
+          this.#receive,
+          this.#streamParams,
+          () => this.#flush(),
+        ),
+    );
     this.#streams = streams;
     await Promise.all(streams.map((s) => s.start()));
     if (generation !== this.#generation) {
@@ -140,12 +151,14 @@ export class LogSession {
 
   async switchContainer(name: string): Promise<void> {
     if (name === this.container) return;
+    if (name === ALL_CONTAINERS) this.previous = false; // previous-instance has no meaning on a merged stream
     this.container = name;
     this.#resetBuffer();
     await this.#start();
   }
 
   async setPrevious(on: boolean): Promise<void> {
+    if (this.merged) return; // previous-instance has no meaning on a merged stream
     if (on === this.previous) return;
     this.previous = on;
     this.#resetBuffer();
