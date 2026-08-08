@@ -14,7 +14,7 @@ vi.mock("$lib/tauri", async (importOriginal) => ({
 }));
 
 import LogToolbar from "./LogToolbar.svelte";
-import { LogSession } from "$lib/stores/logSession.svelte";
+import { LogSession, ALL_CONTAINERS } from "$lib/stores/logSession.svelte";
 import { logPanel } from "$lib/stores/logPanel.svelte";
 import { SEARCH_DEBOUNCE_MS } from "$lib/stores/logSearch.svelte";
 import { toasts } from "$lib/stores/toasts.svelte";
@@ -64,6 +64,39 @@ describe("LogToolbar", () => {
     s.container = "worker";
     render(LogToolbar, { props: { session: s } });
     expect(screen.getByText("prev")).toBeInTheDocument();
+  });
+});
+
+describe("LogToolbar merged mode", () => {
+  it("picker menu offers an 'all containers' entry after the container groups, which switches to the merged stream", async () => {
+    const s = new LogSession("default", "api-0");
+    s.containers = [container({ name: "worker" }), container({ name: "init-a", init: true })];
+    s.container = "worker";
+    const switchSpy = vi.spyOn(s, "switchContainer").mockResolvedValue();
+    render(LogToolbar, { props: { session: s } });
+
+    await fireEvent.click(screen.getByText("worker"));
+    const entry = screen.getByText("all containers");
+    expect(screen.getByText("merged stream, color-tagged")).toBeInTheDocument();
+    await fireEvent.click(entry);
+
+    expect(switchSpy).toHaveBeenCalledWith(ALL_CONTAINERS);
+  });
+
+  it("hides the previous chip in merged mode even when the selected container has restarts", () => {
+    const s = new LogSession("default", "api-0");
+    s.containers = [container({ name: "worker", restarts: 3 })];
+    s.container = ALL_CONTAINERS;
+    render(LogToolbar, { props: { session: s } });
+    expect(screen.queryByText("prev")).toBeNull();
+  });
+
+  it("shows 'all containers' as the picker label in merged mode", () => {
+    const s = new LogSession("default", "api-0");
+    s.containers = [container({ name: "worker" })];
+    s.container = ALL_CONTAINERS;
+    render(LogToolbar, { props: { session: s } });
+    expect(screen.getByText("all containers")).toBeInTheDocument();
   });
 });
 
@@ -274,6 +307,36 @@ describe("LogToolbar export", () => {
       "api-0_worker_full.log",
       expect.stringContaining("filtered-out"),
     );
+  });
+
+  it("export visible uses an '_all' filename in merged mode", async () => {
+    const { exportLog } = await import("$lib/tauri");
+    vi.mocked(exportLog).mockResolvedValueOnce("/tmp/api-0_all.log");
+    const s = new LogSession("default", "api-0");
+    s.container = ALL_CONTAINERS;
+    s.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "hello" },
+    ]);
+    render(LogToolbar, { props: { session: s } });
+    await fireEvent.click(screen.getByLabelText("More log options"));
+    await fireEvent.click(screen.getByText("Export visible…"));
+
+    expect(exportLog).toHaveBeenCalledWith("api-0_all.log", expect.stringContaining("hello"));
+  });
+
+  it("export full buffer uses an '_all_full' filename in merged mode", async () => {
+    const { exportLog } = await import("$lib/tauri");
+    vi.mocked(exportLog).mockResolvedValueOnce("/tmp/api-0_all_full.log");
+    const s = new LogSession("default", "api-0");
+    s.container = ALL_CONTAINERS;
+    s.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "hello" },
+    ]);
+    render(LogToolbar, { props: { session: s } });
+    await fireEvent.click(screen.getByLabelText("More log options"));
+    await fireEvent.click(screen.getByText("Export full buffer…"));
+
+    expect(exportLog).toHaveBeenCalledWith("api-0_all_full.log", expect.stringContaining("hello"));
   });
 
   it("toasts an error message when export fails", async () => {
