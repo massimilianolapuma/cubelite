@@ -149,13 +149,26 @@ describe("logPanel store", () => {
     expect(vi.mocked((await import("$lib/tauri")).stopLogs)).toHaveBeenCalledTimes(2);
   });
 
-  it("switching merged ↔ single preserves the panel search query", async () => {
+  it("switching merged ↔ single preserves the panel search query and recomputes matches on the new buffer", async () => {
     await logPanel.openFor({ namespace: "default", name: "api-0" });
     vi.useFakeTimers();
     logPanel.search.setQuery("err");
-    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 1);
     await logPanel.active!.switchContainer(ALL_CONTAINERS);
+    // switchContainer clears the session's buffer synchronously; the
+    // debounced recompute fires after the switch, so it must run against
+    // the new (empty) buffer rather than stale matches from before it.
+    await vi.advanceTimersByTimeAsync(SEARCH_DEBOUNCE_MS + 1);
     expect(logPanel.search.query).toBe("err");
+    expect(logPanel.search.count).toBe(0);
+
+    // A matching line arrives on the new merged buffer; recompute (as the
+    // toolbar's ring-length effect would on a real buffer growth) picks it up.
+    logPanel.active!.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "err from worker" },
+    ]);
+    logPanel.search.recompute(logPanel.active!.ring.lines);
+    expect(logPanel.search.count).toBeGreaterThan(0);
+
     await logPanel.active!.switchContainer("worker");
     expect(logPanel.search.query).toBe("err");
     vi.useRealTimers();

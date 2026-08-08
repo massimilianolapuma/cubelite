@@ -25,7 +25,7 @@ vi.mock("$lib/tauri", async (importOriginal) => {
 
 import { getPodContainers, streamPodLog, stopLogs } from "$lib/tauri";
 import { app } from "./app.svelte";
-import { ALL_CONTAINERS, LogSession } from "./logSession.svelte";
+import { ALL_CONTAINERS, LogSession, RING_CAP } from "./logSession.svelte";
 
 function emitLine(streamId: string, message: string, time = "2026-08-04T10:00:00Z") {
   const payload: LogLine = { pod: "api-0", namespace: "default", time, level: "info", message };
@@ -249,5 +249,33 @@ describe("merged all-containers mode", () => {
     await s.open();
     await s.setPrevious(true);
     expect(s.previous).toBe(false);
+  });
+
+  it("bounds the ring at RING_CAP across 3 merged streams (6000 lines > 5000 cap)", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    for (let i = 0; i < 2000; i++) {
+      emitLine("1", `worker-${i}`);
+      emitLine("2", `envoy-${i}`);
+      emitLine("3", `init-migrate-${i}`);
+    }
+    await vi.advanceTimersByTimeAsync(130);
+    expect(s.ring.lines).toHaveLength(RING_CAP);
+    expect(s.ring.totalAppended).toBe(6000);
+    // Ring keeps the tail: the last-emitted line survives the eviction.
+    expect(s.ring.lines.at(-1)?.message).toBe("init-migrate-1999");
+  });
+
+  it("does not drop lines below the cap (1500 per stream x 3 = 4500)", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    for (let i = 0; i < 1500; i++) {
+      emitLine("1", `worker-${i}`);
+      emitLine("2", `envoy-${i}`);
+      emitLine("3", `init-migrate-${i}`);
+    }
+    await vi.advanceTimersByTimeAsync(130);
+    expect(s.ring.lines).toHaveLength(4500);
+    expect(s.ring.totalAppended).toBe(4500);
   });
 });
