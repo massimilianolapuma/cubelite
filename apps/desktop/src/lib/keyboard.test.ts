@@ -48,3 +48,11 @@ describe("mod+L", () => {
     expect(matchShortcut(key({ key: "l" }), true)).toBeNull();
   });
 });
+
+describe("mod+F", () => {
+  it("maps to log-search on mac (meta) and non-mac (ctrl)", () => {
+    expect(matchShortcut(key({ key: "f", metaKey: true }), true)).toEqual({ type: "log-search" });
+    expect(matchShortcut(key({ key: "f", ctrlKey: true }), false)).toEqual({ type: "log-search" });
+    expect(matchShortcut(key({ key: "f" }), true)).toBeNull();
+  });
+});

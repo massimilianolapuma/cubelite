@@ -23,6 +23,7 @@ vi.mock("$lib/tauri", async (importOriginal) => {
 
 import { app } from "./app.svelte";
 import { logPanel, PANEL_DEFAULT, PANEL_MAX, PANEL_MIN } from "./logPanel.svelte";
+import { SEARCH_DEBOUNCE_MS } from "./logSearch.svelte";
 
 describe("logPanel store", () => {
   beforeEach(() => {
@@ -68,5 +69,41 @@ describe("logPanel store", () => {
     expect(logPanel.height).toBe(PANEL_MIN);
     logPanel.height = PANEL_DEFAULT;
     expect(JSON.parse(window.localStorage.getItem("cubelite.logPanel.height")!)).toBe(PANEL_DEFAULT);
+  });
+
+  it("registerSearchFocus wires focusSearch to the registered callback", () => {
+    const fn = vi.fn();
+    logPanel.registerSearchFocus(fn);
+    logPanel.focusSearch();
+    expect(fn).toHaveBeenCalledOnce();
+
+    logPanel.registerSearchFocus(null);
+    logPanel.focusSearch(); // no callback registered: must be a no-op, not throw
+    expect(fn).toHaveBeenCalledOnce();
+  });
+
+  it("openFor clears any prior search and re-attaches to the newly opened session's buffer", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    logPanel.active!.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "alpha" },
+    ]);
+    vi.useFakeTimers();
+    logPanel.search.setQuery("alpha");
+    vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+    vi.useRealTimers();
+    expect(logPanel.search.count).toBe(1);
+
+    await logPanel.openFor({ namespace: "default", name: "web-1" });
+    expect(logPanel.search.query).toBe("");
+    expect(logPanel.search.count).toBe(0);
+
+    logPanel.active!.ring.append([
+      { pod: "web-1", namespace: "default", time: null, level: "info", message: "beta" },
+    ]);
+    vi.useFakeTimers();
+    logPanel.search.setQuery("beta");
+    vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+    vi.useRealTimers();
+    expect(logPanel.search.count).toBe(1);
   });
 });
