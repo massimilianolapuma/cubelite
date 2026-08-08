@@ -184,9 +184,14 @@ export class LogSession {
     this.following = !this.following;
     if (this.following) {
       this.markSeen();
-      // The stream ended while paused (not a previous-instance fetch):
-      // resuming follow should resume streaming, not sit on a dead session.
-      if (this.status === "ended" && !this.previous) void this.#start();
+      // Any sub-stream that ended while paused (not a previous-instance
+      // fetch) should resume streaming, not sit dead — even if other
+      // sub-streams kept the aggregate status "streaming" (merged mode).
+      if (!this.previous) {
+        for (const s of this.#streams) {
+          if (s.status === "ended") void s.start();
+        }
+      }
     }
   }
 

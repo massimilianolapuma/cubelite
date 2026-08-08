@@ -244,6 +244,24 @@ describe("merged all-containers mode", () => {
     await vi.waitFor(() => expect(streamPodLog).toHaveBeenCalledTimes(3));
   });
 
+  it("toggling follow back on restarts only the sub-stream that ended while paused", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    s.toggleFollow(); // pause
+    expect(s.following).toBe(false);
+
+    // worker's sub-stream ends while paused; envoy and init-migrate keep streaming.
+    listeners.get("pod-log-end:1")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1);
+
+    vi.mocked(streamPodLog).mockClear();
+    s.toggleFollow(); // resume
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(streamPodLog).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(streamPodLog).mock.lastCall?.[3]).toMatchObject({ container: "worker" });
+  });
+
   it("setPrevious is a no-op in merged mode", async () => {
     const s = new LogSession("default", "api-0", ALL_CONTAINERS);
     await s.open();

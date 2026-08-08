@@ -63,9 +63,12 @@ test("merged all-containers view interleaves color-tagged lines", async ({ page 
   await expect(page.getByText("hello from worker")).toBeVisible();
   await expect(page.getByText("hello from envoy")).toBeVisible();
 
-  // source column shows the container names
-  await expect(page.getByText("worker", { exact: true })).toBeVisible();
-  await expect(page.getByText("envoy", { exact: true })).toBeVisible();
+  // source column shows the container names (scoped to the log panel: the
+  // pod drawer's own Containers list now also lists "worker/envoy" since
+  // its fixture was aligned with get_pod_containers, see #297 finding 3)
+  const logPanel = page.getByLabel("Pod logs panel");
+  await expect(logPanel.getByText("worker", { exact: true })).toBeVisible();
+  await expect(logPanel.getByText("envoy", { exact: true })).toBeVisible();
 
   // previous-instance chip is gone in merged mode
   await expect(page.getByRole("button", { name: "prev" })).toHaveCount(0);
