@@ -59,13 +59,21 @@
 		}
 		const action = matchShortcut(event, isMac);
 		if (!action) return;
+		// log-panel/log-search are no-ops while the panel is closed — only
+		// swallow the keystroke (preventDefault) when it actually does something,
+		// so the shortcut falls through to the browser/OS otherwise.
+		if (action.type === 'log-panel' || action.type === 'log-search') {
+			if (!logPanel.open) return;
+			event.preventDefault();
+			if (action.type === 'log-panel') logPanel.toggleCollapsed();
+			else logPanel.focusSearch();
+			return;
+		}
 		event.preventDefault();
 		if (action.type === 'palette') {
 			app.paletteOpen = !app.paletteOpen;
 		} else if (action.type === 'preferences') {
 			app.preferencesOpen = true;
-		} else if (action.type === 'log-panel') {
-			if (logPanel.open) logPanel.toggleCollapsed();
 		} else {
 			const target = clusters.contexts[action.index];
 			if (target && target.name !== app.activeCluster) {

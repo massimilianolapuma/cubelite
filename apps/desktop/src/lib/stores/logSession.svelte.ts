@@ -1,7 +1,9 @@
 /**
  * One log-panel session: container choice, stream lifecycle, bounded ring
  * buffer with batched flush (FLUSH_MS pattern from logs.svelte.ts).
- * Reconnect-on-drop lands with `followWithReconnect` (see design addendum).
+ * Reconnect-on-drop: `#onStreamEnd` hands off to `#scheduleReconnect`, which
+ * backs off exponentially (1s doubling to a 30s cap) and calls `#start()`
+ * again, resuming from the last-seen line's timestamp.
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -197,14 +199,19 @@ export class LogSession {
 
   toggleFollow(): void {
     this.following = !this.following;
-    if (this.following) this.markSeen();
+    if (this.following) {
+      this.markSeen();
+      // The stream ended while paused (not a previous-instance fetch):
+      // resuming follow should resume streaming, not sit on a dead session.
+      if (this.status === "ended" && !this.previous) void this.#start();
+    }
   }
 
   markSeen(): void {
     this.seenCount = this.ring.totalAppended;
   }
 
-  /** Reconnect immediately instead of waiting out the backoff (Task 3). */
+  /** Reconnect immediately instead of waiting out the backoff. */
   retryNow(): void {
     if (this.#retryTimer === null) return;
     clearTimeout(this.#retryTimer);

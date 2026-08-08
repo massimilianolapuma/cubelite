@@ -462,6 +462,11 @@ export function stopLogs(streamId: string): Promise<void> {
   return invoke("stop_logs", { streamId });
 }
 
+/** Write exported log contents to ~/Downloads; resolves to the written path. */
+export function exportLog(filename: string, contents: string): Promise<string> {
+  return invoke<string>("export_log", { filename, contents });
+}
+
 /**
  * Start a single-container log stream for the log panel.
  *

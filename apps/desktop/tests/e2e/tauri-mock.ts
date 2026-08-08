@@ -5,6 +5,14 @@
  * backend.
  */
 
+declare global {
+  interface Window {
+    /** Test hook installed by the mock script: fires a Tauri event to every
+     * listener registered for `name` via `@tauri-apps/api/event`'s `listen`. */
+    __emitTauriEvent?: (name: string, payload: unknown) => void;
+  }
+}
+
 export const FIXTURES = {
   contexts: [
     { name: "prod-aks", cluster_server: "https://prod.azmk8s.io:443", namespace: "default", is_active: true },
@@ -59,6 +67,19 @@ export const FIXTURES = {
       creation_timestamp: "2026-07-01T09:00:00Z",
     },
   ],
+  podContainers: [
+    {
+      name: "worker",
+      init: false,
+      sidecar: false,
+      restarts: 0,
+      ready: true,
+      state: "running",
+      state_reason: null,
+      last_terminated_reason: null,
+      last_terminated_at: null,
+    },
+  ],
 };
 
 /** Serializable init script installing the IPC mock. */
@@ -100,10 +121,17 @@ export function tauriMockScript(): string {
       case "unwatch_resources": return null;
       case "stream_logs": return "l1";
       case "stop_logs": return null;
+      case "get_pod_containers": return fixtures.podContainers;
+      case "stream_pod_log": return "1";
+      case "export_log": return "/home/test/Downloads/" + args.filename;
       case "get_resource_yaml": return "kind: Pod\\nmetadata:\\n  name: " + args.name + "\\n";
       default: return null;
     }
   };
+
+  // event name -> Map<eventId, handlerCallbackId>, mirroring the registry
+  // Tauri's real event plugin keeps so listen/unlisten/emit round-trip.
+  const eventListeners = {};
 
   window.__TAURI_INTERNALS__ = {
     metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
@@ -115,9 +143,31 @@ export function tauriMockScript(): string {
     },
     async invoke(cmd, args) {
       if (cmd.startsWith("plugin:path|")) return "/home/test";
+      if (cmd === "plugin:event|listen") {
+        const eventId = callbackId++;
+        const handlers = eventListeners[args.event] ?? (eventListeners[args.event] = new Map());
+        handlers.set(eventId, args.handler);
+        return eventId;
+      }
+      if (cmd === "plugin:event|unlisten") {
+        eventListeners[args.event]?.delete(args.eventId);
+        return null;
+      }
       if (cmd.startsWith("plugin:event|")) return callbackId++;
       return responses(cmd, args ?? {});
     },
+  };
+
+  // Test hook: fire a Tauri event to every listener registered for the
+  // given event name via @tauri-apps/api/event's listen(), e.g.
+  // window.__emitTauriEvent("pod-log-line:1", { ... }).
+  window.__emitTauriEvent = (name, payload) => {
+    const handlers = eventListeners[name];
+    if (!handlers) return;
+    for (const [eventId, handlerId] of handlers) {
+      const callback = window["_" + handlerId];
+      callback?.({ event: name, id: eventId, payload });
+    }
   };
 })();
 `;

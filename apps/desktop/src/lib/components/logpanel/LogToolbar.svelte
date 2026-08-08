@@ -1,14 +1,20 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import type { LogSession } from '$lib/stores/logSession.svelte';
+	import { exportLog } from '$lib/tauri';
+	import { toasts } from '$lib/stores/toasts.svelte';
+	import { errorMessage } from '$lib/errors';
+	import type { KeyedLogLine } from '$lib/stores/logs.svelte';
 
 	let { session }: { session: LogSession } = $props();
 
 	let pickerOpen = $state(false);
 	let overflowOpen = $state(false);
+	let searchInput = $state<HTMLInputElement | null>(null);
 
 	const TAIL_OPTIONS = [100, 500, 1000, 5000] as const;
 
@@ -20,6 +26,62 @@
 		pickerOpen = false;
 		logPanel.rememberContainer(session.key, name);
 		void session.switchContainer(name);
+	}
+
+	// The panel keeps one `LogSearch` for its active session; re-run the
+	// match scan whenever the buffer grows so results follow the live tail.
+	// `recompute()` reads `search.query`/`search.cursor` internally, so the
+	// call is wrapped `untrack`ed — otherwise this effect would also fire on
+	// every keystroke/cursor move, defeating `setQuery`'s own debounce.
+	$effect(() => {
+		void session.ring.lines.length;
+		untrack(() => logPanel.search.recompute(session.ring.lines));
+	});
+
+	$effect(() => {
+		logPanel.registerSearchFocus(() => searchInput?.focus());
+		return () => logPanel.registerSearchFocus(null);
+	});
+
+	function exportFilename(full: boolean): string {
+		return `${session.pod}_${session.container ?? 'unknown'}${full ? '_full' : ''}.log`;
+	}
+
+	async function doExport(lines: KeyedLogLine[], full: boolean) {
+		overflowOpen = false;
+		const filename = exportFilename(full);
+		const contents = logPanel.serialize(lines);
+		try {
+			const path = await exportLog(filename, contents);
+			toasts.push(`Exported to ${path}`, 'ok');
+		} catch (e) {
+			toasts.push(errorMessage(e), 'err');
+		}
+	}
+
+	// Mirrors LogBody's rendered-set derivation: all lines, or only search
+	// matches when filter mode is on.
+	function exportVisible() {
+		const lines = logPanel.search.filterMode
+			? session.ring.lines.filter((l) => logPanel.search.matchSet.has(l.id))
+			: session.ring.lines;
+		void doExport(lines, false);
+	}
+
+	function exportFull() {
+		void doExport(session.ring.lines, true);
+	}
+
+	function onSearchKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			if (event.shiftKey) logPanel.search.prev();
+			else logPanel.search.next();
+			event.preventDefault();
+		} else if (event.key === 'Escape') {
+			event.stopPropagation();
+			if (logPanel.search.query) logPanel.search.clear();
+			else (event.currentTarget as HTMLInputElement).blur();
+		}
 	}
 </script>
 
@@ -82,6 +144,35 @@
 	{/if}
 
 	<span class="flex-1"></span>
+
+	<!-- search -->
+	<div class="flex items-center gap-1">
+		<input
+			bind:this={searchInput}
+			type="text"
+			placeholder="Search… (⌘F)"
+			value={logPanel.search.query}
+			oninput={(e) => logPanel.search.setQuery(e.currentTarget.value)}
+			onkeydown={onSearchKeydown}
+			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 text-[11.5px] text-text-primary placeholder:text-text-disabled"
+		/>
+		{#if logPanel.search.query}
+			<span class="type-caption text-text-tertiary">
+				{logPanel.search.count === 0
+					? '0 results'
+					: `${logPanel.search.cursor + 1}/${logPanel.search.count}`}
+			</span>
+			<button
+				type="button"
+				class="type-caption h-7 rounded-md px-2 {logPanel.search.filterMode
+					? 'bg-surface-sunken text-text-primary'
+					: 'text-text-tertiary'}"
+				onclick={() => (logPanel.search.filterMode = !logPanel.search.filterMode)}
+			>
+				filter
+			</button>
+		{/if}
+	</div>
 
 	<!-- tail size -->
 	<div class="flex overflow-hidden rounded-md border border-border-default">
@@ -151,6 +242,21 @@
 					}}
 				>
 					{logPanel.wrap ? '✓ ' : ''}Wrap lines
+				</button>
+				<div class="my-1 border-t border-border-default"></div>
+				<button
+					type="button"
+					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-sunken"
+					onclick={exportVisible}
+				>
+					Export visible…
+				</button>
+				<button
+					type="button"
+					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-sunken"
+					onclick={exportFull}
+				>
+					Export full buffer…
 				</button>
 				<div class="my-1 border-t border-border-default"></div>
 				<button
