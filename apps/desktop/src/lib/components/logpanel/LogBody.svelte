@@ -5,6 +5,7 @@
 	import LogLineRow from './LogLineRow.svelte';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import type { LogSession } from '$lib/stores/logSession.svelte';
+	import { identityColorFor } from '$lib/stores/identityColor';
 
 	let { session }: { session: LogSession } = $props();
 
@@ -175,6 +176,9 @@
 							wrap={logPanel.wrap}
 							search={logPanel.search.query
 								? { query: logPanel.search.query, active: line.id === logPanel.search.activeId }
+								: null}
+							source={session.merged && line.container
+								? { name: line.container, color: identityColorFor(session.containers, line.container) }
 								: null}
 						/>
 					</div>

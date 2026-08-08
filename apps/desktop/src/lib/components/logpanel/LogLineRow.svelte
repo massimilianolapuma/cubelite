@@ -6,12 +6,14 @@
 		line,
 		timestamps,
 		wrap,
-		search = null
+		search = null,
+		source = null
 	}: {
 		line: KeyedLogLine;
 		timestamps: boolean;
 		wrap: boolean;
 		search?: { query: string; active: boolean } | null;
+		source?: { name: string; color: string } | null;
 	} = $props();
 
 	const segments = $derived.by(() => {
@@ -57,6 +59,12 @@
 <div class="flex items-baseline gap-2.5 px-2.5 py-px" style={rowStyle(line.level)}>
 	{#if timestamps}
 		<span class="w-[94px] shrink-0 font-mono text-[10.5px] text-text-disabled">{clock(line.time)}</span>
+	{/if}
+	{#if source}
+		<span
+			class="w-[52px] shrink-0 truncate font-mono text-[9.5px] font-semibold"
+			style="color: {source.color};">{source.name}</span
+		>
 	{/if}
 	<span
 		class="w-[38px] shrink-0 font-mono text-[10px] font-semibold uppercase"
