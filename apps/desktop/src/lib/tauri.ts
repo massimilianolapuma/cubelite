@@ -296,6 +296,8 @@ export type LogLine = {
   time: string | null;
   level: LogLevel;
   message: string;
+  /** Frontend-only: source container, tagged by ContainerStream. Absent on aggregated-view lines. */
+  container?: string;
 };
 
 export type PodRef = {
