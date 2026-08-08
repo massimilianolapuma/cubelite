@@ -33,6 +33,7 @@ DerivedData/
 # Coverage
 coverage/
 lcov.info
+*.profraw
 
 # Tauri generated schemas (auto-generated)
 apps/desktop/src-tauri/gen/
