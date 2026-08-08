@@ -20,7 +20,7 @@ function storage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
 }
 
-function persisted<T>(
+export function persisted<T>(
   key: string,
   fallback: T,
   validate: (v: unknown) => v is T,

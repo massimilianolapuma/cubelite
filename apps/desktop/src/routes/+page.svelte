@@ -13,11 +13,13 @@
 	import Toaster from '$lib/components/ui/Toaster.svelte';
 	import UnreachableView from '$lib/components/views/UnreachableView.svelte';
 	import { viewRegistry } from '$lib/components/views';
+	import LogPanel from '$lib/components/logpanel/LogPanel.svelte';
 	import { matchShortcut } from '$lib/keyboard';
 	import { isMac } from '$lib/platform';
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
 	import { health } from '$lib/stores/health.svelte';
+	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 	import { settings } from '$lib/stores/settings.svelte';
 
@@ -62,6 +64,8 @@
 			app.paletteOpen = !app.paletteOpen;
 		} else if (action.type === 'preferences') {
 			app.preferencesOpen = true;
+		} else if (action.type === 'log-panel') {
+			if (logPanel.open) logPanel.toggleCollapsed();
 		} else {
 			const target = clusters.contexts[action.index];
 			if (target && target.name !== app.activeCluster) {
@@ -80,13 +84,16 @@
 		{#if app.view !== 'dashboard'}
 			<Sidebar />
 		{/if}
-		<main class="relative flex min-w-0 flex-1 flex-col overflow-y-auto">
-			{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
-				<UnreachableView />
-			{:else}
-				<Current {...entry.props ?? {}} />
-			{/if}
-		</main>
+		<div class="flex min-w-0 flex-1 flex-col">
+			<main class="relative flex min-w-0 flex-1 flex-col overflow-y-auto">
+				{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
+					<UnreachableView />
+				{:else}
+					<Current {...entry.props ?? {}} />
+				{/if}
+			</main>
+			<LogPanel />
+		</div>
 	</div>
 	<StatusBar />
 </div>
