@@ -791,8 +791,7 @@ pub fn sanitize_filename(name: &str) -> Option<String> {
 /// Write exported log contents into ~/Downloads; returns the written path.
 #[tauri::command]
 pub async fn export_log(filename: String, contents: String) -> Result<String, String> {
-    let sanitized = sanitize_filename(&filename)
-        .ok_or("Invalid export filename")?;
+    let sanitized = sanitize_filename(&filename).ok_or("Invalid export filename")?;
     let dir = dirs::download_dir().ok_or("No Downloads directory available")?;
     let path = dir.join(sanitized);
     tokio::fs::write(&path, contents)
@@ -807,14 +806,26 @@ mod export_tests {
 
     #[test]
     fn filename_shapes() {
-        assert_eq!(log_export_filename("api-0", "worker", false), "api-0_worker.log");
-        assert_eq!(log_export_filename("api-0", "worker", true), "api-0_worker_full.log");
+        assert_eq!(
+            log_export_filename("api-0", "worker", false),
+            "api-0_worker.log"
+        );
+        assert_eq!(
+            log_export_filename("api-0", "worker", true),
+            "api-0_worker_full.log"
+        );
     }
 
     #[test]
     fn sanitize_strips_separators() {
-        assert_eq!(sanitize_filename("../../etc/passwd"), Some("passwd".to_string()));
-        assert_eq!(sanitize_filename("api_worker.log"), Some("api_worker.log".to_string()));
+        assert_eq!(
+            sanitize_filename("../../etc/passwd"),
+            Some("passwd".to_string())
+        );
+        assert_eq!(
+            sanitize_filename("api_worker.log"),
+            Some("api_worker.log".to_string())
+        );
     }
 
     #[test]
@@ -830,12 +841,18 @@ mod export_tests {
         assert_eq!(sanitize_filename("/etc/passwd"), Some("passwd".to_string()));
         // On Unix, backslashes are literal filename chars, not separators
         #[cfg(unix)]
-        assert_eq!(sanitize_filename("\\etc\\passwd"), Some("\\etc\\passwd".to_string()));
+        assert_eq!(
+            sanitize_filename("\\etc\\passwd"),
+            Some("\\etc\\passwd".to_string())
+        );
         // On Windows, backslash is a path separator
         #[cfg(windows)]
         {
             assert_eq!(sanitize_filename("foo\\"), None);
-            assert_eq!(sanitize_filename("\\etc\\passwd"), Some("passwd".to_string()));
+            assert_eq!(
+                sanitize_filename("\\etc\\passwd"),
+                Some("passwd".to_string())
+            );
         }
     }
 }
