@@ -29,6 +29,7 @@ export class ContainerStream {
 
   #onLines: (lines: LogLine[]) => void;
   #params: () => StreamParams;
+  #onEndCallback: () => void;
   #streamId: string | null = null;
   #unlisteners: UnlistenFn[] = [];
   #lastTime: string | undefined;
@@ -42,12 +43,15 @@ export class ContainerStream {
     container: string | null,
     onLines: (lines: LogLine[]) => void,
     params: () => StreamParams,
+    /** Called synchronously right before the status transition on stream end (e.g. to force a final flush). */
+    onEnd: () => void = () => {},
   ) {
     this.namespace = namespace;
     this.pod = pod;
     this.container = container;
     this.#onLines = onLines;
     this.#params = params;
+    this.#onEndCallback = onEnd;
   }
 
   async start(): Promise<void> {
@@ -98,6 +102,7 @@ export class ContainerStream {
   }
 
   #onEnd(): void {
+    this.#onEndCallback();
     if (!this.#params().autoReconnect) {
       this.status = "ended";
       return;

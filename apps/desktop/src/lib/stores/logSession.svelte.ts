@@ -34,6 +34,8 @@ export class LogSession {
   #openError = $state<string | null>(null);
   #pending: LogLine[] = [];
   #flushTimer: ReturnType<typeof setInterval> | null = null;
+  /** Bumped on every (re)start/close so a superseded #start() can't clobber a newer one's streams. */
+  #generation = 0;
 
   /** Aggregate over sub-streams (single mode: exactly one). Order matters. */
   status = $derived.by((): SessionStatus => {
@@ -88,12 +90,27 @@ export class LogSession {
   });
 
   async #start(): Promise<void> {
+    const generation = ++this.#generation;
     this.#openError = null;
     await this.#stopStreams();
-    this.#streams = [
-      new ContainerStream(this.namespace, this.pod, this.container, this.#receive, this.#streamParams),
+    if (generation !== this.#generation) return;
+    const streams = [
+      new ContainerStream(
+        this.namespace,
+        this.pod,
+        this.container,
+        this.#receive,
+        this.#streamParams,
+        () => this.#flush(),
+      ),
     ];
-    await Promise.all(this.#streams.map((s) => s.start()));
+    this.#streams = streams;
+    await Promise.all(streams.map((s) => s.start()));
+    if (generation !== this.#generation) {
+      // Superseded mid-flight by a newer #start()/close(): stop what we just created.
+      if (this.#streams === streams) this.#streams = [];
+      await Promise.all(streams.map((s) => s.stop()));
+    }
   }
 
   #scheduleFlush(): void {
@@ -181,6 +198,7 @@ export class LogSession {
   }
 
   async #stopStreams(): Promise<void> {
+    this.#flush();
     this.#stopFlushTimer();
     const streams = this.#streams;
     this.#streams = [];
@@ -188,6 +206,7 @@ export class LogSession {
   }
 
   async close(): Promise<void> {
+    this.#generation++;
     await this.#stopStreams();
   }
 }

@@ -68,4 +68,23 @@ describe("ContainerStream", () => {
     emit("pod-log-end:1", null);
     expect(s.status).toBe("ended");
   });
+
+  it("invokes onEnd synchronously before the status transition on stream end", async () => {
+    let statusAtOnEnd: string | undefined;
+    const getStatus = (): string => s.status;
+    const s = new ContainerStream(
+      "ns",
+      "pod",
+      "worker",
+      () => {},
+      () => ({ previous: true, tailLines: 500, autoReconnect: false }),
+      () => {
+        statusAtOnEnd = getStatus();
+      },
+    );
+    await s.start();
+    emit("pod-log-end:1", null);
+    expect(statusAtOnEnd).toBe("streaming");
+    expect(s.status).toBe("ended");
+  });
 });
