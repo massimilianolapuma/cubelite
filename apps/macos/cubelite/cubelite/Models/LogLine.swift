@@ -7,13 +7,15 @@ struct LogLine: Identifiable, Equatable, Sendable {
     let time: String?
     let level: Level
     let message: String
+    /// Source container, set in merged "all containers" mode; nil otherwise.
+    let container: String?
 
     enum Level: Equatable, Sendable {
         case debug, info, warn, error
     }
 
     /// Splits the kubelet RFC 3339 prefix and detects the severity.
-    static func parse(_ raw: String, id: Int) -> LogLine {
+    static func parse(_ raw: String, id: Int, container: String? = nil) -> LogLine {
         var time: String?
         var message = raw
         if let space = raw.firstIndex(of: " "),
@@ -30,7 +32,7 @@ struct LogLine: Identifiable, Equatable, Sendable {
             : upper.contains("WARN")
                 ? .warn
                 : upper.contains("DEBUG") || upper.contains("TRACE") ? .debug : .info
-        return LogLine(id: id, time: time, level: level, message: message)
+        return LogLine(id: id, time: time, level: level, message: message, container: container)
     }
 }
 

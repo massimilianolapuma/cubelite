@@ -33,19 +33,22 @@ final class LogSession {
         return buffer.totalAppended - pausedAtCount
     }
 
-    /// Consecutive failed reconnect attempts; 0 while the stream is healthy.
-    private(set) var reconnectAttempt = 0
-    /// Backoff of the pending retry, for the banner countdown.
-    private(set) var nextRetrySeconds = 0
-    var isReconnecting: Bool { reconnectAttempt > 0 }
+    /// Consecutive failed attempts of the worst-off sub-stream (banner text).
+    var reconnectAttempt: Int { streams.map(\.reconnectAttempt).max() ?? 0 }
+    /// Soonest pending retry among backing-off sub-streams (banner countdown).
+    var nextRetrySeconds: Int {
+        streams.filter(\.isInBackoff).map(\.nextRetrySeconds).min() ?? 0
+    }
+    /// Reconnecting = every sub-stream is down (single mode: the one stream).
+    var isReconnecting: Bool { !streams.isEmpty && streams.allSatisfy(\.isInBackoff) }
 
     /// Skips the current backoff sleep and retries immediately.
     func retryNow() {
-        retryNowRequested = true
+        for stream in streams { stream.retryNow() }
     }
 
     /// Test hook: routes through the private `append` used by the stream.
-    func simulateAppendForTesting(_ raw: String) { append(raw) }
+    func simulateAppendForTesting(_ raw: String) { append(raw, from: nil) }
 
     private let streamer: any PodLogStreaming
     private let defaults: UserDefaults
@@ -54,10 +57,9 @@ final class LogSession {
     private let backoffBase: Double
     private var streamTask: Task<Void, Never>?
     private var nextLineID = 0
-    /// Full RFC 3339 prefix of the last received line, resent as
-    /// `sinceTime` on reconnect so history isn't duplicated.
-    private var lastRawTimestamp: String?
-    private var retryNowRequested = false
+    /// Per-container follow loops; length 1 outside merged "all containers"
+    /// mode (a future task grows this to N).
+    private var streams: [ContainerLogStream] = []
 
     /// UserDefaults key remembering the last-picked container for this pod.
     private var containerMemoryKey: String { "logPanel.container.\(pod.namespace)/\(pod.name)" }
@@ -93,6 +95,8 @@ final class LogSession {
     }
 
     func stop() {
+        streams.forEach { $0.stop() }
+        streams = []
         streamTask?.cancel()
         streamTask = nil
     }
@@ -134,8 +138,6 @@ final class LogSession {
         buffer.removeAll()
         hasCleared = false
         streamError = nil
-        reconnectAttempt = 0
-        lastRawTimestamp = nil
         search.recompute(over: [])
         streamTask = Task { [weak self] in
             await self?.stream(container: self?.selectedContainer)
@@ -148,61 +150,32 @@ final class LogSession {
                 let lines = try await streamer.fetchPreviousPodLogs(
                     namespace: pod.namespace, pod: pod.name, container: container,
                     tailLines: tailLines, inContext: context)
-                for raw in lines { append(raw) }
+                for raw in lines { append(raw, from: container) }
             } catch is CancellationError {
             } catch {
                 streamError = error.localizedDescription
             }
             return
         }
-        await followWithReconnect(container: container)
+        startStreams(containers: [container])
     }
 
-    /// Live follow loop: reopens the stream with exponential backoff when
-    /// the server drops it, resuming from the last seen timestamp.
-    private func followWithReconnect(container: String?) async {
-        while !Task.isCancelled {
-            do {
-                let stream = try await streamer.streamPodLogs(
-                    namespace: pod.namespace, pod: pod.name, container: container,
-                    tailLines: tailLines,
-                    sinceTime: lastRawTimestamp, inContext: context)
-                for try await raw in stream {
-                    reconnectAttempt = 0
-                    append(raw)
-                }
-                // Stream ended without error: server closed it — reconnect.
-            } catch is CancellationError {
-                return
-            } catch {
-                // Drop — fall through to backoff.
-            }
-            if Task.isCancelled { return }
-            reconnectAttempt += 1
-            let delay = min(30, backoffBase * pow(2, Double(reconnectAttempt - 1)))
-            nextRetrySeconds = max(1, Int(delay.rounded()))
-            await sleepInterruptibly(seconds: delay)
+    /// Starts one `ContainerLogStream` per target container and fans its
+    /// lines into `append`. Single-element in this task; merged "all
+    /// containers" mode grows the target list.
+    private func startStreams(containers targets: [String?]) {
+        streams = targets.map { name in
+            ContainerLogStream(
+                pod: pod, context: context, container: name,
+                streamer: streamer, backoffBase: backoffBase,
+                tailLines: { [weak self] in self?.tailLines ?? 500 },
+                onLine: { [weak self] raw, container in self?.append(raw, from: container) })
         }
+        streams.forEach { $0.start() }
     }
 
-    /// Sleeps in 50ms slices so `retryNow()` (and cancellation) cut the
-    /// backoff short.
-    private func sleepInterruptibly(seconds: Double) async {
-        retryNowRequested = false
-        let deadline = ContinuousClock.now.advanced(by: .seconds(seconds))
-        while ContinuousClock.now < deadline {
-            if Task.isCancelled || retryNowRequested { return }
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
-    }
-
-    private func append(_ raw: String) {
-        if let space = raw.firstIndex(of: " "), raw.hasPrefix("2"),
-            raw[raw.startIndex..<space].contains("T")
-        {
-            lastRawTimestamp = String(raw[raw.startIndex..<space])
-        }
-        buffer.append(LogLine.parse(raw, id: nextLineID))
+    private func append(_ raw: String, from container: String?) {
+        buffer.append(LogLine.parse(raw, id: nextLineID, container: container))
         nextLineID += 1
         if !buffer.lines.isEmpty { hasCleared = false }
     }
