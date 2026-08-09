@@ -72,7 +72,11 @@ struct LogBodyView: View {
                             line: line, showTimestamp: store.showTimestamps,
                             wrap: store.wrapLines,
                             searchQuery: session.search.isActive ? session.search.query : nil,
-                            isActiveMatch: line.id == session.search.activeLineID)
+                            isActiveMatch: line.id == session.search.activeLineID,
+                            sourceName: session.isMerged ? line.container : nil,
+                            sourceColor: (session.isMerged ? line.container : nil).map {
+                                ContainerIdentity.color(for: $0, in: session.containers)
+                            })
                     }
                 }
                 .padding(.vertical, 6)
@@ -141,6 +145,8 @@ struct LogLineRow: View {
     let wrap: Bool
     var searchQuery: String?
     var isActiveMatch = false
+    var sourceName: String?
+    var sourceColor: Color?
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -149,6 +155,14 @@ struct LogLineRow: View {
                     .font(.system(size: 10.5, design: .monospaced))
                     .foregroundStyle(DesignTokens.textTertiary)
                     .frame(width: 94, alignment: .leading)
+            }
+            if let sourceName, let sourceColor {
+                Text(sourceName)
+                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(sourceColor)
+                    .frame(width: 52, alignment: .leading)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             Text(levelLabel)
                 .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
