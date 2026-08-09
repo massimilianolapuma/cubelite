@@ -182,6 +182,37 @@ describe("updater.downloadAndInstall", () => {
   });
 });
 
+describe("updater.installAndRestart", () => {
+  it("downloads then relaunches when starting from available", async () => {
+    const downloadAndInstall = vi.fn(async () => {});
+    mockCheck.mockResolvedValue({ version: "1.2.0", downloadAndInstall });
+    await updater.checkForUpdates(true);
+
+    await updater.installAndRestart();
+
+    expect(downloadAndInstall).toHaveBeenCalledTimes(1);
+    expect(updater.status).toBe("ready");
+    expect(mockRelaunch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not relaunch when dismissed mid-download", async () => {
+    const { promise, resolve } = deferred<void>();
+    const downloadAndInstall = vi.fn(() => promise);
+    mockCheck.mockResolvedValue({ version: "1.2.0", downloadAndInstall });
+    await updater.checkForUpdates(true);
+
+    const run = updater.installAndRestart();
+    expect(updater.status).toBe("downloading");
+
+    updater.dismiss();
+    resolve();
+    await run;
+
+    expect(updater.status).toBe("idle");
+    expect(mockRelaunch).not.toHaveBeenCalled();
+  });
+});
+
 describe("updater.restartNow", () => {
   it("calls relaunch", async () => {
     await updater.restartNow();

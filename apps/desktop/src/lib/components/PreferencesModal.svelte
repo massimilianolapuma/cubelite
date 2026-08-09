@@ -19,15 +19,6 @@
 		await updater.checkForUpdates(false);
 	}
 
-	async function installUpdate() {
-		if (updater.status !== 'ready') {
-			await updater.downloadAndInstall();
-		}
-		if (updater.status === 'ready') {
-			await updater.restartNow();
-		}
-	}
-
 	const themeSegments: { value: Theme; label: string }[] = [
 		{ value: 'light', label: 'Light' },
 		{ value: 'dark', label: 'Dark' },
@@ -121,7 +112,7 @@
 					type="button"
 					class="focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110"
 					disabled={updater.status === 'downloading'}
-					onclick={installUpdate}
+					onclick={() => updater.installAndRestart()}
 				>
 					{updater.status === 'downloading' ? 'Downloading…' : 'Install update'}
 				</button>

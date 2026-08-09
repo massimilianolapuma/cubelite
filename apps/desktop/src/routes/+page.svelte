@@ -83,15 +83,6 @@
 			}
 		}
 	}
-
-	async function restartToUpdate() {
-		if (updater.status !== 'ready') {
-			await updater.downloadAndInstall();
-		}
-		if (updater.status === 'ready') {
-			await updater.restartNow();
-		}
-	}
 </script>
 
 <svelte:window onkeydown={onKeydown} />
@@ -111,7 +102,7 @@
 				class="type-caption underline"
 				style="color: var(--color-status-ok);"
 				disabled={updater.status === 'downloading'}
-				onclick={restartToUpdate}
+				onclick={() => updater.installAndRestart()}
 			>
 				{updater.status === 'downloading' ? 'Downloading…' : 'Restart to update'}
 			</button>

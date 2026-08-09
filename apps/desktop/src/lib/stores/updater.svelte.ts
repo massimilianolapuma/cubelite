@@ -83,6 +83,22 @@ class UpdaterStore {
     await relaunch();
   }
 
+  /**
+   * Download (if not already downloaded) and relaunch into the installed
+   * update. The post-await status re-check before relaunching is the
+   * generation-guard safety net: a dismiss() mid-download flips status back
+   * to "idle" (see #generation above), so this must not relaunch on stale
+   * state.
+   */
+  async installAndRestart(): Promise<void> {
+    if (this.status !== "ready") {
+      await this.downloadAndInstall();
+    }
+    if (this.status === "ready") {
+      await this.restartNow();
+    }
+  }
+
   /** "Later" — dismiss the banner/prompt without installing. */
   dismiss(): void {
     this.#generation++;
