@@ -62,6 +62,7 @@ struct PodExecView: View {
             Button("Done", action: onClose)
                 .keyboardShortcut(.cancelAction)
                 .controlSize(.small)
+                .accessibilityIdentifier("podexec.done")
         }
         .padding(12)
     }
@@ -100,10 +101,13 @@ struct PodExecView: View {
             Text("$")
                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(DesignTokens.accentDefault)
+                .accessibilityHidden(true)
             TextField("command", text: $command)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, design: .monospaced))
                 .focused($inputFocused)
+                .accessibilityLabel("Shell command")
+                .accessibilityIdentifier("podexec.command")
                 .onSubmit { sendCommand() }
                 .disabled(sessionError != nil)
         }

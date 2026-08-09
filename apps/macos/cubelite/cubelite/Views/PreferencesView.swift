@@ -129,6 +129,7 @@ private struct AdvancedPreferencesTab: View {
                             credentialsReset = true
                         }
                     }
+                    .accessibilityIdentifier("preferences.reset-credentials")
                     Text(
                         credentialsReset
                             ? "Keychain entries removed — they will be re-imported on next use."
@@ -177,6 +178,7 @@ private struct KubeconfigPathsSection: View {
             KubeconfigPathRow(path: path) { paths.remove(at: index) }
         }
         Button("Add File…") { addFiles() }
+            .accessibilityIdentifier("preferences.add-kubeconfig-file")
     }
 
     private func addFiles() {
@@ -218,6 +220,7 @@ private struct KubeconfigPathRow: View {
             )
             .foregroundStyle(fileExists ? .green : .orange)
             .font(.caption)
+            .accessibilityLabel(fileExists ? "File found" : "File missing")
             Text(path)
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(1)
@@ -229,6 +232,7 @@ private struct KubeconfigPathRow: View {
                 Image(systemName: "minus.circle")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Remove \(path)")
         }
     }
 }

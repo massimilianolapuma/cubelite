@@ -60,14 +60,19 @@ struct AggregatedLogsView: View {
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 11, design: .monospaced))
                 .frame(width: 160)
+                .accessibilityLabel("Label selector")
+                .accessibilityIdentifier("aggregatedlogs.label-selector")
             levelChips
             TextField("Filter…", text: Bindable(store).textFilter)
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 11))
                 .frame(width: 140)
+                .accessibilityLabel("Filter log messages")
+                .accessibilityIdentifier("aggregatedlogs.text-filter")
             followButton
             Button("Clear") { store.clear() }
                 .controlSize(.small)
+                .accessibilityIdentifier("aggregatedlogs.clear")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
@@ -96,6 +101,9 @@ struct AggregatedLogsView: View {
                     .background(active ? DesignTokens.surfaceRaised : .clear)
                     .foregroundStyle(
                         active ? DesignTokens.textPrimary : DesignTokens.textTertiary)
+                    .accessibilityLabel("Filter level \(option.label)")
+                    .accessibilityValue(active ? "Selected" : "")
+                    .accessibilityIdentifier("aggregatedlogs.level-\(option.label.lowercased())")
             }
         }
         .background(
@@ -110,6 +118,7 @@ struct AggregatedLogsView: View {
             HStack(spacing: 4) {
                 Image(systemName: store.isFollowing ? "play.fill" : "pause.fill")
                     .font(.system(size: 8))
+                    .accessibilityHidden(true)
                 Text(store.isFollowing ? "Following" : "Paused")
                 if !store.isFollowing, store.newSincePause > 0 {
                     Text(verbatim: "+\(store.newSincePause)")
@@ -120,6 +129,14 @@ struct AggregatedLogsView: View {
         }
         .controlSize(.small)
         .tint(store.isFollowing ? DesignTokens.statusOk : DesignTokens.statusWarn)
+        .accessibilityLabel("Follow log stream")
+        .accessibilityValue(followAccessibilityValue)
+        .accessibilityIdentifier("aggregatedlogs.follow")
+    }
+
+    private var followAccessibilityValue: String {
+        guard !store.isFollowing else { return "Following" }
+        return store.newSincePause > 0 ? "Paused, \(store.newSincePause) new lines" : "Paused"
     }
 
     // MARK: - Log List
@@ -175,6 +192,7 @@ struct AggregatedLogsView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 1)
+        .accessibilityElement(children: .combine)
     }
 
     private func levelLabel(_ level: LogLine.Level) -> String {

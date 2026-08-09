@@ -34,6 +34,8 @@ struct LogToolbar: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, weight: .medium))
                 .focused($searchFocused)
+                .accessibilityLabel("Search logs")
+                .accessibilityIdentifier("logpanel.search")
                 .onSubmit {
                     if NSEvent.modifierFlags.contains(.shift) {
                         session.search.previous()
@@ -59,6 +61,7 @@ struct LogToolbar: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Previous match")
+                .accessibilityIdentifier("logpanel.search-previous")
                 Button {
                     session.search.next()
                     session.isFollowing = false
@@ -67,6 +70,7 @@ struct LogToolbar: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Next match")
+                .accessibilityIdentifier("logpanel.search-next")
                 Button {
                     session.search.filterMode.toggle()
                 } label: {
@@ -86,6 +90,8 @@ struct LogToolbar: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Filter to matching lines")
+                .accessibilityValue(session.search.filterMode ? "On" : "Off")
+                .accessibilityIdentifier("logpanel.filter")
             } else {
                 Text("⌘F")
                     .font(.system(size: 9.5, design: .monospaced))
@@ -159,12 +165,14 @@ struct LogToolbar: View {
                             ? DesignTokens.clusterBlue : stateColor(selectedContainerInfo)
                     )
                     .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
                 Text(session.isMerged ? "all containers" : (session.selectedContainer ?? "—"))
                     .font(.system(size: 11.5, weight: .medium, design: .monospaced))
                     .foregroundStyle(DesignTokens.textDataBright)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8))
                     .foregroundStyle(DesignTokens.textTertiary)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 8)
             .frame(height: 26)
@@ -176,6 +184,8 @@ struct LogToolbar: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .accessibilityLabel("Select container")
+        .accessibilityValue(session.isMerged ? "All containers" : (session.selectedContainer ?? "None"))
+        .accessibilityIdentifier("logpanel.container")
 
     }
 
@@ -233,6 +243,9 @@ struct LogToolbar: View {
         }
         .buttonStyle(.plain)
         .help("Show logs from the previous container instance")
+        .accessibilityLabel("Show previous container logs")
+        .accessibilityValue(session.showingPrevious ? "On" : "Off")
+        .accessibilityIdentifier("logpanel.previous")
     }
 
     private var tailMenu: some View {
@@ -250,6 +263,7 @@ struct LogToolbar: View {
             }
             Divider()
             Button("load 500 earlier") { session.loadEarlier() }
+                .accessibilityIdentifier("logpanel.load-earlier")
         } label: {
             HStack(spacing: 4) {
                 Text("tail")
@@ -261,6 +275,7 @@ struct LogToolbar: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8))
                     .foregroundStyle(DesignTokens.textTertiary)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 8)
             .frame(height: 26)
@@ -268,6 +283,8 @@ struct LogToolbar: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .accessibilityLabel("Tail size")
+        .accessibilityValue("\(session.tailLines) lines")
+        .accessibilityIdentifier("logpanel.tail")
     }
 
     private var followButton: some View {
@@ -278,6 +295,7 @@ struct LogToolbar: View {
                 Circle()
                     .fill(session.isFollowing ? DesignTokens.statusOk : DesignTokens.textTertiary)
                     .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
                 Text(session.isFollowing ? "Following" : "Paused")
                     .font(.system(size: 11, weight: .medium))
             }
@@ -286,17 +304,25 @@ struct LogToolbar: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
+        .accessibilityLabel("Follow log stream")
+        .accessibilityValue(session.isFollowing ? "Following" : "Paused")
+        .accessibilityIdentifier("logpanel.follow")
     }
 
     private var overflowMenu: some View {
         Menu {
             Toggle("Timestamps", isOn: Bindable(store).showTimestamps)
+                .accessibilityIdentifier("logpanel.timestamps")
             Toggle("Wrap lines", isOn: Bindable(store).wrapLines)
+                .accessibilityIdentifier("logpanel.wrap")
             Divider()
             Button("Export visible…") { export(full: false) }
+                .accessibilityIdentifier("logpanel.export-visible")
             Button("Export full buffer…") { export(full: true) }
+                .accessibilityIdentifier("logpanel.export-full")
             Divider()
             Button("Clear buffer") { session.clear() }
+                .accessibilityIdentifier("logpanel.clear")
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 11))
@@ -306,6 +332,7 @@ struct LogToolbar: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .accessibilityLabel("More log options")
+        .accessibilityIdentifier("logpanel.overflow")
     }
 
     /// Writes the visible (filtered) or full buffer to ~/Downloads and

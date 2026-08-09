@@ -35,6 +35,7 @@ struct ErrorBannerView: View {
     private var bannerIcon: some View {
         Image(systemName: "exclamationmark.circle.fill")
             .foregroundStyle(.red)
+            .accessibilityHidden(true)
     }
 
     private var bannerMessage: some View {
@@ -48,6 +49,8 @@ struct ErrorBannerView: View {
         Button("View Logs →", action: onViewLogs)
             .buttonStyle(.borderless)
             .foregroundStyle(.tint)
+            .accessibilityLabel("View logs")
+            .accessibilityIdentifier("errorbanner.view-logs")
     }
 }
 
