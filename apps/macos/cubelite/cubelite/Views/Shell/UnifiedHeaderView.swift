@@ -81,7 +81,7 @@ struct UnifiedHeaderView: View {
         // Inset for the macOS traffic lights (hidden-title-bar window).
         .padding(.leading, 78)
         .padding(.trailing, 12)
-        .frame(height: 42)
+        .frame(minHeight: 42)
         .background(DesignTokens.surfaceSurface)
         .overlay(alignment: .bottom) {
             Rectangle().fill(DesignTokens.borderDefault).frame(height: 1)
@@ -128,7 +128,7 @@ struct UnifiedHeaderView: View {
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 10)
-            .frame(height: 28)
+            .frame(minHeight: 28)
             .background(
                 DesignTokens.surfaceRaised,
                 in: RoundedRectangle(cornerRadius: DesignTokens.radiusMd))

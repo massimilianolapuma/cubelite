@@ -343,6 +343,12 @@ is a manual pass on the PR build:
      sub-controls are all `minHeight`, not a fixed `height`, specifically
      so they don't clip or overlap the row below at large text sizes; the
      log body area (user-resizable) shrinks accordingly to make room.
+   - The same **`minHeight`, not fixed `height`** treatment applies to the
+     app's other shell chrome rows: the unified header bar
+     (`UnifiedHeaderView.swift`) and its namespace-menu label, the status
+     bar (`StatusBarView.swift`), and the command palette's search row
+     (`CommandPaletteView.swift`) — all grow vertically to fit scaled
+     text rather than clipping.
    - No text clips to unreadable or overlaps a neighboring element badly;
      **horizontal** truncation remains the accepted artifact at the
      largest size — some table columns, fixed-width chrome elements (e.g.
@@ -350,6 +356,12 @@ is a manual pass on the PR build:
      overflow-menu icon's fixed 26pt width may truncate/clip
      horizontally; this is expected and unchanged from the design's
      layout guard.
+   - **Rail icon badges** (`ClusterRailView.swift`: the house and
+     gearshape SF Symbols, plus the per-cluster initials avatars) sit in
+     fixed 38×38 circles — the glyph itself scales via `scaledFont`/
+     `@ScaledMetric` but the containing circle does not, so at extreme
+     text sizes the glyph may clip against the circle's edge; this is a
+     contained, accepted artifact, not a regression.
    - The **log grid stays visually unchanged**: timestamp/source/severity/
      message columns keep their original fixed size and alignment, as do
      the search match-count and tail-count readouts and the tab strip's

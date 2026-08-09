@@ -33,7 +33,7 @@ struct StatusBarView: View {
             }
         }
         .padding(.horizontal, 12)
-        .frame(height: 27)
+        .frame(minHeight: 27)
         .background(DesignTokens.surfacePanel)
         .overlay(alignment: .top) {
             Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)

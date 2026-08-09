@@ -97,7 +97,7 @@ struct CommandPaletteView: View {
                             in: RoundedRectangle(cornerRadius: DesignTokens.radiusSm))
                 }
                 .padding(.horizontal, 14)
-                .frame(height: 44)
+                .frame(minHeight: 44)
 
                 Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)
 
