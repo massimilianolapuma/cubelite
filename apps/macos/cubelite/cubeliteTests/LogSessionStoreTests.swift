@@ -26,10 +26,18 @@ final class MockLogStreamer: PodLogStreaming, @unchecked Sendable {
     /// (permanent drop), independent of `failFirstNStreams`. Used by
     /// merged-mode tests that need one producer down while others stay up.
     var failStreamsForContainers: Set<String> = []
+    /// Per-call override of the lines returned, keyed by 1-based call
+    /// number; falls back to `liveLines`/`liveLinesByContainer` for calls
+    /// absent here. Used by reconnect tests that need a later call to
+    /// return genuinely new content rather than replaying the same lines
+    /// (which — correctly — a reconnecting stream now treats as a
+    /// duplicate and ignores).
+    var linesForCall: [Int: [String]] = [:]
 
     private var recordedStreamCalls: [(container: String?, tailLines: Int, sinceTime: String?)] =
         []
     private var recordedPreviousCalls: [(container: String?, tailLines: Int)] = []
+    private var recordedFetchContainersCallCount = 0
 
     /// Synchronous critical section — callable from async contexts because
     /// the lock never spans a suspension point.
@@ -47,15 +55,22 @@ final class MockLogStreamer: PodLogStreaming, @unchecked Sendable {
         withLock { recordedPreviousCalls }
     }
 
+    var fetchContainersCallCount: Int {
+        withLock { recordedFetchContainersCallCount }
+    }
+
     func streamPodLogs(
         namespace: String, pod: String, container: String?, tailLines: Int,
         sinceTime: String?, inContext contextName: String?
     ) async throws -> AsyncThrowingStream<String, Error> {
         let (lines, shouldDrop) = withLock {
             recordedStreamCalls.append((container, tailLines, sinceTime))
-            let containerLines = container.flatMap { liveLinesByContainer[$0] } ?? liveLines
+            let callNumber = recordedStreamCalls.count
+            let containerLines =
+                linesForCall[callNumber] ?? (container.flatMap { liveLinesByContainer[$0] }
+                    ?? liveLines)
             let isContainerDrop = container.map { failStreamsForContainers.contains($0) } ?? false
-            return (containerLines, isContainerDrop || recordedStreamCalls.count <= failFirstNStreams)
+            return (containerLines, isContainerDrop || callNumber <= failFirstNStreams)
         }
         return AsyncThrowingStream { continuation in
             for line in lines { continuation.yield(line) }
@@ -77,7 +92,8 @@ final class MockLogStreamer: PodLogStreaming, @unchecked Sendable {
     func fetchPodContainers(
         namespace: String, pod: String, inContext contextName: String?
     ) async throws -> [ContainerInfo] {
-        containers
+        withLock { recordedFetchContainersCallCount += 1 }
+        return containers
     }
 }
 
@@ -266,13 +282,17 @@ final class LogSessionStoreTests: XCTestCase {
 
     func testStreamDrop_entersReconnectingAndRecovers() async throws {
         streamer.containers = [makeContainer("worker")]
-        streamer.liveLines = ["2026-07-15T10:00:00Z hello"]
+        // First call drops with nothing yielded; second call (the
+        // reconnect) yields a genuinely new line rather than replaying the
+        // first call's content — a replayed line is now correctly treated
+        // as a duplicate and does not reset the attempt counter (finding 1).
+        streamer.linesForCall = [2: ["2026-07-15T10:00:00Z hello"]]
         streamer.failFirstNStreams = 1
         store = LogSessionStore(streamer: streamer, defaults: defaults, backoffBase: 0.02)
         store.open(pod: makePod(), context: nil)
         try await waitUntil { self.streamer.streamCalls.count >= 2 }
         let session = try XCTUnwrap(store.activeSession)
-        // Second stream yields a line → the attempt counter resets.
+        // Second stream yields a new line → the attempt counter resets.
         try await waitUntil { session.reconnectAttempt == 0 }
         XCTAssertNil(session.streamError)
     }
@@ -428,6 +448,33 @@ final class LogSessionStoreTests: XCTestCase {
         store.open(pod: makePod(), context: nil)
         try await waitUntil { self.store.activeSession?.selectedContainer != nil }
         XCTAssertEqual(store.activeSession?.isMerged, true)
+    }
+
+    /// "all containers" clicked while the initial `fetchPodContainers` is
+    /// still in flight used to dead-end the session: `switchContainer`
+    /// cancels that fetch, and merged mode restarted with `containers ==
+    /// []` produced zero streams and a stuck picker. `open` and
+    /// `switchContainer` run synchronously with no `await` between them,
+    /// so the initial fetch's `Task` is guaranteed not to have started
+    /// running yet — deterministically reproducing "still in flight".
+    ///
+    /// Depending on scheduler interleaving, the original fetch may finish
+    /// before the merged restart notices `containers` is still empty (one
+    /// fetch total, restart streams directly) or after (two fetches). Both
+    /// are correct outcomes of the fix — the invariant under test is that
+    /// the session always recovers with streams for every container and no
+    /// stuck error, not a specific fetch count.
+    func testMergedSwitchBeforeInitialFetchCompletes_reFetchesAndSpawnsStreams() async throws {
+        streamer.containers = [makeContainer("worker"), makeContainer("envoy")]
+        store.open(pod: makePod(), context: nil)
+        store.activeSession?.switchContainer(to: LogSession.allContainers)
+        try await waitUntil { self.streamer.streamCalls.count == 2 }
+        let session = try XCTUnwrap(store.activeSession)
+        XCTAssertTrue(session.isMerged)
+        XCTAssertNil(session.streamError)
+        XCTAssertEqual(Set(streamer.streamCalls.compactMap(\.container)), Set(["worker", "envoy"]))
+        XCTAssertGreaterThanOrEqual(streamer.fetchContainersCallCount, 1)
+        XCTAssertEqual(session.containers.map(\.name), ["worker", "envoy"])
     }
 
     /// Populates the buffer directly rather than through 3 concurrent mock

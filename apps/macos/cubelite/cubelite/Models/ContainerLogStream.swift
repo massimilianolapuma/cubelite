@@ -68,6 +68,19 @@ final class ContainerLogStream {
                     tailLines: tailLines(),
                     sinceTime: lastRawTimestamp, inContext: context)
                 for try await raw in stream {
+                    // `sinceTime` is inclusive: a reconnect re-receives the
+                    // last line we already saw (most visible on a TERMINATED
+                    // container, where kubelet closes the follow stream
+                    // right after replaying it). Skip anything at or before
+                    // the last seen timestamp so it isn't appended twice,
+                    // and don't let a skipped replay reset the backoff —
+                    // otherwise a dead container reconnects forever at the
+                    // base interval instead of backing off to the cap.
+                    if let prefix = timestampPrefix(raw), let last = lastRawTimestamp,
+                        prefix <= last
+                    {
+                        continue
+                    }
                     reconnectAttempt = 0
                     trackTimestamp(raw)
                     onLine(raw, container)
@@ -87,11 +100,19 @@ final class ContainerLogStream {
     }
 
     private func trackTimestamp(_ raw: String) {
-        if let space = raw.firstIndex(of: " "), raw.hasPrefix("2"),
-            raw[raw.startIndex..<space].contains("T")
-        {
-            lastRawTimestamp = String(raw[raw.startIndex..<space])
+        if let prefix = timestampPrefix(raw) {
+            lastRawTimestamp = prefix
         }
+    }
+
+    /// Extracts the RFC 3339 timestamp prefix Kubernetes prepends to each
+    /// log line (before the first space), or nil if `raw` doesn't look
+    /// timestamped.
+    private func timestampPrefix(_ raw: String) -> String? {
+        guard let space = raw.firstIndex(of: " "), raw.hasPrefix("2"),
+            raw[raw.startIndex..<space].contains("T")
+        else { return nil }
+        return String(raw[raw.startIndex..<space])
     }
 
     /// Sleeps in 50ms slices so `retryNow()` (and cancellation) cut the

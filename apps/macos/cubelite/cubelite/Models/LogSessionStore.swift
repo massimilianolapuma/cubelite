@@ -85,9 +85,7 @@ final class LogSession {
         streamTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let fetched = try await streamer.fetchPodContainers(
-                    namespace: pod.namespace, pod: pod.name, inContext: context)
-                self.containers = fetched
+                let fetched = try await self.fetchContainers()
                 let remembered = defaults.string(forKey: containerMemoryKey)
                 let name: String? =
                     remembered == Self.allContainers
@@ -96,10 +94,26 @@ final class LogSession {
                 self.selectedContainer = name
                 await self.stream(container: name)
             } catch is CancellationError {
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                // A restart (e.g. picking "all containers" mid-fetch) cancels
+                // this task's URLSession work, which surfaces as
+                // URLError(.cancelled) rather than CancellationError — treat
+                // it the same as a plain cancellation, not a real failure.
             } catch {
                 self.streamError = error.localizedDescription
             }
         }
+    }
+
+    /// Fetches the pod's containers and remembers the result on the
+    /// session. Shared by `start()` (initial load) and merged mode's
+    /// `stream(container:)` (re-fetch when "all containers" was picked
+    /// before the initial fetch finished, leaving `containers` empty).
+    private func fetchContainers() async throws -> [ContainerInfo] {
+        let fetched = try await streamer.fetchPodContainers(
+            namespace: pod.namespace, pod: pod.name, inContext: context)
+        self.containers = fetched
+        return fetched
     }
 
     func stop() {
@@ -167,6 +181,21 @@ final class LogSession {
             return
         }
         guard !Task.isCancelled else { return }
+        if isMerged && containers.isEmpty {
+            // "all containers" was picked before the initial fetch finished,
+            // so there's nothing to fan streams out to yet — re-fetch rather
+            // than dead-ending with zero streams and a stuck picker.
+            do {
+                _ = try await fetchContainers()
+            } catch is CancellationError {
+                return
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                return
+            } catch {
+                streamError = error.localizedDescription
+                return
+            }
+        }
         startStreams(containers: isMerged ? containers.map { $0.name as String? } : [container])
     }
 

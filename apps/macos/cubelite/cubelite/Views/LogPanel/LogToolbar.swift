@@ -150,9 +150,15 @@ struct LogToolbar: View {
                 if session.isMerged { Image(systemName: "checkmark") }
                 Text("all containers")
             }
+            .disabled(session.containers.isEmpty)
         } label: {
             HStack(spacing: 6) {
-                Circle().fill(stateColor(selectedContainerInfo)).frame(width: 6, height: 6)
+                Circle()
+                    .fill(
+                        session.isMerged
+                            ? DesignTokens.clusterBlue : stateColor(selectedContainerInfo)
+                    )
+                    .frame(width: 6, height: 6)
                 Text(session.isMerged ? "all containers" : (session.selectedContainer ?? "—"))
                     .font(.system(size: 11.5, weight: .medium, design: .monospaced))
                     .foregroundStyle(DesignTokens.textDataBright)
