@@ -170,7 +170,7 @@ struct ResourceDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Divider().padding(.vertical, 8)
                 Text("PORT FORWARD")
-                    .font(.system(size: 9.5, weight: .semibold))
+                    .scaledFont(size: 9.5, weight: .semibold, relativeTo: .caption)
                     .kerning(0.7)
                     .foregroundStyle(DesignTokens.textTertiary)
                 let remotePort = PortForwardInput.parsePort(forwardRemotePort)
@@ -205,7 +205,7 @@ struct ResourceDetailView: View {
                 }
                 if remotePort == nil || localPort == nil {
                     Text("Ports must be numbers between 1 and 65535")
-                        .font(.system(size: 10))
+                        .scaledFont(size: 10, relativeTo: .caption)
                         .foregroundStyle(DesignTokens.statusErr)
                 }
                 ForEach(service.sessions(namespace: pod.namespace, pod: pod.name)) { session in
@@ -215,11 +215,11 @@ struct ResourceDetailView: View {
                             .frame(width: 6, height: 6)
                             .accessibilityLabel(sessionStateLabel(session.state))
                         Text(verbatim: "localhost:\(session.localPort) → \(session.remotePort)")
-                            .font(.system(size: 11, design: .monospaced))
+                            .scaledFont(size: 11, design: .monospaced)
                             .foregroundStyle(DesignTokens.textSecondary)
                         if case .failed(let reason) = session.state {
                             Text(reason)
-                                .font(.system(size: 10))
+                                .scaledFont(size: 10, relativeTo: .caption)
                                 .foregroundStyle(DesignTokens.statusErr)
                                 .lineLimit(1)
                         }
@@ -296,7 +296,7 @@ struct ResourceDetailView: View {
             if let onClose {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
+                        .scaledFont(size: 11, weight: .semibold)
                         .foregroundStyle(DesignTokens.textTertiary)
                 }
                 .buttonStyle(.plain)
@@ -365,7 +365,7 @@ struct ResourceDetailView: View {
         VStack(alignment: .leading, spacing: 6) {
             Divider().padding(.vertical, 8)
             Text("CONTAINERS")
-                .font(.system(size: 9.5, weight: .semibold))
+                .scaledFont(size: 9.5, weight: .semibold, relativeTo: .caption)
                 .kerning(0.7)
                 .foregroundStyle(DesignTokens.textTertiary)
             ForEach(containers) { container in
@@ -375,21 +375,21 @@ struct ResourceDetailView: View {
                         .frame(width: 6, height: 6)
                         .accessibilityHidden(true)
                     Text(container.name)
-                        .font(.system(size: 11.5, design: .monospaced))
+                        .scaledFont(size: 11.5, design: .monospaced)
                         .foregroundStyle(DesignTokens.textSecondary)
                         .lineLimit(1)
                     if container.isSidecar {
                         Text("sidecar")
-                            .font(.system(size: 10))
+                            .scaledFont(size: 10, relativeTo: .caption)
                             .foregroundStyle(DesignTokens.textTertiary)
                     } else if container.isInit {
                         Text("init")
-                            .font(.system(size: 10))
+                            .scaledFont(size: 10, relativeTo: .caption)
                             .foregroundStyle(DesignTokens.textTertiary)
                     }
                     Spacer()
                     Text(containerStateLabel(container))
-                        .font(.system(size: 10, design: .monospaced))
+                        .scaledFont(size: 10, design: .monospaced, relativeTo: .caption)
                         .foregroundStyle(containerStateColor(container))
                 }
                 .accessibilityElement(children: .combine)

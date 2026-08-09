@@ -14,7 +14,7 @@ struct UnifiedLoadingState: View {
         VStack(spacing: 10) {
             ProgressView().controlSize(.small)
             Text(label)
-                .font(.system(size: 12))
+                .scaledFont(size: 12)
                 .foregroundStyle(DesignTokens.textDisabled)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -27,7 +27,7 @@ struct UnifiedEmptyState: View {
 
     var body: some View {
         Text(message)
-            .font(.system(size: 12))
+            .scaledFont(size: 12)
             .foregroundStyle(DesignTokens.textDisabled)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -41,13 +41,13 @@ struct UnifiedErrorState: View {
     var body: some View {
         VStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 24))
+                .scaledFont(size: 24, relativeTo: .title3)
                 .foregroundStyle(DesignTokens.statusErr)
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .scaledFont(size: 13, weight: .semibold, relativeTo: .title3)
                 .foregroundStyle(DesignTokens.textPrimary)
             Text(message)
-                .font(.system(size: 11))
+                .scaledFont(size: 11)
                 .foregroundStyle(DesignTokens.textTertiary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
