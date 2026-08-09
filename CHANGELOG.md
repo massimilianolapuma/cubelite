@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-09
+
+### Added
+
+- **Pod log viewer** on both apps (#294 macOS, #295 desktop): persistent bottom
+  panel with session tabs, live follow with reconnect/backoff, search with
+  n/N navigation and filter mode, previous-instance logs, tail control,
+  export to Downloads (visible or full buffer)
+- **Merged "all containers" stream** (#297, both apps): one interleaved,
+  identity-color-tagged stream of every container in the pod, per-container
+  reconnect, `<pod>_all.log` export
+- **Desktop auto-update** (#250): signed update channel (minisign), silent
+  startup check, in-app update banner and Preferences section, `latest.json`
+  manifest published with every release
+- **Accessibility pass** (#120, macOS): WCAG AA contrast across both themes
+  (permanent audit in CI), VoiceOver labels/traits/state on every interactive
+  element, full keyboard operability, Dynamic Type up to AX5 for primary text
+- Desktop pod port-forward with kube-rs relay and auto-assigned local ports
+  (#318); aggregated log viewer with label filtering on macOS (#316);
+  Overview parity — capacity metrics, warnings, All Clusters cards (#315)
+
+### Fixed
+
+- ATS exception for user-supplied cluster API hosts (macOS, #329)
+- Client-identity signing verification and stale keychain pairing cleanup (#313)
+- TLS-skip propagation from Preferences to the API service at init (#311)
+- Cancellable, fail-fast cluster switch on desktop (#312); window drag
+  fallback (#317); log flood freeze (#316)
+
 ## [0.3.0] - 2026-07-12
 
 ### Added
