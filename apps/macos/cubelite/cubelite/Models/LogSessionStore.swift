@@ -166,6 +166,7 @@ final class LogSession {
             }
             return
         }
+        guard !Task.isCancelled else { return }
         startStreams(containers: isMerged ? containers.map { $0.name as String? } : [container])
     }
 
@@ -173,6 +174,7 @@ final class LogSession {
     /// lines into `append`. Single-element outside merged mode; one entry
     /// per pod container when `isMerged`.
     private func startStreams(containers targets: [String?]) {
+        streams.forEach { $0.stop() }
         streams = targets.map { name in
             ContainerLogStream(
                 pod: pod, context: context, container: name,
