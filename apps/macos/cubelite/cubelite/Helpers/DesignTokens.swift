@@ -23,29 +23,29 @@ public enum DesignTokens {
     // MARK: - Text
     public static let textPrimary = dynamicColor(light: "#18181b", dark: "#f4f4f5")
     public static let textSecondary = dynamicColor(light: "#52525b", dark: "#9c9ca6")
-    public static let textTertiary = dynamicColor(light: "#6e6e78", dark: "#71717a")
-    public static let textDisabled = dynamicColor(light: "#a0a0ab", dark: "#5c5c66")
+    public static let textTertiary = dynamicColor(light: "#6e6e78", dark: "#7d7d86")
+    public static let textDisabled = dynamicColor(light: "#9b9ba7", dark: "#5c5c66")
     public static let textDataBright = dynamicColor(light: "#27272a", dark: "#e4e4e7")
     public static let textLog = dynamicColor(light: "#3a3a44", dark: "#c8c8d0")
 
     // MARK: - Accent
-    public static let accentDefault = dynamicColor(light: "#4e77e5", dark: "#6e9bf5")
+    public static let accentDefault = dynamicColor(light: "#3b68e2", dark: "#6e9bf5")
     public static let accentAltViolet = dynamicColor(light: "#7c5ce8", dark: "#a78bfa")
     public static let accentAltTeal = dynamicColor(light: "#0f9e8e", dark: "#2dd4bf")
 
     // MARK: - Status
-    public static let statusOk = dynamicColor(light: "#0a9a6b", dark: "#34d399")
-    public static let statusWarn = dynamicColor(light: "#c47b09", dark: "#fbbf24")
-    public static let statusErr = dynamicColor(light: "#dc3f3f", dark: "#f87171")
-    public static let statusErrSolid = dynamicColor(light: "#c93535", dark: "#dc4646")
-    public static let statusInfo = dynamicColor(light: "#0f7fbd", dark: "#7dd3fc")
+    public static let statusOk = dynamicColor(light: "#087e58", dark: "#34d399")
+    public static let statusWarn = dynamicColor(light: "#9b6107", dark: "#fbbf24")
+    public static let statusErr = dynamicColor(light: "#d42727", dark: "#f87171")
+    public static let statusErrSolid = dynamicColor(light: "#d35959", dark: "#d72929")
+    public static let statusInfo = dynamicColor(light: "#0e74ad", dark: "#7dd3fc")
 
     // MARK: - Cluster identity
-    public static let clusterBlue = dynamicColor(light: "#3b82f6", dark: "#60a5fa")
-    public static let clusterAmber = dynamicColor(light: "#d97706", dark: "#f59e0b")
-    public static let clusterPink = dynamicColor(light: "#db2777", dark: "#f472b6")
+    public static let clusterBlue = dynamicColor(light: "#0b63f3", dark: "#60a5fa")
+    public static let clusterAmber = dynamicColor(light: "#a65b05", dark: "#f59e0b")
+    public static let clusterPink = dynamicColor(light: "#cf236f", dark: "#f472b6")
     public static let clusterViolet = dynamicColor(light: "#7c3aed", dark: "#a78bfa")
-    public static let clusterTeal = dynamicColor(light: "#0d9488", dark: "#2dd4bf")
+    public static let clusterTeal = dynamicColor(light: "#0b7b71", dark: "#2dd4bf")
 
     // MARK: - Spacing (pt)
     public static let spacing1: CGFloat = 4
