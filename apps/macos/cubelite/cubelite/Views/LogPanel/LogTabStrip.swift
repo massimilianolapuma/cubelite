@@ -42,47 +42,50 @@ struct LogTabStrip: View {
 
     private func tab(_ session: LogSession) -> some View {
         let isActive = session.pod.id == store.activeSessionID
-        return Button {
-            store.activeSessionID = session.pod.id
-        } label: {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(session.pod.ready ? DesignTokens.statusOk : DesignTokens.statusWarn)
-                    .frame(width: 7, height: 7)
-                    .accessibilityHidden(true)
-                Text(session.pod.name)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(
-                        isActive ? DesignTokens.textDataBright : DesignTokens.textTertiary
-                    )
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: 190)
-                if let container = session.selectedContainer {
-                    Text(container)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(DesignTokens.textTertiary)
+        return HStack(spacing: 7) {
+            Button {
+                store.activeSessionID = session.pod.id
+            } label: {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(session.pod.ready ? DesignTokens.statusOk : DesignTokens.statusWarn)
+                        .frame(width: 7, height: 7)
+                        .accessibilityHidden(true)
+                    Text(session.pod.name)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(
+                            isActive ? DesignTokens.textDataBright : DesignTokens.textTertiary
+                        )
                         .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 190)
+                    if let container = session.selectedContainer {
+                        Text(container)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(DesignTokens.textTertiary)
+                            .lineLimit(1)
+                    }
                 }
-                Button {
-                    store.close(sessionID: session.pod.id)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8))
-                        .foregroundStyle(DesignTokens.textTertiary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close \(session.pod.name) logs")
-                .accessibilityIdentifier("logpanel.tab-close-\(session.pod.name)")
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .frame(height: 34)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(tabAccessibilityLabel(session))
+            .accessibilityValue(isActive ? "Active tab" : "")
+            .accessibilityIdentifier("logpanel.tab-\(session.pod.name)")
+
+            Button {
+                store.close(sessionID: session.pod.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 8))
+                    .foregroundStyle(DesignTokens.textTertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close \(session.pod.name) logs")
+            .accessibilityIdentifier("logpanel.tab-close-\(session.pod.name)")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(tabAccessibilityLabel(session))
-        .accessibilityValue(isActive ? "Active tab" : "")
-        .accessibilityIdentifier("logpanel.tab-\(session.pod.name)")
+        .padding(.horizontal, 12)
+        .frame(height: 34)
         .background(isActive ? DesignTokens.surfacePanel : .clear)
         .overlay(alignment: .top) {
             if isActive {

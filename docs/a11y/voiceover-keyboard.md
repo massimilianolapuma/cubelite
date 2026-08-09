@@ -94,9 +94,12 @@ TLS icon, port-forward session state). `PodListView`'s "logs" chip
 - **`LogPanel/LogTabStrip.swift`**: the tab-select `onTapGesture` converted to
   `Button` (the last of the four keyboard gaps) with a composed label
   ("pod-name, container X, ready"/"not ready") and an
-  `.accessibilityValue("Active tab")` for the current tab; the close button
-  stays nested inside as its own `Button` with "Close `<pod>` logs" —
-  see the finding on nested buttons below. Identifiers:
+  `.accessibilityValue("Active tab")` for the current tab. The select `Button`
+  wraps only the status circle + pod name + container text; the row's visual
+  decoration (background/top accent bar/trailing divider) stays on a plain
+  `HStack` container, and the close `Button` ("Close `<pod>` logs") is a
+  **sibling** after the select button, not nested inside it — both are
+  independent native focus stops with no click-through risk. Identifiers:
   `logpanel.tab-<pod>`, `logpanel.tab-close-<pod>`, `logpanel.collapse`.
 - **`LogPanel/LogPanelView.swift`**: reconnect banner's pulsing status dot
   hidden (redundant with the adjacent "stream lost — reconnecting…" text);
@@ -144,20 +147,6 @@ TLS icon, port-forward session state). `PodListView`'s "logs" chip
   content; the closest thing, `UnifiedErrorState` in `Shell/UnifiedStates.swift`,
   is purely presentational static text/icon with no interactive elements, so
   no accessibility gap to fix).
-
-### A note on nested buttons (`LogTabStrip`)
-
-`LogTabStrip`'s tab is the one place in this stage where a `Button`
-(select-tab) had to wrap another `Button` (close-tab) to satisfy rule 3,
-because the entire row — including the close control — was already the
-`onTapGesture` target before conversion. SwiftUI/AppKit generally keeps a
-nested `Button` as its own independently-focusable accessibility element as
-long as the parent isn't given `.accessibilityElement(children: .combine)`
-(which was avoided here), and mouse hit-testing already worked this way
-before the conversion (the close button intercepted taps inside its own
-bounds). This is a judgment call flagged for the manual VoiceOver pass below
-— confirm the close button is reachable as its own stop when tabbing through
-the strip.
 
 ## Manual verification checklist
 
@@ -245,8 +234,8 @@ Space/Return to activate, Esc to dismiss):
    stop, not merged into the row.
 4. **Log panel open/search/export**: ⌘L toggles collapse; Tab through the
    tab strip — expect each tab reachable, and its close (×) button reachable
-   as a **separate** Tab stop right after (this is the nested-button case
-   flagged above — confirm it in practice, not just in theory). ⌘F jumps
+   as its own, separate Tab stop right after (select and close are sibling
+   `Button`s, not nested). ⌘F jumps
    focus straight to the search field from anywhere in the window. Tab
    through toolbar controls in order (container → previous → search → prev/
    next/filter → tail → follow → overflow) and confirm Return/Space toggles
