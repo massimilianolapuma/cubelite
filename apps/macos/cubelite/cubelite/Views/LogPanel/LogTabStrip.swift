@@ -36,7 +36,7 @@ struct LogTabStrip: View {
             .padding(.leading, 8)
         }
         .padding(.horizontal, 12)
-        .frame(height: 34)
+        .frame(minHeight: 34)
         .background(DesignTokens.surfaceRaised)
     }
 
@@ -71,7 +71,7 @@ struct LogTabStrip: View {
                 // circle/text's intrinsic size — contentShape must come
                 // after them to pick up the padded frame.
                 .padding(.leading, 12)
-                .frame(height: 34)
+                .frame(minHeight: 34)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -86,14 +86,14 @@ struct LogTabStrip: View {
                     .scaledFont(size: 8, relativeTo: .caption)
                     .foregroundStyle(DesignTokens.textTertiary)
                     .padding(.trailing, 12)
-                    .frame(height: 34)
+                    .frame(minHeight: 34)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close \(session.pod.name) logs")
             .accessibilityIdentifier("logpanel.tab-close-\(session.pod.name)")
         }
-        .frame(height: 34)
+        .frame(minHeight: 34)
         .background(isActive ? DesignTokens.surfacePanel : .clear)
         .overlay(alignment: .top) {
             if isActive {

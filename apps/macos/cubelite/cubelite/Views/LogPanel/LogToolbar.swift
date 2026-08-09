@@ -22,7 +22,7 @@ struct LogToolbar: View {
             overflowMenu
         }
         .padding(.horizontal, 8)
-        .frame(height: 38)
+        .frame(minHeight: 38)
     }
 
     private var searchField: some View {
@@ -105,7 +105,7 @@ struct LogToolbar: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: 28)
+        .frame(minHeight: 28)
         .frame(maxWidth: 400)
         .background(DesignTokens.surfaceWindow)
         .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -176,7 +176,7 @@ struct LogToolbar: View {
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 8)
-            .frame(height: 26)
+            .frame(minHeight: 26)
             .background(DesignTokens.surfaceRaised)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
@@ -230,7 +230,7 @@ struct LogToolbar: View {
                         ? DesignTokens.accentDefault : DesignTokens.textSecondary
                 )
                 .padding(.horizontal, 8)
-                .frame(height: 26)
+                .frame(minHeight: 26)
                 .background(
                     session.showingPrevious
                         ? DesignTokens.accentDefault.opacity(0.14) : DesignTokens.surfaceRaised
@@ -279,7 +279,7 @@ struct LogToolbar: View {
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 8)
-            .frame(height: 26)
+            .frame(minHeight: 26)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -301,7 +301,7 @@ struct LogToolbar: View {
                     .scaledFont(size: 11, weight: .medium)
             }
             .padding(.horizontal, 10)
-            .frame(height: 28)
+            .frame(minHeight: 28)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -328,7 +328,8 @@ struct LogToolbar: View {
             Image(systemName: "ellipsis")
                 .scaledFont(size: 11)
                 .foregroundStyle(DesignTokens.textSecondary)
-                .frame(width: 26, height: 28)
+                .frame(width: 26)
+                .frame(minHeight: 28)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()

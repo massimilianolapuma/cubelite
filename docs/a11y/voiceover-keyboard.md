@@ -337,9 +337,19 @@ is a manual pass on the PR build:
      body's empty/no-matches states and "N new lines" pill.
 3. **Expected**:
    - Primary text throughout the app visibly scales up.
+   - The log panel's **chrome rows grow vertically** to fit their scaled
+     text — the tab strip bar, each tab row, the toolbar bar, and its
+     search/container-picker/previous-chip/tail-menu/follow-button
+     sub-controls are all `minHeight`, not a fixed `height`, specifically
+     so they don't clip or overlap the row below at large text sizes; the
+     log body area (user-resizable) shrinks accordingly to make room.
    - No text clips to unreadable or overlaps a neighboring element badly;
-     some table columns and fixed-width chrome elements may truncate
-     (tail) at the largest size — an accepted artifact for this stage.
+     **horizontal** truncation remains the accepted artifact at the
+     largest size — some table columns, fixed-width chrome elements (e.g.
+     the tab strip's pod-name `maxWidth: 190` truncation), and the
+     overflow-menu icon's fixed 26pt width may truncate/clip
+     horizontally; this is expected and unchanged from the design's
+     layout guard.
    - The **log grid stays visually unchanged**: timestamp/source/severity/
      message columns keep their original fixed size and alignment, as do
      the search match-count and tail-count readouts and the tab strip's
