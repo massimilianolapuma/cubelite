@@ -39,6 +39,8 @@ const MATRIX: { text: [string, string]; surfaces: [string, string][]; min: numbe
   { text: ["cluster-identity", "blue"], min: 4.5, surfaces: [["surface","sunken"]] },
   { text: ["cluster-identity", "teal"], min: 4.5, surfaces: [["surface","sunken"]] },
   { text: ["cluster-identity", "amber"], min: 4.5, surfaces: [["surface","sunken"]] },
+  { text: ["cluster-identity", "pink"], min: 4.5, surfaces: [["surface","sunken"]] },
+  { text: ["cluster-identity", "violet"], min: 4.5, surfaces: [["surface","sunken"]] },
 ];
 
 /** "<textGroup>.<name>/<surface>/<theme>" → recorded ratio + reason. */
@@ -67,11 +69,13 @@ describe("token contrast (WCAG AA)", () => {
     }
   }
 
-  for (const theme of ["dark", "light"] as const) {
-    it(`text.disabled floor on window (${theme})`, () => {
-      const ratio = contrastRatio(
-        hex("text", "disabled", theme), hex("surface", "window", theme));
-      expect(ratio).toBeGreaterThanOrEqual(2.5); // AA-exempt, floor only
-    });
+  for (const sName of ["window", "panel", "surface"] as const) {
+    for (const theme of ["dark", "light"] as const) {
+      it(`text.disabled floor on ${sName} (${theme})`, () => {
+        const ratio = contrastRatio(
+          hex("text", "disabled", theme), hex("surface", sName, theme));
+        expect(ratio).toBeGreaterThanOrEqual(2.5); // AA-exempt, floor only
+      });
+    }
   }
 });
