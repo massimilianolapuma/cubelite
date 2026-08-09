@@ -30,7 +30,7 @@ struct ScaledFontModifier: ViewModifier {
     /// - `size >= 13` → `.title3`
     /// - `10.5...12.9` → `.body` (default)
     /// - `size <= 10.4` → `.caption`
-    static func anchor(for size: CGFloat) -> Font.TextStyle {
+    nonisolated static func anchor(for size: CGFloat) -> Font.TextStyle {
         if size >= 13 {
             return .title3
         } else if size >= 10.5 {

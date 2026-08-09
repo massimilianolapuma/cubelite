@@ -5,6 +5,7 @@ import XCTest
 
 // MARK: - ScaledFontModifier.anchor(for:) bucket mapping
 
+@MainActor
 final class ScaledFontTests: XCTestCase {
 
     // MARK: title3 bucket (>= 13)
