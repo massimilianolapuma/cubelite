@@ -66,6 +66,12 @@ struct LogTabStrip: View {
                             .lineLimit(1)
                     }
                 }
+                // Leading padding + full row height live on the label so the
+                // button's hit area covers the padded region, not just the
+                // circle/text's intrinsic size — contentShape must come
+                // after them to pick up the padded frame.
+                .padding(.leading, 12)
+                .frame(height: 34)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -79,12 +85,14 @@ struct LogTabStrip: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 8))
                     .foregroundStyle(DesignTokens.textTertiary)
+                    .padding(.trailing, 12)
+                    .frame(height: 34)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close \(session.pod.name) logs")
             .accessibilityIdentifier("logpanel.tab-close-\(session.pod.name)")
         }
-        .padding(.horizontal, 12)
         .frame(height: 34)
         .background(isActive ? DesignTokens.surfacePanel : .clear)
         .overlay(alignment: .top) {
