@@ -33,6 +33,8 @@ extension MainView {
             }
             .help("Refresh all")
             .disabled(clusterState.isLoading || clusterState.isLoadingResources)
+            .accessibilityLabel("Refresh all")
+            .accessibilityIdentifier("toolbar.refresh")
         }
         if clusterState.clusterReachable == false {
             ToolbarItem(placement: .status) {
@@ -60,9 +62,13 @@ extension MainView {
                         .padding(2)
                         .background(Color.red, in: Circle())
                         .offset(x: 5, y: -5)
+                        .accessibilityHidden(true)
                 }
             }
         }
         .help("View logs and errors")
+        .accessibilityLabel("View logs and errors")
+        .accessibilityValue(logStore.unreadErrorCount > 0 ? "\(logStore.unreadErrorCount) unread" : "")
+        .accessibilityIdentifier("toolbar.logs")
     }
 }

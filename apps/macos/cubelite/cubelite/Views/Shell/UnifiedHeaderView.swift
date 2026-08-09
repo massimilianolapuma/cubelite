@@ -22,6 +22,7 @@ struct UnifiedHeaderView: View {
                 let identity = ClusterIdentity.color(for: context, in: contexts)
                 HStack(spacing: 8) {
                     Circle().fill(identity).frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
                     Text(context)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(DesignTokens.textPrimary)
@@ -29,6 +30,7 @@ struct UnifiedHeaderView: View {
                         .truncationMode(.middle)
                     connectionBadge
                 }
+                .accessibilityElement(children: .combine)
             } else {
                 Text("All Clusters")
                     .font(.system(size: 13, weight: .semibold))
@@ -52,6 +54,8 @@ struct UnifiedHeaderView: View {
             .buttonStyle(.plain)
             .help("Refresh all")
             .disabled(isLoading)
+            .accessibilityLabel("Refresh all")
+            .accessibilityIdentifier("header.refresh")
 
             Button(action: onShowLogs) {
                 ZStack(alignment: .topTrailing) {
@@ -64,11 +68,15 @@ struct UnifiedHeaderView: View {
                             .padding(2)
                             .background(DesignTokens.statusErr, in: Circle())
                             .offset(x: 5, y: -5)
+                            .accessibilityHidden(true)
                     }
                 }
             }
             .buttonStyle(.plain)
             .help("View logs and errors")
+            .accessibilityLabel("View logs and errors")
+            .accessibilityValue(unreadErrorCount > 0 ? "\(unreadErrorCount) unread" : "")
+            .accessibilityIdentifier("header.logs")
         }
         // Inset for the macOS traffic lights (hidden-title-bar window).
         .padding(.leading, 78)
@@ -90,6 +98,7 @@ struct UnifiedHeaderView: View {
             }
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 6, height: 6)
+                .accessibilityHidden(true)
             Text(label)
                 .font(.system(size: 11))
                 .foregroundStyle(DesignTokens.textTertiary)
@@ -116,6 +125,7 @@ struct UnifiedHeaderView: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8))
                     .foregroundStyle(DesignTokens.textTertiary)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 10)
             .frame(height: 28)
@@ -125,5 +135,6 @@ struct UnifiedHeaderView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .accessibilityIdentifier("header.namespace")
     }
 }

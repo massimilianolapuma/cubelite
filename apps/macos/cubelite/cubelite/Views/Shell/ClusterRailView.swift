@@ -30,6 +30,8 @@ struct ClusterRailView: View {
             }
             .buttonStyle(.plain)
             .help("All Clusters")
+            .accessibilityLabel("All Clusters")
+            .accessibilityValue(showAllClusters ? "Selected" : "Not selected")
             .accessibilityIdentifier("rail-all-clusters")
 
             Rectangle()
@@ -56,6 +58,8 @@ struct ClusterRailView: View {
             }
             .buttonStyle(.plain)
             .help("Preferences")
+            .accessibilityLabel("Open preferences")
+            .accessibilityIdentifier("rail.preferences")
         }
         .padding(.vertical, 10)
         .frame(width: 58)
@@ -88,6 +92,8 @@ struct ClusterRailView: View {
         }
         .buttonStyle(.plain)
         .help(context)
+        .accessibilityLabel(context)
+        .accessibilityValue(isActive ? "Selected" : "Not selected")
         .accessibilityIdentifier("rail-context-\(context)")
     }
 }

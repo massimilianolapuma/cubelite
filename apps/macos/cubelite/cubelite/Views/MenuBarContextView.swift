@@ -87,12 +87,14 @@ struct MenuBarContextView: View {
                     if context == current {
                         Image(systemName: "checkmark")
                             .foregroundStyle(.tint)
+                            .accessibilityHidden(true)
                     }
                 }
             }
             .buttonStyle(.plain)
             .padding(.vertical, 3)
             .padding(.horizontal, 4)
+            .accessibilityValue(context == current ? "Current" : "")
         }
     }
 

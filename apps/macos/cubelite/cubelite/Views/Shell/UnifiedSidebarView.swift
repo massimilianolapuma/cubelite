@@ -73,6 +73,7 @@ struct UnifiedSidebarView: View {
         } label: {
             HStack(spacing: 8) {
                 Circle().fill(dot).frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
                 Text(item.rawValue)
                     .font(.system(size: 12.5, weight: .medium))
                     .foregroundStyle(
@@ -95,5 +96,8 @@ struct UnifiedSidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityValue(isActive ? "Selected" : "")
+        .accessibilityIdentifier(
+            "sidebar.\(item.rawValue.lowercased().replacingOccurrences(of: " ", with: "-"))")
     }
 }
