@@ -17,6 +17,8 @@ pub fn run() {
     env::fix_path();
 
     if let Err(e) = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(WatchState::default())
         .manage(LogState::default())
         .manage(PortForwardState::default())
