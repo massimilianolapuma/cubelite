@@ -2,7 +2,6 @@
 	import FileCode from '@lucide/svelte/icons/file-code';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
-	import PanelBottom from '@lucide/svelte/icons/panel-bottom';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { formatAge } from '$lib/age';
@@ -11,9 +10,7 @@
 	import MeterBar from '$lib/components/ui/MeterBar.svelte';
 	import StatusPill from '$lib/components/ui/StatusPill.svelte';
 	import { podStatusLabel, podTone } from '$lib/status';
-	import { app } from '$lib/stores/app.svelte';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
-	import { logs } from '$lib/stores/logs.svelte';
 	import { mutations } from '$lib/stores/mutations.svelte';
 	import { portforward } from '$lib/stores/portforward.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
@@ -192,11 +189,9 @@
 		<button
 			type="button"
 			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-accent text-surface-window hover:brightness-110"
-			onclick={() => {
-				onClose();
-				logs.textFilter = pod.name;
-				app.navigate('logs');
-			}}
+			aria-label="Log panel"
+			title="Open pod logs panel"
+			onclick={() => void logPanel.openFor({ namespace: pod.namespace, name: pod.name })}
 		>
 			<FileText class="h-3 w-3" />
 			Logs
@@ -209,15 +204,6 @@
 			onclick={() => (yamlOpen = true)}
 		>
 			<FileCode class="h-3 w-3" />
-		</button>
-		<button
-			type="button"
-			aria-label="Log panel"
-			title="Open pod logs panel"
-			class="focus-ring type-body flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110"
-			onclick={() => void logPanel.openFor({ namespace: pod.namespace, name: pod.name })}
-		>
-			<PanelBottom class="h-3 w-3" strokeWidth={1.5} />
 		</button>
 		<button
 			type="button"
