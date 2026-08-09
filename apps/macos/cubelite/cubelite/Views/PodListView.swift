@@ -71,7 +71,7 @@ struct PodListView: View {
                                         DesignTokens.accentDefault.opacity(0.3), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Open logs")
+                        .accessibilityLabel("Open logs for \(pod.name)")
                         .accessibilityIdentifier("podlist.logs-chip")
                     }
                 }
