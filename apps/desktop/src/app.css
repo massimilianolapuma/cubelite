@@ -83,23 +83,23 @@
     --cl-color-text-primary: #18181b;
     --cl-color-text-secondary: #52525b;
     --cl-color-text-tertiary: #6e6e78;
-    --cl-color-text-disabled: #a0a0ab;
+    --cl-color-text-disabled: #9b9ba7;
     --cl-color-text-data-bright: #27272a;
     --cl-color-text-log: #3a3a44;
-    --cl-color-status-ok: #0a9a6b;
-    --cl-color-status-warn: #c47b09;
-    --cl-color-status-err: #dc3f3f;
+    --cl-color-status-ok: #087e58;
+    --cl-color-status-warn: #9b6107;
+    --cl-color-status-err: #d42727;
     --cl-color-status-err-solid: #c93535;
-    --cl-color-status-info: #0f7fbd;
-    --cl-color-cluster-blue: #3b82f6;
-    --cl-color-cluster-amber: #d97706;
-    --cl-color-cluster-pink: #db2777;
+    --cl-color-status-info: #0e74ad;
+    --cl-color-cluster-blue: #0b63f3;
+    --cl-color-cluster-amber: #a65b05;
+    --cl-color-cluster-pink: #cf236f;
     --cl-color-cluster-violet: #7c3aed;
-    --cl-color-cluster-teal: #0d9488;
+    --cl-color-cluster-teal: #0b7b71;
     --cl-shadow-overlay: 0 24px 80px rgba(20,20,30,.16);
     --cl-shadow-drawer: -16px 0 40px rgba(20,20,30,.12);
     --cl-shadow-toast: 0 10px 34px rgba(20,20,30,.14);
-    --cl-color-accent: #4e77e5;
+    --cl-color-accent: #3b68e2;
     --cl-color-accent-alt-violet: #7c5ce8;
     --cl-color-accent-alt-teal: #0f9e8e;
 
@@ -128,7 +128,7 @@
     --card-foreground: 240 5.9% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 5.9% 10%;
-    --primary: 223.7 74.4% 60.2%;
+    --primary: 223.8 74.2% 55.9%;
     --primary-foreground: 0 0% 98%;
     --secondary: 240 8.6% 93.1%;
     --secondary-foreground: 240 5.9% 10%;
@@ -140,15 +140,15 @@
     --destructive-foreground: 240 5.9% 10%;
     --border: 240 9.1% 89.2%;
     --input: 240 9.1% 89.2%;
-    --ring: 223.7 74.4% 60.2%;
+    --ring: 223.8 74.2% 55.9%;
     --sidebar-background: 240 11.1% 96.5%;
     --sidebar-foreground: 240 5.2% 33.9%;
-    --sidebar-primary: 223.7 74.4% 60.2%;
+    --sidebar-primary: 223.8 74.2% 55.9%;
     --sidebar-primary-foreground: 0 0% 98%;
     --sidebar-accent: 240 8.6% 93.1%;
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 240 15.2% 93.5%;
-    --sidebar-ring: 223.7 74.4% 60.2%;
+    --sidebar-ring: 223.8 74.2% 55.9%;
   }
   .dark {
     --cl-color-surface-window: #0b0b0d;
@@ -163,7 +163,7 @@
     --cl-color-border-faint: #1e1e23;
     --cl-color-text-primary: #f4f4f5;
     --cl-color-text-secondary: #9c9ca6;
-    --cl-color-text-tertiary: #71717a;
+    --cl-color-text-tertiary: #7d7d86;
     --cl-color-text-disabled: #5c5c66;
     --cl-color-text-data-bright: #e4e4e7;
     --cl-color-text-log: #c8c8d0;
