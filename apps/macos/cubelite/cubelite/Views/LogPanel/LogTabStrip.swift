@@ -26,7 +26,7 @@ struct LogTabStrip: View {
                 store.isCollapsed.toggle()
             } label: {
                 Image(systemName: store.isCollapsed ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 10))
+                    .scaledFont(size: 10, relativeTo: .caption)
                     .foregroundStyle(DesignTokens.textTertiary)
             }
             .buttonStyle(.plain)
@@ -52,7 +52,7 @@ struct LogTabStrip: View {
                         .frame(width: 7, height: 7)
                         .accessibilityHidden(true)
                     Text(session.pod.name)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .scaledFont(size: 11, weight: .medium, design: .monospaced)
                         .foregroundStyle(
                             isActive ? DesignTokens.textDataBright : DesignTokens.textTertiary
                         )
@@ -61,7 +61,7 @@ struct LogTabStrip: View {
                         .frame(maxWidth: 190)
                     if let container = session.selectedContainer {
                         Text(container)
-                            .font(.system(size: 10, design: .monospaced))
+                            .scaledFont(size: 10, design: .monospaced, relativeTo: .caption)
                             .foregroundStyle(DesignTokens.textTertiary)
                             .lineLimit(1)
                     }
@@ -83,7 +83,7 @@ struct LogTabStrip: View {
                 store.close(sessionID: session.pod.id)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 8))
+                    .scaledFont(size: 8, relativeTo: .caption)
                     .foregroundStyle(DesignTokens.textTertiary)
                     .padding(.trailing, 12)
                     .frame(height: 34)

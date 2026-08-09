@@ -30,7 +30,7 @@ struct LogPanelView: View {
             .overlay(alignment: .bottomTrailing) {
                 if let toast = store.toast {
                     Text(toast)
-                        .font(.system(size: 11.5, design: .monospaced))
+                        .scaledFont(size: 11.5, design: .monospaced)
                         .foregroundStyle(DesignTokens.textLog)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
@@ -57,12 +57,12 @@ struct LogPanelView: View {
                 "stream lost — reconnecting (attempt \(session.reconnectAttempt), "
                     + "next retry \(session.nextRetrySeconds)s)"
             )
-            .font(.system(size: 11, design: .monospaced))
+            .scaledFont(size: 11, design: .monospaced)
             .foregroundStyle(DesignTokens.statusWarn)
             Spacer()
             Button("retry now") { session.retryNow() }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
+                .scaledFont(size: 11, weight: .medium)
                 .foregroundStyle(DesignTokens.statusWarn)
                 .underline()
                 .accessibilityLabel("Retry connection now")
