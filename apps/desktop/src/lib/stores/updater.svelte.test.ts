@@ -83,6 +83,31 @@ describe("updater.checkForUpdates", () => {
 
     expect(mockCheck).toHaveBeenCalledTimes(1);
   });
+
+  it("dismiss mid-check abandons a stale result instead of reviving it", async () => {
+    const { promise, resolve } = deferred<{ version: string; downloadAndInstall: () => Promise<void> }>();
+    mockCheck.mockReturnValue(promise);
+
+    const first = updater.checkForUpdates(true);
+    updater.dismiss();
+    resolve({ version: "9.9.9", downloadAndInstall: vi.fn() });
+    await first;
+
+    expect(updater.status).toBe("idle");
+    expect(updater.version).toBeNull();
+  });
+
+  it("a new check after dismiss works normally", async () => {
+    mockCheck.mockResolvedValueOnce({ version: "1.0.0", downloadAndInstall: vi.fn() });
+    await updater.checkForUpdates(true);
+    updater.dismiss();
+
+    mockCheck.mockResolvedValueOnce({ version: "2.0.0", downloadAndInstall: vi.fn() });
+    await updater.checkForUpdates(true);
+
+    expect(updater.status).toBe("available");
+    expect(updater.version).toBe("2.0.0");
+  });
 });
 
 describe("updater.downloadAndInstall", () => {
@@ -118,6 +143,42 @@ describe("updater.downloadAndInstall", () => {
     await updater.downloadAndInstall();
 
     expect(updater.status).toBe("idle");
+  });
+
+  it("dismiss mid-download abandons the result: no flip to ready, no relaunch", async () => {
+    const { promise, resolve } = deferred<void>();
+    const downloadAndInstall = vi.fn(() => promise);
+    mockCheck.mockResolvedValue({ version: "1.2.0", downloadAndInstall });
+    await updater.checkForUpdates(true);
+
+    const install = updater.downloadAndInstall();
+    expect(updater.status).toBe("downloading");
+
+    updater.dismiss();
+    expect(updater.status).toBe("idle");
+    expect(updater.version).toBeNull();
+
+    resolve();
+    await install;
+
+    expect(updater.status).toBe("idle");
+    expect(updater.version).toBeNull();
+    expect(mockRelaunch).not.toHaveBeenCalled();
+  });
+
+  it("dismiss mid-download also abandons a subsequent download failure", async () => {
+    const { promise, reject } = deferred<void>();
+    const downloadAndInstall = vi.fn(() => promise);
+    mockCheck.mockResolvedValue({ version: "1.2.0", downloadAndInstall });
+    await updater.checkForUpdates(true);
+
+    const install = updater.downloadAndInstall();
+    updater.dismiss();
+    reject(new Error("disk full"));
+    await install;
+
+    expect(updater.status).toBe("idle");
+    expect(updater.error).toBeNull();
   });
 });
 
