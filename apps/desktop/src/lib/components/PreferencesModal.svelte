@@ -6,9 +6,26 @@
 	import { resources } from '$lib/stores/resources.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
 	import { settings, type RefreshInterval, type Theme } from '$lib/stores/settings.svelte';
+	import { updater } from '$lib/stores/updater.svelte';
 
 	function close() {
 		app.preferencesOpen = false;
+	}
+
+	let updateChecked = $state(false);
+
+	async function checkForUpdates() {
+		updateChecked = true;
+		await updater.checkForUpdates(false);
+	}
+
+	async function installUpdate() {
+		if (updater.status !== 'ready') {
+			await updater.downloadAndInstall();
+		}
+		if (updater.status === 'ready') {
+			await updater.restartNow();
+		}
 	}
 
 	const themeSegments: { value: Theme; label: string }[] = [
@@ -80,6 +97,44 @@
 					{clusters.contexts.length} context{clusters.contexts.length === 1 ? '' : 's'}
 				</div>
 			</div>
+		</section>
+
+		<section class="flex items-center justify-between gap-4">
+			<div>
+				<div class="type-body text-text-primary">Updates</div>
+				<p class="type-caption mt-0.5 text-text-tertiary">
+					{#if updater.status === 'checking'}
+						Checking…
+					{:else if updater.status === 'available' || updater.status === 'downloading'}
+						Update {updater.version} available
+					{:else if updater.status === 'ready'}
+						Update {updater.version} ready to install
+					{:else if updater.status === 'error'}
+						{updater.error}
+					{:else if updateChecked}
+						Up to date
+					{/if}
+				</p>
+			</div>
+			{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
+				<button
+					type="button"
+					class="focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110"
+					disabled={updater.status === 'downloading'}
+					onclick={installUpdate}
+				>
+					{updater.status === 'downloading' ? 'Downloading…' : 'Install update'}
+				</button>
+			{:else}
+				<button
+					type="button"
+					class="focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110"
+					disabled={updater.status === 'checking'}
+					onclick={checkForUpdates}
+				>
+					Check for updates
+				</button>
+			{/if}
 		</section>
 
 		<button

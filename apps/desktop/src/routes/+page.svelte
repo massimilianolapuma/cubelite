@@ -22,6 +22,7 @@
 	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 	import { settings } from '$lib/stores/settings.svelte';
+	import { updater } from '$lib/stores/updater.svelte';
 
 	const entry = $derived(viewRegistry[app.view]);
 	const Current = $derived(entry.component);
@@ -43,6 +44,7 @@
 				app.onboardingOpen = true;
 			}
 			health.start();
+			void updater.checkForUpdates(true);
 		})();
 
 		return () => {
@@ -81,12 +83,48 @@
 			}
 		}
 	}
+
+	async function restartToUpdate() {
+		if (updater.status !== 'ready') {
+			await updater.downloadAndInstall();
+		}
+		if (updater.status === 'ready') {
+			await updater.restartNow();
+		}
+	}
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
 <div class="flex h-screen flex-col overflow-hidden bg-surface-window">
 	<Titlebar />
+	{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
+		<div
+			class="relative z-10 flex items-center justify-center gap-2 border-b border-border-default px-2.5 py-1"
+			style="background: var(--alpha-pill-ok);"
+		>
+			<span class="type-caption" style="color: var(--color-status-ok);">
+				Update {updater.version} available
+			</span>
+			<button
+				type="button"
+				class="type-caption underline"
+				style="color: var(--color-status-ok);"
+				disabled={updater.status === 'downloading'}
+				onclick={restartToUpdate}
+			>
+				{updater.status === 'downloading' ? 'Downloading…' : 'Restart to update'}
+			</button>
+			<button
+				type="button"
+				class="type-caption underline"
+				style="color: var(--color-status-ok);"
+				onclick={() => updater.dismiss()}
+			>
+				Later
+			</button>
+		</div>
+	{/if}
 	<div class="flex min-h-0 flex-1">
 		<ClusterRail />
 		{#if app.view !== 'dashboard'}
