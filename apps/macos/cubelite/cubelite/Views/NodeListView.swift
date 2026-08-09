@@ -32,6 +32,7 @@ struct NodeListView: View {
                     )
                     .frame(width: 8, height: 8)
                     .help(node.status)
+                    .accessibilityHidden(true)
             }
             .width(16)
 

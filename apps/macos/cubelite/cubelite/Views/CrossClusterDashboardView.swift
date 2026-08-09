@@ -42,6 +42,8 @@ struct CrossClusterDashboardView: View {
                 }
                 .buttonStyle(.borderless)
                 .help("Refresh all clusters")
+                .accessibilityLabel("Refresh all clusters")
+                .accessibilityIdentifier("dashboard.refresh")
             }
         }
     }
@@ -154,6 +156,7 @@ private struct ClusterSnapshotRow: View {
             RoundedRectangle(cornerRadius: 10)
                 .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
     }
 
     private var statusIndicator: some View {
@@ -164,6 +167,10 @@ private struct ClusterSnapshotRow: View {
                     : Color.red
             )
             .frame(width: 10, height: 10)
+            .accessibilityLabel(
+                snapshot.isReachable
+                    ? (snapshot.isRBACLimited ? "Limited access" : "Online")
+                    : "Unreachable")
     }
 
     private var clusterInfo: some View {

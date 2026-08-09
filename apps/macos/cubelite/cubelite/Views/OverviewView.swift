@@ -57,6 +57,7 @@ struct OverviewView: View {
                 Image(systemName: icon)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(color)
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -155,6 +156,7 @@ struct OverviewView: View {
                                     .foregroundStyle(.tertiary)
                             }
                         }
+                        .accessibilityElement(children: .combine)
                     }
                 }
             }
@@ -446,6 +448,7 @@ struct OverviewView: View {
             Image(systemName: "lock.slash")
                 .font(.title2)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text("No access")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -474,6 +477,7 @@ struct DashboardCard<Content: View>: View {
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(color)
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.headline)
             }

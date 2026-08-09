@@ -29,12 +29,21 @@ struct JobListView: View {
         return DesignTokens.textTertiary
     }
 
+    /// Overall job health, not otherwise stated as text in the table.
+    private func statusLabel(for job: JobInfo) -> String {
+        if job.failed > 0 { return "Failed" }
+        if job.active > 0 { return "Active" }
+        if job.succeeded >= job.completions { return "Completed" }
+        return "Pending"
+    }
+
     private var jobTable: some View {
         Table(clusterState.jobs) {
             TableColumn("") { job in
                 Circle()
                     .fill(tone(for: job))
                     .frame(width: 8, height: 8)
+                    .accessibilityLabel(statusLabel(for: job))
             }
             .width(16)
 

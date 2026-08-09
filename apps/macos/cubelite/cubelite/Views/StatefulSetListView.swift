@@ -32,6 +32,7 @@ struct StatefulSetListView: View {
                 Circle()
                     .fill(isAvailable(set) ? DesignTokens.statusOk : DesignTokens.statusWarn)
                     .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
             }
             .width(16)
 

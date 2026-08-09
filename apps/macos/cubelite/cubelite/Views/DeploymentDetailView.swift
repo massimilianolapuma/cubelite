@@ -133,6 +133,7 @@ private struct DeploymentStatusBadge: View {
             Circle()
                 .fill(statusColor)
                 .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
             Text(statusLabel)
                 .font(.caption.bold())
                 .foregroundStyle(statusColor)
@@ -209,6 +210,7 @@ private struct SpecCell: View {
                 .font(.callout.monospaced())
                 .lineLimit(1)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -226,10 +228,12 @@ private struct ReadySpecCell: View {
                 Circle()
                     .fill(ready == desired && desired > 0 ? Color.green : Color.orange)
                     .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
                 Text("\(ready) / \(desired)")
                     .font(.callout.monospaced())
             }
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -295,6 +299,7 @@ private struct DeploymentConditionsSection: View {
                     Circle()
                         .fill(Color.conditionStatus(c.status))
                         .frame(width: 7, height: 7)
+                        .accessibilityHidden(true)
                     Text(c.status)
                         .font(.callout)
                         .foregroundStyle(Color.conditionStatus(c.status))

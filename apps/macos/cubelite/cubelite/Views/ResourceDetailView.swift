@@ -181,12 +181,15 @@ struct ResourceDetailView: View {
                     TextField("remote", text: $forwardRemotePort)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 60)
+                        .accessibilityLabel("Remote port")
                     Image(systemName: "arrow.right")
                         .font(.system(size: 9))
                         .foregroundStyle(DesignTokens.textTertiary)
+                        .accessibilityHidden(true)
                     TextField("local", text: $forwardLocalPort)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 60)
+                        .accessibilityLabel("Local port")
                     Button("Forward") {
                         guard let remote = remotePort, let local = localPort else { return }
                         do {
@@ -210,6 +213,7 @@ struct ResourceDetailView: View {
                         Circle()
                             .fill(sessionColor(session.state))
                             .frame(width: 6, height: 6)
+                            .accessibilityLabel(sessionStateLabel(session.state))
                         Text(verbatim: "localhost:\(session.localPort) → \(session.remotePort)")
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(DesignTokens.textSecondary)
@@ -233,6 +237,14 @@ struct ResourceDetailView: View {
         case .active: DesignTokens.statusOk
         case .starting: DesignTokens.statusWarn
         case .failed: DesignTokens.statusErr
+        }
+    }
+
+    private func sessionStateLabel(_ state: PortForwardSession.State) -> String {
+        switch state {
+        case .active: "Active"
+        case .starting: "Starting"
+        case .failed: "Failed"
         }
     }
 
@@ -326,6 +338,7 @@ struct ResourceDetailView: View {
                         Circle()
                             .fill(Color.podPhase(pod.phase))
                             .frame(width: 8, height: 8)
+                            .accessibilityHidden(true)
                         Text(pod.phase ?? "Unknown")
                     }
                 }
@@ -359,6 +372,7 @@ struct ResourceDetailView: View {
                     Circle()
                         .fill(containerStateColor(container))
                         .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
                     Text(container.name)
                         .font(.system(size: 11.5, design: .monospaced))
                         .foregroundStyle(DesignTokens.textSecondary)
@@ -377,6 +391,7 @@ struct ResourceDetailView: View {
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(containerStateColor(container))
                 }
+                .accessibilityElement(children: .combine)
             }
         }
     }
@@ -408,6 +423,7 @@ struct ResourceDetailView: View {
                     Circle()
                         .fill(dep.readyReplicas == dep.replicas && dep.replicas > 0 ? Color.green : Color.orange)
                         .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
                     Text("\(dep.readyReplicas) / \(dep.replicas)")
                 }
             }
@@ -466,6 +482,7 @@ private struct DetailRow<Value: View>: View {
             value
                 .font(.callout)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 

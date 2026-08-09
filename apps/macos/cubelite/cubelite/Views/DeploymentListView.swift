@@ -95,6 +95,7 @@ private struct DeploymentStatusDot: View {
             .fill(color)
             .frame(width: 8, height: 8)
             .help(helpText)
+            .accessibilityHidden(true)
     }
 
     private var color: Color {

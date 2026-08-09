@@ -56,18 +56,23 @@ struct PodListView: View {
                         .font(.callout.monospaced())
                         .lineLimit(1)
                     if pod.id == selectedPodID {
-                        Text("logs ⏎")
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(DesignTokens.accentDefault)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(DesignTokens.accentDefault.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4).stroke(
-                                    DesignTokens.accentDefault.opacity(0.3), lineWidth: 1))
-                            .onTapGesture { onOpenLogs?(pod) }
-                            .accessibilityLabel("Open logs for \(pod.name)")
+                        Button {
+                            onOpenLogs?(pod)
+                        } label: {
+                            Text("logs ⏎")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundStyle(DesignTokens.accentDefault)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(DesignTokens.accentDefault.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4).stroke(
+                                        DesignTokens.accentDefault.opacity(0.3), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open logs")
+                        .accessibilityIdentifier("podlist.logs-chip")
                     }
                 }
             }
@@ -139,6 +144,7 @@ private struct PodStatusDot: View {
             .fill(color)
             .frame(width: 8, height: 8)
             .help(phase ?? "Unknown")
+            .accessibilityHidden(true)
     }
 
     private var color: Color { Color.podPhase(phase) }

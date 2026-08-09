@@ -37,6 +37,7 @@ struct PvcListView: View {
                     .fill(tone(pvc.status))
                     .frame(width: 8, height: 8)
                     .help(pvc.status ?? "Unknown")
+                    .accessibilityHidden(true)
             }
             .width(16)
 
