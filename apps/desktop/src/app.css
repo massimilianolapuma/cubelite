@@ -89,7 +89,7 @@
     --cl-color-status-ok: #087e58;
     --cl-color-status-warn: #9b6107;
     --cl-color-status-err: #d42727;
-    --cl-color-status-err-solid: #c93535;
+    --cl-color-status-err-solid: #d35959;
     --cl-color-status-info: #0e74ad;
     --cl-color-cluster-blue: #0b63f3;
     --cl-color-cluster-amber: #a65b05;
@@ -136,7 +136,7 @@
     --muted-foreground: 240 5.2% 33.9%;
     --accent: 240 8.6% 93.1%;
     --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 58.3% 49.8%;
+    --destructive: 0 58.1% 58.8%;
     --destructive-foreground: 240 5.9% 10%;
     --border: 240 9.1% 89.2%;
     --input: 240 9.1% 89.2%;
@@ -170,7 +170,7 @@
     --cl-color-status-ok: #34d399;
     --cl-color-status-warn: #fbbf24;
     --cl-color-status-err: #f87171;
-    --cl-color-status-err-solid: #dc4646;
+    --cl-color-status-err-solid: #d72929;
     --cl-color-status-info: #7dd3fc;
     --cl-color-cluster-blue: #60a5fa;
     --cl-color-cluster-amber: #f59e0b;
@@ -198,7 +198,7 @@
     --muted-foreground: 240 5.3% 63.1%;
     --accent: 240 8.8% 11.2%;
     --accent-foreground: 240 4.8% 95.9%;
-    --destructive: 0 68.2% 56.9%;
+    --destructive: 0 68.5% 50.2%;
     --destructive-foreground: 240 4.8% 95.9%;
     --border: 240 6.2% 15.9%;
     --input: 240 6.2% 15.9%;

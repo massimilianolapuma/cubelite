@@ -30,6 +30,15 @@ Stage 1 of 3 for issue #120.
   text tokens that a single surface nudge would have cleared more
   cheaply). The nudge search used a scratch Node script duplicating the
   math in `wcag.ts` — not committed.
+- **Coverage guard**: a dedicated test in `tokens-contrast.test.ts`
+  iterates every color token name under the `text`, `status`, and
+  `cluster-identity` groups in `design/tokens.json` (skipping `$`-prefixed
+  keys) and asserts each one appears either as a `MATRIX` row's
+  `text: [group, name]` or in the `AUDIT_EXEMPT` allowlist (a token name →
+  reason map; currently only `text.disabled`, exempt because it has its
+  own floor assertion above). This makes the suite fail — rather than
+  silently pass — when a new text/status/identity token is added without
+  being audited.
 
 ## Result: zero exceptions
 
@@ -37,6 +46,16 @@ All 28 failing pairings from the pre-fix audit clear 4.5:1 (or the 2.5:1
 disabled floor) with a pure hue/saturation-preserving lightness change —
 none required trading off identity hue, so the `EXCEPTIONS` map in
 `tokens-contrast.test.ts` remains empty. 88/88 audit assertions pass.
+
+A final-review pass found one additional failing pairing outside the
+original text-on-surface scope: `status.err-solid`, a *fill* token (the
+`DeletePodDialog.svelte` destructive-button background), against the
+`text.primary` label rendered on top of it. That pairing was fixed the
+same way (hue-preserving lightness nudge) and audited with a new MATRIX
+row (see below) plus a coverage guard that fails the suite if a future
+`text`/`status`/`cluster-identity` token is added without either a MATRIX
+row or an explicit `AUDIT_EXEMPT` entry. With those additions the suite
+runs 91/91 audit assertions.
 
 ## Changed tokens (before → after)
 
@@ -58,12 +77,35 @@ token/theme before and after (full matrix below).
 | `cluster-identity.amber` | light | `#d97706` | `#a65b05` | 2.826 → 4.521 (sunken) |
 | `cluster-identity.pink` | light | `#db2777` | `#cf236f` | 4.078 → 4.518 (sunken) |
 
-All 11 changes preserve hue and saturation exactly (HSL H/S unchanged) —
-only lightness (L) moved, by 1.7 to 10.3 percentage points depending on the
+All 11 changes are hue-preserving (sub-1° drift from 8-bit hex rounding) —
+only lightness (L) moved, by 1.7 to 10.2 percentage points depending on the
 token, the smallest step that clears its threshold. `cluster-identity.amber`
 needed the largest move (L 43.7% → 33.5%), matching it being the worst
 pre-fix miss (2.83:1). `cluster-identity.violet` was already compliant in
 both themes and needed no change.
+
+### Follow-up: `status.err-solid` (final-review fix, both themes)
+
+Unlike the 11 changes above, this token is a **fill** (destructive-button
+background), audited against the text token actually rendered on top of
+it — `text.primary` — rather than against a surface. Because the two
+themes' `text.primary` values sit on opposite ends of the lightness range
+(near-black in light theme, near-white in dark theme), the fix moves in
+*opposite* directions per theme — still the smallest hue/saturation-
+preserving lightness step that clears 4.5:1 in each:
+
+| Token | Theme | Before hex | After hex | Ratio vs `text.primary` before → after |
+|---|---|---|---|---|
+| `status.err-solid` | light | `#c93535` | `#d35959` | 3.412 → 4.508 (lightened, +8.9pp L) |
+| `status.err-solid` | dark | `#dc4646` | `#d72929` | 3.815 → 4.507 (darkened, −6.6pp L) |
+
+Both new hexes preserve hue exactly (H = 0°, pure red — `err-solid`'s
+green and blue channels are always equal, so no rounding drift occurs
+here specifically). No other component in either app (`apps/desktop`,
+`apps/macos`) consumes `status.err-solid`/`statusErrSolid` today, so this
+change carries no risk of breaking a different text/fill pairing
+elsewhere — confirmed by grepping both app trees for `err-solid` /
+`errSolid` usages.
 
 ## Full post-fix matrix
 

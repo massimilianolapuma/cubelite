@@ -37,7 +37,7 @@ public enum DesignTokens {
     public static let statusOk = dynamicColor(light: "#087e58", dark: "#34d399")
     public static let statusWarn = dynamicColor(light: "#9b6107", dark: "#fbbf24")
     public static let statusErr = dynamicColor(light: "#d42727", dark: "#f87171")
-    public static let statusErrSolid = dynamicColor(light: "#c93535", dark: "#dc4646")
+    public static let statusErrSolid = dynamicColor(light: "#d35959", dark: "#d72929")
     public static let statusInfo = dynamicColor(light: "#0e74ad", dark: "#7dd3fc")
 
     // MARK: - Cluster identity

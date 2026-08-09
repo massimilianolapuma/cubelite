@@ -41,11 +41,29 @@ const MATRIX: { text: [string, string]; surfaces: [string, string][]; min: numbe
   { text: ["cluster-identity", "amber"], min: 4.5, surfaces: [["surface","sunken"]] },
   { text: ["cluster-identity", "pink"], min: 4.5, surfaces: [["surface","sunken"]] },
   { text: ["cluster-identity", "violet"], min: 4.5, surfaces: [["surface","sunken"]] },
+  // status.err-solid is a FILL token (destructive-button background), not a text
+  // color — but contrast is symmetric, so it's audited here against the text
+  // token actually overlaid on it. DeletePodDialog.svelte renders its confirm
+  // button as `style="background: var(--color-status-err-solid)"` with class
+  // `text-text-primary`, i.e. the real foreground is text.primary (not
+  // surface.window, which is the convention used by other solid-fill buttons
+  // elsewhere in the app but not this one) — paired against its own theme's
+  // text.primary value.
+  { text: ["status", "err-solid"], min: 4.5, surfaces: [["text","primary"]] },
 ];
 
 /** "<textGroup>.<name>/<surface>/<theme>" → recorded ratio + reason. */
 const EXCEPTIONS: Record<string, { ratio: number; reason: string }> = {
   // filled by the fix pass (Task 2) — goal: zero or near-zero entries
+};
+
+/**
+ * "<group>.<name>" → reason, for color tokens in the coverage-guard groups
+ * below that are intentionally not in MATRIX (i.e. not audited against AA).
+ * Keep this empty wherever possible — prefer adding a MATRIX row instead.
+ */
+const AUDIT_EXEMPT: Record<string, string> = {
+  "text.disabled": "AA-exempt, floor-asserted separately",
 };
 
 describe("token contrast (WCAG AA)", () => {
@@ -78,4 +96,24 @@ describe("token contrast (WCAG AA)", () => {
       });
     }
   }
+
+  // Coverage guard: every color token in these groups must be either
+  // matrix-audited (a MATRIX row) or explicitly exempt (AUDIT_EXEMPT, with a
+  // reason). Prevents a newly added text/status/cluster-identity token from
+  // silently skipping the contrast audit.
+  it("every text/status/cluster-identity color token is audited or exempt", () => {
+    const auditedKeys = new Set(MATRIX.map((row) => `${row.text[0]}.${row.text[1]}`));
+    const missing: string[] = [];
+    for (const group of ["text", "status", "cluster-identity"] as const) {
+      for (const name of Object.keys(tokens[group] ?? {})) {
+        if (name.startsWith("$")) continue;
+        const key = `${group}.${name}`;
+        if (!auditedKeys.has(key) && !(key in AUDIT_EXEMPT)) {
+          missing.push(key);
+        }
+      }
+    }
+    expect(missing, `token(s) missing a MATRIX row or AUDIT_EXEMPT entry: ${missing.join(", ")}`)
+      .toEqual([]);
+  });
 });
