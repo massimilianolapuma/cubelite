@@ -357,11 +357,12 @@ is a manual pass on the PR build:
      horizontally; this is expected and unchanged from the design's
      layout guard.
    - **Rail icon badges** (`ClusterRailView.swift`: the house and
-     gearshape SF Symbols, plus the per-cluster initials avatars) sit in
-     fixed 38×38 circles — the glyph itself scales via `scaledFont`/
-     `@ScaledMetric` but the containing circle does not, so at extreme
-     text sizes the glyph may clip against the circle's edge; this is a
-     contained, accepted artifact, not a regression.
+     gearshape SF Symbols) sit in fixed 38×38 circles — those two glyphs
+     scale via `scaledFont`/`@ScaledMetric` while the containing circle
+     does not, so at extreme text sizes the glyph may clip against the
+     circle's edge; this is a contained, accepted artifact, not a
+     regression. The per-cluster initials avatars are excluded from
+     scaling entirely (see below).
    - The **log grid stays visually unchanged**: timestamp/source/severity/
      message columns keep their original fixed size and alignment, as do
      the search match-count and tail-count readouts and the tab strip's
