@@ -101,6 +101,11 @@ jobs:
             os: windows-latest
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    env:
+      # Signs the Tauri updater artifacts (.app.tar.gz / -setup.exe / msi /
+      # AppImage) with the minisign private key so tauri-plugin-updater can
+      # verify them client-side. See docs/RELEASING.md for backup/rotation.
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -135,18 +140,30 @@ jobs:
         run: |
           mkdir -p out
           bundle_dir="target/release/bundle"
+          # createUpdaterArtifacts: true (tauri.conf.json) makes the bundler
+          # emit an extra signed artifact + .sig alongside the normal
+          # installers: macOS `.app.tar.gz`, Windows nsis `-setup.exe`
+          # (msi is also produced but nsis is what we standardize on for
+          # the updater), Linux `.AppImage`. deb/rpm/dmg/msi stay
+          # release-only assets — they don't go through the Tauri updater,
+          # so no updater artifact/sig is collected for them. Stable names
+          # here are what scripts/make-latest-json.mjs scans for later.
           case "${{ matrix.platform }}" in
             macOS)
               cp "$(find "$bundle_dir/dmg" -name '*.dmg' | head -1)" out/CubeLite-Desktop-macOS.dmg
+              cp "$(find "$bundle_dir/macos" -name '*.app.tar.gz' | head -1)" out/CubeLite-Desktop-macOS.app.tar.gz
+              cp "$(find "$bundle_dir/macos" -name '*.app.tar.gz.sig' | head -1)" out/CubeLite-Desktop-macOS.app.tar.gz.sig
               ;;
             Linux)
               cp "$(find "$bundle_dir/appimage" -name '*.AppImage' | head -1)" out/CubeLite-Desktop-Linux.AppImage
+              cp "$(find "$bundle_dir/appimage" -name '*.AppImage.sig' | head -1)" out/CubeLite-Desktop-Linux.AppImage.sig
               cp "$(find "$bundle_dir/deb" -name '*.deb' | head -1)" out/CubeLite-Desktop-Linux.deb
               cp "$(find "$bundle_dir/rpm" -name '*.rpm' | head -1)" out/CubeLite-Desktop-Linux.rpm
               ;;
             Windows)
               cp "$(find "$bundle_dir/msi" -name '*.msi' | head -1)" out/CubeLite-Desktop-Windows.msi
               cp "$(find "$bundle_dir/nsis" -name '*.exe' | head -1)" out/CubeLite-Desktop-Windows-setup.exe
+              cp "$(find "$bundle_dir/nsis" -name '*.exe.sig' | head -1)" out/CubeLite-Desktop-Windows-setup.exe.sig
               ;;
           esac
           ls -la out
@@ -201,6 +218,35 @@ jobs:
             echo "---"
             echo "[Installation guide](https://massimilianolapuma.github.io/cubelite/docs/installation.html) · builds are not yet notarized/signed; see the guide for the one-time Gatekeeper/SmartScreen step."
           } >> notes.md
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+
+      - name: Generate latest.json (updater manifest)
+        id: latest_json
+        # Soft-fail: a missing platform artifact/sig must not hold the
+        # whole release hostage (same principle as the build-desktop matrix
+        # not gating publish). If this fails, latest.json simply won't
+        # exist and `gh release create assets/*` below won't include it —
+        # the release still publishes, just without auto-update support
+        # until someone fixes the missing platform and re-uploads it
+        # manually (see docs/RELEASING.md).
+        continue-on-error: true
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          node scripts/make-latest-json.mjs \
+            --dir assets \
+            --tag "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --notes-file notes.md \
+            --out assets/latest.json
+
+      - name: Warn if updater manifest was skipped
+        if: steps.latest_json.outcome == 'failure'
+        run: |
+          echo "::warning::latest.json was not generated (see 'Generate latest.json' step above) — the release will publish without updater support until the missing platform artifact/sig is fixed and 'gh release upload' is run manually."
 
       - name: Create tag + release
         env:

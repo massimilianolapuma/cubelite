@@ -124,3 +124,20 @@ jobs:
       - name: Unit tests
         if: steps.check.outputs.has_fe == 'true' && steps.check_tests.outputs.has_tests == 'true'
         run: pnpm --filter desktop test
+
+      - name: Test make-latest-json (updater manifest generator)
+        # Plain Node, no deps — runs on the runner's preinstalled Node
+        # regardless of the desktop app's toolchain, so it isn't gated on
+        # has_fe. Exercises both the happy path (exit 0) and the
+        # missing-.sig failure (must exit 1) against the fixtures in
+        # scripts/fixtures/updater/.
+        run: |
+          set -e
+          node scripts/make-latest-json.mjs --check scripts/fixtures/updater/happy > /dev/null
+          echo "happy fixture: OK (exit 0)"
+
+          if node scripts/make-latest-json.mjs --check scripts/fixtures/updater/missing-sig > /dev/null 2>&1; then
+            echo "::error::missing-sig fixture unexpectedly succeeded (expected exit 1)"
+            exit 1
+          fi
+          echo "missing-sig fixture: OK (exit 1 as expected)"
