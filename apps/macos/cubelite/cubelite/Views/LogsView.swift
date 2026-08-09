@@ -113,6 +113,7 @@ struct LogsView: View {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 40))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
             Text("Select an entry to view details")
                 .foregroundStyle(.secondary)
         }

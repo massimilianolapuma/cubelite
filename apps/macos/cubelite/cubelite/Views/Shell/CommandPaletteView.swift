@@ -226,7 +226,7 @@ struct CommandPaletteView: View {
         .buttonStyle(.plain)
         .accessibilityValue({
             if case .cluster(let name, _) = item, name == activeContext {
-                return "Current cluster"
+                return "Selected cluster"
             }
             return ""
         }())

@@ -20,7 +20,7 @@ follows one of these seven rules:
    VoiceOver reads state, not just the name.
 3. **Clickable non-Button** (`onTapGesture`) → convert to `Button` with
    `.buttonStyle(.plain)` preserving the exact visual, so it enters focus
-   traversal and gets the button trait natively. This is the fix for all four
+   traversal and gets the button trait natively. This is the fix for all three
    keyboard gaps.
 4. **Decorative images/dots** → `.accessibilityHidden(true)`; informative
    status dots → folded into the parent's label/value
@@ -46,8 +46,13 @@ follows one of these seven rules:
 ("All Clusters", "Open preferences", "Refresh all", "View logs and errors");
 selection/connection state exposed via `.accessibilityValue`; decorative
 status dots and chevrons hidden; `MainView+Sidebar`'s `clusterHeader`
-`onTapGesture` converted to `Button` (one of the four keyboard gaps). New
-identifiers use the `<area>.<element>` pattern; three pre-existing identifiers
+`onTapGesture` converted to `Button` (one of three keyboard gaps fixed this
+stage — though this call site is dead code: `MainView`'s body has rendered
+`UnifiedHeaderView`/`ClusterRailView`/`UnifiedSidebarView` since PR #265, and
+`MainView+Sidebar`'s `sidebar`/`clusterHeader` are unreferenced by anything
+that runs; the fix is harmless but has no runtime effect — cleanup to delete
+the dead file is a follow-up, not part of this stage). New identifiers use
+the `<area>.<element>` pattern; three pre-existing identifiers
 (`rail-all-clusters`, `rail-context-<name>`, `palette-input`) were **not**
 renamed to the dot pattern because `cubeliteUITests` references them by
 literal string — renaming would silently break that suite (skipped by the
@@ -73,7 +78,7 @@ uncombined so the button keeps its own focus stop. Status dots were hidden
 where an adjacent text column already states the same fact, and explicitly
 labeled where they're the only source of that information (Job list, ingress
 TLS icon, port-forward session state). `PodListView`'s "logs" chip
-`onTapGesture` converted to `Button` (second of the four keyboard gaps).
+`onTapGesture` converted to `Button` (second of the three keyboard gaps).
 
 ### Log panel + preferences + dialogs (task 3, this doc's origin)
 
@@ -92,7 +97,7 @@ TLS icon, port-forward session state). `PodListView`'s "logs" chip
   `logpanel.load-earlier`, `logpanel.search-previous`,
   `logpanel.search-next`).
 - **`LogPanel/LogTabStrip.swift`**: the tab-select `onTapGesture` converted to
-  `Button` (the last of the four keyboard gaps) with a composed label
+  `Button` (the last of the three keyboard gaps) with a composed label
   ("pod-name, container X, ready"/"not ready") and an
   `.accessibilityValue("Active tab")` for the current tab. The select `Button`
   wraps only the status circle + pod name + container text; the row's visual

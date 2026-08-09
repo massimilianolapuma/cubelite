@@ -94,7 +94,7 @@ struct MenuBarContextView: View {
             .buttonStyle(.plain)
             .padding(.vertical, 3)
             .padding(.horizontal, 4)
-            .accessibilityValue(context == current ? "Current" : "")
+            .accessibilityValue(context == current ? "Selected" : "")
         }
     }
 

@@ -283,6 +283,7 @@ struct ResourceDetailView: View {
                 .font(.system(size: 28))
                 .foregroundStyle(.tint)
                 .frame(width: 36, height: 36)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(resourceName)
                     .font(.title3.bold())

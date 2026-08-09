@@ -30,6 +30,7 @@ struct LogToolbar: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 10))
                 .foregroundStyle(DesignTokens.textTertiary)
+                .accessibilityHidden(true)
             TextField("search logs", text: Bindable(session.search).query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12, weight: .medium))
