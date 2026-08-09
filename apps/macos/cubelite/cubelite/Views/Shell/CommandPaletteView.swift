@@ -168,21 +168,25 @@ struct CommandPaletteView: View {
                     Circle()
                         .fill(ClusterIdentity.color(for: name, in: contexts))
                         .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
                     Text(name)
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(DesignTokens.textPrimary)
                     if name == activeContext {
                         Circle().fill(DesignTokens.statusOk).frame(width: 6, height: 6)
+                            .accessibilityHidden(true)
                     }
                     Spacer(minLength: 0)
                     if let shortcut {
                         kbd("⌘\(shortcut)")
+                            .accessibilityHidden(true)
                     }
                 case .allClusters:
                     Image(systemName: "house")
                         .font(.system(size: 11))
                         .foregroundStyle(DesignTokens.textTertiary)
                         .frame(width: 14)
+                        .accessibilityHidden(true)
                     Text(item.label)
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(DesignTokens.textSecondary)
@@ -192,6 +196,7 @@ struct CommandPaletteView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(DesignTokens.textTertiary)
                         .frame(width: 14)
+                        .accessibilityHidden(true)
                     Text(item.label)
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(DesignTokens.textSecondary)
@@ -201,6 +206,7 @@ struct CommandPaletteView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(DesignTokens.textTertiary)
                         .frame(width: 14)
+                        .accessibilityHidden(true)
                     Text(item.label)
                         .font(.system(size: 12.5, weight: .medium))
                         .foregroundStyle(DesignTokens.textSecondary)
@@ -218,6 +224,13 @@ struct CommandPaletteView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityValue({
+            if case .cluster(let name, _) = item, name == activeContext {
+                return "Selected cluster"
+            }
+            return ""
+        }())
+        .accessibilityIdentifier("palette.result-\(item.id)")
     }
 
     private func kbd(_ label: String) -> some View {

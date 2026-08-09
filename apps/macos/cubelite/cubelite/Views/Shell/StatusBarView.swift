@@ -29,6 +29,7 @@ struct StatusBarView: View {
                         .foregroundStyle(DesignTokens.statusWarn)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("statusbar.errors")
             }
         }
         .padding(.horizontal, 12)

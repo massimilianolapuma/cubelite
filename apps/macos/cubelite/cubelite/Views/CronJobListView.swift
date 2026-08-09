@@ -29,6 +29,7 @@ struct CronJobListView: View {
                     .fill(job.suspend ? DesignTokens.statusWarn : DesignTokens.statusOk)
                     .frame(width: 8, height: 8)
                     .help(job.suspend ? "Suspended" : "Scheduled")
+                    .accessibilityHidden(true)
             }
             .width(16)
 

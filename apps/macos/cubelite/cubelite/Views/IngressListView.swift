@@ -85,10 +85,12 @@ struct IngressListView: View {
                     Image(systemName: "lock.fill")
                         .foregroundStyle(.green)
                         .help("TLS enabled")
+                        .accessibilityLabel("TLS enabled")
                 } else {
                     Image(systemName: "lock.open")
                         .foregroundStyle(.secondary)
                         .help("No TLS")
+                        .accessibilityLabel("No TLS")
                 }
             }
             .width(ideal: 40)

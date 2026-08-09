@@ -135,9 +135,11 @@ private struct KubeconfigStatusCard: View {
         case .found:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
+                .accessibilityHidden(true)
         case .notFound:
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
         }
     }
 
@@ -194,6 +196,7 @@ private struct FeatureRow: View {
             Image(systemName: icon)
                 .foregroundStyle(.tint)
                 .frame(width: 20, alignment: .center)
+                .accessibilityHidden(true)
             Text(label)
                 .font(.callout)
         }
@@ -214,5 +217,6 @@ private struct GetStartedButton: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.regular)
+        .accessibilityIdentifier("firstlaunch.get-started")
     }
 }

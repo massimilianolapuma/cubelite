@@ -32,11 +32,13 @@ struct ManifestSheetView: View {
                         applyError = nil
                     }
                     .controlSize(.small)
+                    .accessibilityIdentifier("manifest.cancel")
                     Button(applying ? "Applying…" : "Apply") {
                         apply()
                     }
                     .controlSize(.small)
                     .disabled(applying)
+                    .accessibilityIdentifier("manifest.apply")
                 } else {
                     if onApply != nil {
                         Button("Edit") {
@@ -44,6 +46,7 @@ struct ManifestSheetView: View {
                             editing = true
                         }
                         .controlSize(.small)
+                        .accessibilityIdentifier("manifest.edit")
                     }
                     Button(copied ? "Copied" : "Copy") {
                         NSPasteboard.general.clearContents()
@@ -51,9 +54,11 @@ struct ManifestSheetView: View {
                         copied = true
                     }
                     .controlSize(.small)
+                    .accessibilityIdentifier("manifest.copy")
                     Button("Done", action: onClose)
                         .keyboardShortcut(.defaultAction)
                         .controlSize(.small)
+                        .accessibilityIdentifier("manifest.done")
                 }
             }
             .padding(12)

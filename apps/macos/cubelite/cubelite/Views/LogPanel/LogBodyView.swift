@@ -115,6 +115,8 @@ struct LogBodyView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.bottom, 10)
+                    .accessibilityLabel("Jump to \(session.newLinesSincePause) new lines")
+                    .accessibilityIdentifier("logpanel.new-lines")
                 }
             }
         }

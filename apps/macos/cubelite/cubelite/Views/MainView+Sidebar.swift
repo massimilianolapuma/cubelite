@@ -23,6 +23,7 @@ extension MainView {
             Image(systemName: "doc.badge.questionmark")
                 .font(.system(size: 36))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text("No kubeconfig found")
                 .font(.headline)
                 .multilineTextAlignment(.center)
@@ -58,6 +59,8 @@ extension MainView {
                     : nil
             )
             .help("All Clusters")
+            .accessibilityLabel("All Clusters")
+            .accessibilityValue(showAllClusters ? "Selected" : "Not selected")
             .padding(.top, 8)
 
             Divider()
@@ -84,6 +87,10 @@ extension MainView {
                         : nil
                 )
                 .help(context)
+                .accessibilityLabel(context)
+                .accessibilityValue(
+                    (context == selectedContext && !showAllClusters) ? "Selected" : "Not selected"
+                )
             }
 
             Spacer()
@@ -149,6 +156,7 @@ extension MainView {
                                     .onSubmit {
                                         addManualNamespace(for: context)
                                     }
+                                    .accessibilityIdentifier("sidebar.add-namespace-field")
                                 Button {
                                     addManualNamespace(for: context)
                                 } label: {
@@ -159,6 +167,7 @@ extension MainView {
                                 .disabled(manualNamespaceInput.trimmingCharacters(
                                     in: .whitespaces
                                 ).isEmpty)
+                                .accessibilityLabel("Add namespace")
                             }
                             .padding(.leading, 8)
                             .padding(.trailing, 4)
@@ -197,6 +206,7 @@ extension MainView {
                     .font(.system(size: 14))
                     .frame(width: 20, height: 20)
                     .foregroundStyle(showAllClusters ? Color.accentColor : .secondary)
+                    .accessibilityHidden(true)
                 Text("All Clusters")
                     .font(.body)
                 Spacer(minLength: 0)
@@ -219,27 +229,36 @@ extension MainView {
                 ? RoundedRectangle(cornerRadius: 6).fill(Color.accentColor.opacity(0.15))
                 : nil
         )
+        .accessibilityValue(showAllClusters ? "Selected" : "")
     }
 
     private func clusterHeader(for context: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "server.rack")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(context == selectedContext ? Color.accentColor : .secondary)
-            Text(context)
-                .font(.headline)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            if context == clusterState.currentContext {
-                Circle()
-                    .fill(clusterState.clusterReachable == true ? Color.green : Color.secondary)
-                    .frame(width: 8, height: 8)
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
+        Button {
             selectedContext = context
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "server.rack")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(context == selectedContext ? Color.accentColor : .secondary)
+                    .accessibilityHidden(true)
+                Text(context)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if context == clusterState.currentContext {
+                    Circle()
+                        .fill(clusterState.clusterReachable == true ? Color.green : Color.secondary)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityValue(
+            context == clusterState.currentContext
+                ? (clusterState.clusterReachable == true ? "Connected" : "Unreachable")
+                : "")
     }
 
     private func sidebarNamespaceRow(
@@ -263,6 +282,7 @@ extension MainView {
                     .font(.system(size: 14))
                     .frame(width: 20, height: 20)
                     .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .accessibilityHidden(true)
                 Text(label)
                     .font(.body)
                     .lineLimit(1)
@@ -273,6 +293,7 @@ extension MainView {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .animation(.easeInOut(duration: 0.2), value: namespacesExpanded)
+                        .accessibilityHidden(true)
                 }
                 if let count, count > 0 {
                     Text("\(count)")
@@ -294,5 +315,9 @@ extension MainView {
                 : nil
         )
         .foregroundStyle(isSelected ? Color.primary : .primary)
+        .accessibilityValue(
+            (additionalAction != nil && context == selectedContext)
+                ? (namespacesExpanded ? "Expanded" : "Collapsed")
+                : "")
     }
 }

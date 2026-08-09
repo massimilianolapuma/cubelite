@@ -52,6 +52,7 @@ struct LogPanelView: View {
                 .fill(DesignTokens.statusWarn)
                 .frame(width: 7, height: 7)
                 .modifier(PulseEffect())
+                .accessibilityHidden(true)
             Text(
                 "stream lost — reconnecting (attempt \(session.reconnectAttempt), "
                     + "next retry \(session.nextRetrySeconds)s)"
@@ -64,6 +65,8 @@ struct LogPanelView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(DesignTokens.statusWarn)
                 .underline()
+                .accessibilityLabel("Retry connection now")
+                .accessibilityIdentifier("logpanel.reconnect-retry")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

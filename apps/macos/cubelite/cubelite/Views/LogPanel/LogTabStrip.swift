@@ -32,6 +32,7 @@ struct LogTabStrip: View {
             .buttonStyle(.plain)
             .keyboardShortcut("l", modifiers: .command)
             .accessibilityLabel(store.isCollapsed ? "Expand log panel" : "Collapse log panel")
+            .accessibilityIdentifier("logpanel.collapse")
             .padding(.leading, 8)
         }
         .padding(.horizontal, 12)
@@ -42,34 +43,56 @@ struct LogTabStrip: View {
     private func tab(_ session: LogSession) -> some View {
         let isActive = session.pod.id == store.activeSessionID
         return HStack(spacing: 7) {
-            Circle()
-                .fill(session.pod.ready ? DesignTokens.statusOk : DesignTokens.statusWarn)
-                .frame(width: 7, height: 7)
-            Text(session.pod.name)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(
-                    isActive ? DesignTokens.textDataBright : DesignTokens.textTertiary
-                )
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 190)
-            if let container = session.selectedContainer {
-                Text(container)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(DesignTokens.textTertiary)
-                    .lineLimit(1)
+            Button {
+                store.activeSessionID = session.pod.id
+            } label: {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(session.pod.ready ? DesignTokens.statusOk : DesignTokens.statusWarn)
+                        .frame(width: 7, height: 7)
+                        .accessibilityHidden(true)
+                    Text(session.pod.name)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(
+                            isActive ? DesignTokens.textDataBright : DesignTokens.textTertiary
+                        )
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 190)
+                    if let container = session.selectedContainer {
+                        Text(container)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(DesignTokens.textTertiary)
+                            .lineLimit(1)
+                    }
+                }
+                // Leading padding + full row height live on the label so the
+                // button's hit area covers the padded region, not just the
+                // circle/text's intrinsic size — contentShape must come
+                // after them to pick up the padded frame.
+                .padding(.leading, 12)
+                .frame(height: 34)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(tabAccessibilityLabel(session))
+            .accessibilityValue(isActive ? "Active tab" : "")
+            .accessibilityIdentifier("logpanel.tab-\(session.pod.name)")
+
             Button {
                 store.close(sessionID: session.pod.id)
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 8))
                     .foregroundStyle(DesignTokens.textTertiary)
+                    .padding(.trailing, 12)
+                    .frame(height: 34)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close \(session.pod.name) logs")
+            .accessibilityIdentifier("logpanel.tab-close-\(session.pod.name)")
         }
-        .padding(.horizontal, 12)
         .frame(height: 34)
         .background(isActive ? DesignTokens.surfacePanel : .clear)
         .overlay(alignment: .top) {
@@ -80,8 +103,15 @@ struct LogTabStrip: View {
         .overlay(alignment: .trailing) {
             Rectangle().fill(DesignTokens.borderFaint).frame(width: 1)
         }
-        .contentShape(Rectangle())
-        .onTapGesture { store.activeSessionID = session.pod.id }
+    }
+
+    private func tabAccessibilityLabel(_ session: LogSession) -> String {
+        var parts = [session.pod.name]
+        if let container = session.selectedContainer {
+            parts.append("container \(container)")
+        }
+        parts.append(session.pod.ready ? "ready" : "not ready")
+        return parts.joined(separator: ", ")
     }
 
     private func lineCountLabel(_ session: LogSession) -> String {

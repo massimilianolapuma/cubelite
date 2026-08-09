@@ -20,6 +20,7 @@ struct LogsView: View {
                 Spacer()
                 Button("Close") { dismiss() }
                     .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("logsview.close")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -48,12 +49,16 @@ struct LogsView: View {
 
     private var logListHeader: some View {
         HStack {
-            Text("Logs").font(.headline)
-            entryCountBadge
+            HStack {
+                Text("Logs").font(.headline)
+                entryCountBadge
+            }
+            .accessibilityElement(children: .combine)
             Spacer()
             Button("Clear All") { logStore.clear() }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.red)
+                .accessibilityIdentifier("logsview.clear-all")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -76,6 +81,8 @@ struct LogsView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .labelsHidden()
+        .accessibilityLabel("Filter log entries")
+        .accessibilityIdentifier("logsview.filter")
     }
 
     private var logEntryList: some View {
@@ -106,6 +113,7 @@ struct LogsView: View {
             Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 40))
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
             Text("Select an entry to view details")
                 .foregroundStyle(.secondary)
         }
@@ -168,6 +176,7 @@ private struct LogRowView: View {
         }
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
         .overlay(alignment: .leading) {
             if isSelected {
                 Rectangle()
