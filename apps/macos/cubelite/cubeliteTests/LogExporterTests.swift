@@ -21,6 +21,11 @@ final class LogExporterTests: XCTestCase {
             LogExporter.filename(pod: "web-1", container: nil, full: false), "web-1.log")
     }
 
+    func testMergedFilenameUsesAll() {
+        XCTAssertEqual(LogExporter.filename(pod: "api-0", container: "all", full: false), "api-0_all.log")
+        XCTAssertEqual(LogExporter.filename(pod: "api-0", container: "all", full: true), "api-0_all_full.log")
+    }
+
     func testContent_joinsTimeAndMessage() {
         let lines = [
             LogLine.parse("2026-07-15T10:00:00Z hello", id: 0),
