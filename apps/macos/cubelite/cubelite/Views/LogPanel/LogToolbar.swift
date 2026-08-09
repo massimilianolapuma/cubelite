@@ -12,7 +12,7 @@ struct LogToolbar: View {
     var body: some View {
         HStack(spacing: 8) {
             containerPicker
-            if selectedContainerInfo?.restarts ?? 0 > 0 {
+            if selectedContainerInfo?.restarts ?? 0 > 0 && !session.isMerged {
                 previousChip
             }
             searchField
@@ -143,10 +143,23 @@ struct LogToolbar: View {
                     }
                 }
             }
+            Divider()
+            Button {
+                session.switchContainer(to: LogSession.allContainers)
+            } label: {
+                if session.isMerged { Image(systemName: "checkmark") }
+                Text("all containers")
+            }
+            .disabled(session.containers.isEmpty)
         } label: {
             HStack(spacing: 6) {
-                Circle().fill(stateColor(selectedContainerInfo)).frame(width: 6, height: 6)
-                Text(session.selectedContainer ?? "—")
+                Circle()
+                    .fill(
+                        session.isMerged
+                            ? DesignTokens.clusterBlue : stateColor(selectedContainerInfo)
+                    )
+                    .frame(width: 6, height: 6)
+                Text(session.isMerged ? "all containers" : (session.selectedContainer ?? "—"))
                     .font(.system(size: 11.5, weight: .medium, design: .monospaced))
                     .foregroundStyle(DesignTokens.textDataBright)
                 Image(systemName: "chevron.down")
@@ -312,7 +325,8 @@ struct LogToolbar: View {
         }
         do {
             let url = try LogExporter.write(
-                lines, pod: session.pod.name, container: session.selectedContainer,
+                lines, pod: session.pod.name,
+                container: session.isMerged ? "all" : session.selectedContainer,
                 full: full, directory: downloads)
             store.showToast("saved \(url.lastPathComponent) to Downloads")
         } catch {

@@ -8,6 +8,12 @@ final class LogSession {
     let pod: PodInfo
     let context: String?
 
+    /// Sentinel container selection: merged stream of every container.
+    static let allContainers = "*"
+    /// True when the session is following every container of the pod at
+    /// once rather than a single selected one.
+    var isMerged: Bool { selectedContainer == Self.allContainers }
+
     private(set) var containers: [ContainerInfo] = []
     private(set) var selectedContainer: String?
     private(set) var showingPrevious = false
@@ -58,7 +64,7 @@ final class LogSession {
     private var streamTask: Task<Void, Never>?
     private var nextLineID = 0
     /// Per-container follow loops; length 1 outside merged "all containers"
-    /// mode (a future task grows this to N).
+    /// mode, one per pod container when merged.
     private var streams: [ContainerLogStream] = []
 
     /// UserDefaults key remembering the last-picked container for this pod.
@@ -79,19 +85,35 @@ final class LogSession {
         streamTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let fetched = try await streamer.fetchPodContainers(
-                    namespace: pod.namespace, pod: pod.name, inContext: context)
-                self.containers = fetched
+                let fetched = try await self.fetchContainers()
                 let remembered = defaults.string(forKey: containerMemoryKey)
-                let name =
-                    fetched.first { $0.name == remembered }?.name ?? fetched.first?.name
+                let name: String? =
+                    remembered == Self.allContainers
+                    ? Self.allContainers
+                    : fetched.first { $0.name == remembered }?.name ?? fetched.first?.name
                 self.selectedContainer = name
                 await self.stream(container: name)
             } catch is CancellationError {
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                // A restart (e.g. picking "all containers" mid-fetch) cancels
+                // this task's URLSession work, which surfaces as
+                // URLError(.cancelled) rather than CancellationError — treat
+                // it the same as a plain cancellation, not a real failure.
             } catch {
                 self.streamError = error.localizedDescription
             }
         }
+    }
+
+    /// Fetches the pod's containers and remembers the result on the
+    /// session. Shared by `start()` (initial load) and merged mode's
+    /// `stream(container:)` (re-fetch when "all containers" was picked
+    /// before the initial fetch finished, leaving `containers` empty).
+    private func fetchContainers() async throws -> [ContainerInfo] {
+        let fetched = try await streamer.fetchPodContainers(
+            namespace: pod.namespace, pod: pod.name, inContext: context)
+        self.containers = fetched
+        return fetched
     }
 
     func stop() {
@@ -110,6 +132,7 @@ final class LogSession {
     }
 
     func setPrevious(_ previous: Bool) {
+        guard !isMerged else { return }
         guard previous != showingPrevious else { return }
         showingPrevious = previous
         if previous { isFollowing = false }
@@ -157,13 +180,30 @@ final class LogSession {
             }
             return
         }
-        startStreams(containers: [container])
+        guard !Task.isCancelled else { return }
+        if isMerged && containers.isEmpty {
+            // "all containers" was picked before the initial fetch finished,
+            // so there's nothing to fan streams out to yet — re-fetch rather
+            // than dead-ending with zero streams and a stuck picker.
+            do {
+                _ = try await fetchContainers()
+            } catch is CancellationError {
+                return
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                return
+            } catch {
+                streamError = error.localizedDescription
+                return
+            }
+        }
+        startStreams(containers: isMerged ? containers.map { $0.name as String? } : [container])
     }
 
     /// Starts one `ContainerLogStream` per target container and fans its
-    /// lines into `append`. Single-element in this task; merged "all
-    /// containers" mode grows the target list.
+    /// lines into `append`. Single-element outside merged mode; one entry
+    /// per pod container when `isMerged`.
     private func startStreams(containers targets: [String?]) {
+        streams.forEach { $0.stop() }
         streams = targets.map { name in
             ContainerLogStream(
                 pod: pod, context: context, container: name,
