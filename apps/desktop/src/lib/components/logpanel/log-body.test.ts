@@ -13,9 +13,10 @@ vi.mock("$lib/tauri", async (importOriginal) => ({
 }));
 
 import LogBody from "./LogBody.svelte";
-import { LogSession } from "$lib/stores/logSession.svelte";
+import { LogSession, ALL_CONTAINERS } from "$lib/stores/logSession.svelte";
 import { logPanel } from "$lib/stores/logPanel.svelte";
 import { SEARCH_DEBOUNCE_MS } from "$lib/stores/logSearch.svelte";
+import type { ContainerDetail } from "$lib/tauri";
 
 function sessionWith(messages: string[]): LogSession {
   const s = new LogSession("default", "api-0");
@@ -67,6 +68,42 @@ describe("LogBody", () => {
     expect(getByText(/Reconnecting — attempt 3/)).toBeInTheDocument();
     await getByText("Retry now").click();
     expect(retry).toHaveBeenCalled();
+  });
+
+  describe("merged mode source column", () => {
+    const containers: ContainerDetail[] = [
+      { name: "worker", init: false } as ContainerDetail,
+      { name: "envoy", init: false } as ContainerDetail,
+    ];
+
+    it("shows the container name with identity styling when merged", async () => {
+      const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+      s.containers = containers;
+      s.ring.append([
+        {
+          pod: "api-0",
+          namespace: "default",
+          time: "2026-08-04T10:00:00Z",
+          level: "info",
+          message: "hello-from-envoy",
+          container: "envoy",
+        },
+      ]);
+      s.markSeen();
+
+      render(LogBody, { props: { session: s } });
+
+      const sourceLabel = await screen.findByText("envoy");
+      expect(sourceLabel).toBeInTheDocument();
+      expect(sourceLabel).toHaveStyle("color: var(--color-cluster-teal)");
+    });
+
+    it("omits the source column in single-container mode", async () => {
+      const s = sessionWith(["plain-line"]);
+      render(LogBody, { props: { session: s } });
+      await screen.findByText("plain-line");
+      expect(screen.queryByText("envoy")).toBeNull();
+    });
   });
 
   describe("search", () => {

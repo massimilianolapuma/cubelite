@@ -132,11 +132,6 @@ export class ContainerStream {
     void this.start();
   }
 
-  /** Forget the resume point so the next start() tails fresh. */
-  resetResume(): void {
-    this.#lastTime = undefined;
-  }
-
   async #teardown(): Promise<void> {
     for (const un of this.#unlisteners) un();
     this.#unlisteners = [];

@@ -4,7 +4,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
-	import type { LogSession } from '$lib/stores/logSession.svelte';
+	import { ALL_CONTAINERS, type LogSession } from '$lib/stores/logSession.svelte';
 	import { exportLog } from '$lib/tauri';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/errors';
@@ -44,7 +44,8 @@
 	});
 
 	function exportFilename(full: boolean): string {
-		return `${session.pod}_${session.container ?? 'unknown'}${full ? '_full' : ''}.log`;
+		const container = session.merged ? 'all' : (session.container ?? 'unknown');
+		return `${session.pod}_${container}${full ? '_full' : ''}.log`;
 	}
 
 	async function doExport(lines: KeyedLogLine[], full: boolean) {
@@ -93,7 +94,7 @@
 			class="focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md border border-border-default bg-surface-window px-2.5 font-mono text-text-primary"
 			onclick={() => (pickerOpen = !pickerOpen)}
 		>
-			{session.container ?? '…'}
+			{session.merged ? 'all containers' : (session.container ?? '…')}
 			<ChevronDown size={12} strokeWidth={1.5} />
 		</button>
 		{#if pickerOpen}
@@ -125,12 +126,21 @@
 						</button>
 					{/each}
 				{/if}
+				<div class="my-1 border-t border-border-default"></div>
+				<button
+					type="button"
+					class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-sunken"
+					onclick={() => pick(ALL_CONTAINERS)}
+				>
+					<span class="type-caption flex-1 font-mono text-text-primary">all containers</span>
+					<span class="type-caption text-text-tertiary">merged stream, color-tagged</span>
+				</button>
 			</div>
 		{/if}
 	</div>
 
-	<!-- previous-instance chip: only when the selected container has restarts -->
-	{#if (selected?.restarts ?? 0) > 0}
+	<!-- previous-instance chip: only when not merged and the selected container has restarts -->
+	{#if !session.merged && (selected?.restarts ?? 0) > 0}
 		<button
 			type="button"
 			class="focus-ring type-caption flex h-7 items-center gap-1 rounded-md px-2 {session.previous

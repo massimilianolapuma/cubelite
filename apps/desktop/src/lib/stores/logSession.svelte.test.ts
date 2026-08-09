@@ -25,7 +25,7 @@ vi.mock("$lib/tauri", async (importOriginal) => {
 
 import { getPodContainers, streamPodLog, stopLogs } from "$lib/tauri";
 import { app } from "./app.svelte";
-import { LogSession } from "./logSession.svelte";
+import { ALL_CONTAINERS, LogSession, RING_CAP } from "./logSession.svelte";
 
 function emitLine(streamId: string, message: string, time = "2026-08-04T10:00:00Z") {
   const payload: LogLine = { pod: "api-0", namespace: "default", time, level: "info", message };
@@ -182,5 +182,118 @@ describe("LogSession reconnect", () => {
     vi.clearAllMocks();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(streamPodLog).not.toHaveBeenCalled();
+  });
+});
+
+describe("merged all-containers mode", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    listeners.clear();
+    vi.clearAllMocks();
+    app.kubeconfigPath = "/tmp/kubeconfig";
+    app.activeCluster = "prod";
+    let nextId = 0;
+    vi.mocked(streamPodLog).mockImplementation(async () => String(++nextId));
+    vi.mocked(getPodContainers).mockResolvedValue([
+      { name: "worker", init: false, sidecar: false, restarts: 0, ready: true, state: "running", state_reason: null, last_terminated_reason: null, last_terminated_at: null },
+      { name: "envoy", init: false, sidecar: true, restarts: 0, ready: true, state: "running", state_reason: null, last_terminated_reason: null, last_terminated_at: null },
+      { name: "init-migrate", init: true, sidecar: false, restarts: 0, ready: true, state: "terminated", state_reason: null, last_terminated_reason: null, last_terminated_at: null },
+    ]);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("opens one stream per container, init included", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    expect(streamPodLog).toHaveBeenCalledTimes(3);
+    const containersArg = vi.mocked(streamPodLog).mock.calls.map((c) => c[3]!.container);
+    expect(containersArg).toEqual(["worker", "envoy", "init-migrate"]);
+  });
+
+  it("interleaves tagged lines into one ring by receive order", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    emitLine("1", "from worker");
+    emitLine("2", "from envoy");
+    emitLine("1", "worker again");
+    await vi.advanceTimersByTimeAsync(130);
+    expect(s.ring.lines.map((l) => l.container)).toEqual(["worker", "envoy", "worker"]);
+  });
+
+  it("stays streaming when one stream drops, reconnecting when all drop", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    listeners.get("pod-log-end:1")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.status).toBe("streaming"); // envoy + init-migrate still live
+    listeners.get("pod-log-end:2")?.({ payload: undefined });
+    listeners.get("pod-log-end:3")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(s.status).toBe("reconnecting");
+  });
+
+  it("retryNow fans out to every waiting stream", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    vi.mocked(streamPodLog).mockClear();
+    listeners.get("pod-log-end:1")?.({ payload: undefined });
+    listeners.get("pod-log-end:2")?.({ payload: undefined });
+    listeners.get("pod-log-end:3")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1);
+    s.retryNow();
+    await vi.waitFor(() => expect(streamPodLog).toHaveBeenCalledTimes(3));
+  });
+
+  it("toggling follow back on restarts only the sub-stream that ended while paused", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    s.toggleFollow(); // pause
+    expect(s.following).toBe(false);
+
+    // worker's sub-stream ends while paused; envoy and init-migrate keep streaming.
+    listeners.get("pod-log-end:1")?.({ payload: undefined });
+    await vi.advanceTimersByTimeAsync(1);
+
+    vi.mocked(streamPodLog).mockClear();
+    s.toggleFollow(); // resume
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(streamPodLog).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(streamPodLog).mock.lastCall?.[3]).toMatchObject({ container: "worker" });
+  });
+
+  it("setPrevious is a no-op in merged mode", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    await s.setPrevious(true);
+    expect(s.previous).toBe(false);
+  });
+
+  it("bounds the ring at RING_CAP across 3 merged streams (6000 lines > 5000 cap)", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    for (let i = 0; i < 2000; i++) {
+      emitLine("1", `worker-${i}`);
+      emitLine("2", `envoy-${i}`);
+      emitLine("3", `init-migrate-${i}`);
+    }
+    await vi.advanceTimersByTimeAsync(130);
+    expect(s.ring.lines).toHaveLength(RING_CAP);
+    expect(s.ring.totalAppended).toBe(6000);
+    // Ring keeps the tail: the last-emitted line survives the eviction.
+    expect(s.ring.lines.at(-1)?.message).toBe("init-migrate-1999");
+  });
+
+  it("does not drop lines below the cap (1500 per stream x 3 = 4500)", async () => {
+    const s = new LogSession("default", "api-0", ALL_CONTAINERS);
+    await s.open();
+    for (let i = 0; i < 1500; i++) {
+      emitLine("1", `worker-${i}`);
+      emitLine("2", `envoy-${i}`);
+      emitLine("3", `init-migrate-${i}`);
+    }
+    await vi.advanceTimersByTimeAsync(130);
+    expect(s.ring.lines).toHaveLength(4500);
+    expect(s.ring.totalAppended).toBe(4500);
   });
 });
