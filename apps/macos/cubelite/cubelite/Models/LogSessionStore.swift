@@ -8,6 +8,12 @@ final class LogSession {
     let pod: PodInfo
     let context: String?
 
+    /// Sentinel container selection: merged stream of every container.
+    static let allContainers = "*"
+    /// True when the session is following every container of the pod at
+    /// once rather than a single selected one.
+    var isMerged: Bool { selectedContainer == Self.allContainers }
+
     private(set) var containers: [ContainerInfo] = []
     private(set) var selectedContainer: String?
     private(set) var showingPrevious = false
@@ -58,7 +64,7 @@ final class LogSession {
     private var streamTask: Task<Void, Never>?
     private var nextLineID = 0
     /// Per-container follow loops; length 1 outside merged "all containers"
-    /// mode (a future task grows this to N).
+    /// mode, one per pod container when merged.
     private var streams: [ContainerLogStream] = []
 
     /// UserDefaults key remembering the last-picked container for this pod.
@@ -83,8 +89,10 @@ final class LogSession {
                     namespace: pod.namespace, pod: pod.name, inContext: context)
                 self.containers = fetched
                 let remembered = defaults.string(forKey: containerMemoryKey)
-                let name =
-                    fetched.first { $0.name == remembered }?.name ?? fetched.first?.name
+                let name: String? =
+                    remembered == Self.allContainers
+                    ? Self.allContainers
+                    : fetched.first { $0.name == remembered }?.name ?? fetched.first?.name
                 self.selectedContainer = name
                 await self.stream(container: name)
             } catch is CancellationError {
@@ -110,6 +118,7 @@ final class LogSession {
     }
 
     func setPrevious(_ previous: Bool) {
+        guard !isMerged else { return }
         guard previous != showingPrevious else { return }
         showingPrevious = previous
         if previous { isFollowing = false }
@@ -157,12 +166,12 @@ final class LogSession {
             }
             return
         }
-        startStreams(containers: [container])
+        startStreams(containers: isMerged ? containers.map { $0.name as String? } : [container])
     }
 
     /// Starts one `ContainerLogStream` per target container and fans its
-    /// lines into `append`. Single-element in this task; merged "all
-    /// containers" mode grows the target list.
+    /// lines into `append`. Single-element outside merged mode; one entry
+    /// per pod container when `isMerged`.
     private func startStreams(containers targets: [String?]) {
         streams = targets.map { name in
             ContainerLogStream(

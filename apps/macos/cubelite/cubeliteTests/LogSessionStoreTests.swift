@@ -18,6 +18,14 @@ final class MockLogStreamer: PodLogStreaming, @unchecked Sendable {
     /// The first N stream calls end right after yielding (dropped stream);
     /// later calls stay open like a healthy follow.
     var failFirstNStreams = 0
+    /// Per-container override of `liveLines`; containers absent here fall
+    /// back to the global `liveLines`. Used by merged-mode tests that need
+    /// distinct lines per producer.
+    var liveLinesByContainer: [String: [String]] = [:]
+    /// Containers whose every stream call ends right after yielding
+    /// (permanent drop), independent of `failFirstNStreams`. Used by
+    /// merged-mode tests that need one producer down while others stay up.
+    var failStreamsForContainers: Set<String> = []
 
     private var recordedStreamCalls: [(container: String?, tailLines: Int, sinceTime: String?)] =
         []
@@ -45,7 +53,9 @@ final class MockLogStreamer: PodLogStreaming, @unchecked Sendable {
     ) async throws -> AsyncThrowingStream<String, Error> {
         let (lines, shouldDrop) = withLock {
             recordedStreamCalls.append((container, tailLines, sinceTime))
-            return (liveLines, recordedStreamCalls.count <= failFirstNStreams)
+            let containerLines = container.flatMap { liveLinesByContainer[$0] } ?? liveLines
+            let isContainerDrop = container.map { failStreamsForContainers.contains($0) } ?? false
+            return (containerLines, isContainerDrop || recordedStreamCalls.count <= failFirstNStreams)
         }
         return AsyncThrowingStream { continuation in
             for line in lines { continuation.yield(line) }
@@ -289,5 +299,176 @@ final class LogSessionStoreTests: XCTestCase {
         store.activeSession?.retryNow()
         try await waitUntil { self.streamer.streamCalls.count >= 2 }
         XCTAssertEqual(streamer.streamCalls.count, 2)
+    }
+
+    // MARK: - Merged all-containers mode
+
+    private func mergedContainerKey(pod name: String = "web-1") -> String {
+        "logPanel.container.default/\(name)"
+    }
+
+    func testMergedMode_opensOneStreamPerContainer_initIncluded() async throws {
+        streamer.containers = [
+            makeContainer("worker"), makeContainer("envoy"),
+            makeContainer("init-migrate", isInit: true),
+        ]
+        defaults.set(LogSession.allContainers, forKey: mergedContainerKey())
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.streamer.streamCalls.count == 3 }
+        XCTAssertEqual(store.activeSession?.selectedContainer, LogSession.allContainers)
+        XCTAssertEqual(store.activeSession?.isMerged, true)
+        XCTAssertEqual(
+            Set(streamer.streamCalls.compactMap(\.container)),
+            Set(["worker", "envoy", "init-migrate"]))
+    }
+
+    func testMergedMode_interleavesTaggedLinesIntoOneBuffer() async throws {
+        streamer.containers = [
+            makeContainer("worker"), makeContainer("envoy"),
+            makeContainer("init-migrate", isInit: true),
+        ]
+        streamer.liveLinesByContainer = [
+            "worker": ["2026-07-15T10:00:00Z from-worker"],
+            "envoy": ["2026-07-15T10:00:01Z from-envoy"],
+            "init-migrate": ["2026-07-15T10:00:02Z from-init"],
+        ]
+        defaults.set(LogSession.allContainers, forKey: mergedContainerKey())
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.buffer.lines.count == 3 }
+        let lines = try XCTUnwrap(store.activeSession?.buffer.lines)
+        XCTAssertEqual(Set(lines.compactMap(\.container)), Set(["worker", "envoy", "init-migrate"]))
+        for line in lines {
+            switch line.message {
+            case "from-worker": XCTAssertEqual(line.container, "worker")
+            case "from-envoy": XCTAssertEqual(line.container, "envoy")
+            case "from-init": XCTAssertEqual(line.container, "init-migrate")
+            default: XCTFail("unexpected line \(line.message)")
+            }
+        }
+        let ids = lines.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count, "ids must be unique")
+        XCTAssertEqual(ids, ids.sorted(), "ids must be assigned in increasing append order")
+    }
+
+    func testMergedMode_isReconnectingOnlyWhenAllStreamsDown() async throws {
+        streamer.containers = [
+            makeContainer("worker"), makeContainer("envoy"),
+            makeContainer("init-migrate", isInit: true),
+        ]
+        streamer.failStreamsForContainers = ["envoy"]
+        defaults.set(LogSession.allContainers, forKey: mergedContainerKey())
+        store = LogSessionStore(streamer: streamer, defaults: defaults, backoffBase: 0.02)
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil {
+            Set(self.streamer.streamCalls.compactMap(\.container))
+                .isSuperset(of: ["worker", "envoy", "init-migrate"])
+        }
+        let session = try XCTUnwrap(store.activeSession)
+        try await waitUntil { session.reconnectAttempt > 0 }
+        XCTAssertFalse(session.isReconnecting)
+
+        // Fresh session where every container's stream is doomed: now the
+        // merged session as a whole must report reconnecting.
+        let streamer2 = MockLogStreamer()
+        streamer2.containers = streamer.containers
+        streamer2.failStreamsForContainers = ["worker", "envoy", "init-migrate"]
+        defaults.set(LogSession.allContainers, forKey: mergedContainerKey(pod: "web-2"))
+        let store2 = LogSessionStore(streamer: streamer2, defaults: defaults, backoffBase: 0.02)
+        store2.open(pod: makePod("web-2"), context: nil)
+        try await waitUntil { store2.activeSession?.isReconnecting == true }
+    }
+
+    func testMergedMode_retryNowFansOut() async throws {
+        streamer.containers = [
+            makeContainer("worker"), makeContainer("envoy"),
+            makeContainer("init-migrate", isInit: true),
+        ]
+        streamer.failStreamsForContainers = ["worker", "envoy", "init-migrate"]
+        defaults.set(LogSession.allContainers, forKey: mergedContainerKey())
+        // 5s base backoff: without retryNow the follow-up calls would not
+        // arrive within the polling window.
+        store = LogSessionStore(streamer: streamer, defaults: defaults, backoffBase: 5)
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.isReconnecting == true }
+        XCTAssertEqual(streamer.streamCalls.count, 3)
+        store.activeSession?.retryNow()
+        try await waitUntil { self.streamer.streamCalls.count >= 6 }
+        XCTAssertEqual(streamer.streamCalls.count, 6)
+    }
+
+    func testMergedMode_setPreviousIsNoOp() async throws {
+        streamer.containers = [makeContainer("worker"), makeContainer("envoy")]
+        defaults.set(LogSession.allContainers, forKey: mergedContainerKey())
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.isMerged == true }
+        store.activeSession?.setPrevious(true)
+        XCTAssertEqual(store.activeSession?.showingPrevious, false)
+    }
+
+    func testSwitchToMergedClearsPrevious() async throws {
+        streamer.containers = [makeContainer("worker", restarts: 2), makeContainer("envoy")]
+        streamer.previousLines = ["2026-07-15T09:00:00Z old"]
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.selectedContainer != nil }
+        store.activeSession?.setPrevious(true)
+        try await waitUntil { self.store.activeSession?.showingPrevious == true }
+        store.activeSession?.switchContainer(to: LogSession.allContainers)
+        try await waitUntil { self.store.activeSession?.isMerged == true }
+        XCTAssertEqual(store.activeSession?.showingPrevious, false)
+    }
+
+    func testMergedSelectionPersistsInDefaults() async throws {
+        streamer.containers = [makeContainer("worker"), makeContainer("envoy")]
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.selectedContainer != nil }
+        store.activeSession?.switchContainer(to: LogSession.allContainers)
+        try await waitUntil { self.store.activeSession?.isMerged == true }
+        XCTAssertEqual(defaults.string(forKey: mergedContainerKey()), LogSession.allContainers)
+        store.closeAll()
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.selectedContainer != nil }
+        XCTAssertEqual(store.activeSession?.isMerged, true)
+    }
+
+    /// Populates the buffer directly rather than through 3 concurrent mock
+    /// streams: driving 6000 lines through real streaming is unnecessarily
+    /// slow/flaky for a test whose only concern is the shared ring buffer's
+    /// cap and total-appended bookkeeping under merged mode's central
+    /// `append`, which is exactly what every real producer funnels through.
+    func testMergedMode_ringBoundUnderThreeProducers() async throws {
+        streamer.containers = [
+            makeContainer("worker"), makeContainer("envoy"),
+            makeContainer("init-migrate", isInit: true),
+        ]
+        defaults.set(LogSession.allContainers, forKey: mergedContainerKey())
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.isMerged == true }
+        let session = try XCTUnwrap(store.activeSession)
+        for i in 0..<6000 {
+            session.simulateAppendForTesting("2026-07-15T10:00:00Z line-\(i)")
+        }
+        XCTAssertEqual(session.buffer.lines.count, 5000)
+        XCTAssertEqual(session.buffer.totalAppended, 6000)
+    }
+
+    func testSearchQuerySurvivesMergedSwitch() async throws {
+        streamer.containers = [makeContainer("worker"), makeContainer("envoy")]
+        streamer.liveLines = ["2026-07-15T10:00:00Z boring line"]
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.buffer.lines.count == 1 }
+        let session = try XCTUnwrap(store.activeSession)
+        session.search.query = "err"
+        session.search.recompute(over: session.buffer.lines)
+        XCTAssertEqual(session.search.matchingLineIDs.count, 0)
+
+        session.switchContainer(to: LogSession.allContainers)
+        try await waitUntil { session.isMerged == true }
+        XCTAssertEqual(session.search.query, "err")
+        session.search.recompute(over: session.buffer.lines)
+        XCTAssertEqual(session.search.matchingLineIDs.count, 0)
+
+        session.simulateAppendForTesting("2026-07-15T10:00:01Z error happened")
+        session.search.recompute(over: session.buffer.lines)
+        XCTAssertGreaterThan(session.search.matchingLineIDs.count, 0)
     }
 }
