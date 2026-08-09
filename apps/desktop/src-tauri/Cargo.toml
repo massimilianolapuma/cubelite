@@ -16,6 +16,8 @@ tokio = { workspace = true }
 futures = { workspace = true }
 cubelite-core = { path = "../../../crates/cubelite-core" }
 dirs = "6"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -36,5 +37,13 @@
       "icons/icon.ico",
       "icons/icon.png"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/massimilianolapuma/cubelite/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzRDUzNDZEOUI1NUMyNTcKUldSWHdsV2JiVFRWMHkxNDltbUVzQnNSQW5LWWpyV0FTTmhIV2F6c0JlRXJzemdDSE1HZENXYksK"
+    }
   }
 }
