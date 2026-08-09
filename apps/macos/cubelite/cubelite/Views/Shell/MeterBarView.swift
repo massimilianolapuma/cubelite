@@ -16,11 +16,11 @@ struct MeterBarView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label)
-                    .font(.system(size: 11, weight: .medium))
+                    .scaledFont(size: 11, weight: .medium)
                     .foregroundStyle(DesignTokens.textSecondary)
                 Spacer()
                 Text(percentText)
-                    .font(.system(size: 11, design: .monospaced))
+                    .scaledFont(size: 11, design: .monospaced)
                     .foregroundStyle(DesignTokens.textPrimary)
             }
             GeometryReader { geo in
@@ -36,7 +36,7 @@ struct MeterBarView: View {
             .frame(height: 6)
             if let detail {
                 Text(detail)
-                    .font(.system(size: 10))
+                    .scaledFont(size: 10, relativeTo: .caption)
                     .foregroundStyle(DesignTokens.textTertiary)
             }
         }

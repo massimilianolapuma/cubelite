@@ -19,13 +19,13 @@ struct StatusBarView: View {
     var body: some View {
         HStack(spacing: 16) {
             Text(refreshLabel)
-                .font(.system(size: 10.5, design: .monospaced))
+                .scaledFont(size: 10.5, design: .monospaced)
                 .foregroundStyle(DesignTokens.textTertiary)
             Spacer(minLength: 0)
             if unreadErrorCount > 0 {
                 Button(action: onShowLogs) {
                     Text("\(unreadErrorCount) error\(unreadErrorCount == 1 ? "" : "s")")
-                        .font(.system(size: 10.5, design: .monospaced))
+                        .scaledFont(size: 10.5, design: .monospaced)
                         .foregroundStyle(DesignTokens.statusWarn)
                 }
                 .buttonStyle(.plain)
@@ -33,7 +33,7 @@ struct StatusBarView: View {
             }
         }
         .padding(.horizontal, 12)
-        .frame(height: 27)
+        .frame(minHeight: 27)
         .background(DesignTokens.surfacePanel)
         .overlay(alignment: .top) {
             Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)

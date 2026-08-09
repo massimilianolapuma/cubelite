@@ -33,7 +33,7 @@ struct DeploymentDetailView: View {
                         if let onClose {
                             Button(action: onClose) {
                                 Image(systemName: "xmark")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .scaledFont(size: 11, weight: .semibold)
                                     .foregroundStyle(DesignTokens.textTertiary)
                             }
                             .buttonStyle(.plain)

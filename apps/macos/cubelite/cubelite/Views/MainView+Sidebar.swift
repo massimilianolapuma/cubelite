@@ -47,7 +47,7 @@ extension MainView {
                 Task { await loadCrossClusterData() }
             } label: {
                 Image(systemName: "rectangle.stack")
-                    .font(.system(size: 16))
+                    .scaledFont(size: 16, relativeTo: .title3)
                     .foregroundStyle(showAllClusters ? Color.accentColor : .secondary)
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
@@ -72,7 +72,7 @@ extension MainView {
                     selectedContext = context
                 } label: {
                     Image(systemName: "server.rack")
-                        .font(.system(size: 14))
+                        .scaledFont(size: 14, relativeTo: .title3)
                         .foregroundStyle(
                             (context == selectedContext && !showAllClusters)
                                 ? Color.accentColor : .secondary

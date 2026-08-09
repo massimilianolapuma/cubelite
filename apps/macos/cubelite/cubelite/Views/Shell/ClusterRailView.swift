@@ -17,7 +17,7 @@ struct ClusterRailView: View {
         VStack(spacing: 8) {
             Button(action: onSelectAllClusters) {
                 Image(systemName: "house")
-                    .font(.system(size: 14, weight: .medium))
+                    .scaledFont(size: 14, weight: .medium, relativeTo: .title3)
                     .frame(width: 38, height: 38)
                     .background(
                         showAllClusters
@@ -52,7 +52,7 @@ struct ClusterRailView: View {
                 openSettings()
             } label: {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 14))
+                    .scaledFont(size: 14, relativeTo: .title3)
                     .frame(width: 38, height: 38)
                     .foregroundStyle(DesignTokens.textTertiary)
             }

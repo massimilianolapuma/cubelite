@@ -22,7 +22,7 @@ struct LogToolbar: View {
             overflowMenu
         }
         .padding(.horizontal, 8)
-        .frame(height: 38)
+        .frame(minHeight: 38)
     }
 
     private var searchField: some View {
@@ -33,7 +33,7 @@ struct LogToolbar: View {
                 .accessibilityHidden(true)
             TextField("search logs", text: Bindable(session.search).query)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
+                .scaledFont(size: 12, weight: .medium)
                 .focused($searchFocused)
                 .accessibilityLabel("Search logs")
                 .accessibilityIdentifier("logpanel.search")
@@ -58,7 +58,7 @@ struct LogToolbar: View {
                     session.search.previous()
                     session.isFollowing = false
                 } label: {
-                    Image(systemName: "chevron.up").font(.system(size: 9))
+                    Image(systemName: "chevron.up").scaledFont(size: 9, relativeTo: .caption)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Previous match")
@@ -67,7 +67,7 @@ struct LogToolbar: View {
                     session.search.next()
                     session.isFollowing = false
                 } label: {
-                    Image(systemName: "chevron.down").font(.system(size: 9))
+                    Image(systemName: "chevron.down").scaledFont(size: 9, relativeTo: .caption)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Next match")
@@ -76,7 +76,7 @@ struct LogToolbar: View {
                     session.search.filterMode.toggle()
                 } label: {
                     Text("filter")
-                        .font(.system(size: 10, weight: .medium))
+                        .scaledFont(size: 10, weight: .medium, relativeTo: .caption)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(
@@ -95,7 +95,7 @@ struct LogToolbar: View {
                 .accessibilityIdentifier("logpanel.filter")
             } else {
                 Text("⌘F")
-                    .font(.system(size: 9.5, design: .monospaced))
+                    .scaledFont(size: 9.5, design: .monospaced, relativeTo: .caption)
                     .foregroundStyle(DesignTokens.textDisabled)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
@@ -105,7 +105,7 @@ struct LogToolbar: View {
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: 28)
+        .frame(minHeight: 28)
         .frame(maxWidth: 400)
         .background(DesignTokens.surfaceWindow)
         .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -168,7 +168,7 @@ struct LogToolbar: View {
                     .frame(width: 6, height: 6)
                     .accessibilityHidden(true)
                 Text(session.isMerged ? "all containers" : (session.selectedContainer ?? "—"))
-                    .font(.system(size: 11.5, weight: .medium, design: .monospaced))
+                    .scaledFont(size: 11.5, weight: .medium, design: .monospaced)
                     .foregroundStyle(DesignTokens.textDataBright)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8))
@@ -176,7 +176,7 @@ struct LogToolbar: View {
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 8)
-            .frame(height: 26)
+            .frame(minHeight: 26)
             .background(DesignTokens.surfaceRaised)
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
@@ -224,13 +224,13 @@ struct LogToolbar: View {
             session.setPrevious(!session.showingPrevious)
         } label: {
             Label("previous", systemImage: "arrow.counterclockwise")
-                .font(.system(size: 11, weight: .medium))
+                .scaledFont(size: 11, weight: .medium)
                 .foregroundStyle(
                     session.showingPrevious
                         ? DesignTokens.accentDefault : DesignTokens.textSecondary
                 )
                 .padding(.horizontal, 8)
-                .frame(height: 26)
+                .frame(minHeight: 26)
                 .background(
                     session.showingPrevious
                         ? DesignTokens.accentDefault.opacity(0.14) : DesignTokens.surfaceRaised
@@ -268,7 +268,7 @@ struct LogToolbar: View {
         } label: {
             HStack(spacing: 4) {
                 Text("tail")
-                    .font(.system(size: 11))
+                    .scaledFont(size: 11)
                     .foregroundStyle(DesignTokens.textTertiary)
                 Text("\(session.tailLines)")
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
@@ -279,7 +279,7 @@ struct LogToolbar: View {
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 8)
-            .frame(height: 26)
+            .frame(minHeight: 26)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -298,10 +298,10 @@ struct LogToolbar: View {
                     .frame(width: 6, height: 6)
                     .accessibilityHidden(true)
                 Text(session.isFollowing ? "Following" : "Paused")
-                    .font(.system(size: 11, weight: .medium))
+                    .scaledFont(size: 11, weight: .medium)
             }
             .padding(.horizontal, 10)
-            .frame(height: 28)
+            .frame(minHeight: 28)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
@@ -326,9 +326,10 @@ struct LogToolbar: View {
                 .accessibilityIdentifier("logpanel.clear")
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 11))
+                .scaledFont(size: 11)
                 .foregroundStyle(DesignTokens.textSecondary)
-                .frame(width: 26, height: 28)
+                .frame(width: 26)
+                .frame(minHeight: 28)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()

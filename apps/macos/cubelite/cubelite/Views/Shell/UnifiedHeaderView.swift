@@ -24,7 +24,7 @@ struct UnifiedHeaderView: View {
                     Circle().fill(identity).frame(width: 8, height: 8)
                         .accessibilityHidden(true)
                     Text(context)
-                        .font(.system(size: 13, weight: .semibold))
+                        .scaledFont(size: 13, weight: .semibold, relativeTo: .title3)
                         .foregroundStyle(DesignTokens.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -33,7 +33,7 @@ struct UnifiedHeaderView: View {
                 .accessibilityElement(children: .combine)
             } else {
                 Text("All Clusters")
-                    .font(.system(size: 13, weight: .semibold))
+                    .scaledFont(size: 13, weight: .semibold, relativeTo: .title3)
                     .foregroundStyle(DesignTokens.textPrimary)
             }
 
@@ -81,7 +81,7 @@ struct UnifiedHeaderView: View {
         // Inset for the macOS traffic lights (hidden-title-bar window).
         .padding(.leading, 78)
         .padding(.trailing, 12)
-        .frame(height: 42)
+        .frame(minHeight: 42)
         .background(DesignTokens.surfaceSurface)
         .overlay(alignment: .bottom) {
             Rectangle().fill(DesignTokens.borderDefault).frame(height: 1)
@@ -100,7 +100,7 @@ struct UnifiedHeaderView: View {
             Circle().fill(color).frame(width: 6, height: 6)
                 .accessibilityHidden(true)
             Text(label)
-                .font(.system(size: 11))
+                .scaledFont(size: 11)
                 .foregroundStyle(DesignTokens.textTertiary)
         }
     }
@@ -117,10 +117,10 @@ struct UnifiedHeaderView: View {
         } label: {
             HStack(spacing: 5) {
                 Text("namespace:")
-                    .font(.system(size: 11))
+                    .scaledFont(size: 11)
                     .foregroundStyle(DesignTokens.textSecondary)
                 Text(selectedNamespace ?? "all")
-                    .font(.system(size: 11.5, design: .monospaced))
+                    .scaledFont(size: 11.5, design: .monospaced)
                     .foregroundStyle(DesignTokens.textPrimary)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8))
@@ -128,7 +128,7 @@ struct UnifiedHeaderView: View {
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 10)
-            .frame(height: 28)
+            .frame(minHeight: 28)
             .background(
                 DesignTokens.surfaceRaised,
                 in: RoundedRectangle(cornerRadius: DesignTokens.radiusMd))

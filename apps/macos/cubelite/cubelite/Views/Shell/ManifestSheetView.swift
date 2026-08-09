@@ -22,7 +22,7 @@ struct ManifestSheetView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .scaledFont(size: 13, weight: .semibold, relativeTo: .title3)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
@@ -64,7 +64,7 @@ struct ManifestSheetView: View {
             .padding(12)
             if let applyError {
                 Text(applyError)
-                    .font(.system(size: 11))
+                    .scaledFont(size: 11)
                     .foregroundStyle(DesignTokens.statusErr)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
@@ -73,14 +73,14 @@ struct ManifestSheetView: View {
             Divider()
             if editing {
                 TextEditor(text: $draft)
-                    .font(.system(size: 11, design: .monospaced))
+                    .scaledFont(size: 11, design: .monospaced)
                     .foregroundStyle(DesignTokens.textLog)
                     .scrollContentBackground(.hidden)
                     .background(DesignTokens.surfaceSunken)
             } else {
                 ScrollView([.vertical, .horizontal]) {
                     Text(text)
-                        .font(.system(size: 11, design: .monospaced))
+                        .scaledFont(size: 11, design: .monospaced)
                         .foregroundStyle(DesignTokens.textLog)
                         .textSelection(.enabled)
                         .padding(12)

@@ -40,7 +40,7 @@ struct UnifiedSidebarView: View {
             ForEach(sections, id: \.label) { section in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(section.label.uppercased())
-                        .font(.system(size: 9.5, weight: .semibold))
+                        .scaledFont(size: 9.5, weight: .semibold, relativeTo: .caption)
                         .kerning(0.7)
                         .foregroundStyle(DesignTokens.textTertiary)
                         .padding(.horizontal, 10)
@@ -75,13 +75,13 @@ struct UnifiedSidebarView: View {
                 Circle().fill(dot).frame(width: 6, height: 6)
                     .accessibilityHidden(true)
                 Text(item.rawValue)
-                    .font(.system(size: 12.5, weight: .medium))
+                    .scaledFont(size: 12.5, weight: .medium)
                     .foregroundStyle(
                         isActive ? DesignTokens.textPrimary : DesignTokens.textSecondary)
                 Spacer(minLength: 0)
                 if let count = count(for: item) {
                     Text("\(count)")
-                        .font(.system(size: 10.5, design: .monospaced))
+                        .scaledFont(size: 10.5, design: .monospaced)
                         .foregroundStyle(DesignTokens.textTertiary)
                 }
             }

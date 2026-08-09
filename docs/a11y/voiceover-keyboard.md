@@ -254,3 +254,117 @@ Expected overall: nothing in this flow requires a click or trackpad gesture;
 every interactive element is reachable via Tab/Shift-Tab in a logical order,
 and Esc/⌘. dismiss sheets and return focus to the control that opened them
 where that's determinable.
+
+## Dynamic Type (stage 3)
+
+Companion to `docs/superpowers/specs/2026-08-09-a11y-dynamic-type-design.md`.
+Stage 3 makes primary text scale with System Settings → Accessibility →
+Display → Text size (macOS 14+), via a `scaledFont(size:weight:design:
+relativeTo:)` modifier wrapping `@ScaledMetric` (`Helpers/ScaledFont.swift`).
+At the default text size it renders pixel-identical to the previous fixed
+`.font(.system(size:))` calls. Two prior tasks swept shell chrome and list/
+detail views; this task covers the log panel, which is scoped **selectively**
+because it mixes chrome (scales) with a fixed-density monospace data grid
+(stays fixed by design decision, approved in stage 2).
+
+### What scales
+
+Log panel chrome — the parts that are controls, labels, or messages rather
+than log data:
+
+- **`LogToolbar.swift`**: search field text, search-field keyboard-shortcut
+  hint ("⌘F"), previous/next-match icons, filter toggle label, container
+  picker's selected-container text, "previous" chip label, tail-menu's
+  static "tail" label, follow button's "Following"/"Paused" label, overflow
+  menu's ellipsis trigger icon.
+- **`LogTabStrip.swift`**: tab labels (pod name + container subtitle),
+  collapse/expand chevron icon, close-tab (×) icon.
+- **`LogPanelView.swift`**: the export/clear toast, the reconnect banner's
+  message text and "retry now" action.
+- **`LogBodyView.swift`**: empty-state and no-matches-state text (both
+  lines), the "↓ N new lines" pill.
+
+### What's intentionally fixed
+
+- **The log grid** (`LogLineRow` in `LogBodyView.swift`): timestamp, source,
+  severity, and message columns. This is a fixed-density monospace grid by
+  design decision (approved in stage 2); the fixed column widths (94pt
+  timestamp / 52pt source / 42pt severity) would truncate under scaling, and
+  density here is the point — it's a log viewer, not prose.
+- **The toolbar's monospaced data-chip readouts** — per the design spec's
+  explicit exclusion, grouped with the log grid rather than with toolbar
+  labels: the search match-count ("N/N" in `LogToolbar.swift`) and the
+  tail-size count (`LogToolbar.swift`) sit inside toolbar controls that
+  resize to fit, but their content is a live numeric readout in the same
+  register as the grid, not an identifier/label — kept fixed to preserve
+  the instrument-panel density and match the spec's own "tail-count in a
+  fixed chip" example. The tab strip's line-count readout ("N lines · N
+  buffered" in `LogTabStrip.swift`) is the same category and was judged the
+  same way. (Contrast: the tab's pod-name/container-subtitle text and the
+  container-picker's selected-container text are also monospaced but are
+  *identifiers*, not counts — those scale.)
+- **Rail avatar initials** (`Shell/ClusterRailView.swift`, converted in
+  task 2's sweep): fixed 2-letter badges in fixed-size circles — spec's
+  explicit exclusion.
+- **Decorative/graphic glyphs already `accessibilityHidden`**: the
+  magnifyingglass search icon and the two menu-chevron icons in
+  `LogToolbar.swift` (container picker, tail menu) — VoiceOver never
+  announces their size and scaling them serves no accessibility purpose.
+  Icon-only buttons that are *not* marked `accessibilityHidden` (search
+  prev/next chevrons, tab-strip collapse chevron, tab close ×, overflow
+  ellipsis) were converted normally, consistent with task 2's convention.
+
+### Manual verification
+
+Automated tests don't assert rendered text size (no XCTest coverage for
+`@ScaledMetric`'s scaled output — that's a UI-rendering concern). Acceptance
+is a manual pass on the PR build:
+
+1. **System Settings → Accessibility → Display → Text size**: drag to the
+   maximum setting (macOS 14+'s AX-equivalent large-text mode).
+2. Relaunch (or bring forward) CubeLite and walk the same screens as the
+   stage-2 checklist above, paying attention to:
+   - Main window (rail, sidebar, header), pod list, resource/deployment
+     detail panels, overview/dashboard, command palette, preferences (all
+     three tabs), first-launch screen, pod exec sheet, manifest sheet,
+     aggregated logs view, Logs & Errors window, error banner.
+   - **Log panel — collapsed**: tab strip's pod name/container text and the
+     line-count readout on the right.
+   - **Log panel — expanded**: toolbar (container picker, previous chip,
+     search field + match count + prev/next/filter, tail menu, follow
+     button, overflow menu), an active reconnect banner if you can trigger
+     one (disconnect the cluster briefly), the export toast, and the log
+     body's empty/no-matches states and "N new lines" pill.
+3. **Expected**:
+   - Primary text throughout the app visibly scales up.
+   - The log panel's **chrome rows grow vertically** to fit their scaled
+     text — the tab strip bar, each tab row, the toolbar bar, and its
+     search/container-picker/previous-chip/tail-menu/follow-button
+     sub-controls are all `minHeight`, not a fixed `height`, specifically
+     so they don't clip or overlap the row below at large text sizes; the
+     log body area (user-resizable) shrinks accordingly to make room.
+   - The same **`minHeight`, not fixed `height`** treatment applies to the
+     app's other shell chrome rows: the unified header bar
+     (`UnifiedHeaderView.swift`) and its namespace-menu label, the status
+     bar (`StatusBarView.swift`), and the command palette's search row
+     (`CommandPaletteView.swift`) — all grow vertically to fit scaled
+     text rather than clipping.
+   - No text clips to unreadable or overlaps a neighboring element badly;
+     **horizontal** truncation remains the accepted artifact at the
+     largest size — some table columns, fixed-width chrome elements (e.g.
+     the tab strip's pod-name `maxWidth: 190` truncation), and the
+     overflow-menu icon's fixed 26pt width may truncate/clip
+     horizontally; this is expected and unchanged from the design's
+     layout guard.
+   - **Rail icon badges** (`ClusterRailView.swift`: the house and
+     gearshape SF Symbols) sit in fixed 38×38 circles — those two glyphs
+     scale via `scaledFont`/`@ScaledMetric` while the containing circle
+     does not, so at extreme text sizes the glyph may clip against the
+     circle's edge; this is a contained, accepted artifact, not a
+     regression. The per-cluster initials avatars are excluded from
+     scaling entirely (see below).
+   - The **log grid stays visually unchanged**: timestamp/source/severity/
+     message columns keep their original fixed size and alignment, as do
+     the search match-count and tail-count readouts and the tab strip's
+     line-count readout — confirms the intentional fixed set above.
+   - Rail avatar initials stay at their original fixed size.

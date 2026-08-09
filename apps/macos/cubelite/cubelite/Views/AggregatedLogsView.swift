@@ -53,19 +53,19 @@ struct AggregatedLogsView: View {
     private var toolbar: some View {
         HStack(spacing: 8) {
             Text(verbatim: streamingCaption)
-                .font(.system(size: 10.5))
+                .scaledFont(size: 10.5)
                 .foregroundStyle(DesignTokens.textTertiary)
             Spacer(minLength: 8)
             TextField("label=value,…", text: $labelSelector)
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11, design: .monospaced))
+                .scaledFont(size: 11, design: .monospaced)
                 .frame(width: 160)
                 .accessibilityLabel("Label selector")
                 .accessibilityIdentifier("aggregatedlogs.label-selector")
             levelChips
             TextField("Filter…", text: Bindable(store).textFilter)
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11))
+                .scaledFont(size: 11)
                 .frame(width: 140)
                 .accessibilityLabel("Filter log messages")
                 .accessibilityIdentifier("aggregatedlogs.text-filter")
@@ -95,7 +95,7 @@ struct AggregatedLogsView: View {
                 let active = store.levelFilter == option.level
                 Button(option.label) { store.levelFilter = option.level }
                     .buttonStyle(.plain)
-                    .font(.system(size: 9.5, weight: .semibold))
+                    .scaledFont(size: 9.5, weight: .semibold, relativeTo: .caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 5)
                     .background(active ? DesignTokens.surfaceRaised : .clear)
@@ -122,10 +122,10 @@ struct AggregatedLogsView: View {
                 Text(store.isFollowing ? "Following" : "Paused")
                 if !store.isFollowing, store.newSincePause > 0 {
                     Text(verbatim: "+\(store.newSincePause)")
-                        .font(.system(size: 9, design: .monospaced))
+                        .scaledFont(size: 9, design: .monospaced, relativeTo: .caption)
                 }
             }
-            .font(.system(size: 10.5))
+            .scaledFont(size: 10.5)
         }
         .controlSize(.small)
         .tint(store.isFollowing ? DesignTokens.statusOk : DesignTokens.statusWarn)
@@ -150,7 +150,7 @@ struct AggregatedLogsView: View {
                             store.buffer.isEmpty
                                 ? "Waiting for log lines…" : "No lines match the filter."
                         )
-                        .font(.system(size: 11))
+                        .scaledFont(size: 11)
                         .foregroundStyle(DesignTokens.textTertiary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 32)
@@ -174,19 +174,19 @@ struct AggregatedLogsView: View {
     private func logRow(_ entry: AggregatedLogLine) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(verbatim: entry.line.time ?? "—")
-                .font(.system(size: 10, design: .monospaced))
+                .scaledFont(size: 10, design: .monospaced, relativeTo: .caption)
                 .foregroundStyle(DesignTokens.textTertiary)
                 .frame(width: 88, alignment: .leading)
             Text(verbatim: levelLabel(entry.line.level))
-                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                .scaledFont(size: 9.5, weight: .semibold, design: .monospaced, relativeTo: .caption)
                 .foregroundStyle(levelColor(entry.line.level))
                 .frame(width: 36, alignment: .leading)
             Text(entry.pod)
-                .font(.system(size: 10.5, design: .monospaced))
+                .scaledFont(size: 10.5, design: .monospaced)
                 .foregroundStyle(DesignTokens.textSecondary)
                 .lineLimit(1)
             Text(entry.line.message)
-                .font(.system(size: 11, design: .monospaced))
+                .scaledFont(size: 11, design: .monospaced)
                 .foregroundStyle(DesignTokens.textLog)
                 .textSelection(.enabled)
         }

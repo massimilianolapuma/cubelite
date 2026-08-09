@@ -135,24 +135,24 @@ struct OverviewView: View {
                     ForEach(clusterState.warningEvents.prefix(5)) { event in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(event.reason ?? "Warning")
-                                .font(.system(size: 11, weight: .semibold))
+                                .scaledFont(size: 11, weight: .semibold)
                                 .foregroundStyle(.orange)
                                 .frame(width: 110, alignment: .leading)
                                 .lineLimit(1)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(verbatim: eventObjectLabel(event))
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .scaledFont(size: 11, design: .monospaced)
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 Text(event.message ?? "")
-                                    .font(.system(size: 11))
+                                    .scaledFont(size: 11)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(2)
                             }
                             Spacer(minLength: 0)
                             if let count = event.count, count > 1 {
                                 Text(verbatim: "×\(count)")
-                                    .font(.system(size: 10, design: .monospaced))
+                                    .scaledFont(size: 10, design: .monospaced, relativeTo: .caption)
                                     .foregroundStyle(.tertiary)
                             }
                         }

@@ -73,7 +73,7 @@ struct CommandPaletteView: View {
                     TextField("Search clusters, views, actions…", text: $query)
                         .accessibilityIdentifier("palette-input")
                         .textFieldStyle(.plain)
-                        .font(.system(size: 13.5))
+                        .scaledFont(size: 13.5, relativeTo: .title3)
                         .focused($inputFocused)
                         .onKeyPress(.downArrow) {
                             highlighted = min(highlighted + 1, max(flatItems.count - 1, 0))
@@ -88,7 +88,7 @@ struct CommandPaletteView: View {
                             return .handled
                         }
                     Text("esc")
-                        .font(.system(size: 10, design: .monospaced))
+                        .scaledFont(size: 10, design: .monospaced, relativeTo: .caption)
                         .foregroundStyle(DesignTokens.textDisabled)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
@@ -97,7 +97,7 @@ struct CommandPaletteView: View {
                             in: RoundedRectangle(cornerRadius: DesignTokens.radiusSm))
                 }
                 .padding(.horizontal, 14)
-                .frame(height: 44)
+                .frame(minHeight: 44)
 
                 Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)
 
@@ -117,7 +117,7 @@ struct CommandPaletteView: View {
                         }
                         if flatItems.isEmpty {
                             Text("No results.")
-                                .font(.system(size: 12))
+                                .scaledFont(size: 12)
                                 .foregroundStyle(DesignTokens.textDisabled)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 24)
@@ -148,7 +148,7 @@ struct CommandPaletteView: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title.uppercased())
-            .font(.system(size: 9.5, weight: .semibold))
+            .scaledFont(size: 9.5, weight: .semibold, relativeTo: .caption)
             .kerning(0.7)
             .foregroundStyle(DesignTokens.textTertiary)
             .padding(.horizontal, 10)
@@ -170,7 +170,7 @@ struct CommandPaletteView: View {
                         .frame(width: 8, height: 8)
                         .accessibilityHidden(true)
                     Text(name)
-                        .font(.system(size: 12.5, weight: .medium))
+                        .scaledFont(size: 12.5, weight: .medium)
                         .foregroundStyle(DesignTokens.textPrimary)
                     if name == activeContext {
                         Circle().fill(DesignTokens.statusOk).frame(width: 6, height: 6)
@@ -188,7 +188,7 @@ struct CommandPaletteView: View {
                         .frame(width: 14)
                         .accessibilityHidden(true)
                     Text(item.label)
-                        .font(.system(size: 12.5, weight: .medium))
+                        .scaledFont(size: 12.5, weight: .medium)
                         .foregroundStyle(DesignTokens.textSecondary)
                     Spacer(minLength: 0)
                 case .resource(let type):
@@ -198,7 +198,7 @@ struct CommandPaletteView: View {
                         .frame(width: 14)
                         .accessibilityHidden(true)
                     Text(item.label)
-                        .font(.system(size: 12.5, weight: .medium))
+                        .scaledFont(size: 12.5, weight: .medium)
                         .foregroundStyle(DesignTokens.textSecondary)
                     Spacer(minLength: 0)
                 case .podLogs:
@@ -208,7 +208,7 @@ struct CommandPaletteView: View {
                         .frame(width: 14)
                         .accessibilityHidden(true)
                     Text(item.label)
-                        .font(.system(size: 12.5, weight: .medium))
+                        .scaledFont(size: 12.5, weight: .medium)
                         .foregroundStyle(DesignTokens.textSecondary)
                     Spacer(minLength: 0)
                 }
@@ -235,7 +235,7 @@ struct CommandPaletteView: View {
 
     private func kbd(_ label: String) -> some View {
         Text(label)
-            .font(.system(size: 10, design: .monospaced))
+            .scaledFont(size: 10, design: .monospaced, relativeTo: .caption)
             .foregroundStyle(DesignTokens.textDisabled)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)

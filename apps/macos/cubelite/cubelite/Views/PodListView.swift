@@ -60,7 +60,7 @@ struct PodListView: View {
                             onOpenLogs?(pod)
                         } label: {
                             Text("logs ⏎")
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .scaledFont(size: 10, weight: .medium, design: .monospaced, relativeTo: .caption)
                                 .foregroundStyle(DesignTokens.accentDefault)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)

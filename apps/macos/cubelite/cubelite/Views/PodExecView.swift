@@ -55,7 +55,7 @@ struct PodExecView: View {
     private var header: some View {
         HStack {
             Text("\(pod.name) — shell")
-                .font(.system(size: 13, weight: .semibold))
+                .scaledFont(size: 13, weight: .semibold, relativeTo: .title3)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()
@@ -77,7 +77,7 @@ struct PodExecView: View {
                     LazyVStack(alignment: .leading, spacing: 1) {
                         ForEach(lines) { line in
                             Text(line.text)
-                                .font(.system(size: 11, design: .monospaced))
+                                .scaledFont(size: 11, design: .monospaced)
                                 .foregroundStyle(line.color)
                                 .textSelection(.enabled)
                                 .id(line.id)
@@ -104,7 +104,7 @@ struct PodExecView: View {
                 .accessibilityHidden(true)
             TextField("command", text: $command)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12, design: .monospaced))
+                .scaledFont(size: 12, design: .monospaced)
                 .focused($inputFocused)
                 .accessibilityLabel("Shell command")
                 .accessibilityIdentifier("podexec.command")

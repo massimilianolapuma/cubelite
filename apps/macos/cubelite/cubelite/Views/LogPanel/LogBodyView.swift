@@ -38,14 +38,14 @@ struct LogBodyView: View {
     private var emptyState: some View {
         VStack(spacing: 4) {
             Text(session.hasCleared ? "buffer cleared" : "no logs yet")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .scaledFont(size: 12, weight: .medium, design: .monospaced)
                 .foregroundStyle(DesignTokens.textSecondary)
             Text(
                 session.hasCleared
                     ? "stream is live — waiting for new lines"
                     : "waiting for the first line"
             )
-            .font(.system(size: 11))
+            .scaledFont(size: 11)
             .foregroundStyle(DesignTokens.textTertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -54,10 +54,10 @@ struct LogBodyView: View {
     private var noMatchesState: some View {
         VStack(spacing: 4) {
             Text("no matches for “\(session.search.query)”")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .scaledFont(size: 12, weight: .medium, design: .monospaced)
                 .foregroundStyle(DesignTokens.textSecondary)
             Text("esc clears search · filter off shows all \(session.buffer.lines.count) lines")
-                .font(.system(size: 11))
+                .scaledFont(size: 11)
                 .foregroundStyle(DesignTokens.textTertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -105,7 +105,7 @@ struct LogBodyView: View {
                         }
                     } label: {
                         Text("↓ \(session.newLinesSincePause) new lines")
-                            .font(.system(size: 11, weight: .medium))
+                            .scaledFont(size: 11, weight: .medium)
                             .foregroundStyle(DesignTokens.accentDefault)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 5)
