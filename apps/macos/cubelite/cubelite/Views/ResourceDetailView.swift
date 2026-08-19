@@ -29,6 +29,7 @@ struct ResourceDetailView: View {
     var onClose: (() -> Void)?
 
     @Environment(LogSessionStore.self) private var logSessionStore
+    @Environment(\.openWindow) private var openWindow
 
     @State private var showDeleteConfirm = false
     @State private var showShell = false
@@ -117,7 +118,11 @@ struct ResourceDetailView: View {
             Divider().padding(.vertical, 8)
             HStack(spacing: 8) {
                 Button {
-                    logSessionStore.open(pod: pod, context: context)
+                    if logSessionStore.isDetached(pod.id) {
+                        openWindow(value: pod.id)
+                    } else {
+                        logSessionStore.open(pod: pod, context: context)
+                    }
                 } label: {
                     Label("Logs", systemImage: "doc.plaintext")
                 }

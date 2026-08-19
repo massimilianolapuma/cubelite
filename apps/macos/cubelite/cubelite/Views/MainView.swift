@@ -42,6 +42,7 @@ struct MainView: View {
     @Environment(LogStore.self) var logStore
     @Environment(AppSettings.self) var appSettings
     @Environment(LogSessionStore.self) var logSessionStore
+    @Environment(\.openWindow) var openWindow
 
     // MARK: - Navigation State
 
@@ -252,7 +253,11 @@ struct MainView: View {
                     },
                     selectedPod: clusterState.pods.first { $0.id == selectedPodID },
                     onOpenPodLogs: { pod in
-                        logSessionStore.open(pod: pod, context: selectedContext)
+                        if logSessionStore.isDetached(pod.id) {
+                            openWindow(value: pod.id)
+                        } else {
+                            logSessionStore.open(pod: pod, context: selectedContext)
+                        }
                     },
                     onClose: { showingPalette = false }
                 )

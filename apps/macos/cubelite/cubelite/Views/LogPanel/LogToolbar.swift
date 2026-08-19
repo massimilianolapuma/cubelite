@@ -5,6 +5,8 @@ import SwiftUI
 struct LogToolbar: View {
 
     @Environment(LogSessionStore.self) private var store
+    @Environment(\.isDetachedLogContext) private var isDetachedContext
+    @Environment(\.openWindow) private var openWindow
     let session: LogSession
 
     @FocusState private var searchFocused: Bool
@@ -19,6 +21,9 @@ struct LogToolbar: View {
             Spacer()
             tailMenu
             followButton
+            if !isDetachedContext {
+                detachButton
+            }
             overflowMenu
         }
         .padding(.horizontal, 8)
@@ -308,6 +313,26 @@ struct LogToolbar: View {
         .accessibilityLabel("Follow log stream")
         .accessibilityValue(session.isFollowing ? "Following" : "Paused")
         .accessibilityIdentifier("logpanel.follow")
+    }
+
+    /// Pops the session out into its own OS window (#298). Hidden inside
+    /// the detached window itself, where `⏷` in the header replaces it.
+    private var detachButton: some View {
+        Button {
+            store.detach(sessionID: session.pod.id)
+            openWindow(value: session.pod.id)
+        } label: {
+            Image(systemName: "arrow.up.forward.square")
+                .scaledFont(size: 11)
+                .foregroundStyle(DesignTokens.textSecondary)
+                .frame(width: 26)
+                .frame(minHeight: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open this session in a separate window")
+        .accessibilityLabel("Pop out log session")
+        .accessibilityIdentifier("logpanel.detach")
     }
 
     private var overflowMenu: some View {
