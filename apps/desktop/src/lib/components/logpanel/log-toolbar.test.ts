@@ -12,8 +12,12 @@ vi.mock("$lib/tauri", async (importOriginal) => ({
   getPodContainers: vi.fn(async () => []),
   exportLog: vi.fn(async () => "/tmp/x.log"),
 }));
+vi.mock("../../stores/logWindows.svelte", () => ({
+  logWindows: { detach: vi.fn(async () => {}) },
+}));
 
 import LogToolbar from "./LogToolbar.svelte";
+import { logWindows } from "../../stores/logWindows.svelte";
 import { LogSession, ALL_CONTAINERS } from "$lib/stores/logSession.svelte";
 import { logPanel } from "$lib/stores/logPanel.svelte";
 import { SEARCH_DEBOUNCE_MS } from "$lib/stores/logSearch.svelte";
@@ -353,5 +357,27 @@ describe("LogToolbar export", () => {
 
     await waitFor(() => expect(toasts.items[0]?.tone).toBe("err"));
     expect(toasts.items[0]?.message).toContain("disk full");
+  });
+});
+
+describe("detach button (#298)", () => {
+  it("renders ⧉ in panel context and calls logWindows.detach", async () => {
+    const s = new LogSession("default", "api-0");
+    s.container = "worker";
+    render(LogToolbar, { props: { session: s } });
+
+    const button = screen.getByLabelText("Pop out log session");
+    expect(button).toBeInTheDocument();
+
+    await fireEvent.click(button);
+    expect(logWindows.detach).toHaveBeenCalledWith(s.key);
+  });
+
+  it("is hidden when detached=true", () => {
+    const s = new LogSession("default", "api-0");
+    s.container = "worker";
+    render(LogToolbar, { props: { session: s, detached: true } });
+
+    expect(screen.queryByLabelText("Pop out log session")).toBeNull();
   });
 });

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { setMode } from 'mode-watcher';
 	import { homeDir } from '@tauri-apps/api/path';
+	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import Titlebar from '$lib/components/shell/Titlebar.svelte';
 	import ClusterRail from '$lib/components/shell/ClusterRail.svelte';
 	import Sidebar from '$lib/components/shell/Sidebar.svelte';
@@ -14,12 +15,14 @@
 	import UnreachableView from '$lib/components/views/UnreachableView.svelte';
 	import { viewRegistry } from '$lib/components/views';
 	import LogPanel from '$lib/components/logpanel/LogPanel.svelte';
+	import LogWindowShell from '$lib/components/logpanel/LogWindowShell.svelte';
 	import { matchShortcut } from '$lib/keyboard';
 	import { isMac } from '$lib/platform';
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
 	import { health } from '$lib/stores/health.svelte';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
+	import { logWindows } from '$lib/stores/logWindows.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 	import { settings } from '$lib/stores/settings.svelte';
 	import { updater } from '$lib/stores/updater.svelte';
@@ -27,8 +30,15 @@
 	const entry = $derived(viewRegistry[app.view]);
 	const Current = $derived(entry.component);
 
+	const logWindowKey =
+		typeof window !== 'undefined'
+			? new URLSearchParams(window.location.search).get('logWindow')
+			: null;
+
 	onMount(() => {
+		if (logWindowKey) return;
 		setMode(settings.theme.value);
+		let unCloseRequested: (() => void) | null = null;
 		void (async () => {
 			const dir = await homeDir();
 			app.kubeconfigPath = `${dir}/.kube/config`;
@@ -45,9 +55,14 @@
 			}
 			health.start();
 			void updater.checkForUpdates(true);
+			void logWindows.init();
+			unCloseRequested = await getCurrentWindow().onCloseRequested(async () => {
+				await logWindows.closeAll();
+			});
 		})();
 
 		return () => {
+			unCloseRequested?.();
 			void resources.stopWatching();
 			resources.stopAutoRefresh();
 			health.stop();
@@ -55,6 +70,7 @@
 	});
 
 	function onKeydown(event: KeyboardEvent) {
+		if (logWindowKey) return;
 		if (event.key === 'Escape' && app.closeTopOverlay()) {
 			event.preventDefault();
 			return;
@@ -87,6 +103,9 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+{#if logWindowKey}
+	<LogWindowShell windowKey={logWindowKey} />
+{:else}
 <div class="flex h-screen flex-col overflow-hidden bg-surface-window">
 	<Titlebar />
 	{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
@@ -144,3 +163,4 @@
 {/if}
 <Toaster />
 <ConnectingOverlay />
+{/if}

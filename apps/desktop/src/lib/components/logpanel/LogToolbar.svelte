@@ -3,14 +3,16 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+	import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
+	import { logWindows } from '$lib/stores/logWindows.svelte';
 	import { ALL_CONTAINERS, type LogSession } from '$lib/stores/logSession.svelte';
 	import { exportLog } from '$lib/tauri';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { errorMessage } from '$lib/errors';
 	import type { KeyedLogLine } from '$lib/stores/logs.svelte';
 
-	let { session }: { session: LogSession } = $props();
+	let { session, detached = false }: { session: LogSession; detached?: boolean } = $props();
 
 	let pickerOpen = $state(false);
 	let overflowOpen = $state(false);
@@ -218,6 +220,20 @@
 	>
 		{session.following ? '● Following' : '⏸ Paused'}
 	</button>
+
+	<!-- pop out to separate window -->
+	{#if !detached}
+		<button
+			type="button"
+			class="focus-ring flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary hover:text-text-secondary"
+			title="Open this session in a separate window"
+			aria-label="Pop out log session"
+			data-testid="logpanel-detach"
+			onclick={() => void logWindows.detach(session.key)}
+		>
+			<SquareArrowOutUpRight size={14} strokeWidth={1.5} />
+		</button>
+	{/if}
 
 	<!-- overflow -->
 	<div class="relative">

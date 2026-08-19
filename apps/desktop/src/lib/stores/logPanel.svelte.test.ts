@@ -220,6 +220,16 @@ describe("logPanel store", () => {
     expect(logPanel.search.count).toBe(1);
   });
 
+  it("openFor routes detached pods to their window (#298)", async () => {
+    const focus = vi.fn(async () => {});
+    logPanel.detachedRouter = { has: (k) => k === "default/det-1", focus };
+    const count = logPanel.sessions.length;
+    await logPanel.openFor({ namespace: "default", name: "det-1" });
+    expect(focus).toHaveBeenCalledWith("default/det-1");
+    expect(logPanel.sessions.length).toBe(count);
+    logPanel.detachedRouter = null;
+  });
+
   describe("logPanel.openSeeded (#298 pop-out)", () => {
     const transfer = (key: string): SessionTransfer => {
       const [namespace = "default", pod = "x"] = key.split("/");

@@ -30,6 +30,8 @@ class LogWindowsStore {
       this.#open.delete(transfer.key);
       void logPanel.openSeeded(transfer);
     });
+    logPanel.detachedRouter = { has: (k) => this.has(k), focus: (k) => this.focus(k) };
+    logPanel.onCloseAll = () => this.closeAll();
   }
 
   /** Serialize → spawn → await ready → seed → close the local session. */

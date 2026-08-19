@@ -30,6 +30,12 @@ class LogPanelStore {
   activeKey = $state<string | null>(null);
   search = new LogSearch();
 
+  /** Set by logWindows.init() (main window only): route open-logs for a
+   * detached pod to its OS window instead of a panel tab. (#298) */
+  detachedRouter: { has(key: string): boolean; focus(key: string): Promise<void> } | null = null;
+  /** Set by logWindows.init(): broadcast close-all to pop-out windows. (#298) */
+  onCloseAll: (() => Promise<void>) | null = null;
+
   #searchFocus: (() => void) | null = null;
   /** LRU order of session keys, oldest-focused first. */
   #focusOrder: string[] = [];
@@ -112,6 +118,10 @@ class LogPanelStore {
 
   async openFor(pod: { namespace: string; name: string }): Promise<void> {
     const key = `${pod.namespace}/${pod.name}`;
+    if (this.detachedRouter?.has(key)) {
+      await this.detachedRouter.focus(key);
+      return;
+    }
     const existing = this.sessions.find((s) => s.key === key);
     if (existing) {
       this.focus(key);
@@ -181,6 +191,7 @@ class LogPanelStore {
   /** Closes every session (cluster switch — sessions target pods of the old
    * cluster, same story as port-forward's `stopAll`). */
   async closeAll(): Promise<void> {
+    await this.onCloseAll?.();
     const sessions = this.sessions;
     this.sessions = [];
     this.activeKey = null;
