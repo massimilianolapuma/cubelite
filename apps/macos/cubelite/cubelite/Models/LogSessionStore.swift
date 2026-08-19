@@ -313,11 +313,12 @@ final class LogSessionStore {
         guard let index = sessions.firstIndex(where: { $0.pod.id == sessionID }) else { return }
         sessions[index].stop()
         let wasActive = activeSessionID == sessionID
+        let attachedBefore = attachedSessions
         sessions.remove(at: index)
         detachedSessionIDs.remove(sessionID)
         if wasActive {
+            let attachedIndex = attachedBefore.firstIndex { $0.pod.id == sessionID } ?? 0
             let remaining = attachedSessions
-            let attachedIndex = min(index, max(0, remaining.count - 1))
             activeSessionID =
                 remaining.indices.contains(attachedIndex)
                 ? remaining[attachedIndex].pod.id : remaining.last?.pod.id

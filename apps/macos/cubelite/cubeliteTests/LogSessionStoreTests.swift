@@ -630,6 +630,21 @@ final class LogSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.activeSessionID, first, "fallback must not pick a detached session")
     }
 
+    func testClose_activeTab_detachedBeforeActive_picksRightNeighbor() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        store.open(pod: makePod("web-3"), context: nil)
+        let first = store.sessions[0].pod.id
+        let second = store.sessions[1].pod.id
+        let third = store.sessions[2].pod.id
+        store.detach(sessionID: first)
+        store.activeSessionID = second
+
+        store.close(sessionID: second)
+
+        XCTAssertEqual(store.activeSessionID, third, "right neighbor in attached list, not skipped")
+    }
+
     func testCloseAll_clearsDetachedSet() async throws {
         store.open(pod: makePod("web-1"), context: nil)
         let id = store.sessions[0].pod.id
