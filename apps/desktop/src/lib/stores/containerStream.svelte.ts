@@ -45,6 +45,9 @@ export class ContainerStream {
     params: () => StreamParams,
     /** Called synchronously right before the status transition on stream end (e.g. to force a final flush). */
     onEnd: () => void = () => {},
+    /** Seeded start point (#298 pop-out handoff): stream from here on the
+     * FIRST start, exactly as #lastTime does on reconnect. */
+    initialSinceTime?: string,
   ) {
     this.namespace = namespace;
     this.pod = pod;
@@ -52,6 +55,7 @@ export class ContainerStream {
     this.#onLines = onLines;
     this.#params = params;
     this.#onEndCallback = onEnd;
+    this.#lastTime = initialSinceTime;
   }
 
   async start(): Promise<void> {

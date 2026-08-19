@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LogLine } from "$lib/tauri";
+import type { KeyedLogLine } from "./logs.svelte";
 
 const listeners = new Map<string, (event: { payload: unknown }) => void>();
 
@@ -295,5 +296,71 @@ describe("merged all-containers mode", () => {
     await vi.advanceTimersByTimeAsync(130);
     expect(s.ring.lines).toHaveLength(4500);
     expect(s.ring.totalAppended).toBe(4500);
+  });
+});
+
+describe("LogSession seeding (#298 pop-out)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    listeners.clear();
+    vi.clearAllMocks();
+    app.kubeconfigPath = "/tmp/kubeconfig";
+    app.activeCluster = "prod";
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const seedLines = (n: number, lastTime = "2026-08-19T10:00:05Z"): KeyedLogLine[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: i,
+      pod: "api-0",
+      namespace: "default",
+      time: i === n - 1 ? lastTime : "2026-08-19T10:00:00Z",
+      level: "info" as const,
+      message: `seeded ${i}`,
+    }));
+
+  it("pre-populates the ring before open() and keeps it on open()", async () => {
+    const session = new LogSession("default", "api-0", "worker", {
+      lines: seedLines(3),
+      previous: false,
+      tailLines: 500,
+      following: true,
+    });
+    expect(session.ring.lines).toHaveLength(3);
+    await session.open();
+    // open() must NOT reset the seeded buffer
+    expect(session.ring.lines).toHaveLength(3);
+    expect(session.ring.lines[0]?.message).toBe("seeded 0");
+  });
+
+  it("adopts previous/tailLines/following from the seed", () => {
+    const session = new LogSession("default", "api-0", "worker", {
+      lines: seedLines(1),
+      previous: false,
+      tailLines: 1000,
+      following: false,
+    });
+    expect(session.tailLines).toBe(1000);
+    expect(session.following).toBe(false);
+    expect(session.seenCount).toBe(session.ring.totalAppended);
+  });
+
+  it("starts its stream with sinceTime = last seeded line's time", async () => {
+    const session = new LogSession("default", "api-0", "worker", {
+      lines: seedLines(3, "2026-08-19T10:00:05Z"),
+      previous: false,
+      tailLines: 500,
+      following: true,
+    });
+    await session.open();
+    expect(vi.mocked(streamPodLog).mock.lastCall?.[3]).toMatchObject({
+      sinceTime: "2026-08-19T10:00:05Z",
+    });
+  });
+
+  it("unseeded session behaves as before (no sinceTime on first start)", async () => {
+    const session = new LogSession("default", "api-0", "worker");
+    await session.open();
+    expect(vi.mocked(streamPodLog).mock.lastCall?.[3]?.sinceTime).toBeUndefined();
   });
 });

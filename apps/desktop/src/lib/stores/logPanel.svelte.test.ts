@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installLocalStorageMock } from "./storage-mock";
+import type { SessionTransfer } from "./sessionTransfer";
 
 const listeners = new Map<string, (event: { payload: unknown }) => void>();
 vi.mock("@tauri-apps/api/event", () => ({
@@ -149,6 +150,25 @@ describe("logPanel store", () => {
     expect(vi.mocked((await import("$lib/tauri")).stopLogs)).toHaveBeenCalledTimes(2);
   });
 
+  it("closeAll awaits the onCloseAll hook before closing sessions (#298 broadcast-first ordering)", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    const session = logPanel.active!;
+    const order: string[] = [];
+    const closeSpy = vi.spyOn(session, "close").mockImplementation(async () => {
+      order.push("session.close");
+    });
+    logPanel.onCloseAll = vi.fn(async () => {
+      order.push("onCloseAll");
+    });
+
+    await logPanel.closeAll();
+
+    expect(order).toEqual(["onCloseAll", "session.close"]);
+    expect(closeSpy).toHaveBeenCalledOnce();
+
+    logPanel.onCloseAll = null;
+  });
+
   it("switching merged ↔ single preserves the panel search query and recomputes matches on the new buffer", async () => {
     await logPanel.openFor({ namespace: "default", name: "api-0" });
     vi.useFakeTimers();
@@ -217,5 +237,56 @@ describe("logPanel store", () => {
     vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
     vi.useRealTimers();
     expect(logPanel.search.count).toBe(1);
+  });
+
+  it("openFor routes detached pods to their window (#298)", async () => {
+    const focus = vi.fn(async () => {});
+    logPanel.detachedRouter = { has: (k) => k === "default/det-1", focus };
+    const count = logPanel.sessions.length;
+    await logPanel.openFor({ namespace: "default", name: "det-1" });
+    expect(focus).toHaveBeenCalledWith("default/det-1");
+    expect(logPanel.sessions.length).toBe(count);
+    logPanel.detachedRouter = null;
+  });
+
+  describe("logPanel.openSeeded (#298 pop-out)", () => {
+    const transfer = (key: string): SessionTransfer => {
+      const [namespace = "default", pod = "x"] = key.split("/");
+      return {
+        key, namespace, pod,
+        container: "worker",
+        previous: false,
+        tailLines: 500,
+        following: true,
+        lines: [{ id: 0, pod, namespace, time: "2026-08-19T10:00:00Z", level: "info", message: "seeded" }],
+        kubeconfigPath: "/tmp/kc",
+        activeCluster: null,
+      };
+    };
+
+    it("creates a seeded focused session", async () => {
+      await logPanel.openSeeded(transfer("default/re-1"));
+      expect(logPanel.activeKey).toBe("default/re-1");
+      expect(logPanel.active?.ring.lines).toHaveLength(1);
+      expect(logPanel.active?.container).toBe("worker");
+    });
+
+    it("focuses instead of duplicating when the key already exists", async () => {
+      await logPanel.openFor({ namespace: "default", name: "re-2" });
+      const count = logPanel.sessions.length;
+      await logPanel.openSeeded(transfer("default/re-2"));
+      expect(logPanel.sessions.length).toBe(count);
+      expect(logPanel.activeKey).toBe("default/re-2");
+    });
+
+    it("LRU-evicts when the panel is full", async () => {
+      for (let i = 0; i < 6; i++) {
+        await logPanel.openFor({ namespace: "default", name: `p-${i}` });
+      }
+      await logPanel.openSeeded(transfer("default/re-3"));
+      expect(logPanel.sessions.length).toBe(6);
+      expect(logPanel.sessions.some((s) => s.key === "default/p-0")).toBe(false);
+      expect(logPanel.activeKey).toBe("default/re-3");
+    });
   });
 });
