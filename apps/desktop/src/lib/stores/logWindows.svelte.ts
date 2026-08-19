@@ -38,9 +38,12 @@ class LogWindowsStore {
     if (!session) return;
     const transfer = serializeSession(session);
     const label = windowLabelFor(key);
+    let resolveReady: () => void = () => {};
     const ready = new Promise<void>((resolve) => {
-      void listen(`log-window-ready:${key}`, () => resolve());
+      resolveReady = resolve;
     });
+    // Register listener BEFORE spawning window to avoid race condition
+    const unlistenReady = await listen(`log-window-ready:${key}`, () => resolveReady());
     const win = new WebviewWindow(label, {
       url: `index.html?logWindow=${encodeURIComponent(key)}`,
       title: `${transfer.pod} — logs`,
@@ -54,6 +57,7 @@ class LogWindowsStore {
     });
     this.#open.set(key, label);
     await ready;
+    unlistenReady();
     await emitTo(label, `log-window-seed:${key}`, transfer);
     await logPanel.closeSession(key);
   }

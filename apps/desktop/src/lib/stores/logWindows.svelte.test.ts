@@ -96,6 +96,8 @@ describe("logWindows", () => {
     expect(seed?.payload).toBe(FAKE_TRANSFER);
     expect(vi.mocked(logPanel.closeSession)).toHaveBeenCalledWith("default/api-0");
     expect(logWindows.has("default/api-0")).toBe(true);
+    // Listener is unregistered after detach completes (no leak)
+    expect(eventListeners.has("log-window-ready:default/api-0")).toBe(false);
   });
 
   it("detach is a no-op without a panel session", async () => {
@@ -110,6 +112,8 @@ describe("logWindows", () => {
     await vi.waitFor(() => eventListeners.has("log-window-ready:default/api-0"));
     eventListeners.get("log-window-ready:default/api-0")?.({ payload: null });
     await p;
+    // Listener is unregistered after detach completes (no leak)
+    expect(eventListeners.has("log-window-ready:default/api-0")).toBe(false);
     eventListeners.get("log-window-reattach")?.({ payload: FAKE_TRANSFER });
     await vi.waitFor(() => {
       expect(vi.mocked(logPanel.openSeeded)).toHaveBeenCalledWith(FAKE_TRANSFER);
@@ -129,6 +133,8 @@ describe("logWindows", () => {
     await vi.waitFor(() => eventListeners.has("log-window-ready:default/api-0"));
     eventListeners.get("log-window-ready:default/api-0")?.({ payload: null });
     await p;
+    // Listener is unregistered after detach completes (no leak)
+    expect(eventListeners.has("log-window-ready:default/api-0")).toBe(false);
     await logWindows.closeAll();
     expect(emitted.some((e) => e.name === "log-window-close-all")).toBe(true);
     expect(logWindows.has("default/api-0")).toBe(false);
@@ -140,6 +146,8 @@ describe("logWindows", () => {
     await vi.waitFor(() => eventListeners.has("log-window-ready:default/api-0"));
     eventListeners.get("log-window-ready:default/api-0")?.({ payload: null });
     await p;
+    // Listener is unregistered after detach completes (no leak)
+    expect(eventListeners.has("log-window-ready:default/api-0")).toBe(false);
     await logWindows.focus("default/api-0");
     expect(focusCalls).toContain("logs-default-api-0");
   });
