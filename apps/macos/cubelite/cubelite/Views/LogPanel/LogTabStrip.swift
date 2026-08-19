@@ -10,7 +10,7 @@ struct LogTabStrip: View {
         HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 0) {
-                    ForEach(store.sessions, id: \.pod.id) { session in
+                    ForEach(store.attachedSessions, id: \.pod.id) { session in
                         tab(session)
                     }
                 }

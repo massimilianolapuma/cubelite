@@ -77,7 +77,13 @@ extension MainView {
                 case .pods:
                     PodListView(
                         selectedPodID: $selectedPodID,
-                        onOpenLogs: { logSessionStore.open(pod: $0, context: selectedContext) }
+                        onOpenLogs: { pod in
+                            if logSessionStore.isDetached(pod.id) {
+                                openWindow(value: pod.id)
+                            } else {
+                                logSessionStore.open(pod: pod, context: selectedContext)
+                            }
+                        }
                     )
                         .onChange(of: selectedPodID) { _, _ in
                             selectedDeploymentID = nil

@@ -81,6 +81,15 @@ struct CubeliteApp: App {
             height: hasCompletedOnboarding ? 700 : 400
         )
 
+        WindowGroup("Pod Logs", for: String.self) { $sessionID in
+            DetachedLogWindowView(sessionID: sessionID)
+                .environment(appSettings)
+                .environment(logSessionStore)
+                .preferredColorScheme(appSettings.colorScheme)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 900, height: 500)
+
         MenuBarExtra("CubeLite", image: "TrayIcon") {
             MenuBarContextView(
                 clusterState: clusterState,

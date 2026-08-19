@@ -518,4 +518,169 @@ final class LogSessionStoreTests: XCTestCase {
         session.search.recompute(over: session.buffer.lines)
         XCTAssertGreaterThan(session.search.matchingLineIDs.count, 0)
     }
+
+    // MARK: - Detach / re-attach (#298)
+
+    func testDetach_removesFromAttachedButKeepsSession() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        let id = store.sessions[0].pod.id
+
+        store.detach(sessionID: id)
+
+        XCTAssertTrue(store.isDetached(id))
+        XCTAssertEqual(store.sessions.count, 1, "session must survive detach")
+        XCTAssertTrue(store.attachedSessions.isEmpty)
+    }
+
+    func testDetach_activeTab_movesActiveToNeighbor() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        let first = store.sessions[0].pod.id
+        let second = store.sessions[1].pod.id
+        store.activeSessionID = first
+
+        store.detach(sessionID: first)
+
+        XCTAssertEqual(store.activeSessionID, second)
+    }
+
+    func testDetach_lastAttached_clearsActive() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        let id = store.sessions[0].pod.id
+
+        store.detach(sessionID: id)
+
+        XCTAssertNil(store.activeSessionID)
+    }
+
+    func testDetach_inactiveTab_keepsActive() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        let first = store.sessions[0].pod.id
+        let second = store.sessions[1].pod.id
+        store.activeSessionID = second
+
+        store.detach(sessionID: first)
+
+        XCTAssertEqual(store.activeSessionID, second)
+    }
+
+    func testDetach_unknownOrDetachedID_isNoOp() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        let id = store.sessions[0].pod.id
+
+        store.detach(sessionID: "nope/nope")
+        XCTAssertTrue(store.detachedSessionIDs.isEmpty)
+
+        store.detach(sessionID: id)
+        store.detach(sessionID: id)
+        XCTAssertEqual(store.detachedSessionIDs, [id])
+    }
+
+    func testDetach_activeTab_detachedBeforeActive_picksRightNeighbor() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        store.open(pod: makePod("web-3"), context: nil)
+        let first = store.sessions[0].pod.id
+        let second = store.sessions[1].pod.id
+        let third = store.sessions[2].pod.id
+        store.detach(sessionID: first)
+        store.activeSessionID = second
+
+        store.detach(sessionID: second)
+
+        XCTAssertEqual(store.activeSessionID, third, "right neighbor in attached list, not skipped")
+    }
+
+    func testReattach_restoresTabAndActivates() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        let first = store.sessions[0].pod.id
+        store.detach(sessionID: first)
+        store.isCollapsed = true
+
+        store.reattach(sessionID: first)
+
+        XCTAssertFalse(store.isDetached(first))
+        XCTAssertEqual(store.activeSessionID, first)
+        XCTAssertFalse(store.isCollapsed, "re-attach must surface the panel")
+        XCTAssertEqual(store.attachedSessions.count, 2)
+    }
+
+    func testReattach_notDetached_isNoOp() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        let first = store.sessions[0].pod.id
+        let second = store.sessions[1].pod.id
+        store.activeSessionID = second
+
+        store.reattach(sessionID: first)
+
+        XCTAssertEqual(store.activeSessionID, second, "no-op must not steal focus")
+    }
+
+    func testClose_whileDetached_clearsDetachedSet() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        let id = store.sessions[0].pod.id
+        store.detach(sessionID: id)
+
+        store.close(sessionID: id)
+
+        XCTAssertTrue(store.sessions.isEmpty)
+        XCTAssertFalse(store.isDetached(id))
+    }
+
+    func testClose_activeTab_fallbackSkipsDetachedSessions() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        store.open(pod: makePod("web-3"), context: nil)
+        let first = store.sessions[0].pod.id
+        let second = store.sessions[1].pod.id
+        let third = store.sessions[2].pod.id
+        store.detach(sessionID: third)
+        store.activeSessionID = second
+
+        store.close(sessionID: second)
+
+        XCTAssertEqual(store.activeSessionID, first, "fallback must not pick a detached session")
+    }
+
+    func testClose_activeTab_detachedBeforeActive_picksRightNeighbor() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        store.open(pod: makePod("web-3"), context: nil)
+        let first = store.sessions[0].pod.id
+        let second = store.sessions[1].pod.id
+        let third = store.sessions[2].pod.id
+        store.detach(sessionID: first)
+        store.activeSessionID = second
+
+        store.close(sessionID: second)
+
+        XCTAssertEqual(store.activeSessionID, third, "right neighbor in attached list, not skipped")
+    }
+
+    func testCloseAll_clearsDetachedSet() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        let id = store.sessions[0].pod.id
+        store.detach(sessionID: id)
+
+        store.closeAll()
+
+        XCTAssertTrue(store.detachedSessionIDs.isEmpty)
+    }
+
+    func testOpen_detachedPod_doesNotReattachOrActivate() async throws {
+        store.open(pod: makePod("web-1"), context: nil)
+        store.open(pod: makePod("web-2"), context: nil)
+        let first = store.sessions[0].pod.id
+        let second = store.sessions[1].pod.id
+        store.detach(sessionID: first)
+
+        store.open(pod: makePod("web-1"), context: nil)
+
+        XCTAssertTrue(store.isDetached(first), "open must not silently re-attach")
+        XCTAssertEqual(store.activeSessionID, second)
+        XCTAssertEqual(store.sessions.count, 2, "open must not duplicate the session")
+    }
 }

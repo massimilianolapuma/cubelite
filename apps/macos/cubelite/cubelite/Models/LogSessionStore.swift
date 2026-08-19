@@ -230,6 +230,21 @@ final class LogSessionStore {
     var activeSessionID: String?
     var isCollapsed = false
 
+    /// Sessions currently popped out into their own OS windows. Not
+    /// persisted: windows do not survive relaunch (#298).
+    private(set) var detachedSessionIDs: Set<String> = []
+
+    /// Sessions shown as panel tabs — everything not popped out. The
+    /// invariant `activeSessionID` ∈ attached (or nil) is maintained by
+    /// `detach`/`reattach`/`close`/`open`.
+    var attachedSessions: [LogSession] {
+        sessions.filter { !detachedSessionIDs.contains($0.pod.id) }
+    }
+
+    func isDetached(_ sessionID: String) -> Bool {
+        detachedSessionIDs.contains(sessionID)
+    }
+
     var activeSession: LogSession? {
         sessions.first { $0.pod.id == activeSessionID }
     }
@@ -277,11 +292,13 @@ final class LogSessionStore {
     /// Opens the log session for `pod` (or focuses its existing tab) and
     /// expands the panel.
     func open(pod: PodInfo, context: String?) {
-        isCollapsed = false
         if let existing = sessions.first(where: { $0.pod.id == pod.id }) {
+            guard !detachedSessionIDs.contains(existing.pod.id) else { return }
+            isCollapsed = false
             activeSessionID = existing.pod.id
             return
         }
+        isCollapsed = false
         let new = LogSession(
             pod: pod, context: context, streamer: streamer, defaults: defaults,
             backoffBase: backoffBase)
@@ -296,18 +313,50 @@ final class LogSessionStore {
         guard let index = sessions.firstIndex(where: { $0.pod.id == sessionID }) else { return }
         sessions[index].stop()
         let wasActive = activeSessionID == sessionID
+        let attachedBefore = attachedSessions
         sessions.remove(at: index)
+        detachedSessionIDs.remove(sessionID)
         if wasActive {
+            let attachedIndex = attachedBefore.firstIndex { $0.pod.id == sessionID } ?? 0
+            let remaining = attachedSessions
             activeSessionID =
-                sessions.indices.contains(index)
-                ? sessions[index].pod.id : sessions.last?.pod.id
+                remaining.indices.contains(attachedIndex)
+                ? remaining[attachedIndex].pod.id : remaining.last?.pod.id
         }
     }
 
     func closeAll() {
         sessions.forEach { $0.stop() }
         sessions = []
+        detachedSessionIDs = []
         activeSessionID = nil
+    }
+
+    /// Pops the session out of the panel. The caller opens the OS window
+    /// (`openWindow` is a SwiftUI Environment action, unavailable here).
+    /// If the session was the active tab, the next attached tab takes
+    /// over — same neighbor rule as `close`.
+    func detach(sessionID: String) {
+        guard sessions.contains(where: { $0.pod.id == sessionID }),
+            !detachedSessionIDs.contains(sessionID)
+        else { return }
+        let attachedBefore = attachedSessions
+        detachedSessionIDs.insert(sessionID)
+        if activeSessionID == sessionID {
+            let index = attachedBefore.firstIndex { $0.pod.id == sessionID } ?? 0
+            let remaining = attachedSessions
+            activeSessionID =
+                remaining.indices.contains(index)
+                ? remaining[index].pod.id : remaining.last?.pod.id
+        }
+    }
+
+    /// Returns a popped-out session to the panel as the active tab.
+    /// Called by the window's `⏷` button and by window close.
+    func reattach(sessionID: String) {
+        guard detachedSessionIDs.remove(sessionID) != nil else { return }
+        activeSessionID = sessionID
+        isCollapsed = false
     }
 
     /// Shows a transient confirmation in the panel, replacing any pending one.
