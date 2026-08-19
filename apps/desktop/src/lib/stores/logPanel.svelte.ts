@@ -11,6 +11,7 @@ import { persisted } from "./settings.svelte";
 import { LogSession } from "./logSession.svelte";
 import { LogSearch } from "./logSearch.svelte";
 import type { KeyedLogLine } from "./logs.svelte";
+import type { SessionTransfer } from "./sessionTransfer";
 
 export const PANEL_MIN = 160;
 export const PANEL_MAX = 560;
@@ -125,6 +126,33 @@ class LogPanelStore {
     this.sessions = [...this.sessions, session];
     this.activeKey = key;
     this.#focusOrder = [...this.#focusOrder.filter((k) => k !== key), key];
+    this.search.clear();
+    this.search.attach(() => session.ring.lines);
+    await session.open();
+  }
+
+  /** Recreates a transferred session (#298): pop-out bootstrap in the log
+   * window, re-attach in the main window. Same LRU eviction as `openFor`. */
+  async openSeeded(transfer: SessionTransfer): Promise<void> {
+    const existing = this.sessions.find((s) => s.key === transfer.key);
+    if (existing) {
+      this.focus(transfer.key);
+      return;
+    }
+    while (this.sessions.length >= SESSION_CAP) {
+      const lruKey = this.#focusOrder[0];
+      if (lruKey === undefined) break;
+      await this.closeSession(lruKey);
+    }
+    const session = new LogSession(transfer.namespace, transfer.pod, transfer.container, {
+      lines: transfer.lines,
+      previous: transfer.previous,
+      tailLines: transfer.tailLines,
+      following: transfer.following,
+    });
+    this.sessions = [...this.sessions, session];
+    this.activeKey = transfer.key;
+    this.#focusOrder = [...this.#focusOrder.filter((k) => k !== transfer.key), transfer.key];
     this.search.clear();
     this.search.attach(() => session.ring.lines);
     await session.open();
