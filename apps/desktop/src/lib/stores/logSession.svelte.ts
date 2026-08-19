@@ -12,6 +12,7 @@ import { app } from "./app.svelte";
 import { LogRing } from "./logRing.svelte";
 import { FLUSH_MS } from "./logs.svelte";
 import { ContainerStream, type StreamParams, type StreamStatus } from "./containerStream.svelte";
+import type { KeyedLogLine } from "./logs.svelte";
 
 export const RING_CAP = 5000;
 export const DEFAULT_TAIL = 500;
@@ -20,6 +21,15 @@ export const DEFAULT_TAIL = 500;
 export const ALL_CONTAINERS = "*";
 
 export type SessionStatus = StreamStatus; // unchanged union, re-exported for callers
+
+/** One-shot state handoff for the pop-out window (#298): ring contents plus
+ * the stream settings the receiving side must adopt before opening. */
+export type SessionSeed = {
+  lines: KeyedLogLine[];
+  previous: boolean;
+  tailLines: number;
+  following: boolean;
+};
 
 export class LogSession {
   readonly key: string;
@@ -42,6 +52,8 @@ export class LogSession {
   #flushTimer: ReturnType<typeof setInterval> | null = null;
   /** Bumped on every (re)start/close so a superseded #start() can't clobber a newer one's streams. */
   #generation = 0;
+  /** sinceTime for the first stream start; set once from the seed. */
+  #initialSinceTime: string | undefined;
 
   /** Aggregate over sub-streams (single mode: exactly one). Order matters. */
   status = $derived.by((): SessionStatus => {
@@ -61,11 +73,24 @@ export class LogSession {
   });
   reconnectAttempt = $derived(Math.max(0, ...this.#streams.map((s) => s.reconnectAttempt)));
 
-  constructor(namespace: string, pod: string, initialContainer: string | null = null) {
+  constructor(
+    namespace: string,
+    pod: string,
+    initialContainer: string | null = null,
+    seed?: SessionSeed,
+  ) {
     this.namespace = namespace;
     this.pod = pod;
     this.key = `${namespace}/${pod}`;
     this.container = initialContainer;
+    if (seed) {
+      this.previous = seed.previous;
+      this.tailLines = seed.tailLines;
+      this.following = seed.following;
+      this.ring.append(seed.lines);
+      this.seenCount = this.ring.totalAppended;
+      this.#initialSinceTime = [...seed.lines].reverse().find((l) => l.time)?.time ?? undefined;
+    }
   }
 
   async open(): Promise<void> {
@@ -104,6 +129,8 @@ export class LogSession {
     await this.#stopStreams();
     if (generation !== this.#generation) return;
     const targets = this.merged ? this.containers.map((c) => c.name) : [this.container];
+    const initialSince = this.#initialSinceTime;
+    this.#initialSinceTime = undefined;
     const streams = targets.map(
       (name) =>
         new ContainerStream(
@@ -113,6 +140,7 @@ export class LogSession {
           this.#receive,
           this.#streamParams,
           () => this.#flush(),
+          initialSince,
         ),
     );
     this.#streams = streams;
