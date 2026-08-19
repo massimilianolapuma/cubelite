@@ -150,6 +150,25 @@ describe("logPanel store", () => {
     expect(vi.mocked((await import("$lib/tauri")).stopLogs)).toHaveBeenCalledTimes(2);
   });
 
+  it("closeAll awaits the onCloseAll hook before closing sessions (#298 broadcast-first ordering)", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    const session = logPanel.active!;
+    const order: string[] = [];
+    const closeSpy = vi.spyOn(session, "close").mockImplementation(async () => {
+      order.push("session.close");
+    });
+    logPanel.onCloseAll = vi.fn(async () => {
+      order.push("onCloseAll");
+    });
+
+    await logPanel.closeAll();
+
+    expect(order).toEqual(["onCloseAll", "session.close"]);
+    expect(closeSpy).toHaveBeenCalledOnce();
+
+    logPanel.onCloseAll = null;
+  });
+
   it("switching merged ↔ single preserves the panel search query and recomputes matches on the new buffer", async () => {
     await logPanel.openFor({ namespace: "default", name: "api-0" });
     vi.useFakeTimers();

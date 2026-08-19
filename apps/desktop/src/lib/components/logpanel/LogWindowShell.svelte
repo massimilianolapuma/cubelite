@@ -49,6 +49,11 @@
 				}),
 				await listen('log-window-close-all', async () => {
 					leaving = true;
+					// Stop the Rust-side stream tasks: webview destruction alone
+					// leaks them, only stop_logs (via closeAll -> session.close)
+					// aborts them. Safe here: this window's onCloseAll is null,
+					// so no re-broadcast loop.
+					await logPanel.closeAll();
 					await getCurrentWindow().destroy();
 				}),
 				await getCurrentWindow().onCloseRequested(async (event) => {

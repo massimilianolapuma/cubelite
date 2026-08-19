@@ -76,8 +76,10 @@ describe("logWindows", () => {
     (logPanel.sessions as unknown[]).length = 0;
   });
 
-  it("windowLabelFor slugs the key", () => {
-    expect(windowLabelFor("default/api-0")).toBe("logs-default-api-0");
+  it("windowLabelFor prefixes the key without rewriting it (injective)", () => {
+    expect(windowLabelFor("default/api-0")).toBe("logs-default/api-0");
+    // Previously replaceAll("/", "-") collided these two distinct keys.
+    expect(windowLabelFor("a/b-c")).not.toBe(windowLabelFor("a-b/c"));
   });
 
   it("detach: spawn → ready → seed → close local session", async () => {
@@ -86,13 +88,13 @@ describe("logWindows", () => {
     await vi.waitFor(() => {
       expect(eventListeners.has("log-window-ready:default/api-0")).toBe(true);
     });
-    expect(spawned[0]?.label).toBe("logs-default-api-0");
+    expect(spawned[0]?.label).toBe("logs-default/api-0");
     // seed not sent before ready
     expect(emitted.filter((e) => e.name.startsWith("log-window-seed:"))).toHaveLength(0);
     eventListeners.get("log-window-ready:default/api-0")?.({ payload: null });
     await detachPromise;
     const seed = emitted.find((e) => e.name === "log-window-seed:default/api-0");
-    expect(seed?.target).toBe("logs-default-api-0");
+    expect(seed?.target).toBe("logs-default/api-0");
     expect(seed?.payload).toBe(FAKE_TRANSFER);
     expect(vi.mocked(logPanel.closeSession)).toHaveBeenCalledWith("default/api-0");
     expect(logWindows.has("default/api-0")).toBe(true);
@@ -103,6 +105,25 @@ describe("logWindows", () => {
   it("detach is a no-op without a panel session", async () => {
     await logWindows.detach("default/ghost");
     expect(spawned).toHaveLength(0);
+  });
+
+  it("detach: tauri://error during spawn cleans up without seeding or closing the panel session", async () => {
+    (logPanel.sessions as unknown[]).push({ key: "default/api-0" });
+    const detachPromise = logWindows.detach("default/api-0");
+    await vi.waitFor(() => {
+      expect(eventListeners.has("log-window-ready:default/api-0")).toBe(true);
+    });
+    // Registry entry exists while the window is still spawning.
+    expect(logWindows.has("default/api-0")).toBe(true);
+
+    eventListeners.get("logs-default/api-0:tauri://error")?.({ payload: null });
+    await detachPromise;
+
+    expect(emitted.filter((e) => e.name.startsWith("log-window-seed:"))).toHaveLength(0);
+    expect(vi.mocked(logPanel.closeSession)).not.toHaveBeenCalled();
+    expect(logWindows.has("default/api-0")).toBe(false);
+    // Ready listener is unregistered, not left leaking.
+    expect(eventListeners.has("log-window-ready:default/api-0")).toBe(false);
   });
 
   it("init wires re-attach: valid payload → openSeeded, registry cleared", async () => {
@@ -149,6 +170,6 @@ describe("logWindows", () => {
     // Listener is unregistered after detach completes (no leak)
     expect(eventListeners.has("log-window-ready:default/api-0")).toBe(false);
     await logWindows.focus("default/api-0");
-    expect(focusCalls).toContain("logs-default-api-0");
+    expect(focusCalls).toContain("logs-default/api-0");
   });
 });
