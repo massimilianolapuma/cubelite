@@ -23,18 +23,7 @@ struct LogPanelView: View {
             .background(DesignTokens.surfacePanel)
             .overlay(alignment: .bottomTrailing) {
                 if let toast = store.toast {
-                    Text(toast)
-                        .scaledFont(size: 11.5, design: .monospaced)
-                        .foregroundStyle(DesignTokens.textLog)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(DesignTokens.surfaceOverlay)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(DesignTokens.borderStrong, lineWidth: 1))
-                        .padding(12)
-                        .transition(.opacity)
+                    LogToastOverlay(message: toast)
                 }
             }
         }

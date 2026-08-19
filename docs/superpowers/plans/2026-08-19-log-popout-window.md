@@ -25,6 +25,8 @@
 
 ### Task 1: `LogSessionStore` detach/re-attach state machine
 
+> **Deviation (2026-08-19):** the close() fallback formula below proved defective (wrong neighbor when detached sessions precede the active tab) and was corrected in commit 7f2c4f8 to mirror detach()'s attached-relative indexing, with a regression test. See the shipped code, not this snippet.
+
 **Files:**
 - Modify: `apps/macos/cubelite/cubelite/Models/LogSessionStore.swift` (class `LogSessionStore`, lines ~227–323)
 - Test: `apps/macos/cubelite/cubeliteTests/LogSessionStoreTests.swift`

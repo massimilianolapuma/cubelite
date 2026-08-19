@@ -38,18 +38,7 @@ struct DetachedLogWindowView: View {
             .navigationTitle("\(session.pod.name) — logs")
             .overlay(alignment: .bottomTrailing) {
                 if let toast = store.toast {
-                    Text(toast)
-                        .scaledFont(size: 11.5, design: .monospaced)
-                        .foregroundStyle(DesignTokens.textLog)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(DesignTokens.surfaceOverlay)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(DesignTokens.borderStrong, lineWidth: 1))
-                        .padding(12)
-                        .transition(.opacity)
+                    LogToastOverlay(message: toast)
                 }
             }
             // Any close path (⌘W, traffic light, ⏷) lands here; reattach is
@@ -84,7 +73,7 @@ struct DetachedLogWindowView: View {
                 store.reattach(sessionID: session.pod.id)
                 dismiss()
             } label: {
-                Image(systemName: "arrow.down.left.square")
+                Image(systemName: "arrow.down.backward.square")
                     .scaledFont(size: 11)
                     .foregroundStyle(DesignTokens.textSecondary)
                     .frame(width: 26)
