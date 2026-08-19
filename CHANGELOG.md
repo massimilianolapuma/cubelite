@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-08-19
+
+### Added
+
+- **Pop out log session to a separate OS window** (#298, both apps): the `⧉`
+  button in the log panel toolbar detaches the active session into its own
+  window with full toolbar parity (container picker, search, follow/pause,
+  tail, previous, export); closing the window — or `⏷` — returns the tab to
+  the panel with history and stream intact. One window per session, unlimited
+  windows; on desktop the handoff is gapless (the stream resumes from the
+  last transferred line)
+
 ## [0.4.1] - 2026-08-09
 
 ### Fixed
