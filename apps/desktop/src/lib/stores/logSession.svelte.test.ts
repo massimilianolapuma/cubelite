@@ -361,6 +361,6 @@ describe("LogSession seeding (#298 pop-out)", () => {
   it("unseeded session behaves as before (no sinceTime on first start)", async () => {
     const session = new LogSession("default", "api-0", "worker");
     await session.open();
-    expect(vi.mocked(streamPodLog).mock.lastCall?.[3].sinceTime).toBeUndefined();
+    expect(vi.mocked(streamPodLog).mock.lastCall?.[3]?.sinceTime).toBeUndefined();
   });
 });
