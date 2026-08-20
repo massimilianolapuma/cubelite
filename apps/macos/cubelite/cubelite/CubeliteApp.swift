@@ -17,6 +17,15 @@ struct CubeliteApp: App {
     @State private var logSessionStore: LogSessionStore
 
     init() {
+        #if DEBUG
+        // UI-test hook: `-hasCompletedOnboarding NO` pins the argument domain,
+        // which would also win over the runtime write performed by `onComplete`
+        // and keep the app stuck on onboarding. Clearing the persisted value
+        // instead lets the fresh-launch flow complete normally under test.
+        if CommandLine.arguments.contains("--uitest-reset-onboarding") {
+            UserDefaults.standard.removeObject(forKey: "hasCompletedOnboarding")
+        }
+        #endif
         let ks = KubeconfigService()
         self.kubeconfigService = ks
         let api = KubeAPIService(kubeconfigService: ks)
