@@ -31,6 +31,7 @@ struct UnifiedHeaderView: View {
                     connectionBadge
                 }
                 .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("header.context")
             } else {
                 Text("All Clusters")
                     .scaledFont(size: 13, weight: .semibold, relativeTo: .title3)
