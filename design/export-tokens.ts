@@ -12,6 +12,8 @@
  *                       (color-mix), density, motion, and the shadcn-svelte
  *                       compat bridge (HSL triples derived from the dark
  *                       palette, written to both :root and .dark)
+ *   @generated:type   — `@utility type-*` typography classes (family, size,
+ *                       weight, line-height, tracking, case, default color)
  *
  * Run:  pnpm design:tokens
  */
@@ -19,6 +21,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseTypeStyle } from "./type-style.ts";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,6 +31,10 @@ interface Token {
   $light?: string;
   $type?: string;
   $description?: string;
+  /** Typography only: CSS line-height (unitless). */
+  $lineHeight?: string;
+  /** Typography only: default text color, a key of the `text` group. */
+  $color?: string;
 }
 
 type TokenGroup = Record<string, Token>;
@@ -289,11 +296,35 @@ const layerContent = [
   "}",
 ].join("\n");
 
+// ── Build @generated:type block (Tailwind v4 @utility classes) ───────────────
+
+const typeContent = entries(tk.font.style)
+  .map(([name, value]) => {
+    const meta = tk.font.style[name];
+    const s = parseTypeStyle(value);
+    if (s.size < 10) throw new Error(`Typography token "${name}" is below the 10px minimum`);
+    if (meta.$color && !tk.text[meta.$color]) {
+      throw new Error(`Typography token "${name}" references unknown text color "${meta.$color}"`);
+    }
+    const decls = [
+      `  font-family: var(--font-${s.family});`,
+      `  font-size: ${s.size}px;`,
+      `  font-weight: ${s.weight};`,
+    ];
+    if (meta.$lineHeight) decls.push(`  line-height: ${meta.$lineHeight};`);
+    if (s.tracking) decls.push(`  letter-spacing: ${s.tracking}em;`);
+    if (s.uppercase) decls.push(`  text-transform: uppercase;`);
+    if (meta.$color) decls.push(`  color: var(--color-text-${meta.$color});`);
+    return `@utility type-${name} {\n${decls.join("\n")}\n}`;
+  })
+  .join("\n");
+
 // ── Inject and write ──────────────────────────────────────────────────────────
 
 let css = readFileSync(cssFile, "utf-8");
 css = injectRegion(css, "/* @generated:theme-start */", "/* @generated:theme-end */", themeContent);
 css = injectRegion(css, "/* @generated:layer-start */", "/* @generated:layer-end */", layerContent);
+css = injectRegion(css, "/* @generated:type-start */", "/* @generated:type-end */", typeContent);
 writeFileSync(cssFile, css, "utf-8");
 
 // ── Swift bridge (apps/macos) ────────────────────────────────────────────────
