@@ -17,7 +17,7 @@
 <div class="rounded-xl border border-border-default bg-surface-surface px-4 py-3">
 	<div class="type-colhead mb-1.5">{label}</div>
 	<div
-		class="font-mono text-[22px] font-semibold"
+		class="type-stat"
 		style="color: {tone ? toneColor[tone] : 'var(--color-text-data-bright)'};"
 	>
 		{value}

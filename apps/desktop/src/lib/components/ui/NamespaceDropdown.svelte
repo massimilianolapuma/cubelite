@@ -16,7 +16,7 @@
 		class="focus-ring flex h-7 items-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110"
 	>
 		<span class="type-caption">namespace:</span>
-		<span class="font-mono text-[11.5px] text-text-primary">{app.namespace ?? 'all'}</span>
+		<span class="type-data-sm text-text-primary">{app.namespace ?? 'all'}</span>
 		<ChevronDown class="h-3 w-3 text-text-tertiary" />
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
@@ -38,7 +38,7 @@
 					style={app.namespace === ns.name ? 'background: var(--alpha-active-nav-bg); color: var(--color-text-primary);' : ''}
 					onSelect={() => void select(ns.name)}
 				>
-					<span class="font-mono text-[11.5px]">{ns.name}</span>
+					<span class="type-data-sm">{ns.name}</span>
 				</DropdownMenu.Item>
 			{/each}
 		</DropdownMenu.Content>

@@ -30,7 +30,7 @@
 					>
 						<span>
 							<span
-								class="inline-flex rounded-full px-2 py-0.5 text-[10.5px] font-medium"
+								class="inline-flex rounded-full px-2 py-0.5 type-micro"
 								style={warning
 									? 'background: var(--alpha-pill-warn); color: var(--color-status-warn);'
 									: 'background: var(--color-surface-raised); color: var(--color-text-secondary);'}

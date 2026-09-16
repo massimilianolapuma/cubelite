@@ -85,7 +85,7 @@
 				<Command.Input
 					autofocus
 					placeholder="Search clusters, views, actions…"
-					class="h-11 flex-1 bg-transparent text-[13.5px] text-text-primary outline-none placeholder:text-text-disabled"
+					class="h-11 flex-1 bg-transparent type-subtitle font-normal text-text-primary outline-none placeholder:text-text-disabled"
 				/>
 				<Kbd label="esc" />
 			</div>
@@ -112,7 +112,7 @@
 									></span>
 									<span class="type-body flex-1 truncate text-text-primary">{ctx.name}</span>
 									<span
-										class="rounded-sm px-1.5 py-px font-mono text-[10px] font-medium"
+										class="rounded-sm px-1.5 py-px type-micro font-mono"
 										style="color: var(--color-cluster-{clusters.identityFor(ctx.name)}); background: color-mix(in srgb, var(--color-cluster-{clusters.identityFor(ctx.name)}) 12%, transparent);"
 									>
 										{providerOf(ctx.name, ctx.cluster_server)}

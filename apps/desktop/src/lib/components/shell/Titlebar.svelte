@@ -52,7 +52,7 @@
 			<span class="type-subtitle truncate">{activeContext.name}</span>
 			{#if provider}
 				<span
-					class="rounded-sm px-1.5 py-px font-mono text-[10px] font-medium"
+					class="rounded-sm px-1.5 py-px type-micro font-mono"
 					style="color: var(--color-cluster-{identity}); background: color-mix(in srgb, var(--color-cluster-{identity}) 12%, transparent);"
 				>
 					{provider}
