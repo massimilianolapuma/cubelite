@@ -9,7 +9,8 @@
     "test": "pnpm --filter desktop test",
     "lint": "pnpm --filter desktop lint",
     "typecheck": "pnpm --filter desktop typecheck",
-    "design:tokens": "tsx design/export-tokens.ts"
+    "design:tokens": "tsx design/export-tokens.ts",
+    "design:test": "tsx --test design/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
