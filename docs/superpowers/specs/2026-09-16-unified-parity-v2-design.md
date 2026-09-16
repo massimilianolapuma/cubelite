@@ -109,8 +109,8 @@ extension View {
 
 - Replace the 38 `text-[Npx]` occurrences with `type-*` utilities
   (`text-[22px]` → `type-stat`, `text-[10.5px]`/`text-[10px]` → `type-micro`,
-  `text-[13.5px]` palette input → `type-body` at 13.5 via a `type-input` token
-  if needed; decide per occurrence during implementation, no new hard-coded px).
+  `text-[13.5px]` palette input → `type-subtitle` at regular weight). Rule:
+  after PR 1 the desktop lint in §5 reports zero `text-[` occurrences.
 - `Kbd`, `StatusPill`, `StatCard`, palette rows and drawer meta grids are the
   main consumers.
 
@@ -134,7 +134,8 @@ seen in the screenshot). The label reads `namespace: <mono value>` + chevron.
 Refresh and bell buttons are removed. `MainView` binds ⌘R to `refreshAll()`
 through a `.commands` `CommandGroup` ("Refresh", ⌘R) and adds the palette
 action "Refresh cluster data". The Diagnostics panel is reachable from the
-Window menu ("Diagnostics", ⌥⌘D) and from the status-bar error count.
+Window menu ("Diagnostics", ⇧⌘D; ⌘D is already taken) and from the status-bar
+error count. ⌘R is currently unused in both apps.
 
 ### 3.2 `StatusBarView`
 
@@ -151,7 +152,9 @@ server URL already exist on `ClusterState` / kubeconfig context.
 - `KubeAPIService.listEvents(namespace:inContext:)` returns all event types
   (the existing `listWarningEvents` stays for the overview and status bar).
   `ClusterState.events: [EventInfo]`; `EventInfo` gains `type: String?`
-  ("Normal"/"Warning") and `lastTimestamp: Date?` if not already decoded.
+  ("Normal"/"Warning"), mapped from the already-decoded API `type` field.
+  `lastTimestamp` stays a `String?` (ISO 8601) and is parsed by the age
+  formatter, as the overview already does.
 - `Views/EventListView.swift`: table `TYPE / REASON / OBJECT / MESSAGE / AGE`
   with grid `0.7 / 1 / 1.4 / 2.6 / 0.5 fr`; Type pill (Warning = warn-10%
   background, Normal = `surfaceRaised`), warning rows warn-4% background,
