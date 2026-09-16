@@ -95,7 +95,7 @@ extension View {
     /// Applies a Design System type style: Geist / Geist Mono via Font.custom,
     /// scaled with @ScaledMetric like scaledFont, falling back to the system
     /// family if the bundled font fails to load.
-    func typeStyle(_ style: DesignTokens.Type.Style, color: Color? = nil) -> some View
+    func typeStyle(_ style: DesignTokens.Typography.Style, color: Color? = nil) -> some View
 }
 ```
 
