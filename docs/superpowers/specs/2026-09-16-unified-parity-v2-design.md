@@ -67,10 +67,10 @@ Line heights unchanged. `kbd` chips and status pills stay at 10.5px via a new
 - CSS: unchanged mechanism; the `@utility type-*` blocks in `app.css` move
   inside the generated region and are emitted from tokens (they are hand-written
   today). Adds `type-stat` and `type-micro`.
-- Swift: emit a new `DesignTokens.Type` namespace:
+- Swift: emit a new `DesignTokens.Typography` namespace (`Type` would collide with Swift metatype syntax):
 
 ```swift
-public enum Type {
+public enum Typography {
     public struct Style: Sendable {
         public let size: CGFloat
         public let weight: Font.Weight
@@ -103,7 +103,7 @@ extension View {
   `.textCase(.uppercase)`; `tracking` applies `.tracking(size * tracking)`.
 - `scaledFont(size:…)` stays for the migration period; new and touched code
   uses `typeStyle`. `LogBodyView` keeps its own mono path (performance) but
-  reads size/weight from `DesignTokens.Type.log`.
+  reads size/weight from `DesignTokens.Typography.log`.
 
 ### 2.4 Desktop
 
