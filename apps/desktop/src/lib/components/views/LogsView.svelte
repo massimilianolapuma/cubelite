@@ -89,7 +89,7 @@
 			type="text"
 			placeholder="label=value,…"
 			bind:value={labelSelector}
-			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 font-mono type-caption text-text-primary placeholder:text-text-disabled"
+			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-data-sm text-text-primary placeholder:text-text-disabled"
 		/>
 
 		<div class="flex overflow-hidden rounded-md border border-border-default">

@@ -83,7 +83,7 @@
 		<section>
 			<div class="type-body mb-1.5 text-text-primary">Kubeconfig</div>
 			<div class="rounded-md border border-border-faint bg-surface-window px-2.5 py-2">
-				<div class="truncate font-mono type-caption text-text-secondary">{app.kubeconfigPath || '—'}</div>
+				<div class="truncate type-data-sm text-text-secondary">{app.kubeconfigPath || '—'}</div>
 				<div class="type-caption mt-0.5 text-text-tertiary">
 					{clusters.contexts.length} context{clusters.contexts.length === 1 ? '' : 's'}
 				</div>

@@ -18,7 +18,7 @@
 	<h1 class="type-title">Cluster unreachable</h1>
 	<div class="text-center">
 		{#if server}
-			<p class="font-mono type-caption text-text-tertiary">{server}</p>
+			<p class="type-data-sm text-text-tertiary">{server}</p>
 		{/if}
 		{#if clusters.unreachableReason}
 			<p class="type-caption mt-1 max-w-md text-text-disabled">{clusters.unreachableReason}</p>
