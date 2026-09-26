@@ -30,6 +30,12 @@ updates:
     ignore:
       - dependency-name: "tauri"
       - dependency-name: "tauri-*"
+      # k8s-openapi is pinned by kube (one version per build); major bumps of
+      # either must be done together by hand (#366).
+      - dependency-name: "kube"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "k8s-openapi"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     commit-message:
       prefix: "chore(deps)"
     groups:
