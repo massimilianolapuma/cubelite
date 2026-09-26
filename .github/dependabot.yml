@@ -11,6 +11,11 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
+    # Tauri must move in lockstep across Rust crates and npm packages (the CLI
+    # refuses mismatched major.minor versions), which Dependabot can't do in
+    # one PR. Tauri is updated manually instead.
+    ignore:
+      - dependency-name: "@tauri-apps/*"
     groups:
       npm-minor-patch:
         update-types: [minor, patch]
@@ -21,6 +26,10 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # See the npm entry: Tauri crates are updated manually, together with @tauri-apps/*.
+    ignore:
+      - dependency-name: "tauri"
+      - dependency-name: "tauri-*"
     commit-message:
       prefix: "chore(deps)"
     groups:
