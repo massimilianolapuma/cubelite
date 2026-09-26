@@ -3,22 +3,25 @@
 This snapshot covers the open PRs, the open issues, project health, and how well the desktop app matches the
 Claude Design handoff (`design/design_handoff_cubelite_ui/`). It is based on `main` at `fa9c886` (v0.4.2).
 
-## Open pull requests
+## Pull requests
 
-| PR | State | Next step |
+> **Update (later on 2026-09-26):** all three PRs open at review time were merged the same day, and #355 closed
+> with #356. There are no open PRs on `main` at `a570446`.
+
+| PR | Outcome | Follow-up |
 |---|---|---|
-| #356 design(tokens): type scale v1.1, Swift typography tokens, bundled Geist | CI green, mergeable, in review since 2026-09-16 | Review and merge. This unblocks unified parity v2 PR 2–4 (#358, #359, #360). |
-| #353 test(macos): fix E2E suite under CLI-driven runs | Mergeable, no linked issue or labels | Review and merge, then consider running UI tests in CI (#365 item 8). |
-| #354 chore(deps-dev): bump vitest 3.2.6 → 4.1.11 | CI green | Merge, ideally together with vite 7 and vite-plugin-svelte 6. |
+| #356 design(tokens): type scale v1.1, Swift typography tokens, bundled Geist | Merged 2026-09-26 | Unified parity v2 PR 2–4 are now unblocked (#358, #359, #360). |
+| #353 test(macos): fix E2E suite under CLI-driven runs | Merged 2026-09-26 | Consider running UI tests in CI (#365 item 8). |
+| #354 chore(deps-dev): bump vitest 3.2.6 → 4.1.11 | Merged 2026-09-26 | Bump vite 7 and vite-plugin-svelte 6 next. |
 
 ## Open issues
 
-Existing:
+Existing at review time:
 
 - #121 macOS code signing, notarization and Sparkle. Priority high and open since April; this blocks distribution.
 - #350 Windows Authenticode signing.
 - #351 Follow-ups for the pop-out log window.
-- #355 Type scale v1.1. Closed by #356.
+- #355 Type scale v1.1. Closed by #356 (merged).
 
 Filed during this review:
 
