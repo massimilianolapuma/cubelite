@@ -49,7 +49,7 @@ class AppState {
    * dialogs (Delete Pod, YAML) register here so Esc can close them before
    * the drawer underneath.
    */
-  #modalStack: Array<() => void> = [];
+  readonly #modalStack: Array<() => void> = [];
 
   selectedPod = $state<PodInfo | null>(null);
   selectedDeployment = $state<DeploymentInfo | null>(null);
