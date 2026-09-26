@@ -87,6 +87,19 @@ describe("DeletePodDialog", () => {
     expect(screen.getByText("Delete Pod", { selector: "button" })).toBeDisabled();
   });
 
+  it("registers with the overlay stack so Esc closes it before the drawer", () => {
+    const onCancel = vi.fn();
+    app.selectedPod = pod;
+    const { unmount } = render(DeletePodDialog, { props: { pod, onCancel, onConfirm: vi.fn() } });
+    expect(app.closeTopOverlay()).toBe(true);
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(app.selectedPod).not.toBeNull();
+    unmount();
+    // Once unmounted the dialog no longer intercepts Esc.
+    expect(app.closeTopOverlay()).toBe(true);
+    expect(app.selectedPod).toBeNull();
+  });
+
   it("cancels via the Cancel button", async () => {
     const onCancel = vi.fn();
     render(DeletePodDialog, { props: { pod, onCancel, onConfirm: vi.fn() } });

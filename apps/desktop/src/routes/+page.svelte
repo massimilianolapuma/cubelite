@@ -71,9 +71,17 @@
 
 	function onKeydown(event: KeyboardEvent) {
 		if (logWindowKey) return;
-		if (event.key === 'Escape' && app.closeTopOverlay()) {
-			event.preventDefault();
-			return;
+		if (event.key === 'Escape') {
+			// The connecting overlay sits above everything else; Esc cancels the switch.
+			if (app.connecting !== null) {
+				event.preventDefault();
+				clusters.cancelSwitch();
+				return;
+			}
+			if (app.closeTopOverlay()) {
+				event.preventDefault();
+				return;
+			}
 		}
 		const action = matchShortcut(event, isMac);
 		if (!action) return;

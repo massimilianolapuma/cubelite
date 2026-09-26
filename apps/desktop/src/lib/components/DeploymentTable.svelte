@@ -47,7 +47,7 @@
 				<div
 					role="button"
 					tabindex="0"
-					class="grid w-full cursor-default items-center gap-x-3 border-b border-border-faint px-3 text-left last:border-b-0 hover:bg-surface-row-hover"
+					class="focus-ring grid w-full cursor-default items-center gap-x-3 border-b border-border-faint px-3 text-left last:border-b-0 hover:bg-surface-row-hover"
 					style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default); {isSelected
 						? 'background: var(--alpha-selection-bg);'
 						: ''}"

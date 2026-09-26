@@ -97,7 +97,7 @@
 				{@const active = logs.level === chip.value}
 				<button
 					type="button"
-					class="type-section h-7 border-r border-border-default px-2.5 last:border-r-0"
+					class="focus-ring type-section h-7 border-r border-border-default px-2.5 last:border-r-0"
 					style={active
 						? chip.color
 							? `background: ${chip.color}; color: var(--color-surface-window);`
@@ -119,7 +119,7 @@
 
 		<button
 			type="button"
-			class="type-caption flex h-7 items-center gap-1.5 rounded-md px-2.5 font-medium"
+			class="focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md px-2.5 font-medium"
 			style={logs.following
 				? 'background: var(--color-status-ok); color: var(--color-surface-window);'
 				: 'background: var(--alpha-pill-warn); color: var(--color-status-warn);'}

@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scaledFont` call and the new `typeStyle` modifier — same families as the
   desktop app.
 
+### Fixed
+
+- **Desktop**: Esc closes the topmost overlay first — the Delete Pod and YAML
+  dialogs now close before the drawer underneath them, and Esc cancels an
+  in-flight cluster switch (#361). Table rows, log level chips and the Follow
+  toggle show the accent focus ring.
+
 ## [0.4.2] - 2026-08-19
 
 ### Added

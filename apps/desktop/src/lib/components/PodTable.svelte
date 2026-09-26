@@ -42,7 +42,7 @@
 				<!-- Resource names are never links; the row is the interactive target (HIG §4.8.1). -->
 				<button
 					type="button"
-					class="grid w-full items-center gap-x-3 border-b border-border-faint px-3 text-left last:border-b-0 hover:bg-surface-row-hover"
+					class="focus-ring grid w-full items-center gap-x-3 border-b border-border-faint px-3 text-left last:border-b-0 hover:bg-surface-row-hover"
 					style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default); {isSelected
 						? 'background: var(--alpha-selection-bg);'
 						: ''}"

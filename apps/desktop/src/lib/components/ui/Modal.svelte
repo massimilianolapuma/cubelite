@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { onMount } from 'svelte';
 	import X from '@lucide/svelte/icons/x';
+	import { app } from '$lib/stores/app.svelte';
 
 	let {
 		title,
@@ -15,6 +17,10 @@
 		children: Snippet;
 		footer?: Snippet;
 	} = $props();
+
+	// Esc closes the topmost overlay: register so app.closeTopOverlay() reaches
+	// this modal before any drawer underneath it.
+	onMount(() => app.pushModal(() => onClose()));
 </script>
 
 <div
