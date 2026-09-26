@@ -280,11 +280,24 @@ export type PvcInfo = {
   creation_timestamp: string | null;
 };
 
+export type CapacityTotals = {
+  cpu_used_millis: number;
+  cpu_allocatable_millis: number;
+  memory_used_bytes: number;
+  memory_allocatable_bytes: number;
+};
+
 export type ClusterHealthInfo = {
   context: string;
   reachable: boolean;
   version: string | null;
   node_count: number | null;
+  /** Pods across all namespaces; null when forbidden or timed out. */
+  pod_count: number | null;
+  /** Pods needing attention (same rule as `resources.issuePods`). */
+  issue_pod_count: number | null;
+  /** Cluster CPU/memory totals; null without metrics-server. */
+  capacity: CapacityTotals | null;
   error: string | null;
 };
 
@@ -441,11 +454,20 @@ export function getResourceYaml(
   });
 }
 
+/**
+ * Reachability probe (short timeouts). `summary` adds pod and capacity
+ * totals for the All Clusters dashboard; leave it off on hot paths.
+ */
 export function probeCluster(
   kubeconfigPath: string,
   context: string,
+  options: { summary?: boolean } = {},
 ): Promise<ClusterHealthInfo> {
-  return invoke<ClusterHealthInfo>("probe_cluster", { kubeconfigPath, context });
+  return invoke<ClusterHealthInfo>("probe_cluster", {
+    kubeconfigPath,
+    context,
+    includeSummary: options.summary ?? false,
+  });
 }
 
 export function streamLogs(

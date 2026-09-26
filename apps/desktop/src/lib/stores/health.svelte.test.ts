@@ -40,8 +40,31 @@ describe("health.probeAll", () => {
   it("records reachable clusters with version/node count and persists lastSeen", async () => {
     vi.mocked(probeCluster).mockImplementation(async (_kc, context) =>
       context === "prod"
-        ? { context, reachable: true, version: "v1.30.2", node_count: 3, error: null }
-        : { context, reachable: false, version: null, node_count: null, error: "connection timed out" },
+        ? {
+            context,
+            reachable: true,
+            version: "v1.30.2",
+            node_count: 3,
+            pod_count: 42,
+            issue_pod_count: 1,
+            capacity: {
+              cpu_used_millis: 100,
+              cpu_allocatable_millis: 1000,
+              memory_used_bytes: 1,
+              memory_allocatable_bytes: 2,
+            },
+            error: null,
+          }
+        : {
+            context,
+            reachable: false,
+            version: null,
+            node_count: null,
+            pod_count: null,
+            issue_pod_count: null,
+            capacity: null,
+            error: "connection timed out",
+          },
     );
 
     await health.probeAll();
@@ -50,7 +73,11 @@ describe("health.probeAll", () => {
       state: "connected",
       version: "v1.30.2",
       nodeCount: 3,
+      podCount: 42,
+      issuePodCount: 1,
     });
+    expect(health.for("prod").capacity?.cpu_allocatable_millis).toBe(1000);
+    expect(probeCluster).toHaveBeenCalledWith("/home/u/.kube/config", "prod", { summary: true });
     expect(health.for("prod").lastSeen).not.toBeNull();
     expect(settings.lastSeen.value.prod).toBeDefined();
 
@@ -68,6 +95,9 @@ describe("health.probeAll", () => {
       reachable: false,
       version: null,
       node_count: null,
+      pod_count: null,
+      issue_pod_count: null,
+      capacity: null,
       error: "timeout",
     });
     clusters.contexts = [
