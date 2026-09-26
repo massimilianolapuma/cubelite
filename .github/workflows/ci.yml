@@ -123,9 +123,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # Lifecycle scripts are not needed for the e2e build (vite/esbuild
+        # resolve their platform binaries via optionalDependencies).
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Install Playwright Chromium
-        run: pnpm --filter desktop exec playwright install --with-deps chromium
+        run: pnpm --filter desktop test:e2e:setup
       - name: E2E tests (vite preview + mocked Tauri IPC)
         run: pnpm --filter desktop test:e2e
       - name: Upload Playwright traces
