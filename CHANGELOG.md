@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Bumped vulnerable transitive dependencies: js-yaml 4.3.2, nanoid 3.3.19,
+  devalue 5.9.4, @humanfs/node, postcss-selector-parser 6.1.4, tsx 4.23 /
+  esbuild 0.28 (npm); rustls 0.23.45 and plist 1.10 / quick-xml 0.42 (Rust).
+  `pnpm audit` and `cargo audit` now run in CI (#365).
+
 ### Changed
 
 - **Type scale v1.1** (both apps): body 13px, caption 11.5px, section 10px,

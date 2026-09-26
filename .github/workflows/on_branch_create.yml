@@ -1,6 +1,8 @@
+name: Dependabot Jira ticket
+
 on:
+    # Fires whenever a branch is created; the job only runs for Dependabot branches.
     create:
-        # si triggera quando viene creato un branch
 
 jobs:
     handle-dependabot-branch:
@@ -10,12 +12,28 @@ jobs:
         permissions:
             contents: read
         steps:
+            - name: Check Jira configuration
+              id: config
+              # Runs triggered by Dependabot only see Dependabot secrets. When the
+              # Jira secrets are not available there, skip instead of failing.
+              run: |
+                  if [ -z "$JIRA_BASE_URL" ] || [ -z "$JIRA_API_TOKEN" ]; then
+                    echo "configured=false" >> "$GITHUB_OUTPUT"
+                    echo "::notice::Jira secrets are not available to this run (add them as Dependabot secrets to enable ticket creation) — skipping."
+                  else
+                    echo "configured=true" >> "$GITHUB_OUTPUT"
+                  fi
+              env:
+                  JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+                  JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+
             - name: Create Jira Issue
               id: create
+              if: steps.config.outputs.configured == 'true'
               run: |
                   BODY=$(jq -n \
                     --arg project "$JIRA_PROJECT_KEY" \
-                    --arg summary "Security update: ${{ github.ref_name }}" \
+                    --arg summary "Security update: $BRANCH" \
                     '{fields:{project:{key:$project},summary:$summary,issuetype:{name:"Task"}}}')
                   RESPONSE=$(curl --fail-with-body -s -X POST \
                     -H "Authorization: Basic $(printf '%s:%s' "$JIRA_USER_EMAIL" "$JIRA_API_TOKEN" | base64 -w0)" \
@@ -31,10 +49,17 @@ jobs:
                   JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
                   JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
                   JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+                  # Passed via env, never interpolated into the script (injection-safe).
+                  BRANCH: ${{ github.ref_name }}
 
             - name: Write job summary
+              if: steps.config.outputs.configured == 'true'
               run: |
                   echo "## Jira ticket created" >> "$GITHUB_STEP_SUMMARY"
                   echo "" >> "$GITHUB_STEP_SUMMARY"
-                  echo "- **Branch**: \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
-                  echo "- **Ticket**: [${{ steps.create.outputs.issue }}](${{ steps.create.outputs.issue_url }})" >> "$GITHUB_STEP_SUMMARY"
+                  echo "- **Branch**: \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
+                  echo "- **Ticket**: [$ISSUE]($ISSUE_URL)" >> "$GITHUB_STEP_SUMMARY"
+              env:
+                  BRANCH: ${{ github.ref_name }}
+                  ISSUE: ${{ steps.create.outputs.issue }}
+                  ISSUE_URL: ${{ steps.create.outputs.issue_url }}
