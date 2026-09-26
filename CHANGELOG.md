@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **All Clusters dashboard** (desktop, #362): stat cards now show clusters
+  online, total pods, warnings and contexts watched aggregated across every
+  context; each online cluster card shows its pods, warnings and CPU/MEM
+  bars (or "metrics unavailable"). The background health probe now also
+  returns pod, issue-pod and capacity totals per cluster.
+
 ### Security
 
 - Bumped vulnerable transitive dependencies: js-yaml 4.3.2, nanoid 3.3.19,

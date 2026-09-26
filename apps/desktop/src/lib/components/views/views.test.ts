@@ -31,6 +31,7 @@ import PodDrawer from "$lib/components/pods/PodDrawer.svelte";
 import { app } from "$lib/stores/app.svelte";
 import { clusters } from "$lib/stores/clusters.svelte";
 import { resources } from "$lib/stores/resources.svelte";
+import { health } from "$lib/stores/health.svelte";
 import type { PodInfo } from "$lib/tauri";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
@@ -71,6 +72,7 @@ beforeEach(() => {
   resources.namespaces = [];
   resources.deployments = [];
   resources.events = [];
+  health.byContext = {};
 });
 
 describe("EmptyStateView", () => {
@@ -126,6 +128,38 @@ describe("AllClustersView", () => {
     expect(screen.getByText("staging")).toBeInTheDocument();
     expect(screen.getByText("Healthy")).toBeInTheDocument();
     expect(screen.getByText("Unknown")).toBeInTheDocument();
+  });
+
+  it("aggregates stats across clusters and shows bars on every online card", () => {
+    resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" })];
+    health.byContext = {
+      staging: {
+        state: "connected",
+        version: "v1.31.0",
+        nodeCount: 2,
+        podCount: 30,
+        issuePodCount: 3,
+        capacity: {
+          cpu_used_millis: 500,
+          cpu_allocatable_millis: 2000,
+          memory_used_bytes: 1,
+          memory_allocatable_bytes: 4,
+        },
+        reason: null,
+        lastSeen: null,
+      },
+    };
+    render(AllClustersView);
+    expect(screen.getByText("Clusters online")).toBeInTheDocument();
+    expect(screen.getByText("Contexts watched")).toBeInTheDocument();
+    // 2 live pods on prod + 30 probed on staging.
+    expect(screen.getByText("2 contexts · 32 pods")).toBeInTheDocument();
+    expect(screen.getByText("32")).toBeInTheDocument();
+    // 1 live issue pod on prod + 3 on staging.
+    expect(screen.getByText("4")).toBeInTheDocument();
+    // staging has probe capacity; prod has no metrics loaded.
+    expect(screen.getAllByText("CPU")).toHaveLength(1);
+    expect(screen.getByText("metrics unavailable")).toBeInTheDocument();
   });
 
   it("navigates to overview when clicking the active cluster card", async () => {

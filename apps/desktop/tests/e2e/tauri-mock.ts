@@ -152,7 +152,9 @@ export function tauriMockScript(): string {
       case "list_nodes":
         return [];
       case "probe_cluster":
-        return { context: args.context, reachable: args.context !== "staging", version: "v1.30.2", node_count: 3, error: args.context === "staging" ? "connection timed out" : null };
+        return args.context === "staging"
+          ? { context: args.context, reachable: false, version: null, node_count: null, pod_count: null, issue_pod_count: null, capacity: null, error: "connection timed out" }
+          : { context: args.context, reachable: true, version: "v1.30.2", node_count: 3, pod_count: 12, issue_pod_count: 0, capacity: { cpu_used_millis: 400, cpu_allocatable_millis: 4000, memory_used_bytes: 2147483648, memory_allocatable_bytes: 8589934592 }, error: null };
       case "watch_resources": return "w1";
       case "unwatch_resources": return null;
       case "stream_logs": return "l1";
