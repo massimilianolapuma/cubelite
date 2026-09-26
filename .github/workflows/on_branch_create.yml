@@ -33,7 +33,7 @@ jobs:
               run: |
                   BODY=$(jq -n \
                     --arg project "$JIRA_PROJECT_KEY" \
-                    --arg summary "Security update: ${{ github.ref_name }}" \
+                    --arg summary "Security update: $BRANCH" \
                     '{fields:{project:{key:$project},summary:$summary,issuetype:{name:"Task"}}}')
                   RESPONSE=$(curl --fail-with-body -s -X POST \
                     -H "Authorization: Basic $(printf '%s:%s' "$JIRA_USER_EMAIL" "$JIRA_API_TOKEN" | base64 -w0)" \
@@ -49,11 +49,17 @@ jobs:
                   JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
                   JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
                   JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+                  # Passed via env, never interpolated into the script (injection-safe).
+                  BRANCH: ${{ github.ref_name }}
 
             - name: Write job summary
               if: steps.config.outputs.configured == 'true'
               run: |
                   echo "## Jira ticket created" >> "$GITHUB_STEP_SUMMARY"
                   echo "" >> "$GITHUB_STEP_SUMMARY"
-                  echo "- **Branch**: \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
-                  echo "- **Ticket**: [${{ steps.create.outputs.issue }}](${{ steps.create.outputs.issue_url }})" >> "$GITHUB_STEP_SUMMARY"
+                  echo "- **Branch**: \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
+                  echo "- **Ticket**: [$ISSUE]($ISSUE_URL)" >> "$GITHUB_STEP_SUMMARY"
+              env:
+                  BRANCH: ${{ github.ref_name }}
+                  ISSUE: ${{ steps.create.outputs.issue }}
+                  ISSUE_URL: ${{ steps.create.outputs.issue_url }}
