@@ -64,7 +64,11 @@ final class CubeliteE2ETests: XCTestCase {
     // MARK: - First launch
 
     func testFirstLaunch_discoversFixtureContextsAndCompletes() throws {
-        app.launchArguments += ["-hasCompletedOnboarding", "NO"]
+        // Not `-hasCompletedOnboarding NO`: the argument domain would keep
+        // winning over the runtime write made by "Get Started", so the app
+        // would never leave onboarding. The reset flag clears the persisted
+        // value instead (DEBUG-only hook in CubeliteApp).
+        app.launchArguments += ["--uitest-reset-onboarding"]
         app.launch()
 
         XCTAssertTrue(
@@ -103,9 +107,18 @@ final class CubeliteE2ETests: XCTestCase {
         XCTAssertTrue(avatar.waitForExistence(timeout: 5))
         avatar.click()
 
+        // The header identity is a combined accessibility element
+        // (`children: .combine`) exposed as a StaticText whose *value* joins
+        // the context name and the connection badge, e.g.
+        // "staging-fixture, Unreachable".
+        let header = app.descendants(matching: .any)["header.context"]
         XCTAssertTrue(
-            app.staticTexts["staging-fixture"].waitForExistence(timeout: 5),
+            header.waitForExistence(timeout: 5),
             "Header should show the selected context even when unreachable")
+        let headerValue = header.value as? String ?? ""
+        XCTAssertTrue(
+            headerValue.contains("staging-fixture"),
+            "Header should contain the selected context name, got: \(headerValue)")
     }
 
     func testShell_allClustersDashboardOpens() throws {
@@ -130,6 +143,10 @@ final class CubeliteE2ETests: XCTestCase {
         let input = app.textFields["palette-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 5), "Cmd+K should open the palette")
 
+        // When driven from the CLI the window may not be key, so the
+        // FocusState set in `onAppear` does not take; click to focus the
+        // field before sending Escape.
+        input.click()
         app.typeKey(.escape, modifierFlags: [])
         let gone = XCTWaiter.wait(
             for: [
@@ -147,10 +164,13 @@ final class CubeliteE2ETests: XCTestCase {
         app.typeKey("k", modifierFlags: .command)
         let input = app.textFields["palette-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 5))
+        // Click to focus: under CLI-driven runs the window may not be key,
+        // so `typeText` would fail without keyboard focus on the field.
+        input.click()
         input.typeText("staging")
 
         XCTAssertTrue(
-            app.staticTexts["staging-fixture"].waitForExistence(timeout: 5),
+            app.buttons["palette.result-cluster-staging-fixture"].waitForExistence(timeout: 5),
             "Palette should list the matching fixture context")
     }
 }
