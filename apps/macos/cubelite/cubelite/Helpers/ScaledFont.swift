@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Dynamic Type scaled font
 
-/// Wraps `.font(.system(size:weight:design:))` in `@ScaledMetric` so primary
+/// Wraps a Geist / Geist Mono font (via AppFont) in @ScaledMetric so primary
 /// text scales with the system accessibility text size (macOS 14+, System
 /// Settings → Accessibility → Display → Text size) while staying
 /// pixel-identical to the fixed-size rendering at the default text size.
@@ -21,7 +21,10 @@ struct ScaledFontModifier: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        content.font(.system(size: size, weight: weight, design: design))
+        // Family switch for the whole app: every existing scaledFont call now
+        // renders Geist / Geist Mono (SF fallback inside AppFont). Sizes and
+        // Dynamic Type scaling are unchanged.
+        content.font(AppFont.font(mono: design == .monospaced, weight: weight, size: size))
     }
 
     /// Maps a fixed point size to the Dynamic Type anchor style that drives

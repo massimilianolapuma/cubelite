@@ -53,7 +53,30 @@ All values are **HSL channel triples** consumed with `hsl(var(--token))` in shad
 
 ### 6. Typography
 
-`--font-sans` / `--font-mono` — Geist Mono for both; CubeLite uses a monospace-first aesthetic.
+`--font-sans` = Geist (UI), `--font-mono` = Geist Mono (data only: names, metrics, IPs, logs).
+
+`font.style.*` tokens use the compact syntax `"<weight> <size>px <sans|mono>[ · uppercase][ · ls <em>em]"`
+plus optional `$lineHeight` and `$color` (a key of the `text` group). The generator emits one
+Tailwind `@utility type-<name>` per token inside the `@generated:type` region of `app.css`, and a
+`DesignTokens.Typography.<name>` style for SwiftUI. Sizes below 10px are rejected (Apple HIG floor).
+
+| Token | Value | Use |
+|---|---|---|
+| display | 600 28px sans | onboarding hero |
+| title | 600 16px sans | view titles |
+| subtitle | 600 13.5px sans | modal/card titles, titlebar cluster name |
+| body | 500 13px sans | nav, buttons, rows |
+| caption | 400 11.5px sans | descriptions, meta, filter inputs |
+| section | 600 10px sans · uppercase · ls .07em | section headers |
+| colhead | 600 11px sans · uppercase · ls .05em | column headers, card labels |
+| data | 500 12.5px mono | resource names |
+| data-sm | 400 12px mono | cells, metrics |
+| log | 400 11.5px mono | log lines |
+| stat | 600 22px mono | stat card values |
+| micro | 500 10.5px sans | kbd, pills, counters, log meta |
+
+Components must use these utilities (optionally combined with `font-mono`, `font-normal`,
+`font-semibold`, `uppercase`); hard-coded `text-[Npx]` classes are not allowed.
 
 ---
 
@@ -76,7 +99,7 @@ All semantic aliases satisfy **WCAG 2.1 AA** contrast requirements:
 
 1. Edit `design/tokens.json`
 2. Run `pnpm design:tokens` (executes `tsx design/export-tokens.ts`)
-3. Commit both `tokens.json` and the updated `apps/desktop/src/app.css`
+3. Commit `tokens.json`, `apps/desktop/src/app.css` and `apps/macos/cubelite/cubelite/Helpers/DesignTokens.swift`
 
 > The generator rewrites **only** the content between `/* @generated:*-start */` and
 > `/* @generated:*-end */` markers — manual CSS outside those blocks is preserved.

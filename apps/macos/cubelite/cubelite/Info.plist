@@ -17,5 +17,8 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<!-- Bundled Geist / Geist Mono (OFL 1.1, Resources/Fonts/OFL.txt). -->
+	<key>ATSApplicationFontsPath</key>
+	<string>.</string>
 </dict>
 </plist>

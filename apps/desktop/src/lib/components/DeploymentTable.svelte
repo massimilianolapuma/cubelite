@@ -60,7 +60,7 @@
 					<span class="type-data-sm text-text-secondary">{dep.ready_replicas}/{dep.replicas}</span>
 					<span class="flex items-center gap-1.5">
 						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {toneColor[status.tone]};"></span>
-						<span class="text-[11.5px]" style="color: {toneColor[status.tone]};">{status.label}</span>
+						<span class="type-data-sm" style="color: {toneColor[status.tone]};">{status.label}</span>
 					</span>
 					<span class="type-data-sm text-text-secondary">{formatAge(dep.creation_timestamp)}</span>
 					<span class="flex items-center gap-1.5">

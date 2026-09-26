@@ -29,7 +29,7 @@
 	<div class="flex items-center gap-3">
 		<h1 class="type-title flex-1">Secrets</h1>
 		<span
-			class="rounded-full px-2.5 py-1 text-[10.5px] font-medium"
+			class="rounded-full px-2.5 py-1 type-micro"
 			style="background: var(--alpha-pill-warn); color: var(--color-status-warn);"
 		>
 			values decoded locally — never leave this machine
