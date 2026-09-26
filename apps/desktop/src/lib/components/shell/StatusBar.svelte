@@ -20,7 +20,7 @@
 </script>
 
 <footer
-	class="flex h-[27px] shrink-0 items-center gap-4 border-t border-border-faint bg-surface-panel px-3 font-mono text-[10.5px] text-text-tertiary"
+	class="flex h-[27px] shrink-0 items-center gap-4 border-t border-border-faint bg-surface-panel px-3 type-micro font-mono text-text-tertiary"
 >
 	{#if server}
 		<span class="truncate">{server}</span>

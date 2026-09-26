@@ -89,7 +89,7 @@
 			type="text"
 			placeholder="label=value,…"
 			bind:value={labelSelector}
-			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 font-mono text-[11px] text-text-primary placeholder:text-text-disabled"
+			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-data-sm text-text-primary placeholder:text-text-disabled"
 		/>
 
 		<div class="flex overflow-hidden rounded-md border border-border-default">
@@ -114,7 +114,7 @@
 			type="text"
 			placeholder="Filter…"
 			bind:value={logs.textFilter}
-			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 text-[11.5px] text-text-primary placeholder:text-text-disabled"
+			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
 		/>
 
 		<button
@@ -157,14 +157,14 @@
 			{:else}
 				{#each logs.filtered as line (line.id)}
 					<div class="flex items-baseline gap-2.5 px-2.5 py-px" style={rowStyle(line.level)}>
-						<span class="shrink-0 font-mono text-[10.5px] text-text-disabled">{clock(line.time)}</span>
+						<span class="shrink-0 type-micro font-mono text-text-disabled">{clock(line.time)}</span>
 						<span
-							class="w-[38px] shrink-0 font-mono text-[10px] font-semibold uppercase"
+							class="w-[38px] shrink-0 type-micro font-mono font-semibold uppercase"
 							style="color: {levelColor[line.level]};"
 						>
 							{line.level}
 						</span>
-						<span class="shrink-0 font-mono text-[10.5px] text-text-secondary">{line.pod}</span>
+						<span class="shrink-0 type-micro font-mono text-text-secondary">{line.pod}</span>
 						<span class="type-log break-all text-text-log">{line.message}</span>
 					</div>
 				{/each}

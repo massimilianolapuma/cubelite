@@ -58,16 +58,16 @@
 
 <div class="flex items-baseline gap-2.5 px-2.5 py-px" style={rowStyle(line.level)}>
 	{#if timestamps}
-		<span class="w-[94px] shrink-0 font-mono text-[10.5px] text-text-disabled">{clock(line.time)}</span>
+		<span class="w-[94px] shrink-0 type-micro font-mono text-text-disabled">{clock(line.time)}</span>
 	{/if}
 	{#if source}
 		<span
-			class="w-[52px] shrink-0 truncate font-mono text-[9.5px] font-semibold"
+			class="w-[52px] shrink-0 truncate type-micro font-mono font-semibold"
 			style="color: {source.color};">{source.name}</span
 		>
 	{/if}
 	<span
-		class="w-[38px] shrink-0 font-mono text-[10px] font-semibold uppercase"
+		class="w-[38px] shrink-0 type-micro font-mono font-semibold uppercase"
 		style="color: {levelColor[line.level]};"
 	>
 		{line.level}
