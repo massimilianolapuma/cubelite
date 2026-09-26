@@ -89,13 +89,13 @@
 						{item.label}
 					</span>
 					{#if item.view === 'pods' && issueCount > 0}
-						<span class="font-mono text-[10.5px] text-status-err">{issueCount}</span>
+						<span class="type-micro font-mono text-status-err">{issueCount}</span>
 					{/if}
 					{#if item.view === 'events' && warningCount > 0}
-						<span class="font-mono text-[10.5px] text-status-err">{warningCount}</span>
+						<span class="type-micro font-mono text-status-err">{warningCount}</span>
 					{/if}
 					{#if count !== null}
-						<span class="font-mono text-[10.5px] text-text-tertiary">{count}</span>
+						<span class="type-micro font-mono text-text-tertiary">{count}</span>
 					{/if}
 				</button>
 			{/each}

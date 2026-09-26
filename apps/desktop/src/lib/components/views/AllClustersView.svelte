@@ -87,7 +87,7 @@
 					<div class="min-w-0 flex-1">
 						<div class="type-subtitle truncate">{ctx.name}</div>
 						{#if ctx.cluster_server}
-							<div class="truncate font-mono text-[10.5px] text-text-tertiary">
+							<div class="truncate type-micro font-mono text-text-tertiary">
 								{ctx.cluster_server}
 							</div>
 						{/if}
@@ -100,7 +100,7 @@
 						<div>
 							<div class="type-colhead mb-0.5">{label}</div>
 							<div
-								class="font-mono text-[12px] font-medium {value === '—'
+								class="type-data {value === '—'
 									? 'text-text-disabled'
 									: label === 'Warnings' && value !== '0'
 										? 'text-status-warn'

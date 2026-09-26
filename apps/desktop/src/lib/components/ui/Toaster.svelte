@@ -17,7 +17,7 @@
 				<button
 					type="button"
 					aria-label="Dismiss"
-					class="focus-ring ml-1 rounded-sm text-[10px] text-text-tertiary hover:text-text-secondary"
+					class="focus-ring ml-1 rounded-sm type-micro text-text-tertiary hover:text-text-secondary"
 					onclick={() => toasts.dismiss(toast.id)}
 				>
 					✕

@@ -35,7 +35,7 @@
 			type="text"
 			placeholder="Filter pods…"
 			bind:value={app.podFilter}
-			class="focus-ring h-7 w-52 rounded-md border border-border-default bg-surface-window px-2.5 text-[11.5px] text-text-primary placeholder:text-text-disabled"
+			class="focus-ring h-7 w-52 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
 		/>
 	</div>
 	<PodTable
