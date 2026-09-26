@@ -71,3 +71,14 @@ test("preferences persist the refresh interval across reloads", async ({ page })
   await page.reload();
   await expect(page.getByText("refresh 1m")).toBeVisible();
 });
+
+test("All Clusters dashboard aggregates stats across contexts", async ({ page }) => {
+  await boot(page);
+  await page.getByLabel("All Clusters").click();
+  await expect(page.getByText("Clusters online")).toBeVisible();
+  await expect(page.getByText("Contexts watched")).toBeVisible();
+  await expect(page.getByText(/^2 contexts · \d+ pods$/)).toBeVisible();
+  // The online cluster shows capacity bars; the unreachable one its reason.
+  await expect(page.getByText("CPU", { exact: true })).toBeVisible();
+  await expect(page.getByText("connection timed out")).toBeVisible();
+});

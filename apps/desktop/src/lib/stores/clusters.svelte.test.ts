@@ -50,6 +50,9 @@ beforeEach(() => {
     reachable: true,
     version: "v1.30.0",
     node_count: 1,
+    pod_count: null,
+    issue_pod_count: null,
+    capacity: null,
     error: null,
   });
   settings.identityColors.value = {};
@@ -137,6 +140,9 @@ describe("switchCluster", () => {
       reachable: false,
       version: null,
       node_count: null,
+      pod_count: null,
+      issue_pod_count: null,
+      capacity: null,
       error: "connect timeout",
     });
 
@@ -178,7 +184,7 @@ describe("switchCluster", () => {
     vi.mocked(probeCluster).mockReturnValue(
       new Promise((resolve) => {
         releaseProbe = () =>
-          resolve({ context: "staging", reachable: false, version: null, node_count: null, error: "late" });
+          resolve({ context: "staging", reachable: false, version: null, node_count: null, pod_count: null, issue_pod_count: null, capacity: null, error: "late" });
       }),
     );
 
