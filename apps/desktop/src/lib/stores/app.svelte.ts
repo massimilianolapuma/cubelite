@@ -44,6 +44,13 @@ class AppState {
   preferencesOpen = $state(false);
   onboardingOpen = $state(false);
 
+  /**
+   * Close handlers of mounted `Modal`s, innermost last. Component-owned
+   * dialogs (Delete Pod, YAML) register here so Esc can close them before
+   * the drawer underneath.
+   */
+  #modalStack: Array<() => void> = [];
+
   selectedPod = $state<PodInfo | null>(null);
   selectedDeployment = $state<DeploymentInfo | null>(null);
   podFilter = $state("");
@@ -65,10 +72,24 @@ class AppState {
     if (this.view === "dashboard") this.view = "overview";
   }
 
+  /** Register a mounted modal's close handler; returns the unregister function. */
+  pushModal(close: () => void): () => void {
+    this.#modalStack.push(close);
+    return () => {
+      const i = this.#modalStack.lastIndexOf(close);
+      if (i !== -1) this.#modalStack.splice(i, 1);
+    };
+  }
+
   /** Close the topmost overlay; returns false if nothing was open. */
   closeTopOverlay(): boolean {
     if (this.paletteOpen) {
       this.paletteOpen = false;
+      return true;
+    }
+    const closeModal = this.#modalStack.at(-1);
+    if (closeModal) {
+      closeModal();
       return true;
     }
     if (this.preferencesOpen) {

@@ -74,6 +74,37 @@ describe("closeTopOverlay", () => {
     expect(app.selectedPod).toBeNull();
   });
 
+  it("closes a registered modal before the drawer underneath it", () => {
+    app.selectedPod = pod;
+    let dialogOpen = true;
+    const unregister = app.pushModal(() => {
+      dialogOpen = false;
+      unregister();
+    });
+    expect(app.closeTopOverlay()).toBe(true);
+    expect(dialogOpen).toBe(false);
+    expect(app.selectedPod).not.toBeNull();
+    // Next Esc reaches the drawer.
+    expect(app.closeTopOverlay()).toBe(true);
+    expect(app.selectedPod).toBeNull();
+  });
+
+  it("closes stacked modals innermost first", () => {
+    const closed: string[] = [];
+    const outer = app.pushModal(() => {
+      closed.push("outer");
+      outer();
+    });
+    const inner = app.pushModal(() => {
+      closed.push("inner");
+      inner();
+    });
+    app.closeTopOverlay();
+    app.closeTopOverlay();
+    expect(closed).toEqual(["inner", "outer"]);
+    expect(app.closeTopOverlay()).toBe(false);
+  });
+
   it("returns false when nothing is open", () => {
     expect(app.closeTopOverlay()).toBe(false);
   });
