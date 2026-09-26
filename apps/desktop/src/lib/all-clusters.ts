@@ -46,17 +46,28 @@ export function buildSnapshot(
   live: LiveCluster | null,
 ): ClusterSnapshot {
   const state = live && live.state !== "unknown" ? live.state : health.state;
-  const online = state === "connected";
-  const liveOnline = online && live !== null;
-  return {
+  const snapshot: ClusterSnapshot = {
     name,
     state,
     version: health.version,
-    nodes: health.nodeCount ?? (liveOnline ? live.nodes : null),
-    pods: liveOnline ? live.pods : online ? health.podCount : null,
-    warnings: liveOnline ? live.warnings : online ? health.issuePodCount : null,
-    capacity: (liveOnline ? live.capacity : null) ?? (online ? health.capacity : null),
+    nodes: health.nodeCount,
+    pods: null,
+    warnings: null,
+    capacity: null,
   };
+  if (state !== "connected") return snapshot;
+
+  if (live) {
+    snapshot.nodes ??= live.nodes;
+    snapshot.pods = live.pods;
+    snapshot.warnings = live.warnings;
+    snapshot.capacity = live.capacity ?? health.capacity;
+  } else {
+    snapshot.pods = health.podCount;
+    snapshot.warnings = health.issuePodCount;
+    snapshot.capacity = health.capacity;
+  }
+  return snapshot;
 }
 
 /** Stat-card totals: online clusters, and pods/warnings summed over them. */
