@@ -58,7 +58,7 @@
 					<span class="type-data truncate text-text-data-bright">{pod.name}</span>
 					<span class="flex items-center gap-1.5">
 						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {toneColor[tone]};"></span>
-						<span class="text-[11.5px]" style="color: {toneColor[tone]};">{podStatusLabel(pod)}</span>
+						<span class="type-data-sm" style="color: {toneColor[tone]};">{podStatusLabel(pod)}</span>
 					</span>
 					<span class="type-data-sm text-text-secondary">
 						{pod.ready_containers}/{pod.total_containers}

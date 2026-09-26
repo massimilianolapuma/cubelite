@@ -142,7 +142,7 @@
 					type="text"
 					aria-label="Remote port"
 					bind:value={remotePortText}
-					class="focus-ring h-7 w-16 rounded-md border border-border-default bg-surface-window px-2 text-center font-mono text-[11px] text-text-primary"
+					class="focus-ring h-7 w-16 rounded-md border border-border-default bg-surface-window px-2 text-center type-data-sm text-text-primary"
 				/>
 				<span class="type-caption text-text-tertiary">→</span>
 				<input
@@ -150,7 +150,7 @@
 					aria-label="Local port"
 					placeholder="auto"
 					bind:value={localPortText}
-					class="focus-ring h-7 w-16 rounded-md border border-border-default bg-surface-window px-2 text-center font-mono text-[11px] text-text-primary placeholder:text-text-disabled"
+					class="focus-ring h-7 w-16 rounded-md border border-border-default bg-surface-window px-2 text-center type-data-sm text-text-primary placeholder:text-text-disabled"
 				/>
 				<button
 					type="button"
@@ -170,7 +170,7 @@
 				<div class="mt-1.5 flex items-center gap-2">
 					<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: var(--color-status-ok);"
 					></span>
-					<span class="flex-1 font-mono text-[11px] text-text-secondary">
+					<span class="flex-1 type-data-sm text-text-secondary">
 						localhost:{session.localPort} → {session.remotePort}
 					</span>
 					<button

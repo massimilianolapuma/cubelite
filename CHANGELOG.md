@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Type scale v1.1** (both apps): body 13px, caption 11.5px, section 10px,
+  column headers 11px, data 12.5px; new `stat` and `micro` styles. The scale is
+  generated from `design/tokens.json` into Tailwind `type-*` utilities and
+  `DesignTokens.Typography` for SwiftUI; no size falls below the 10pt HIG floor.
+- **macOS**: Geist and Geist Mono (OFL 1.1) are bundled and used by every
+  `scaledFont` call and the new `typeStyle` modifier — same families as the
+  desktop app.
+
 ## [0.4.2] - 2026-08-19
 
 ### Added

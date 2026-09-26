@@ -40,11 +40,11 @@
 			where you are acting.
 		</p>
 		<div class="flex items-center gap-2.5 rounded-lg border border-border-faint bg-surface-window px-3 py-2.5">
-			<span class="truncate font-mono text-[11px] text-text-secondary">
+			<span class="truncate type-data-sm text-text-secondary">
 				{app.kubeconfigPath || '~/.kube/config'}
 			</span>
 			<span class="flex-1"></span>
-			<span class="flex items-center gap-1 text-[11px] text-status-ok">
+			<span class="flex items-center gap-1 type-caption text-status-ok">
 				<Check class="h-3 w-3" />
 				{clusters.contexts.length} context{clusters.contexts.length === 1 ? '' : 's'} found
 			</span>

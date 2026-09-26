@@ -12,7 +12,7 @@
 </script>
 
 <span
-	class="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-medium"
+	class="inline-flex items-center rounded-full px-2 py-0.5 type-micro"
 	style={toneStyle[tone]}
 >
 	{label}

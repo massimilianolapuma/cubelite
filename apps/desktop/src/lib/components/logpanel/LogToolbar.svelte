@@ -166,7 +166,7 @@
 			value={logPanel.search.query}
 			oninput={(e) => logPanel.search.setQuery(e.currentTarget.value)}
 			onkeydown={onSearchKeydown}
-			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 text-[11.5px] text-text-primary placeholder:text-text-disabled"
+			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
 		/>
 		{#if logPanel.search.query}
 			<span class="type-caption text-text-tertiary">

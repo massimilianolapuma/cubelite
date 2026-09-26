@@ -24,7 +24,7 @@
 			style="width: {percent ?? 0}%; background: {fill};"
 		></div>
 	</div>
-	<span class="w-9 shrink-0 text-right font-mono text-[10.5px] text-text-tertiary">
+	<span class="w-9 shrink-0 text-right type-micro font-mono text-text-tertiary">
 		{percent === null ? '—' : `${Math.round(percent)}%`}
 	</span>
 </div>
