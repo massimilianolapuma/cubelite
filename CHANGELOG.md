@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Tauri 2.12** (desktop): `tauri` 2.12.0 with `@tauri-apps/api` and
+  `@tauri-apps/plugin-updater` 2.12, kept in lockstep; plus the Rust
+  minor/patch updates from Dependabot (tokio 1.53, serde, thiserror, …).
+  Tauri packages are now excluded from Dependabot and updated manually.
+
+### Changed
+
 - **Type scale v1.1** (both apps): body 13px, caption 11.5px, section 10px,
   column headers 11px, data 12.5px; new `stat` and `micro` styles. The scale is
   generated from `design/tokens.json` into Tailwind `type-*` utilities and
