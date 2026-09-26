@@ -371,6 +371,19 @@ pub async fn cluster_capacity(
     client.cluster_capacity().await.map_err(|e| e.to_string())
 }
 
+/// Cluster-wide CPU/memory totals summed over all nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct CapacityTotals {
+    /// CPU usage in millicores (metrics-server).
+    pub cpu_used_millis: f64,
+    /// Allocatable CPU in millicores.
+    pub cpu_allocatable_millis: f64,
+    /// Memory usage in bytes (metrics-server).
+    pub memory_used_bytes: u64,
+    /// Allocatable memory in bytes.
+    pub memory_allocatable_bytes: u64,
+}
+
 /// Result of a cluster reachability probe.
 #[derive(Debug, Serialize)]
 pub struct ClusterHealthInfo {
@@ -382,48 +395,159 @@ pub struct ClusterHealthInfo {
     pub version: Option<String>,
     /// Node count, when the caller may list nodes.
     pub node_count: Option<usize>,
+    /// Pod count across all namespaces, when the caller may list pods.
+    pub pod_count: Option<usize>,
+    /// Pods needing attention (same rule as the desktop `issuePods`).
+    pub issue_pod_count: Option<usize>,
+    /// CPU/memory totals, when metrics-server is available.
+    pub capacity: Option<CapacityTotals>,
     /// Failure reason, when unreachable.
     pub error: Option<String>,
 }
 
-/// Probe one context with short timeouts: /version + best-effort node count.
-#[tauri::command]
-pub async fn probe_cluster(
-    kubeconfig_path: String,
-    context: String,
-) -> Result<ClusterHealthInfo, String> {
-    let client = match KubeClient::new_probe(Path::new(&kubeconfig_path), Some(&context)).await {
-        Ok(c) => c,
-        Err(e) => {
-            return Ok(ClusterHealthInfo {
-                context,
-                reachable: false,
-                version: None,
-                node_count: None,
-                error: Some(e.to_string()),
-            });
-        }
-    };
-
-    match client.server_version().await {
-        Ok(version) => {
-            // Node listing may be forbidden; the probe still counts as healthy.
-            let node_count = client.node_count().await.ok();
-            Ok(ClusterHealthInfo {
-                context,
-                reachable: true,
-                version: Some(version),
-                node_count,
-                error: None,
-            })
-        }
-        Err(e) => Ok(ClusterHealthInfo {
+impl ClusterHealthInfo {
+    fn unreachable(context: String, error: String) -> Self {
+        Self {
             context,
             reachable: false,
             version: None,
             node_count: None,
-            error: Some(e.to_string()),
-        }),
+            pod_count: None,
+            issue_pod_count: None,
+            capacity: None,
+            error: Some(error),
+        }
+    }
+}
+
+/// A pod needs attention when it is not ready (and not completed) or has
+/// restarted more than three times. Mirrors `resources.issuePods` on the
+/// frontend so the All Clusters dashboard counts the same way.
+fn is_issue_pod(pod: &PodInfo) -> bool {
+    (!pod.ready && pod.phase.as_deref() != Some("Succeeded")) || pod.restarts > 3
+}
+
+/// Sum per-node capacity; `None` when there are no nodes to sum.
+fn capacity_totals(nodes: &[NodeCapacityInfo]) -> Option<CapacityTotals> {
+    if nodes.is_empty() {
+        return None;
+    }
+    Some(nodes.iter().fold(
+        CapacityTotals {
+            cpu_used_millis: 0.0,
+            cpu_allocatable_millis: 0.0,
+            memory_used_bytes: 0,
+            memory_allocatable_bytes: 0,
+        },
+        |acc, n| CapacityTotals {
+            cpu_used_millis: acc.cpu_used_millis + n.cpu_used_millis,
+            cpu_allocatable_millis: acc.cpu_allocatable_millis + n.cpu_allocatable_millis,
+            memory_used_bytes: acc.memory_used_bytes + n.memory_used_bytes,
+            memory_allocatable_bytes: acc.memory_allocatable_bytes + n.memory_allocatable_bytes,
+        },
+    ))
+}
+
+/// Probe one context with short timeouts: /version plus a best-effort node
+/// count. With `include_summary` it also fetches pod and capacity summaries
+/// for the All Clusters dashboard; the cluster switch leaves it off so the
+/// fail-fast reachability check stays cheap.
+#[tauri::command]
+pub async fn probe_cluster(
+    kubeconfig_path: String,
+    context: String,
+    include_summary: Option<bool>,
+) -> Result<ClusterHealthInfo, String> {
+    let client = match KubeClient::new_probe(Path::new(&kubeconfig_path), Some(&context)).await {
+        Ok(c) => c,
+        Err(e) => return Ok(ClusterHealthInfo::unreachable(context, e.to_string())),
+    };
+
+    let version = match client.server_version().await {
+        Ok(v) => v,
+        Err(e) => return Ok(ClusterHealthInfo::unreachable(context, e.to_string())),
+    };
+
+    // Each summary is best-effort: RBAC may forbid a list, metrics-server may
+    // be missing, or a large cluster may exceed the probe timeout. Any of
+    // those leaves the field `None`; the cluster still counts as reachable.
+    let (nodes, pods, capacity) = if include_summary.unwrap_or(false) {
+        let (nodes, pods, capacity) = tokio::join!(
+            client.node_count(),
+            client.list_pods(None),
+            client.cluster_capacity(),
+        );
+        (nodes.ok(), pods.ok(), capacity.ok())
+    } else {
+        (client.node_count().await.ok(), None, None)
+    };
+
+    Ok(ClusterHealthInfo {
+        context,
+        reachable: true,
+        version: Some(version),
+        node_count: nodes,
+        pod_count: pods.as_ref().map(Vec::len),
+        issue_pod_count: pods
+            .as_ref()
+            .map(|p| p.iter().filter(|pod| is_issue_pod(pod)).count()),
+        capacity: capacity.as_deref().and_then(capacity_totals),
+        error: None,
+    })
+}
+
+#[cfg(test)]
+mod probe_tests {
+    use super::*;
+
+    fn pod(ready: bool, phase: &str, restarts: i32) -> PodInfo {
+        serde_json::from_value(serde_json::json!({
+            "name": "p",
+            "namespace": "default",
+            "phase": phase,
+            "ready": ready,
+            "restarts": restarts,
+        }))
+        .expect("valid PodInfo fixture")
+    }
+
+    #[test]
+    fn issue_pod_rule_matches_frontend() {
+        assert!(!is_issue_pod(&pod(true, "Running", 0)));
+        assert!(is_issue_pod(&pod(false, "Pending", 0)));
+        assert!(is_issue_pod(&pod(true, "Running", 4)));
+        // Completed pods are not ready but are not an issue.
+        assert!(!is_issue_pod(&pod(false, "Succeeded", 0)));
+        assert!(!is_issue_pod(&pod(true, "Running", 3)));
+    }
+
+    fn node(cpu_used: f64, cpu_alloc: f64, mem_used: u64, mem_alloc: u64) -> NodeCapacityInfo {
+        NodeCapacityInfo {
+            name: "n".to_string(),
+            cpu_used_millis: cpu_used,
+            cpu_allocatable_millis: cpu_alloc,
+            memory_used_bytes: mem_used,
+            memory_allocatable_bytes: mem_alloc,
+        }
+    }
+
+    #[test]
+    fn capacity_totals_sums_nodes() {
+        let totals = capacity_totals(&[node(250.0, 2000.0, 1, 10), node(750.0, 2000.0, 2, 20)]);
+        assert_eq!(
+            totals,
+            Some(CapacityTotals {
+                cpu_used_millis: 1000.0,
+                cpu_allocatable_millis: 4000.0,
+                memory_used_bytes: 3,
+                memory_allocatable_bytes: 30,
+            })
+        );
+    }
+
+    #[test]
+    fn capacity_totals_empty_is_none() {
+        assert_eq!(capacity_totals(&[]), None);
     }
 }
 

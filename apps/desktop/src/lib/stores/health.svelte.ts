@@ -4,7 +4,7 @@
  * "unknown" for inactive clusters.
  */
 
-import { probeCluster } from "$lib/tauri";
+import { probeCluster, type CapacityTotals } from "$lib/tauri";
 import { app } from "./app.svelte";
 import { clusters } from "./clusters.svelte";
 import { settings } from "./settings.svelte";
@@ -15,6 +15,9 @@ export interface ClusterHealth {
   state: "connected" | "unreachable" | "unknown";
   version: string | null;
   nodeCount: number | null;
+  podCount: number | null;
+  issuePodCount: number | null;
+  capacity: CapacityTotals | null;
   reason: string | null;
   /** RFC 3339 of the last successful probe (persisted across restarts). */
   lastSeen: string | null;
@@ -32,6 +35,9 @@ class HealthStore {
         state: "unknown",
         version: null,
         nodeCount: null,
+        podCount: null,
+        issuePodCount: null,
+        capacity: null,
         reason: null,
         lastSeen: settings.lastSeen.value[contextName] ?? null,
       }
@@ -46,11 +52,14 @@ class HealthStore {
     try {
       const results = await Promise.all(
         clusters.contexts.map((c) =>
-          probeCluster(kc, c.name).catch((e: unknown) => ({
+          probeCluster(kc, c.name, { summary: true }).catch((e: unknown) => ({
             context: c.name,
             reachable: false,
             version: null,
             node_count: null,
+            pod_count: null,
+            issue_pod_count: null,
+            capacity: null,
             error: e instanceof Error ? e.message : String(e),
           })),
         ),
@@ -65,6 +74,9 @@ class HealthStore {
           state: r.reachable ? "connected" : "unreachable",
           version: r.version,
           nodeCount: r.node_count,
+          podCount: r.pod_count,
+          issuePodCount: r.issue_pod_count,
+          capacity: r.capacity,
           reason: r.error,
           lastSeen: seen[r.context] ?? null,
         };
