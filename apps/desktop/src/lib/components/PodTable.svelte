@@ -1,8 +1,10 @@
 <script lang="ts">
 	import CornerDownLeft from '@lucide/svelte/icons/corner-down-left';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import { formatAge } from '$lib/age';
 	import type { PodInfo } from '$lib/tauri';
 	import { podStatusLabel, podTone, toneColor } from '$lib/status';
+	import { mutations } from '$lib/stores/mutations.svelte';
 	import { resources } from '$lib/stores/resources.svelte';
 	import { formatBytes, formatCpu } from '$lib/units';
 
@@ -58,8 +60,13 @@
 				>
 					<span class="type-data truncate text-text-data-bright">{pod.name}</span>
 					<span class="flex items-center gap-1.5">
-						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {toneColor[tone]};"></span>
-						<span class="type-data-sm" style="color: {toneColor[tone]};">{podStatusLabel(pod)}</span>
+						{#if mutations.isDeleting(pod.namespace, pod.name)}
+							<LoaderCircle size={10} class="shrink-0 animate-spin text-text-tertiary" aria-hidden="true" />
+							<span class="type-data-sm text-text-tertiary">Terminating…</span>
+						{:else}
+							<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {toneColor[tone]};"></span>
+							<span class="type-data-sm" style="color: {toneColor[tone]};">{podStatusLabel(pod)}</span>
+						{/if}
 					</span>
 					<span class="type-data-sm text-text-secondary">
 						{pod.ready_containers}/{pod.total_containers}
@@ -82,7 +89,7 @@
 							<span
 								role="button"
 								tabindex="-1"
-								class="type-caption flex h-5 shrink-0 items-center gap-1 rounded-md border border-border-default bg-surface-raised px-1.5 text-text-tertiary"
+								class="hit-target type-caption flex h-5 shrink-0 items-center gap-1 rounded-md border border-border-default bg-surface-raised px-1.5 text-text-tertiary"
 								onclick={(e) => {
 									e.stopPropagation();
 									onLogs?.(pod);

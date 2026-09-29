@@ -149,12 +149,16 @@
 			<Sidebar />
 		{/if}
 		<div class="flex min-w-0 flex-1 flex-col">
-			<main class="relative flex min-w-0 flex-1 flex-col overflow-y-auto">
-				{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
-					<UnreachableView />
-				{:else}
-					<Current {...entry.props ?? {}} />
-				{/if}
+			<!-- Drawers portal into <main> (data-drawer-host), outside the scroller,
+			     so they stay pinned to the right edge while the view scrolls. -->
+			<main class="relative flex min-h-0 min-w-0 flex-1 flex-col" data-drawer-host>
+				<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+					{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
+						<UnreachableView />
+					{:else}
+						<Current {...entry.props ?? {}} />
+					{/if}
+				</div>
 			</main>
 			<LogPanel />
 		</div>

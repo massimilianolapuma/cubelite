@@ -384,3 +384,18 @@
     box-shadow: var(--focus-ring);
   }
 }
+
+/* Minimum 28×28 hit target (spec) for compact controls: an invisible
+   pseudo-element grows the clickable area without changing the layout. */
+@utility hit-target {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 28px);
+    height: max(100%, 28px);
+    transform: translate(-50%, -50%);
+  }
+}

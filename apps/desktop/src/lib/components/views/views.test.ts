@@ -196,6 +196,27 @@ describe("PodDrawer", () => {
     expect(onDelete).toHaveBeenCalled();
   });
 
+  it("shows label chips sorted by key", () => {
+    render(PodDrawer, {
+      props: { pod: pod({ labels: { tier: "api", app: "shop" } }), onClose: vi.fn() },
+    });
+    expect(screen.getByText("Labels")).toBeInTheDocument();
+    const chips = screen.getAllByTitle(/=/).map((el) => el.textContent?.trim());
+    expect(chips).toEqual(["app=shop", "tier=api"]);
+  });
+
+  it("portals into the app's drawer host so it stays pinned while the view scrolls", () => {
+    const host = document.createElement("main");
+    host.setAttribute("data-drawer-host", "");
+    document.body.appendChild(host);
+    try {
+      render(PodDrawer, { props: { pod: pod(), onClose: vi.fn() } });
+      expect(host.querySelector('[role="dialog"]')).not.toBeNull();
+    } finally {
+      host.remove();
+    }
+  });
+
   it("closes via the header button", async () => {
     const onClose = vi.fn();
     render(PodDrawer, { props: { pod: pod(), onClose } });

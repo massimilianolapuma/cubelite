@@ -9,7 +9,8 @@ export function podTone(pod: PodInfo): StatusTone {
     case "running":
       return pod.ready ? "ok" : "warn";
     case "succeeded":
-      return "neutral";
+      // Spec: Running / Available / Succeeded / deployed / healthy → ok.
+      return "ok";
     case "pending":
       return "warn";
     case "failed":
