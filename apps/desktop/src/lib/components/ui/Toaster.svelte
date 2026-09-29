@@ -1,4 +1,5 @@
 <script lang="ts">
+	import X from '@lucide/svelte/icons/x';
 	import { toasts } from '$lib/stores/toasts.svelte';
 	import { toneColor } from '$lib/status';
 </script>
@@ -17,10 +18,10 @@
 				<button
 					type="button"
 					aria-label="Dismiss"
-					class="focus-ring ml-1 rounded-sm type-micro text-text-tertiary hover:text-text-secondary"
+					class="focus-ring ml-1 rounded-sm text-text-tertiary hover:text-text-secondary"
 					onclick={() => toasts.dismiss(toast.id)}
 				>
-					✕
+					<X size={12} strokeWidth={2} />
 				</button>
 			</div>
 		{/each}
