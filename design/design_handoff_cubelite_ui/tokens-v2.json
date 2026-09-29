@@ -20,7 +20,7 @@
   "text": {
     "primary":    { "$value": "#f4f4f5", "$type": "color" },
     "secondary":  { "$value": "#9c9ca6", "$type": "color" },
-    "tertiary":   { "$value": "#71717a", "$type": "color", "$description": "Column headers, meta" },
+    "tertiary":   { "$value": "#7d7d86", "$type": "color", "$description": "Column headers, meta (v1.1: was #71717a, WCAG AA)" },
     "disabled":   { "$value": "#5c5c66", "$type": "color", "$description": "Placeholders, kbd" },
     "data-bright":{ "$value": "#e4e4e7", "$type": "color", "$description": "Mono resource names" },
     "log":        { "$value": "#c8c8d0", "$type": "color" }
@@ -36,7 +36,7 @@
     "ok":   { "$value": "#34d399", "$type": "color", "$description": "Running/Available/Succeeded/deployed" },
     "warn": { "$value": "#fbbf24", "$type": "color", "$description": "Pending/Progressing/pending-upgrade" },
     "err":  { "$value": "#f87171", "$type": "color", "$description": "CrashLoop/failed/unreachable" },
-    "err-solid": { "$value": "#dc4646", "$type": "color", "$description": "Destructive confirm button fill" },
+    "err-solid": { "$value": "#d72929", "$type": "color", "$description": "Destructive confirm button fill (v1.1: was #dc4646, WCAG AA)" },
     "info": { "$value": "#7dd3fc", "$type": "color", "$description": "INFO log level" }
   },
 
