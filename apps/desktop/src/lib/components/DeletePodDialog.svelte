@@ -2,8 +2,8 @@
 	import Modal from '$lib/components/ui/Modal.svelte';
 	import type { PodInfo } from '$lib/tauri';
 
-	// Built to spec for the mutation follow-up; not reachable in v1
-	// (the Delete action is disabled until a delete_pod command exists).
+	// Destructive confirm for the pod drawer's Delete action (wired in PodsView).
+	// `confirmDisabled` defaults to true so a caller must opt in to enabling it.
 	let {
 		pod,
 		onCancel,

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import CornerDownLeft from '@lucide/svelte/icons/corner-down-left';
 	import { formatAge } from '$lib/age';
 	import type { PodInfo } from '$lib/tauri';
 	import { podStatusLabel, podTone, toneColor } from '$lib/status';
@@ -93,7 +94,8 @@
 									}
 								}}
 							>
-								logs ⏎
+								logs
+								<CornerDownLeft size={10} strokeWidth={1.5} aria-hidden="true" />
 							</span>
 						{/if}
 					</span>

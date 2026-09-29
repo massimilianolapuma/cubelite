@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Desktop design cleanup** (#364): log toolbar popovers use the overlay
+  elevation tokens instead of Tailwind `shadow-lg`; Unicode glyphs (✕ ⏎ ↺ ✓)
+  replaced with Lucide icons; the Timestamps/Wrap toggles expose their state
+  as `menuitemcheckbox`.
+
 ### Added
 
 - **All Clusters dashboard** (desktop, #362): stat cards now show clusters
