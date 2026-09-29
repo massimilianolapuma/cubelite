@@ -387,9 +387,11 @@
 
 /* Minimum 28×28 hit target (spec) for compact controls: an invisible
    pseudo-element grows the clickable area without changing the layout. */
-@utility hit-target {
-  position: relative;
-  &::after {
+@layer utilities {
+  .hit-target {
+    position: relative;
+  }
+  .hit-target::after {
     content: "";
     position: absolute;
     top: 50%;
