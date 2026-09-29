@@ -27,11 +27,15 @@ NATIVE_COLOR='(Color\.|[(:,[:space:]]\.)(blue|green|orange|red|purple|indigo|tea
 fail=0
 
 # Prints "<count>" of matching lines for an extended regex in one file.
-count() { grep -cE "$1" "$2" || true; }
+count() {
+  local pattern=$1 file=$2
+  grep -cE "$pattern" "$file" || true
+}
 
 # Raw hex matches, minus ones made only of decimal digits (issue refs like #317).
 count_hex() {
-  { grep -oE "$DESKTOP_HEX" "$1" || true; } | sed -E 's/^[^#]*#//' | grep -cvE '^[0-9]+$' || true
+  local file=$1
+  { grep -oE "$DESKTOP_HEX" "$file" || true; } | sed -E 's/^[^#]*#//' | grep -cvE '^[0-9]+$' || true
 }
 
 echo "design-lint: desktop (limit 0)"
