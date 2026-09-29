@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Desktop design parity, part 1** (#363):
+  - pod and deployment drawers stay pinned to the right edge while the view
+    scrolls;
+  - the pod drawer shows label chips;
+  - a pod row shows an inline spinner while the pod is being terminated;
+  - Succeeded pods are green (ok);
+  - compact controls (replica stepper, Restart, Reveal, Stop) are 28px and
+    the "logs" chip has a 28×28 hit area;
+  - the sidebar shows one count per item, red with a tooltip when pods or
+    events need attention, including on-demand kinds once loaded;
+  - the namespace menu shows per-namespace pod counts.
+
 ### Fixed
 
 - **Desktop design cleanup** (#364): log toolbar popovers use the overlay

@@ -69,7 +69,7 @@
 								type="button"
 								aria-label="Scale down"
 								disabled={pendingScale !== null || (pendingScale ?? dep.replicas) <= 0}
-								class="focus-ring flex h-6 w-6 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
+								class="focus-ring flex h-7 w-7 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
 								onclick={(e) => {
 									e.stopPropagation();
 									scale(dep, -1);
@@ -89,7 +89,7 @@
 								type="button"
 								aria-label="Scale up"
 								disabled={pendingScale !== null}
-								class="focus-ring flex h-6 w-6 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
+								class="focus-ring flex h-7 w-7 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
 								onclick={(e) => {
 									e.stopPropagation();
 									scale(dep, 1);
@@ -101,7 +101,7 @@
 						<button
 							type="button"
 							disabled={restarting}
-							class="focus-ring type-caption flex h-6 items-center gap-1 rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110 disabled:opacity-45"
+							class="focus-ring type-caption flex h-7 items-center gap-1 rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110 disabled:opacity-45"
 							onclick={(e) => {
 								e.stopPropagation();
 								void mutations.restartDeployment(dep.namespace, dep.name);

@@ -147,6 +147,37 @@ describe("Sidebar", () => {
     expect(screen.getByText("1")).toBeInTheDocument();
   });
 
+  it("shows one count for pods, red with a tooltip when pods need attention", () => {
+    resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" })];
+    render(Sidebar);
+    const count = screen.getByTitle("1 need attention");
+    expect(count).toHaveTextContent("2");
+    expect(count).toHaveClass("text-status-err");
+  });
+
+  it("shows counts for on-demand kinds only once loaded for the current namespace", () => {
+    resources.clear();
+    resources.services = [
+      {
+        name: "api",
+        namespace: "default",
+        service_type: "ClusterIP",
+        cluster_ip: null,
+        external_ips: [],
+        ports: [],
+        creation_timestamp: null,
+      },
+    ];
+    const row = () => screen.getByText("Services").closest("button");
+    const { unmount } = render(Sidebar);
+    expect(row()).not.toHaveTextContent("1");
+    unmount();
+
+    resources.loadedKinds = { services: null };
+    render(Sidebar);
+    expect(row()).toHaveTextContent("1");
+  });
+
   it("navigates on item click", async () => {
     render(Sidebar);
     await fireEvent.click(screen.getByText("Pods"));

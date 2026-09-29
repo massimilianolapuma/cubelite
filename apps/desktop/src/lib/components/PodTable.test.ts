@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 import PodTable from "./PodTable.svelte";
+import { mutations } from "$lib/stores/mutations.svelte";
 import type { PodInfo } from "$lib/tauri";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
@@ -115,5 +116,16 @@ describe("PodTable", () => {
     render(PodTable, { props: { pods: [p], selected: p, onLogs } });
     await fireEvent.keyDown(screen.getByText("logs"), { key: "Enter" });
     expect(onLogs).toHaveBeenCalledWith(p);
+  });
+
+  it("shows an inline spinner while the pod is being terminated", () => {
+    mutations.pendingPodDeletes = { "default/api-0": true };
+    try {
+      render(PodTable, { props: { pods: [pod()] } });
+      expect(screen.getByText("Terminating…")).toBeInTheDocument();
+      expect(screen.queryByText("Running")).toBeNull();
+    } finally {
+      mutations.pendingPodDeletes = {};
+    }
   });
 });

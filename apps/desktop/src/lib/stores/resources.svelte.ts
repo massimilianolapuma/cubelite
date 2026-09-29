@@ -77,6 +77,12 @@ export function isExtraKind(v: unknown): v is ExtraKind {
   return typeof v === "string" && (EXTRA_KINDS as readonly string[]).includes(v);
 }
 
+function countByNamespace(pods: PodInfo[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const p of pods) counts[p.namespace] = (counts[p.namespace] ?? 0) + 1;
+  return counts;
+}
+
 class ResourcesStore {
   pods = $state<PodInfo[]>([]);
   namespaces = $state<NamespaceInfo[]>([]);
@@ -101,6 +107,14 @@ class ResourcesStore {
   error = $state<string | null>(null);
   extraLoading = $state(false);
   extraError = $state<string | null>(null);
+
+  /**
+   * Namespace filter each on-demand kind was last loaded with (null = all).
+   * A kind missing here has not been loaded for the active cluster yet.
+   */
+  loadedKinds = $state<Partial<Record<ExtraKind, string | null>>>({});
+  /** Pods per namespace from the last all-namespaces load (drives the ns menu). */
+  #allNsPodCounts = $state<Record<string, number> | null>(null);
 
   #loadSeq = 0;
   #extraSeq = 0;
@@ -168,6 +182,7 @@ class ResourcesStore {
 
       if (seq !== this.#loadSeq) return true;
       this.pods = podList;
+      if (ns === null) this.#allNsPodCounts = countByNamespace(podList);
       this.namespaces = nsList;
       this.deployments = depList;
       this.events = eventList;
@@ -230,6 +245,44 @@ class ResourcesStore {
       }),
       { cpuUsed: 0, cpuAllocatable: 0, memUsed: 0, memAllocatable: 0 },
     );
+  }
+
+  /**
+   * Pod count per namespace. Live when viewing all namespaces; otherwise the
+   * last all-namespaces snapshot, with the filtered namespace kept live.
+   */
+  get podCountsByNamespace(): Record<string, number> {
+    const live = countByNamespace(this.pods);
+    const base = app.namespace === null ? live : this.#allNsPodCounts;
+    const counts: Record<string, number> = {};
+    // With a full picture, namespaces without pods count as 0.
+    if (base) for (const ns of this.namespaces) counts[ns.name] = base[ns.name] ?? 0;
+    if (app.namespace !== null) counts[app.namespace] = live[app.namespace] ?? 0;
+    return counts;
+  }
+
+  /**
+   * Item count for an on-demand kind, or null when it has not been loaded
+   * for the current cluster + namespace (the sidebar then shows no number).
+   */
+  kindCount(kind: ExtraKind): number | null {
+    const loadedFor = this.loadedKinds[kind];
+    if (loadedFor === undefined) return null;
+    // Nodes are cluster-scoped; everything else must match the namespace filter.
+    if (kind !== "nodes" && loadedFor !== app.namespace) return null;
+    const lists: Record<ExtraKind, unknown[]> = {
+      services: this.services,
+      ingresses: this.ingresses,
+      configmaps: this.configmaps,
+      secrets: this.secrets,
+      helm: this.helmReleases,
+      statefulsets: this.statefulsets,
+      jobs: this.jobs,
+      cronjobs: this.cronjobs,
+      pvcs: this.pvcs,
+      nodes: this.nodeInventory,
+    };
+    return lists[kind].length;
   }
 
   /** Load one on-demand kind (services/ingresses/configmaps/secrets). */
@@ -295,6 +348,9 @@ class ResourcesStore {
           break;
         }
       }
+      if (seq === this.#extraSeq) {
+        this.loadedKinds = { ...this.loadedKinds, [kind]: ns ?? null };
+      }
     } catch (e) {
       if (seq === this.#extraSeq) this.extraError = errorMessage(e);
     } finally {
@@ -320,6 +376,8 @@ class ResourcesStore {
     this.cronjobs = [];
     this.pvcs = [];
     this.nodeInventory = [];
+    this.loadedKinds = {};
+    this.#allNsPodCounts = null;
     this.podMetrics = {};
     this.nodes = [];
     this.metricsAvailable = false;
