@@ -30,7 +30,7 @@ class MutationsStore {
   pendingScales = $state<Record<string, number>>({});
   /** Deployment key → target replicas still being edited (not yet sent). */
   draftScales = $state<Record<string, number>>({});
-  #draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  readonly #draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   isDeleting(namespace: string, name: string): boolean {
     return this.pendingPodDeletes[key(namespace, name)] ?? false;
