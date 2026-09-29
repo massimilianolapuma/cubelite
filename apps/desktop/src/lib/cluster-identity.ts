@@ -12,6 +12,16 @@ export function isIdentityColor(v: unknown): v is IdentityColor {
 }
 
 /**
+ * CSS color for an identity. Uses the base `--cl-color-cluster-*` variables:
+ * Tailwind only emits theme vars (`--color-*`) it sees referenced literally,
+ * and a name built at runtime (`--color-cluster-${color}`) is invisible to it
+ * (#391).
+ */
+export function identityVar(color: IdentityColor): string {
+  return `var(--cl-color-cluster-${color})`;
+}
+
+/**
  * Assign a palette color to every context name. Previously saved assignments
  * win (so colors stay stable when kubeconfig order changes); new names get the
  * next palette color by first-appearance order, cycling when exhausted.

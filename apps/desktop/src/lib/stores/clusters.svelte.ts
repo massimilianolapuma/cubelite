@@ -29,6 +29,12 @@ class ClustersStore {
     return this.identityColors[contextName] ?? "blue";
   }
 
+  /** User override of a context's identity color (persisted). */
+  setIdentityColor(contextName: string, color: IdentityColor): void {
+    this.identityColors = { ...this.identityColors, [contextName]: color };
+    settings.identityColors.value = this.identityColors;
+  }
+
   async refresh(): Promise<void> {
     this.loading = true;
     this.error = null;

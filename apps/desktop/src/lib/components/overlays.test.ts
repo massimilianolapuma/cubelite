@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("$lib/tauri", () => ({
   listContexts: vi.fn(),
@@ -133,6 +133,31 @@ describe("PreferencesModal", () => {
     render(PreferencesModal);
     await fireEvent.click(screen.getByRole("switch", { name: "Skip TLS verification" }));
     expect(settings.skipTls.value).toBe(true);
+  });
+
+  it("persists density and applies it to the document", async () => {
+    render(PreferencesModal);
+    await fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
+    expect(settings.density.value).toBe("compact");
+    expect(document.documentElement.dataset.density).toBe("compact");
+    await fireEvent.click(screen.getByRole("radio", { name: "Default" }));
+  });
+
+  it("switches the accent color", async () => {
+    render(PreferencesModal);
+    await fireEvent.click(screen.getByRole("radio", { name: "Violet" }));
+    expect(settings.accent.value).toBe("violet");
+    expect(document.documentElement.style.getPropertyValue("--cl-color-accent")).toContain("violet");
+    await fireEvent.click(screen.getByRole("radio", { name: "Blue" }));
+    expect(document.documentElement.style.getPropertyValue("--cl-color-accent")).toBe("");
+  });
+
+  it("overrides a cluster's identity color", async () => {
+    render(PreferencesModal);
+    const group = screen.getByRole("radiogroup", { name: "Color for staging" });
+    await fireEvent.click(within(group).getByRole("radio", { name: "pink" }));
+    expect(clusters.identityFor("staging")).toBe("pink");
+    expect(settings.identityColors.value.staging).toBe("pink");
   });
 
   it("re-triggers onboarding", async () => {

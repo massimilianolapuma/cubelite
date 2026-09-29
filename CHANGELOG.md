@@ -20,9 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - the sidebar shows one count per item, red with a tooltip when pods or
     events need attention, including on-demand kinds once loaded;
   - the namespace menu shows per-namespace pod counts.
+- **Desktop design parity, part 2** (#363):
+  - the deployment replica stepper batches clicks for 800 ms before scaling
+    and shows ready/target replica segments;
+  - Preferences add row density (default/compact), accent color
+    (blue/violet/teal) and a per-cluster identity color override.
 
 ### Fixed
 
+- **Desktop cluster identity colors** (#391): the pink identity color (and
+  any color not referenced literally) no longer renders transparent; dynamic
+  colors now use the always-emitted `--cl-color-cluster-*` variables.
 - **Desktop design cleanup** (#364): log toolbar popovers use the overlay
   elevation tokens instead of Tailwind `shadow-lg`; Unicode glyphs (✕ ⏎ ↺ ✓)
   replaced with Lucide icons; the Timestamps/Wrap toggles expose their state
