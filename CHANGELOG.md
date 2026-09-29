@@ -38,6 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Design lint** (#360): `scripts/design-lint.sh` runs in CI (job "Design
+  Lint", with its own self-test). It blocks `text-[Npx]` classes and raw hex
+  colours in desktop Svelte components (held at 0), and system fonts and colours
+  in native views (capped per file by `scripts/design-lint-allow.txt`; the
+  residue is tracked in #395). Audit report: `docs/design-audit-2026-09.md`.
+- **Handoff v1.1 amendments** (#360): the handoff README and `tokens-v2.json`
+  now record the contrast-fixed tokens (`text/tertiary` `#7d7d86`, `err/solid`
+  `#d72929`), the v1.1 type scale and the parity decisions. The contrast audit
+  confirms every v1.1 type size meets AA and non-text contrast reaches 3:1, and records a light-theme accent gap (#396).
 - **All Clusters dashboard** (desktop, #362): stat cards now show clusters
   online, total pods, warnings and contexts watched aggregated across every
   context; each online cluster card shows its pods, warnings and CPU/MEM

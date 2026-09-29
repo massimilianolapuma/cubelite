@@ -216,6 +216,68 @@ pass. All values ≥ threshold (4.5:1, or 2.5:1 for the disabled floor).
 | panel | 2.874 | 2.524 |
 | surface | 2.806 | 2.749 |
 
+## Type scale v1.1 and new non-text elements (2026-09)
+
+Added for #360 (unified parity v2, spec §5). **No colour token changed.** The
+v1.1 type scale (#355) only changes sizes, and the text pairings above do not
+depend on size, because this audit always applies the normal-text threshold of
+4.5:1 and never uses the large-text threshold of 3:1. So the checks here are:
+
+1. every style still meets the Apple HIG 10pt minimum;
+2. the new non-text elements (focus rings, replica segments, the destructive
+   fill, the alternate accents) meet WCAG 1.4.11 (3:1).
+
+### Type sizes: all ≥ 10px
+
+| Style | v1 | v1.1 | ≥ 10pt | Text pairing | AA |
+|---|---|---|---|---|---|
+| display | 28px | 28px | ✓ | text.primary | ✓ (unchanged) |
+| title | 16px | 16px | ✓ | text.primary | ✓ (unchanged) |
+| subtitle | 12.5–13px | 13.5px | ✓ | text.primary | ✓ (unchanged) |
+| body | 12.5px | 13px | ✓ | text.primary / secondary | ✓ (unchanged) |
+| caption | 11–11.5px | 11.5px | ✓ | text.secondary / tertiary | ✓ (unchanged) |
+| section | 9.5px ✗ | 10px | ✓ (was below) | text.tertiary | ✓ (unchanged) |
+| colhead | 10.5px | 11px | ✓ | text.tertiary | ✓ (unchanged) |
+| data | 12px | 12.5px | ✓ | text.data-bright | ✓ (unchanged) |
+| data-sm | 11–11.5px | 12px | ✓ | text.secondary | ✓ (unchanged) |
+| log | 11px | 11.5px | ✓ | text.log on sunken | ✓ (unchanged) |
+| stat (new) | — | 22px | ✓ | text.data-bright | ✓ (same pairing as data) |
+| micro (new) | — | 10.5px | ✓ | text.secondary / tertiary | ✓ (same pairings as caption) |
+
+### Non-text contrast (WCAG 1.4.11, min 3:1)
+
+These ratios use the same formula as `wcag.ts`. They are computed from
+`design/tokens.json` and are not yet asserted in `tokens-contrast.test.ts`.
+
+| Element | Pairing | Dark | Light |
+|---|---|---|---|
+| Focus ring / focused border | `accent.default` on `surface.panel` | 6.94 | 4.52 |
+| Focus ring / focused border | `accent.default` on `surface.surface` | 6.77 | 4.92 |
+| Replica segment, ready (fill) | `status.ok` on `surface.panel` | 9.88 | 4.66 |
+| Replica segment, pending (outline) | `status.warn` on `surface.panel` | 11.38 | 4.70 |
+| Focus ring, violet accent | `accent.alt-violet` on `surface.panel` | 6.98 | 4.24 |
+| Focus ring, teal accent | `accent.alt-teal` on `surface.panel` | 10.20 | 3.06 |
+| Destructive fill | `status.err-solid` on `surface.window` | 3.97 | 3.77 |
+
+All pass 3:1.
+
+### Finding: alternate accents as text in the light theme
+
+The alternate accents (Preferences → Accent, #363) are also used for
+text: the accent link in Preferences, and the `surface.window`-coloured
+label on a primary button's accent fill. In the **light** theme two of these
+pairings are below 4.5:1:
+
+| Accent (light) | As text on `surface.overlay` | Label on accent fill |
+|---|---|---|
+| default `#3b68e2` | 4.92 ✓ | 4.72 ✓ |
+| alt-violet `#7c5ce8` | 4.61 ✓ | 4.42 ✗ |
+| alt-teal `#0f9e8e` | 3.33 ✗ | 3.19 ✗ |
+
+The dark theme passes everywhere (≥ 6.6:1). The light theme has not been
+design-reviewed yet (handoff "v1.1 amendments → Still open"). The fix, a
+lightness nudge on the two light alternate accents, is tracked separately.
+
 ## Exceptions
 
 None. The `EXCEPTIONS` map in `apps/desktop/src/design/tokens-contrast.test.ts`
