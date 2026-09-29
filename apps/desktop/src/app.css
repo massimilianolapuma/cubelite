@@ -401,3 +401,9 @@
     transform: translate(-50%, -50%);
   }
 }
+
+/* Compact row density (Preferences → Density); outside @layer so it wins
+   over the generated :root token. */
+:root[data-density="compact"] {
+  --row-pad-default: var(--row-pad-compact);
+}

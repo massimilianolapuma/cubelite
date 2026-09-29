@@ -21,9 +21,11 @@
 	// NAME / READY / STATUS / AGE / REPLICAS · ACTIONS
 	const grid = 'grid-template-columns: 2.2fr 0.6fr 0.9fr 0.55fr 1.4fr;';
 
+	/** Replica segments shown next to the stepper (more render as "+N"). */
+	const MAX_SEGMENTS = 8;
+
 	function scale(dep: DeploymentInfo, delta: number) {
-		const current = mutations.pendingScale(dep.namespace, dep.name) ?? dep.replicas;
-		void mutations.scaleDeployment(dep.namespace, dep.name, current + delta);
+		mutations.nudgeScale(dep.namespace, dep.name, dep.replicas, delta);
 	}
 </script>
 
@@ -43,6 +45,8 @@
 				{@const status = deploymentStatus(dep)}
 				{@const isSelected = selected?.name === dep.name && selected?.namespace === dep.namespace}
 				{@const pendingScale = mutations.pendingScale(dep.namespace, dep.name)}
+				{@const applying = mutations.isApplyingScale(dep.namespace, dep.name)}
+				{@const target = pendingScale ?? dep.replicas}
 				{@const restarting = mutations.isRestarting(dep.namespace, dep.name)}
 				<div
 					role="button"
@@ -68,7 +72,7 @@
 							<button
 								type="button"
 								aria-label="Scale down"
-								disabled={pendingScale !== null || (pendingScale ?? dep.replicas) <= 0}
+								disabled={applying || target <= 0}
 								class="focus-ring flex h-7 w-7 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
 								onclick={(e) => {
 									e.stopPropagation();
@@ -83,12 +87,12 @@
 									? 'var(--color-status-warn)'
 									: 'var(--color-text-secondary)'};"
 							>
-								{pendingScale ?? dep.replicas}
+								{target}
 							</span>
 							<button
 								type="button"
 								aria-label="Scale up"
-								disabled={pendingScale !== null}
+								disabled={applying}
 								class="focus-ring flex h-7 w-7 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
 								onclick={(e) => {
 									e.stopPropagation();
@@ -97,6 +101,24 @@
 							>
 								<Plus class="h-3 w-3" />
 							</button>
+						</span>
+						<!-- One segment per target replica: filled = ready, outlined = not yet ready. -->
+						<span
+							class="flex items-center gap-0.5"
+							aria-label="{dep.ready_replicas} of {target} replicas ready"
+							role="img"
+						>
+							{#each Array.from({ length: Math.min(target, MAX_SEGMENTS) }, (_, i) => i) as i (i)}
+								<span
+									class="h-2.5 w-1.5 rounded-[1px] border"
+									style={i < dep.ready_replicas
+										? 'background: var(--color-status-ok); border-color: var(--color-status-ok);'
+										: `border-color: ${pendingScale !== null ? 'var(--color-status-warn)' : 'var(--color-border-strong)'};`}
+								></span>
+							{/each}
+							{#if target > MAX_SEGMENTS}
+								<span class="type-micro font-mono text-text-tertiary">+{target - MAX_SEGMENTS}</span>
+							{/if}
 						</span>
 						<button
 							type="button"

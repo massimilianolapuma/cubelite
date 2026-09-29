@@ -16,6 +16,7 @@
 	import { viewRegistry } from '$lib/components/views';
 	import LogPanel from '$lib/components/logpanel/LogPanel.svelte';
 	import LogWindowShell from '$lib/components/logpanel/LogWindowShell.svelte';
+	import { applyAccent, applyDensity } from '$lib/appearance';
 	import { matchShortcut } from '$lib/keyboard';
 	import { isMac } from '$lib/platform';
 	import { app } from '$lib/stores/app.svelte';
@@ -36,6 +37,9 @@
 			: null;
 
 	onMount(() => {
+		// Pop-out log windows share the appearance preferences.
+		applyDensity(settings.density.value);
+		applyAccent(settings.accent.value);
 		if (logWindowKey) return;
 		setMode(settings.theme.value);
 		let unCloseRequested: (() => void) | null = null;

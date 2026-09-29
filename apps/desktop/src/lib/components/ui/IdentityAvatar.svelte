@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { initials } from '$lib/cluster-identity';
+	import { identityVar as colorVar, initials } from '$lib/cluster-identity';
 	import type { IdentityColor } from '$lib/cluster-identity';
 
 	export type Health = 'connected' | 'unreachable' | 'unknown';
@@ -19,7 +19,7 @@
 		size?: number;
 	} = $props();
 
-	const identityVar = $derived(`var(--color-cluster-${color})`);
+	const identityVar = $derived(colorVar(color));
 	const healthColor: Record<Health, string> = {
 		connected: 'var(--color-status-ok)',
 		unreachable: 'var(--color-status-err)',

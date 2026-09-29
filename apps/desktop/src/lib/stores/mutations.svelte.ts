@@ -14,6 +14,9 @@ import { app } from "./app.svelte";
 import { resources } from "./resources.svelte";
 import { toasts } from "./toasts.svelte";
 
+/** Idle time after the last stepper click before the scale is applied. */
+export const SCALE_DEBOUNCE_MS = 800;
+
 function key(namespace: string, name: string): string {
   return `${namespace}/${name}`;
 }
@@ -25,6 +28,9 @@ class MutationsStore {
   pendingRestarts = $state<Record<string, boolean>>({});
   /** Deployment key → target replicas while a scale is applying. */
   pendingScales = $state<Record<string, number>>({});
+  /** Deployment key → target replicas still being edited (not yet sent). */
+  draftScales = $state<Record<string, number>>({});
+  #draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   isDeleting(namespace: string, name: string): boolean {
     return this.pendingPodDeletes[key(namespace, name)] ?? false;
@@ -34,8 +40,47 @@ class MutationsStore {
     return this.pendingRestarts[key(namespace, name)] ?? false;
   }
 
+  /** Target replicas while a scale is being edited or applied; null when idle. */
   pendingScale(namespace: string, name: string): number | null {
-    return this.pendingScales[key(namespace, name)] ?? null;
+    const k = key(namespace, name);
+    return this.draftScales[k] ?? this.pendingScales[k] ?? null;
+  }
+
+  /** True while a scale request is in flight (the stepper is locked). */
+  isApplyingScale(namespace: string, name: string): boolean {
+    return this.pendingScales[key(namespace, name)] !== undefined;
+  }
+
+  /**
+   * Step the replica target by `delta`. Clicks are batched: the scale is
+   * applied once, SCALE_DEBOUNCE_MS after the last step (spec: the value is
+   * shown in warn while the change is pending).
+   */
+  nudgeScale(namespace: string, name: string, current: number, delta: number): void {
+    const k = key(namespace, name);
+    if (this.pendingScales[k] !== undefined) return;
+    const target = Math.max(0, (this.draftScales[k] ?? current) + delta);
+    const existing = this.#draftTimers.get(k);
+    if (existing) clearTimeout(existing);
+    if (target === current) {
+      // Stepped back to where we started: nothing to apply.
+      const rest = { ...this.draftScales };
+      delete rest[k];
+      this.draftScales = rest;
+      this.#draftTimers.delete(k);
+      return;
+    }
+    this.draftScales = { ...this.draftScales, [k]: target };
+    this.#draftTimers.set(
+      k,
+      setTimeout(() => {
+        this.#draftTimers.delete(k);
+        const rest = { ...this.draftScales };
+        delete rest[k];
+        this.draftScales = rest;
+        void this.scaleDeployment(namespace, name, target);
+      }, SCALE_DEBOUNCE_MS),
+    );
   }
 
   async deletePod(namespace: string, name: string): Promise<boolean> {

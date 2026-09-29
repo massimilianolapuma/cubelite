@@ -26,6 +26,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import DeploymentTable from "./DeploymentTable.svelte";
 import { restartDeployment, scaleDeployment, type DeploymentInfo } from "$lib/tauri";
+import { SCALE_DEBOUNCE_MS } from "$lib/stores/mutations.svelte";
 import { app } from "$lib/stores/app.svelte";
 
 beforeEach(() => {
@@ -73,16 +74,51 @@ describe("DeploymentTable", () => {
     expect(screen.getByText("Progressing")).toBeInTheDocument();
   });
 
-  it("scales up via the stepper", async () => {
-    render(DeploymentTable, { props: { deployments: [dep()] } });
-    await fireEvent.click(screen.getByLabelText("Scale up"));
-    expect(scaleDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", 4, "prod");
+  it("batches stepper clicks and applies once after the debounce", async () => {
+    vi.useFakeTimers();
+    try {
+      render(DeploymentTable, { props: { deployments: [dep()] } });
+      await fireEvent.click(screen.getByLabelText("Scale up"));
+      await fireEvent.click(screen.getByLabelText("Scale up"));
+      // Pending target is shown immediately; nothing is sent yet.
+      expect(screen.getByText("5")).toBeInTheDocument();
+      expect(scaleDeployment).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS);
+      expect(scaleDeployment).toHaveBeenCalledTimes(1);
+      expect(scaleDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", 5, "prod");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("scales down via the stepper", async () => {
-    render(DeploymentTable, { props: { deployments: [dep()] } });
-    await fireEvent.click(screen.getByLabelText("Scale down"));
-    expect(scaleDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", 2, "prod");
+    vi.useFakeTimers();
+    try {
+      render(DeploymentTable, { props: { deployments: [dep()] } });
+      await fireEvent.click(screen.getByLabelText("Scale down"));
+      await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS);
+      expect(scaleDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", 2, "prod");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sends nothing when the stepper returns to the current count", async () => {
+    vi.useFakeTimers();
+    try {
+      render(DeploymentTable, { props: { deployments: [dep()] } });
+      await fireEvent.click(screen.getByLabelText("Scale up"));
+      await fireEvent.click(screen.getByLabelText("Scale down"));
+      await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS);
+      expect(scaleDeployment).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("draws one segment per replica with ready ones filled", () => {
+    render(DeploymentTable, { props: { deployments: [dep({ ready_replicas: 2 })] } });
+    expect(screen.getByRole("img", { name: "2 of 3 replicas ready" })).toBeInTheDocument();
   });
 
   it("triggers a rollout restart from the row", async () => {
