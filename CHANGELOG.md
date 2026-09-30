@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **macOS design tokens, batch 2** (#395): the 12 list views (`*ListView.swift`)
+  use `Typography.data` for the Name column and `dataSm` for every other cell,
+  as the desktop tables do, and status and type-tag colors come from the
+  status and cluster-identity tokens. The design-lint allow-list shrinks from
+  222 matches in 27 files to 164 in 15.
 - **macOS design tokens, batch 1** (#395): the log panel (`LogPanel/*`) and
   shell (`Shell/*`) views drop their last 16 system fonts for
   `DesignTokens.Typography` (`log`, and `micro` in mono for timestamps, source

@@ -38,7 +38,7 @@ struct StatefulSetListView: View {
 
             TableColumn("Name") { set in
                 Text(set.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
 

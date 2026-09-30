@@ -45,14 +45,14 @@ struct ServiceListView: View {
         Table(clusterState.services, selection: $selectedServiceID) {
             TableColumn("Name") { service in
                 Text(service.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 200)
 
             TableColumn("Namespace") { service in
                 Text(service.namespace)
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -65,7 +65,7 @@ struct ServiceListView: View {
 
             TableColumn("Cluster IP") { service in
                 Text(service.clusterIP ?? "—")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -73,7 +73,7 @@ struct ServiceListView: View {
 
             TableColumn("Ports") { service in
                 Text(service.ports ?? "—")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -82,7 +82,7 @@ struct ServiceListView: View {
 
             TableColumn("Age") { service in
                 Text(service.creationTimestamp.k8sAge)
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
@@ -100,7 +100,7 @@ private struct ServiceTypeTag: View {
 
     var body: some View {
         Text(type ?? "—")
-            .font(.caption.weight(.medium))
+            .typeStyle(DesignTokens.Typography.caption.weighted(.medium))
             .foregroundStyle(tagColor)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -109,9 +109,9 @@ private struct ServiceTypeTag: View {
 
     private var tagColor: Color {
         switch type {
-        case "LoadBalancer": .blue
-        case "NodePort": .orange
-        case "ExternalName": .purple
+        case "LoadBalancer": DesignTokens.clusterBlue
+        case "NodePort": DesignTokens.clusterAmber
+        case "ExternalName": DesignTokens.clusterViolet
         default: .secondary  // ClusterIP and unknown
         }
     }
