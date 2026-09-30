@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import {
+  kubeconfigSources,
   listContexts,
   getCurrentContext,
   setContext,
@@ -27,6 +28,28 @@ const mockedInvoke = vi.mocked(invoke);
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+// ---------------------------------------------------------------------------
+// kubeconfigSources
+// ---------------------------------------------------------------------------
+
+describe("kubeconfigSources", () => {
+  it("invokes kubeconfig_sources and returns the spec and file list", async () => {
+    const payload = {
+      spec: "/home/u/.kube/config:/home/u/.kube/team.yaml",
+      sources: [
+        { path: "/home/u/.kube/config", exists: true, contexts: 2, shadowed: [] },
+        { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: ["prod"] },
+      ],
+    };
+    mockedInvoke.mockResolvedValueOnce(payload);
+
+    const result = await kubeconfigSources();
+
+    expect(mockedInvoke).toHaveBeenCalledWith("kubeconfig_sources");
+    expect(result).toEqual(payload);
+  });
 });
 
 // ---------------------------------------------------------------------------

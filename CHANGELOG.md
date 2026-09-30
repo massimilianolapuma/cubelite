@@ -48,6 +48,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Multiple kubeconfig files** (desktop, #392): the app follows `KUBECONFIG`
+  like kubectl. It reads every listed file, first file wins on name clashes,
+  and missing files are skipped. Before, contexts from extra files showed up
+  in the rail, but connecting to them failed because commands only read
+  `~/.kube/config`. The list is imported from the login shell when the app
+  is launched from the Dock or Finder, and it is split with the platform
+  separator (`;` on Windows). Preferences list each file with its context
+  count and note merged or missing files. The rail tooltip names the file
+  that defines a context.
+
 - **Design lint** (#360): `scripts/design-lint.sh` runs in CI (job "Design
   Lint", with its own self-test). It blocks `text-[Npx]` classes and raw hex
   colours in desktop Svelte components (held at 0), and system fonts and colours

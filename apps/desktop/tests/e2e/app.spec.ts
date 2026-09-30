@@ -72,6 +72,15 @@ test("preferences persist the refresh interval across reloads", async ({ page })
   await expect(page.getByText("refresh 1m")).toBeVisible();
 });
 
+test("preferences list every kubeconfig file with its context count", async ({ page }) => {
+  await boot(page);
+  await page.getByLabel("Preferences").click();
+  const files = page.getByRole("list", { name: "Kubeconfig files" });
+  await expect(files.getByRole("listitem")).toHaveCount(2);
+  await expect(files.getByText("/home/test/.kube/team.yaml")).toBeVisible();
+  await expect(files.getByText(/1 merged/)).toBeVisible();
+});
+
 test("All Clusters dashboard aggregates stats across contexts", async ({ page }) => {
   await boot(page);
   await page.getByLabel("All Clusters").click();

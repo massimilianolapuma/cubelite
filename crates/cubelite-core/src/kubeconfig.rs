@@ -2,14 +2,16 @@
 //!
 //! Supports:
 //! - Single-file load from `~/.kube/config`
-//! - Multi-file merge via `KUBECONFIG` environment variable (`:` separated)
+//! - Multi-file merge via `KUBECONFIG` environment variable (platform path
+//!   list: `:` on Unix, `;` on Windows), first file wins on name clashes
 //! - Context switching with optional disk persistence
 
+use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 
 use crate::error::KubeconfigError;
-use crate::types::{ContextDetails, ContextInfo, KubeConfigFile, NamedContext};
+use crate::types::{ContextDetails, ContextInfo, KubeConfigFile, KubeconfigSource, NamedContext};
 
 // ---------------------------------------------------------------------------
 // Public surface: KubeConfig
@@ -35,6 +37,12 @@ pub struct KubeConfig {
     raw: KubeConfigFile,
     /// Paths that were actually loaded (first path wins for `current-context`).
     paths: Vec<PathBuf>,
+    /// Every requested path in merge order, including missing ones.
+    requested: Vec<PathBuf>,
+    /// Context name → file that defines it (the first file that listed it).
+    context_sources: HashMap<String, PathBuf>,
+    /// Per requested file: context names hidden by an earlier file.
+    shadowed: HashMap<PathBuf, Vec<String>>,
 }
 
 impl KubeConfig {
@@ -59,28 +67,36 @@ impl KubeConfig {
     ///
     /// Contexts, clusters, and users are merged across all files; name
     /// collisions are resolved by keeping the first occurrence (first-wins).
+    /// Missing files are skipped, as kubectl does with `KUBECONFIG`.
     ///
     /// # Errors
     ///
-    /// Returns [`KubeconfigError::FileNotFound`] when any path is missing, or
-    /// [`KubeconfigError::ParseError`] on invalid YAML content.
+    /// Returns [`KubeconfigError::FileNotFound`] when the list is empty or
+    /// none of the paths exist, or [`KubeconfigError::ParseError`] on invalid
+    /// YAML content.
     pub fn load_from_paths(paths: &[PathBuf]) -> Result<Self, KubeconfigError> {
-        if paths.is_empty() {
+        let existing: Vec<PathBuf> = paths.iter().filter(|p| p.exists()).cloned().collect();
+        if existing.is_empty() {
+            let listed = paths
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
             return Err(KubeconfigError::FileNotFound {
-                path: "(no kubeconfig paths provided)".to_string(),
+                path: if listed.is_empty() {
+                    "(no kubeconfig paths provided)".to_string()
+                } else {
+                    listed
+                },
             });
         }
 
         let mut merged = KubeConfigFile::default();
         let mut first_current_context: Option<String> = None;
+        let mut context_sources = HashMap::new();
+        let mut shadowed: HashMap<PathBuf, Vec<String>> = HashMap::new();
 
-        for path in paths {
-            if !path.exists() {
-                return Err(KubeconfigError::FileNotFound {
-                    path: path.display().to_string(),
-                });
-            }
-
+        for path in &existing {
             let content = std::fs::read_to_string(path)?;
             let raw: KubeConfigFile = serde_yaml::from_str(&content)?;
 
@@ -91,7 +107,10 @@ impl KubeConfig {
 
             // Merge contexts — first occurrence wins on name collision.
             for ctx in raw.contexts {
-                if !merged.contexts.iter().any(|c| c.name == ctx.name) {
+                if merged.contexts.iter().any(|c| c.name == ctx.name) {
+                    shadowed.entry(path.clone()).or_default().push(ctx.name);
+                } else {
+                    context_sources.insert(ctx.name.clone(), path.clone());
                     merged.contexts.push(ctx);
                 }
             }
@@ -115,8 +134,40 @@ impl KubeConfig {
 
         Ok(Self {
             raw: merged,
-            paths: paths.to_vec(),
+            paths: existing,
+            requested: paths.to_vec(),
+            context_sources,
+            shadowed,
         })
+    }
+
+    /// Describe every requested kubeconfig file in merge order: whether it
+    /// exists, how many contexts it contributes, and which of its context
+    /// names are hidden by an earlier file.
+    pub fn sources(&self) -> Vec<KubeconfigSource> {
+        self.requested
+            .iter()
+            .map(|path| KubeconfigSource {
+                path: path.display().to_string(),
+                exists: self.paths.contains(path),
+                contexts: self.context_sources.values().filter(|p| *p == path).count(),
+                shadowed: self.shadowed.get(path).cloned().unwrap_or_default(),
+            })
+            .collect()
+    }
+
+    /// The loaded file list joined with the platform separator — the same
+    /// shape as `KUBECONFIG`, suitable for [`split_kubeconfig_spec`] and
+    /// [`crate::KubeClient::new`].
+    pub fn resolved_spec(&self) -> String {
+        env::join_paths(&self.paths)
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| {
+                self.paths
+                    .first()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default()
+            })
     }
 
     // -----------------------------------------------------------------------
@@ -259,6 +310,10 @@ impl KubeConfig {
             cluster_server,
             namespace,
             is_active: self.raw.current_context.as_deref() == Some(named.name.as_str()),
+            source: self
+                .context_sources
+                .get(&named.name)
+                .map(|p| p.display().to_string()),
         }
     }
 }
@@ -296,19 +351,27 @@ pub fn set_active_context(name: &str) -> Result<(), KubeconfigError> {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/// Split a `KUBECONFIG`-style path list with the platform separator (`:` on
+/// Unix, `;` on Windows), dropping empty entries.
+pub fn split_kubeconfig_spec(spec: &str) -> Vec<PathBuf> {
+    let trimmed = spec.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    env::split_paths(trimmed)
+        .filter(|p| !p.as_os_str().is_empty())
+        .collect()
+}
+
 /// Resolve the ordered list of kubeconfig file paths to load.
 ///
-/// Reads `KUBECONFIG` env var (`:` separated) when set; falls back to
-/// `~/.kube/config` otherwise.
+/// Reads the `KUBECONFIG` env var (platform path list) when set; falls back
+/// to `~/.kube/config` otherwise.
 fn resolve_kubeconfig_paths() -> Result<Vec<PathBuf>, KubeconfigError> {
     if let Ok(val) = env::var("KUBECONFIG") {
-        let trimmed = val.trim();
-        if !trimmed.is_empty() {
-            return Ok(trimmed
-                .split(':')
-                .filter(|s| !s.is_empty())
-                .map(PathBuf::from)
-                .collect());
+        let paths = split_kubeconfig_spec(&val);
+        if !paths.is_empty() {
+            return Ok(paths);
         }
     }
 
@@ -454,6 +517,143 @@ contexts:
         names.sort();
         assert_eq!(names, vec!["dev".to_string(), "staging".to_string()]);
         assert_eq!(cfg.current_context(), Some("dev"));
+    }
+
+    const TWO_FILE_A: &str = r#"
+apiVersion: v1
+kind: Config
+current-context: dev
+contexts:
+  - name: dev
+    context:
+      cluster: dev-cluster
+      user: dev-user
+clusters:
+  - name: dev-cluster
+    cluster:
+      server: https://a.example:6443
+"#;
+
+    const TWO_FILE_B: &str = r#"
+apiVersion: v1
+kind: Config
+current-context: staging
+contexts:
+  - name: staging
+    context:
+      cluster: staging-cluster
+      user: staging-user
+  - name: dev
+    context:
+      cluster: other-cluster
+      user: other-user
+clusters:
+  - name: staging-cluster
+    cluster:
+      server: https://b.example:6443
+"#;
+
+    #[test]
+    fn contexts_remember_the_file_that_defines_them() {
+        let fa = write_temp(TWO_FILE_A);
+        let fb = write_temp(TWO_FILE_B);
+        let cfg = KubeConfig::load_from_paths(&[fa.path().to_path_buf(), fb.path().to_path_buf()])
+            .expect("should merge");
+
+        let dev = cfg.get_context("dev").expect("dev");
+        let staging = cfg.get_context("staging").expect("staging");
+        // First file wins the clash: dev keeps a's cluster and source.
+        assert_eq!(
+            dev.source.as_deref(),
+            Some(fa.path().to_str().expect("utf8"))
+        );
+        assert_eq!(
+            dev.cluster_server.as_deref(),
+            Some("https://a.example:6443")
+        );
+        assert_eq!(
+            staging.source.as_deref(),
+            Some(fb.path().to_str().expect("utf8"))
+        );
+        assert_eq!(
+            staging.cluster_server.as_deref(),
+            Some("https://b.example:6443")
+        );
+    }
+
+    #[test]
+    fn sources_report_counts_and_shadowed_names_in_merge_order() {
+        let fa = write_temp(TWO_FILE_A);
+        let fb = write_temp(TWO_FILE_B);
+        let missing = PathBuf::from("/tmp/does-not-exist-cubelite-test-sources.yaml");
+        let cfg = KubeConfig::load_from_paths(&[
+            fa.path().to_path_buf(),
+            missing.clone(),
+            fb.path().to_path_buf(),
+        ])
+        .expect("missing files are skipped");
+
+        let sources = cfg.sources();
+        assert_eq!(sources.len(), 3);
+        assert_eq!(sources[0].path, fa.path().display().to_string());
+        assert!(sources[0].exists);
+        assert_eq!(sources[0].contexts, 1);
+        assert!(sources[0].shadowed.is_empty());
+
+        assert_eq!(sources[1].path, missing.display().to_string());
+        assert!(!sources[1].exists);
+        assert_eq!(sources[1].contexts, 0);
+
+        assert!(sources[2].exists);
+        assert_eq!(sources[2].contexts, 1);
+        assert_eq!(sources[2].shadowed, vec!["dev".to_string()]);
+    }
+
+    #[test]
+    fn missing_files_are_skipped_but_all_missing_is_an_error() {
+        let fa = write_temp(TWO_FILE_A);
+        let missing = PathBuf::from("/tmp/does-not-exist-cubelite-test-skip.yaml");
+        let cfg = KubeConfig::load_from_paths(&[missing.clone(), fa.path().to_path_buf()])
+            .expect("one existing file is enough");
+        assert_eq!(cfg.context_names(), vec!["dev".to_string()]);
+        // The spec only lists files that were actually loaded.
+        assert_eq!(cfg.resolved_spec(), fa.path().display().to_string());
+
+        let err = KubeConfig::load_from_paths(&[missing]).expect_err("all missing");
+        assert!(matches!(err, KubeconfigError::FileNotFound { .. }));
+    }
+
+    #[test]
+    fn save_writes_to_the_first_existing_file() {
+        let fa = write_temp(TWO_FILE_A);
+        let missing = PathBuf::from("/tmp/does-not-exist-cubelite-test-save.yaml");
+        let mut cfg =
+            KubeConfig::load_from_paths(&[missing.clone(), fa.path().to_path_buf()]).expect("load");
+        cfg.set_active_context("dev").expect("dev exists");
+        cfg.save().expect("save to first existing file");
+        assert!(!missing.exists());
+        let written = std::fs::read_to_string(fa.path()).expect("read back");
+        assert!(written.contains("current-context: dev"));
+    }
+
+    #[test]
+    fn resolved_spec_round_trips_through_split() {
+        let fa = write_temp(TWO_FILE_A);
+        let fb = write_temp(TWO_FILE_B);
+        let paths = vec![fa.path().to_path_buf(), fb.path().to_path_buf()];
+        let cfg = KubeConfig::load_from_paths(&paths).expect("load");
+        assert_eq!(split_kubeconfig_spec(&cfg.resolved_spec()), paths);
+    }
+
+    #[test]
+    fn split_spec_drops_empty_entries() {
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        let spec = format!("  /a/config{sep}{sep}/b/config{sep}  ");
+        assert_eq!(
+            split_kubeconfig_spec(&spec),
+            vec![PathBuf::from("/a/config"), PathBuf::from("/b/config")]
+        );
+        assert!(split_kubeconfig_spec("   ").is_empty());
     }
 
     #[test]

@@ -17,6 +17,7 @@
 	import LogPanel from '$lib/components/logpanel/LogPanel.svelte';
 	import LogWindowShell from '$lib/components/logpanel/LogWindowShell.svelte';
 	import { applyAccent, applyDensity } from '$lib/appearance';
+	import { kubeconfigSources } from '$lib/tauri';
 	import { matchShortcut } from '$lib/keyboard';
 	import { isMac } from '$lib/platform';
 	import { app } from '$lib/stores/app.svelte';
@@ -44,8 +45,15 @@
 		setMode(settings.theme.value);
 		let unCloseRequested: (() => void) | null = null;
 		void (async () => {
-			const dir = await homeDir();
-			app.kubeconfigPath = `${dir}/.kube/config`;
+			try {
+				// KUBECONFIG list (or ~/.kube/config) resolved like kubectl.
+				const { spec, sources } = await kubeconfigSources();
+				app.kubeconfigPath = spec;
+				app.kubeconfigSources = sources;
+			} catch {
+				// No readable kubeconfig yet: keep the default path so onboarding can explain it.
+				app.kubeconfigPath = `${await homeDir()}/.kube/config`;
+			}
 			await clusters.refresh();
 			const active =
 				clusters.contexts.find((c) => c.is_active)?.name ?? clusters.contexts[0]?.name ?? null;
