@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **macOS design tokens, batch 5** (#395): Overview and the cross-cluster
+  dashboard use cluster-identity tints per resource (the same ones as the type
+  tags) and status tokens for health metrics, with `stat`, `subtitle` and
+  `dataSm` text. The design-lint allow-list is now empty, so the macOS app,
+  like the desktop, is held at zero system fonts and raw colors.
 - **macOS design tokens, batch 4** (#395): onboarding, Preferences, the error
   banner, the menu-bar extra, the toolbar, aggregated logs and exec drop their
   last system fonts and colors (`title`, `subtitle`, `body`, `caption`,
