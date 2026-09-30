@@ -96,6 +96,8 @@ The WCAG AA audit (`docs/a11y/contrast-audit.md`) changed two dark tokens. Hue i
 | text/tertiary | `#71717a` | `#7d7d86` | 3.84 → 4.55:1 on surface |
 | err/solid | `#dc4646` | `#d72929` | 3.82 → 4.51:1 under text/primary |
 
+Light theme (#396): the alternate accents were darkened the same way, so they pass AA as text and as the fill behind a `bg/window`-coloured label: violet `#7c5ce8` → `#7756e7`, teal `#0f9e8e` → `#0c7e72`. The dark alternates (`#a78bfa`, `#2dd4bf`) are unchanged.
+
 ### Type scale v1.1 (#355)
 Most styles move up by 0.5–1px, so nothing falls below the Apple HIG 10pt minimum. `micro` and `stat` are new, so no component needs a hard-coded size. Line heights are unchanged.
 

@@ -98,6 +98,8 @@ preserving lightness step that clears 4.5:1 in each:
 |---|---|---|---|---|
 | `status.err-solid` | light | `#c93535` | `#d35959` | 3.412 → 4.508 (lightened, +8.9pp L) |
 | `status.err-solid` | dark | `#dc4646` | `#d72929` | 3.815 → 4.507 (darkened, −6.6pp L) |
+| `accent.alt-violet` | light | `#7c5ce8` | `#7756e7` | 4.236 → 4.517 (panel) — #396 |
+| `accent.alt-teal` | light | `#0f9e8e` | `#0c7e72` | 3.061 → 4.546 (panel) — #396 |
 
 Both new hexes preserve hue exactly (H = 0°, pure red — `err-solid`'s
 green and blue channels are always equal, so no rounding drift occurs
@@ -247,7 +249,8 @@ depend on size, because this audit always applies the normal-text threshold of
 ### Non-text contrast (WCAG 1.4.11, min 3:1)
 
 These ratios use the same formula as `wcag.ts`. They are computed from
-`design/tokens.json` and are not yet asserted in `tokens-contrast.test.ts`.
+`design/tokens.json`. The accent rows are asserted in `tokens-contrast.test.ts`
+(since #396); the rest are not yet.
 
 | Element | Pairing | Dark | Light |
 |---|---|---|---|
@@ -255,28 +258,35 @@ These ratios use the same formula as `wcag.ts`. They are computed from
 | Focus ring / focused border | `accent.default` on `surface.surface` | 6.77 | 4.92 |
 | Replica segment, ready (fill) | `status.ok` on `surface.panel` | 9.88 | 4.66 |
 | Replica segment, pending (outline) | `status.warn` on `surface.panel` | 11.38 | 4.70 |
-| Focus ring, violet accent | `accent.alt-violet` on `surface.panel` | 6.98 | 4.24 |
-| Focus ring, teal accent | `accent.alt-teal` on `surface.panel` | 10.20 | 3.06 |
+| Focus ring, violet accent | `accent.alt-violet` on `surface.panel` | 6.98 | 4.52 (was 4.24, #396) |
+| Focus ring, teal accent | `accent.alt-teal` on `surface.panel` | 10.20 | 4.55 (was 3.06, #396) |
 | Destructive fill | `status.err-solid` on `surface.window` | 3.97 | 3.77 |
 
 All pass 3:1.
 
-### Finding: alternate accents as text in the light theme
+### Resolved (#396): alternate accents as text in the light theme
 
 The alternate accents (Preferences → Accent, #363) are also used for
 text: the accent link in Preferences, and the `surface.window`-coloured
-label on a primary button's accent fill. In the **light** theme two of these
-pairings are below 4.5:1:
+label on a primary button's accent fill. Contrast is symmetric, so the
+label-on-fill case is the same pairing as the accent against
+`surface.window`. In the **light** theme two of these pairings were below
+4.5:1. #396 fixed them by darkening each accent with the same method as the
+original fix pass: only HSL lightness changed, hue and saturation stayed the
+same, and each accent moved by the smallest step that clears 4.5:1 against
+its worst surface, `surface.panel`.
 
-| Accent (light) | As text on `surface.overlay` | Label on accent fill |
-|---|---|---|
-| default `#3b68e2` | 4.92 ✓ | 4.72 ✓ |
-| alt-violet `#7c5ce8` | 4.61 ✓ | 4.42 ✗ |
-| alt-teal `#0f9e8e` | 3.33 ✗ | 3.19 ✗ |
+| Accent (light) | Before | After | ΔL | Text on panel (worst) | Label on fill (= on window) |
+|---|---|---|---|---|---|
+| default | `#3b68e2` | unchanged | — | 4.52 ✓ | 4.72 ✓ |
+| alt-violet | `#7c5ce8` | `#7756e7` | −1.3pp | 4.24 → 4.52 ✓ | 4.42 → 4.71 ✓ |
+| alt-teal | `#0f9e8e` | `#0c7e72` | −6.8pp | 3.06 → 4.55 ✓ | 3.19 → 4.74 ✓ |
 
-The dark theme passes everywhere (≥ 6.6:1). The light theme has not been
-design-reviewed yet (handoff "v1.1 amendments → Still open"). The fix, a
-lightness nudge on the two light alternate accents, is tracked separately.
+The dark values are unchanged; all of them are ≥ 6.6:1. `tokens-contrast.test.ts`
+now has MATRIX rows for all three accents on window, panel, surface and overlay
+in both themes. The coverage guard also includes the `accent` group, so a new
+accent without a MATRIX row fails the suite. The suite now has 109 tests,
+all passing.
 
 ## Exceptions
 

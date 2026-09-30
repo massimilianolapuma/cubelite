@@ -30,8 +30,8 @@ public enum DesignTokens {
 
     // MARK: - Accent
     public static let accentDefault = dynamicColor(light: "#3b68e2", dark: "#6e9bf5")
-    public static let accentAltViolet = dynamicColor(light: "#7c5ce8", dark: "#a78bfa")
-    public static let accentAltTeal = dynamicColor(light: "#0f9e8e", dark: "#2dd4bf")
+    public static let accentAltViolet = dynamicColor(light: "#7756e7", dark: "#a78bfa")
+    public static let accentAltTeal = dynamicColor(light: "#0c7e72", dark: "#2dd4bf")
 
     // MARK: - Status
     public static let statusOk = dynamicColor(light: "#087e58", dark: "#34d399")

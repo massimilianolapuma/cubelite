@@ -34,8 +34,16 @@ const MATRIX: { text: [string, string]; surfaces: [string, string][]; min: numbe
     surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","sunken"]] },
   { text: ["status", "info"], min: 4.5,
     surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","sunken"]] },
+  // Accents are used as text (links, spinners) and as the fill behind a
+  // `text-surface-window` label (primary buttons). Contrast is symmetric, so
+  // the `window` pairing also covers the label-on-fill case. The alternates are
+  // user-selectable in Preferences → Accent (#363, #396).
   { text: ["accent", "default"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"]] },
+    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","overlay"]] },
+  { text: ["accent", "alt-violet"], min: 4.5,
+    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","overlay"]] },
+  { text: ["accent", "alt-teal"], min: 4.5,
+    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","overlay"]] },
   { text: ["cluster-identity", "blue"], min: 4.5, surfaces: [["surface","sunken"]] },
   { text: ["cluster-identity", "teal"], min: 4.5, surfaces: [["surface","sunken"]] },
   { text: ["cluster-identity", "amber"], min: 4.5, surfaces: [["surface","sunken"]] },
@@ -99,12 +107,12 @@ describe("token contrast (WCAG AA)", () => {
 
   // Coverage guard: every color token in these groups must be either
   // matrix-audited (a MATRIX row) or explicitly exempt (AUDIT_EXEMPT, with a
-  // reason). Prevents a newly added text/status/cluster-identity token from
+  // reason). Prevents a newly added text/status/accent/cluster-identity token from
   // silently skipping the contrast audit.
-  it("every text/status/cluster-identity color token is audited or exempt", () => {
+  it("every text/status/accent/cluster-identity color token is audited or exempt", () => {
     const auditedKeys = new Set(MATRIX.map((row) => `${row.text[0]}.${row.text[1]}`));
     const missing: string[] = [];
-    for (const group of ["text", "status", "cluster-identity"] as const) {
+    for (const group of ["text", "status", "accent", "cluster-identity"] as const) {
       for (const name of Object.keys(tokens[group] ?? {})) {
         if (name.startsWith("$")) continue;
         const key = `${group}.${name}`;

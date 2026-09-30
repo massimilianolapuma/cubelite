@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Light-theme accent contrast** (#396): the violet and teal alternate accents
+  in the light theme now pass WCAG AA as text and as primary-button fills
+  (violet `#7c5ce8` → `#7756e7`, teal `#0f9e8e` → `#0c7e72`; only lightness
+  changes). The contrast suite now audits every accent token.
 - **Desktop cluster identity colors** (#391): the pink identity color (and
   any color not referenced literally) no longer renders transparent; dynamic
   colors now use the always-emitted `--cl-color-cluster-*` variables.
