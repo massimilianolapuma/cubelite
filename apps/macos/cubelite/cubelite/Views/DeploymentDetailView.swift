@@ -104,16 +104,16 @@ private struct DeploymentDetailHeader: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 28))
+                .iconSize(DesignTokens.iconXl)
                 .foregroundStyle(.tint)
                 .frame(width: 36, height: 36)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(deployment.name)
-                    .font(.title3.bold())
+                    .typeStyle(DesignTokens.Typography.title)
                     .lineLimit(2)
                 Text(deployment.namespace)
-                    .font(.caption)
+                    .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -136,7 +136,7 @@ private struct DeploymentStatusBadge: View {
                 .frame(width: 8, height: 8)
                 .accessibilityHidden(true)
             Text(statusLabel)
-                .font(.caption.bold())
+                .typeStyle(DesignTokens.Typography.caption.weighted(.semibold))
                 .foregroundStyle(statusColor)
         }
         .padding(.horizontal, 8)
@@ -147,9 +147,9 @@ private struct DeploymentStatusBadge: View {
 
     private var statusColor: Color {
         if deployment.replicas == 0 { return .secondary }
-        if deployment.readyReplicas == deployment.replicas { return .green }
-        if deployment.readyReplicas == 0 { return .red }
-        return .orange
+        if deployment.readyReplicas == deployment.replicas { return DesignTokens.statusOk }
+        if deployment.readyReplicas == 0 { return DesignTokens.statusErr }
+        return DesignTokens.statusWarn
     }
 
     private var statusLabel: String {
@@ -191,7 +191,7 @@ private struct DeploymentSpecGrid: View {
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.subheadline.bold())
+            .typeStyle(DesignTokens.Typography.section)
             .foregroundStyle(.secondary)
             .padding(.bottom, 10)
     }
@@ -205,10 +205,10 @@ private struct SpecCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.caption)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.callout.monospaced())
+                .typeStyle(DesignTokens.Typography.dataSm)
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
@@ -223,15 +223,15 @@ private struct ReadySpecCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Ready")
-                .font(.caption)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
             HStack(spacing: 5) {
                 Circle()
-                    .fill(ready == desired && desired > 0 ? Color.green : Color.orange)
+                    .fill(ready == desired && desired > 0 ? DesignTokens.statusOk : DesignTokens.statusWarn)
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
                 Text("\(ready) / \(desired)")
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.dataSm)
             }
         }
         .accessibilityElement(children: .combine)
@@ -249,7 +249,7 @@ private struct DeploymentSelectorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Selector")
-                .font(.caption)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
                 .padding(.top, 10)
             LazyVGrid(
@@ -259,7 +259,7 @@ private struct DeploymentSelectorView: View {
             ) {
                 ForEach(pairs, id: \.key) { pair in
                     Text("\(pair.key)=\(pair.value)")
-                        .font(.caption.monospaced())
+                        .typeStyle(DesignTokens.Typography.micro.monospaced)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
                         .background(.secondary.opacity(0.12))
@@ -280,7 +280,7 @@ private struct DeploymentConditionsSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Conditions")
-                .font(.subheadline.bold())
+                .typeStyle(DesignTokens.Typography.section)
                 .foregroundStyle(.secondary)
             conditionsTable
         }
@@ -290,7 +290,7 @@ private struct DeploymentConditionsSection: View {
         Table(conditions) {
             TableColumn("Type") { c in
                 Text(c.type)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .lineLimit(1)
             }
             .width(min: 80, ideal: 130)
@@ -302,7 +302,7 @@ private struct DeploymentConditionsSection: View {
                         .frame(width: 7, height: 7)
                         .accessibilityHidden(true)
                     Text(c.status)
-                        .font(.callout)
+                        .typeStyle(DesignTokens.Typography.dataSm)
                         .foregroundStyle(Color.conditionStatus(c.status))
                 }
             }
@@ -310,7 +310,7 @@ private struct DeploymentConditionsSection: View {
 
             TableColumn("Reason") { c in
                 Text(c.reason ?? "—")
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -318,7 +318,7 @@ private struct DeploymentConditionsSection: View {
 
             TableColumn("Last Transition") { c in
                 Text(c.lastTransitionTime.k8sAge)
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

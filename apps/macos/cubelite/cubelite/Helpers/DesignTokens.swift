@@ -75,6 +75,9 @@ public enum DesignTokens {
     public static let iconXs: CGFloat = 8
     public static let iconSm: CGFloat = 10
     public static let iconMd: CGFloat = 11
+    public static let iconLg: CGFloat = 14
+    public static let iconXl: CGFloat = 28
+    public static let icon2xl: CGFloat = 40
 
     // MARK: - Typography (type scale v1.1)
     public enum Typography {

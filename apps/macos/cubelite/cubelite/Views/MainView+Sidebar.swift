@@ -21,14 +21,14 @@ extension MainView {
     private var noConfigSidebar: some View {
         VStack(spacing: 16) {
             Image(systemName: "doc.badge.questionmark")
-                .font(.system(size: 36))
+                .iconSize(DesignTokens.icon2xl)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text("No kubeconfig found")
-                .font(.headline)
+                .typeStyle(DesignTokens.Typography.subtitle)
                 .multilineTextAlignment(.center)
             Text("Place your config at\n~/.kube/config\nor set KUBECONFIG.")
-                .font(.caption)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -126,15 +126,15 @@ extension MainView {
                             HStack(spacing: 6) {
                                 ProgressView().controlSize(.small)
                                 Text("Loading\u{2026}")
-                                    .font(.subheadline)
+                                    .typeStyle(DesignTokens.Typography.caption)
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.leading, 8)
                             .padding(.vertical, 2)
                         } else if let error = namespaceError {
                             Label(error, systemImage: "exclamationmark.triangle")
-                                .font(.subheadline)
-                                .foregroundStyle(.orange)
+                                .typeStyle(DesignTokens.Typography.caption)
+                                .foregroundStyle(DesignTokens.statusWarn)
                                 .lineLimit(2)
                                 .padding(.leading, 8)
                             // Show existing fallback namespaces if any
@@ -152,7 +152,7 @@ extension MainView {
                             HStack(spacing: 4) {
                                 TextField("Add namespace…", text: $manualNamespaceInput)
                                     .textFieldStyle(.roundedBorder)
-                                    .font(.subheadline)
+                                    .typeStyle(DesignTokens.Typography.caption)
                                     .onSubmit {
                                         addManualNamespace(for: context)
                                     }
@@ -203,16 +203,16 @@ extension MainView {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "rectangle.stack")
-                    .font(.system(size: 14))
+                    .iconSize(DesignTokens.iconLg)
                     .frame(width: 20, height: 20)
                     .foregroundStyle(showAllClusters ? Color.accentColor : .secondary)
                     .accessibilityHidden(true)
                 Text("All Clusters")
-                    .font(.body)
+                    .typeStyle(DesignTokens.Typography.body)
                 Spacer(minLength: 0)
                 if !clusterState.contexts.isEmpty {
                     Text("\(clusterState.contexts.count)")
-                        .font(.caption)
+                        .typeStyle(DesignTokens.Typography.caption)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -238,16 +238,16 @@ extension MainView {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "server.rack")
-                    .font(.system(size: 14, weight: .semibold))
+                    .iconSize(DesignTokens.iconLg, weight: .semibold)
                     .foregroundStyle(context == selectedContext ? Color.accentColor : .secondary)
                     .accessibilityHidden(true)
                 Text(context)
-                    .font(.headline)
+                    .typeStyle(DesignTokens.Typography.subtitle)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if context == clusterState.currentContext {
                     Circle()
-                        .fill(clusterState.clusterReachable == true ? Color.green : Color.secondary)
+                        .fill(clusterState.clusterReachable == true ? DesignTokens.statusOk : Color.secondary)
                         .frame(width: 8, height: 8)
                         .accessibilityHidden(true)
                 }
@@ -279,25 +279,25 @@ extension MainView {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .iconSize(DesignTokens.iconLg)
                     .frame(width: 20, height: 20)
                     .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                     .accessibilityHidden(true)
                 Text(label)
-                    .font(.body)
+                    .typeStyle(DesignTokens.Typography.body)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 0)
                 if additionalAction != nil, context == selectedContext {
                     Image(systemName: namespacesExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
+                        .iconSize(DesignTokens.iconMd, weight: .semibold)
                         .foregroundStyle(.secondary)
                         .animation(.easeInOut(duration: 0.2), value: namespacesExpanded)
                         .accessibilityHidden(true)
                 }
                 if let count, count > 0 {
                     Text("\(count)")
-                        .font(.caption)
+                        .typeStyle(DesignTokens.Typography.caption)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)

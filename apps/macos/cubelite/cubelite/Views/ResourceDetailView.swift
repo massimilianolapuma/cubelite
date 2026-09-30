@@ -188,7 +188,7 @@ struct ResourceDetailView: View {
                         .frame(width: 60)
                         .accessibilityLabel("Remote port")
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 9))
+                        .iconSize(DesignTokens.iconSm)
                         .foregroundStyle(DesignTokens.textTertiary)
                         .accessibilityHidden(true)
                     TextField("local", text: $forwardLocalPort)
@@ -285,16 +285,16 @@ struct ResourceDetailView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: headerIcon)
-                .font(.system(size: 28))
+                .iconSize(DesignTokens.iconXl)
                 .foregroundStyle(.tint)
                 .frame(width: 36, height: 36)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(resourceName)
-                    .font(.title3.bold())
+                    .typeStyle(DesignTokens.Typography.title)
                     .lineLimit(2)
                 Text(resourceKind)
-                    .font(.caption)
+                    .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -427,7 +427,7 @@ struct ResourceDetailView: View {
             DetailRow(label: "Ready") {
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(dep.readyReplicas == dep.replicas && dep.replicas > 0 ? Color.green : Color.orange)
+                        .fill(dep.readyReplicas == dep.replicas && dep.replicas > 0 ? DesignTokens.statusOk : DesignTokens.statusWarn)
                         .frame(width: 8, height: 8)
                         .accessibilityHidden(true)
                     Text("\(dep.readyReplicas) / \(dep.replicas)")
@@ -482,11 +482,11 @@ private struct DetailRow<Value: View>: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 0) {
             Text(label)
-                .font(.callout)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 90, alignment: .leading)
             value
-                .font(.callout)
+                .typeStyle(DesignTokens.Typography.dataSm)
         }
         .accessibilityElement(children: .combine)
     }
