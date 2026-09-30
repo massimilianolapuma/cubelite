@@ -33,7 +33,7 @@ final class TypeStyleTests: XCTestCase {
         _ = Text("x").typeStyle(DesignTokens.Typography.stat, color: DesignTokens.textDataBright)
     }
 
-    func testMonospaced_keepsEverythingButTheFamily() {
+    func testMonospacedKeepsEverythingButTheFamily() {
         let micro = DesignTokens.Typography.micro
         let mono = micro.monospaced
         XCTAssertTrue(mono.mono)
@@ -43,19 +43,19 @@ final class TypeStyleTests: XCTestCase {
         XCTAssertEqual(mono.tracking, micro.tracking)
     }
 
-    func testWeighted_keepsEverythingButTheWeight() {
+    func testWeightedKeepsEverythingButTheWeight() {
         let bold = DesignTokens.Typography.micro.monospaced.weighted(.semibold)
         XCTAssertEqual(bold.weight, .semibold)
         XCTAssertTrue(bold.mono)
         XCTAssertEqual(bold.size, DesignTokens.Typography.micro.size)
     }
 
-    func testIconTokens_areAscending() {
+    func testIconTokensAreAscending() {
         let sizes = [DesignTokens.icon2xs, DesignTokens.iconXs, DesignTokens.iconSm, DesignTokens.iconMd]
         XCTAssertEqual(sizes, sizes.sorted())
     }
 
-    func testView_iconSize_compiles() {
+    func testViewIconSizeCompiles() {
         _ = Image(systemName: "chevron.down").iconSize(DesignTokens.iconXs)
         _ = Text("9").iconSize(DesignTokens.icon2xs, weight: .bold)
     }
