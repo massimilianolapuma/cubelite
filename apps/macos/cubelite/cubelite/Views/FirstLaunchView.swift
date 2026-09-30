@@ -99,9 +99,9 @@ private struct OnboardingHeaderSection: View {
                 .resizable()
                 .frame(width: 80, height: 80)
             Text("Welcome to CubeLite")
-                .font(.title2.bold())
+                .typeStyle(DesignTokens.Typography.title)
             Text("Your Kubernetes contexts, unified")
-                .font(.subheadline)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
         }
     }
@@ -134,11 +134,11 @@ private struct KubeconfigStatusCard: View {
             ProgressView().controlSize(.small)
         case .found:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(DesignTokens.statusOk)
                 .accessibilityHidden(true)
         case .notFound:
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(DesignTokens.statusWarn)
                 .accessibilityHidden(true)
         }
     }
@@ -151,17 +151,17 @@ private struct KubeconfigStatusCard: View {
         case .found(let count, let path):
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(count) context\(count == 1 ? "" : "s") discovered")
-                    .font(.callout.weight(.medium))
+                    .typeStyle(DesignTokens.Typography.body)
                 Text(path)
-                    .font(.caption)
+                    .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
             }
         case .notFound:
             VStack(alignment: .leading, spacing: 2) {
                 Text("No kubeconfig found")
-                    .font(.callout.weight(.medium))
+                    .typeStyle(DesignTokens.Typography.body)
                 Text("Place your kubeconfig at ~/.kube/config")
-                    .font(.caption)
+                    .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -198,7 +198,7 @@ private struct FeatureRow: View {
                 .frame(width: 20, alignment: .center)
                 .accessibilityHidden(true)
             Text(label)
-                .font(.callout)
+                .typeStyle(DesignTokens.Typography.body)
         }
     }
 }
@@ -212,7 +212,7 @@ private struct GetStartedButton: View {
     var body: some View {
         Button(action: action) {
             Text("Get Started")
-                .font(.headline)
+                .typeStyle(DesignTokens.Typography.subtitle)
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)

@@ -99,7 +99,7 @@ struct PodExecView: View {
     private var inputRow: some View {
         HStack(spacing: 8) {
             Text("$")
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .typeStyle(DesignTokens.Typography.dataSm.weighted(.semibold))
                 .foregroundStyle(DesignTokens.accentDefault)
                 .accessibilityHidden(true)
             TextField("command", text: $command)
