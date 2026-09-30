@@ -43,14 +43,14 @@ struct ConfigMapListView: View {
         Table(clusterState.configMaps, selection: $selectedConfigMapID) {
             TableColumn("Name") { configMap in
                 Text(configMap.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 220)
 
             TableColumn("Namespace") { configMap in
                 Text(configMap.namespace)
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -58,14 +58,14 @@ struct ConfigMapListView: View {
 
             TableColumn("Data Keys") { configMap in
                 Text("\(configMap.dataCount)")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 80)
 
             TableColumn("Age") { configMap in
                 Text(configMap.creationTimestamp.k8sAge)
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
