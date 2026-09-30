@@ -70,6 +70,12 @@ public enum DesignTokens {
     public static let controlHeight: CGFloat = 28
     public static let minHitTarget: CGFloat = 28
 
+    // MARK: - Icon sizes (pt)
+    public static let icon2xs: CGFloat = 7
+    public static let iconXs: CGFloat = 8
+    public static let iconSm: CGFloat = 10
+    public static let iconMd: CGFloat = 11
+
     // MARK: - Typography (type scale v1.1)
     public enum Typography {
         /// One design-system text style. `tracking` is a fraction of the font

@@ -183,7 +183,7 @@ struct CommandPaletteView: View {
                     }
                 case .allClusters:
                     Image(systemName: "house")
-                        .font(.system(size: 11))
+                        .iconSize(DesignTokens.iconMd)
                         .foregroundStyle(DesignTokens.textTertiary)
                         .frame(width: 14)
                         .accessibilityHidden(true)
@@ -193,7 +193,7 @@ struct CommandPaletteView: View {
                     Spacer(minLength: 0)
                 case .resource(let type):
                     Image(systemName: type.systemImage)
-                        .font(.system(size: 11))
+                        .iconSize(DesignTokens.iconMd)
                         .foregroundStyle(DesignTokens.textTertiary)
                         .frame(width: 14)
                         .accessibilityHidden(true)
@@ -203,7 +203,7 @@ struct CommandPaletteView: View {
                     Spacer(minLength: 0)
                 case .podLogs:
                     Image(systemName: "doc.plaintext")
-                        .font(.system(size: 11))
+                        .iconSize(DesignTokens.iconMd)
                         .foregroundStyle(DesignTokens.textTertiary)
                         .frame(width: 14)
                         .accessibilityHidden(true)

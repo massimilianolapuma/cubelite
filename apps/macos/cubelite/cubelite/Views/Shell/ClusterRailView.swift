@@ -76,7 +76,7 @@ struct ClusterRailView: View {
             onSelectContext(context)
         } label: {
             Text(ClusterIdentity.initials(for: context))
-                .font(.system(size: 12, weight: .semibold))
+                .typeStyle(DesignTokens.Typography.body.weighted(.semibold))
                 .frame(width: 38, height: 38)
                 .background(
                     isActive

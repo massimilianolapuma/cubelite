@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **macOS design tokens, batch 1** (#395): the log panel (`LogPanel/*`) and
+  shell (`Shell/*`) views drop their last 16 system fonts for
+  `DesignTokens.Typography` (`log`, and `micro` in mono for timestamps, source
+  and level chips, as on the desktop). A new `icon` token group (`2xs`/`xs`/
+  `sm`/`md`: 7/8/10/11px) sizes SF Symbol glyphs and badge digits through
+  `View.iconSize(_:)`, which also makes them follow Dynamic Type. The
+  design-lint allow-list shrinks from 238 matches in 33 files to 222 in 27.
 - **kube 4.2 / k8s-openapi 0.28** (#399): the workspace moves from kube 0.97 and
   k8s-openapi 0.23 to kube 4.2 and k8s-openapi 0.28, on Kubernetes API level
   `v1_32` (the oldest that 0.28 supports). k8s-openapi now uses `jiff` instead

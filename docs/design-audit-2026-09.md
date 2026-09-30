@@ -26,9 +26,13 @@ The script counts matching lines, so a line with both a font and a colour counts
 
 There are no `text-[Npx]` classes and no raw hex colours in any Svelte component. All 38 `text-[Npx]` classes counted in the spec have been migrated to `type-*` utilities. Hex values now exist only in the generated regions of `app.css` and in `design/tokens.json`.
 
-### Native: 238 in 33 files (158 fonts, 80 colours)
+### Native: 222 in 27 files (142 fonts, 80 colours)
 
-This is the baseline recorded in the allow-list. Migration is tracked in **#395**.
+The baseline was 238 in 33 files (158 fonts, 80 colours). Migration is tracked in **#395**; the table lists what is left, capped by the allow-list.
+
+| Batch | Files | Removed |
+|---|---|---|
+| 1: `LogPanel/*`, `Shell/*` | 6 | 16 fonts |
 
 | File (under `apps/macos/cubelite/cubelite/`) | Fonts | Colours | Cap |
 |---|---|---|---|
@@ -43,9 +47,6 @@ This is the baseline recorded in the allow-list. Migration is tracked in **#395*
 | `Views/HelmReleaseListView.swift` | 5 | 3 | 8 |
 | `Views/IngressListView.swift` | 6 | 1 | 7 |
 | `Views/JobListView.swift` | 1 | 0 | 1 |
-| `Views/LogPanel/LogBodyView.swift` | 4 | 0 | 4 |
-| `Views/LogPanel/LogTabStrip.swift` | 1 | 0 | 1 |
-| `Views/LogPanel/LogToolbar.swift` | 5 | 0 | 5 |
 | `Views/LogsView.swift` | 12 | 4 | 16 |
 | `Views/MainView+ContentColumn.swift` | 1 | 0 | 1 |
 | `Views/MainView+DetailArea.swift` | 1 | 0 | 1 |
@@ -61,14 +62,11 @@ This is the baseline recorded in the allow-list. Migration is tracked in **#395*
 | `Views/ResourceDetailView.swift` | 6 | 1 | 7 |
 | `Views/SecretListView.swift` | 5 | 3 | 8 |
 | `Views/ServiceListView.swift` | 6 | 3 | 9 |
-| `Views/Shell/ClusterRailView.swift` | 1 | 0 | 1 |
-| `Views/Shell/CommandPaletteView.swift` | 3 | 0 | 3 |
-| `Views/Shell/UnifiedHeaderView.swift` | 2 | 0 | 2 |
 | `Views/StatefulSetListView.swift` | 1 | 0 | 1 |
 
 Notes:
 
-- **`Shell/*` and `LogPanel/*`**: the remaining `.font(.system(size:…))` calls are mostly log-line and chip sizes, which map to `log`, `data-sm` and `micro`. The rest are small SF Symbol glyphs (7–8pt), which need an icon-size token.
+- **`Shell/*` and `LogPanel/*`** (done, batch 1): log lines use `log`; timestamps, source and level chips and counters use `micro` in mono (`.monospaced`, as the desktop's `type-micro font-mono`), with `.weight(.semibold)` where the desktop is semibold. SF Symbol glyphs and the bell badge digits use the new `icon` tokens (`2xs` 7, `xs` 8, `sm` 10, `md` 11) through `View.iconSize(_:)`, which scales with Dynamic Type like `scaledFont`.
 - **`OverviewView` and `CrossClusterDashboardView`**: the raw colours are mostly per-card accent tints (`.blue`, `.purple`, `.teal`, …). They should map to the cluster-identity or status tokens.
 - **List views** (`*ListView.swift`): `.callout` / `.callout.monospaced()` cells map to `body` and `data-sm`.
 
