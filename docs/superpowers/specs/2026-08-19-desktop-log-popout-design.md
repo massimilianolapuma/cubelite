@@ -7,7 +7,7 @@
 
 Detach a log session from the desktop bottom panel into its own OS window via `⧉` in the toolbar. Unlike macOS (shared in-process store), a Tauri `WebviewWindow` is a separate JS context: the pop-out window runs its **own** `LogSession` with its own streams, seeded by a one-shot state transfer from the main window. Re-attach reverses the transfer. No continuous data bridge — two handoff events plus coordination events.
 
-Stream continuity comes free from the existing reconnect mechanism: the pop-out (and the panel on re-attach) opens streams with `sinceTime` = the last transferred line's timestamp, exactly as `ContainerStream` already does on reconnect — no duplicate lines, no gap.
+Stream continuity comes free from the existing reconnect mechanism: the pop-out (and the panel on re-attach) opens streams with `sinceTime` = the last transferred line's timestamp, exactly as `ContainerStream` already does on reconnect — no duplicate lines, no gap. In merged (all-containers) mode each container resumes from its own last transferred line; a container with no transferred lines uses the newest overall (#351).
 
 ## Decisions
 
@@ -32,7 +32,7 @@ Stream continuity comes free from the existing reconnect mechanism: the pop-out 
 |-------|-----------|-------------------|
 | `log-window-ready:<key>` | pop-out → main | Shell mounted; main may now seed. |
 | `log-window-seed:<key>` | main → pop-out (`emitTo(label)`) | `SessionTransfer` (below). |
-| `log-window-reattach` | pop-out → main | Same `SessionTransfer`; main recreates the panel tab, window closes. |
+| `log-window-reattach` | pop-out → main | Same `SessionTransfer`; main recreates the panel tab, window closes. Main drops the transfer (toast) when its `activeCluster` is no longer active or a cluster switch is in flight (#351). |
 | `log-window-close-all` | main → all log windows | Close without re-attach (cluster switch, app quit). |
 
 ```ts
