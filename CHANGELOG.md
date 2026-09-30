@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop log pop-out follow-ups** (#351):
+  - ⌘F / Ctrl+F focuses log search in a popped-out log window;
+  - re-attaching or detaching an all-containers session resumes each
+    container from its own last line, so a slower container no longer loses
+    lines;
+  - a re-attach that races a cluster switch is dropped with a toast instead of
+    opening a tab against the new cluster.
 - **Light-theme accent contrast** (#396): the violet and teal alternate accents
   in the light theme now pass WCAG AA as text and as primary-button fills
   (violet `#7c5ce8` → `#7756e7`, teal `#0f9e8e` → `#0c7e72`; only lightness

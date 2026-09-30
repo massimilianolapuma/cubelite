@@ -31,6 +31,22 @@ export type SessionSeed = {
   following: boolean;
 };
 
+/** Newest seeded timestamp per container and overall. Lines are in arrival
+ * order, so the last one seen for a container is its newest. */
+function seedSinceTimes(lines: KeyedLogLine[]): {
+  latest?: string;
+  byContainer: Map<string, string>;
+} {
+  let latest: string | undefined;
+  const byContainer = new Map<string, string>();
+  for (const l of lines) {
+    if (!l.time) continue;
+    latest = l.time;
+    if (l.container) byContainer.set(l.container, l.time);
+  }
+  return { latest, byContainer };
+}
+
 export class LogSession {
   readonly key: string;
   readonly namespace: string;
@@ -52,8 +68,9 @@ export class LogSession {
   #flushTimer: ReturnType<typeof setInterval> | null = null;
   /** Bumped on every (re)start/close so a superseded #start() can't clobber a newer one's streams. */
   #generation = 0;
-  /** sinceTime for the first stream start; set once from the seed. */
-  #initialSinceTime: string | undefined;
+  /** sinceTime for the first stream start, set once from the seed: the newest
+   * seeded timestamp per container (merged mode) plus the newest overall. */
+  #initialSince: { latest?: string; byContainer: Map<string, string> } | undefined;
 
   /** Aggregate over sub-streams (single mode: exactly one). Order matters. */
   status = $derived.by((): SessionStatus => {
@@ -89,7 +106,7 @@ export class LogSession {
       this.following = seed.following;
       this.ring.append(seed.lines);
       this.seenCount = this.ring.totalAppended;
-      this.#initialSinceTime = [...seed.lines].reverse().find((l) => l.time)?.time ?? undefined;
+      this.#initialSince = seedSinceTimes(seed.lines);
     }
   }
 
@@ -129,8 +146,8 @@ export class LogSession {
     await this.#stopStreams();
     if (generation !== this.#generation) return;
     const targets = this.merged ? this.containers.map((c) => c.name) : [this.container];
-    const initialSince = this.#initialSinceTime;
-    this.#initialSinceTime = undefined;
+    const initialSince = this.#initialSince;
+    this.#initialSince = undefined;
     const streams = targets.map(
       (name) =>
         new ContainerStream(
@@ -140,7 +157,9 @@ export class LogSession {
           this.#receive,
           this.#streamParams,
           () => this.#flush(),
-          initialSince,
+          // Each container resumes from its own last line; one without seeded
+          // lines falls back to the newest overall (#351).
+          (name && initialSince?.byContainer.get(name)) || initialSince?.latest,
         ),
     );
     this.#streams = streams;
