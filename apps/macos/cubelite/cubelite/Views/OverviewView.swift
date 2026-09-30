@@ -31,21 +31,21 @@ struct OverviewView: View {
         ) {
             statCard(
                 "Nodes", value: "\(clusterState.nodes.count)", icon: "server.rack",
-                color: .teal)
+                color: DesignTokens.clusterTeal)
             statCard(
                 "Pods running",
                 value:
                     "\(clusterState.pods.filter { $0.phase == "Running" }.count)/\(clusterState.pods.count)",
-                icon: "cube.box", color: .blue)
+                icon: "cube.box", color: DesignTokens.clusterBlue)
             statCard(
                 "Deploys healthy",
                 value:
                     "\(clusterState.deployments.filter { $0.readyReplicas == $0.replicas }.count)/\(clusterState.deployments.count)",
-                icon: "arrow.triangle.2.circlepath", color: .purple)
+                icon: "arrow.triangle.2.circlepath", color: DesignTokens.clusterViolet)
             statCard(
                 "Warnings", value: "\(clusterState.warningEvents.count)",
                 icon: "exclamationmark.triangle",
-                color: clusterState.warningEvents.isEmpty ? .secondary : .orange)
+                color: clusterState.warningEvents.isEmpty ? Color.secondary : DesignTokens.statusWarn)
         }
     }
 
@@ -55,16 +55,16 @@ struct OverviewView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .iconSize(DesignTokens.iconMd, weight: .semibold)
                     .foregroundStyle(color)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.caption)
+                    .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Text(value)
-                .font(.title3.monospacedDigit().weight(.semibold))
+                .typeStyle(DesignTokens.Typography.stat)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -81,7 +81,7 @@ struct OverviewView: View {
     // MARK: - Capacity
 
     private var capacityCard: some View {
-        DashboardCard(title: "Capacity", icon: "gauge", color: .green) {
+        DashboardCard(title: "Capacity", icon: "gauge", color: DesignTokens.statusOk) {
             if let capacity = clusterState.capacity {
                 VStack(alignment: .leading, spacing: 12) {
                     MeterBarView(
@@ -97,7 +97,7 @@ struct OverviewView: View {
                 }
             } else {
                 Text("Metrics unavailable — metrics-server not detected")
-                    .font(.subheadline)
+                    .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
@@ -122,11 +122,11 @@ struct OverviewView: View {
     // MARK: - Recent Warnings
 
     private var warningsCard: some View {
-        DashboardCard(title: "Recent warnings", icon: "exclamationmark.triangle", color: .orange)
+        DashboardCard(title: "Recent warnings", icon: "exclamationmark.triangle", color: DesignTokens.statusWarn)
         {
             if clusterState.warningEvents.isEmpty {
                 Text("No recent warnings")
-                    .font(.subheadline)
+                    .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
@@ -136,7 +136,7 @@ struct OverviewView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(event.reason ?? "Warning")
                                 .scaledFont(size: 11, weight: .semibold)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(DesignTokens.statusWarn)
                                 .frame(width: 110, alignment: .leading)
                                 .lineLimit(1)
                             VStack(alignment: .leading, spacing: 1) {
@@ -183,7 +183,7 @@ struct OverviewView: View {
                 DashboardCard(
                     title: "Pods",
                     icon: "cube.box",
-                    color: .blue
+                    color: DesignTokens.clusterBlue
                 ) {
                     if clusterState.forbiddenResources.contains("pods") {
                         forbiddenBadge
@@ -197,19 +197,19 @@ struct OverviewView: View {
                                 label: "Running",
                                 value:
                                     "\(clusterState.pods.filter { $0.phase == "Running" }.count)",
-                                color: .green
+                                color: DesignTokens.statusOk
                             )
                             DashboardMetric(
                                 label: "Pending",
                                 value:
                                     "\(clusterState.pods.filter { $0.phase == "Pending" }.count)",
-                                color: .orange
+                                color: DesignTokens.statusWarn
                             )
                             DashboardMetric(
                                 label: "Failed",
                                 value:
                                     "\(clusterState.pods.filter { $0.phase == "Failed" }.count)",
-                                color: .red
+                                color: DesignTokens.statusErr
                             )
                         }
                     }
@@ -219,7 +219,7 @@ struct OverviewView: View {
                 DashboardCard(
                     title: "Deployments",
                     icon: "arrow.triangle.2.circlepath",
-                    color: .purple
+                    color: DesignTokens.clusterViolet
                 ) {
                     if clusterState.forbiddenResources.contains("deployments") {
                         forbiddenBadge
@@ -233,13 +233,13 @@ struct OverviewView: View {
                                 label: "Healthy",
                                 value:
                                     "\(clusterState.deployments.filter { $0.readyReplicas == $0.replicas }.count)",
-                                color: .green
+                                color: DesignTokens.statusOk
                             )
                             DashboardMetric(
                                 label: "Degraded",
                                 value:
                                     "\(clusterState.deployments.filter { $0.readyReplicas != $0.replicas }.count)",
-                                color: .orange
+                                color: DesignTokens.statusWarn
                             )
                         }
                     }
@@ -249,7 +249,7 @@ struct OverviewView: View {
                 DashboardCard(
                     title: "Services",
                     icon: "network",
-                    color: .indigo
+                    color: DesignTokens.clusterPink
                 ) {
                     if clusterState.forbiddenResources.contains("services") {
                         forbiddenBadge
@@ -269,13 +269,13 @@ struct OverviewView: View {
                                 label: "NodePort",
                                 value:
                                     "\(clusterState.services.filter { $0.type == "NodePort" }.count)",
-                                color: .orange
+                                color: DesignTokens.clusterAmber
                             )
                             DashboardMetric(
                                 label: "LoadBalancer",
                                 value:
                                     "\(clusterState.services.filter { $0.type == "LoadBalancer" }.count)",
-                                color: .blue
+                                color: DesignTokens.clusterBlue
                             )
                         }
                     }
@@ -285,7 +285,7 @@ struct OverviewView: View {
                 DashboardCard(
                     title: "Namespaces",
                     icon: "folder",
-                    color: .teal
+                    color: DesignTokens.clusterTeal
                 ) {
                     VStack(alignment: .leading, spacing: 8) {
                         DashboardMetric(
@@ -296,7 +296,7 @@ struct OverviewView: View {
                             label: "Active",
                             value:
                                 "\(clusterState.namespaces.filter { $0.phase == "Active" }.count)",
-                            color: .green
+                            color: DesignTokens.statusOk
                         )
                     }
                 }
@@ -305,7 +305,7 @@ struct OverviewView: View {
                 DashboardCard(
                     title: "Secrets",
                     icon: "lock.shield",
-                    color: .yellow
+                    color: DesignTokens.clusterAmber
                 ) {
                     if clusterState.forbiddenResources.contains("secrets") {
                         forbiddenBadge
@@ -325,13 +325,13 @@ struct OverviewView: View {
                                 label: "TLS",
                                 value:
                                     "\(clusterState.secrets.filter { $0.type == "kubernetes.io/tls" }.count)",
-                                color: .blue
+                                color: DesignTokens.clusterBlue
                             )
                             DashboardMetric(
                                 label: "Docker",
                                 value:
                                     "\(clusterState.secrets.filter { $0.type == "kubernetes.io/dockerconfigjson" }.count)",
-                                color: .orange
+                                color: DesignTokens.clusterAmber
                             )
                         }
                     }
@@ -373,7 +373,7 @@ struct OverviewView: View {
                                 label: "TLS",
                                 value:
                                     "\(clusterState.ingresses.filter { $0.tlsEnabled }.count)",
-                                color: .green
+                                color: DesignTokens.statusOk
                             )
                         }
                     }
@@ -383,7 +383,7 @@ struct OverviewView: View {
                 DashboardCard(
                     title: "Helm Releases",
                     icon: "shippingbox",
-                    color: .orange
+                    color: DesignTokens.clusterAmber
                 ) {
                     if clusterState.forbiddenResources.contains("helmreleases") {
                         forbiddenBadge
@@ -402,12 +402,12 @@ struct OverviewView: View {
                             DashboardMetric(
                                 label: "Deployed",
                                 value: "\(deployed)",
-                                color: .green
+                                color: DesignTokens.statusOk
                             )
                             DashboardMetric(
                                 label: "Failed",
                                 value: "\(failed)",
-                                color: .red
+                                color: DesignTokens.statusErr
                             )
                         }
                     }
@@ -417,14 +417,14 @@ struct OverviewView: View {
                 DashboardCard(
                     title: "Cluster",
                     icon: "server.rack",
-                    color: clusterState.clusterReachable == true ? .green : .red
+                    color: clusterState.clusterReachable == true ? DesignTokens.statusOk : DesignTokens.statusErr
                 ) {
                     VStack(alignment: .leading, spacing: 8) {
                         DashboardMetric(
                             label: "Status",
                             value: clusterState.clusterReachable == true
                                 ? "Connected" : "Unreachable",
-                            color: clusterState.clusterReachable == true ? .green : .red
+                            color: clusterState.clusterReachable == true ? DesignTokens.statusOk : DesignTokens.statusErr
                         )
                         DashboardMetric(
                             label: "Restarts",
@@ -434,7 +434,7 @@ struct OverviewView: View {
                             DashboardMetric(
                                 label: "Not Ready",
                                 value: "\(clusterState.pods.filter { !$0.ready }.count)",
-                                color: .orange
+                                color: DesignTokens.statusWarn
                             )
                         }
                     }
@@ -446,14 +446,14 @@ struct OverviewView: View {
     private var forbiddenBadge: some View {
         VStack(spacing: 6) {
             Image(systemName: "lock.slash")
-                .font(.title2)
+                .iconSize(DesignTokens.iconLg)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text("No access")
-                .font(.subheadline)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
             Text("RBAC restricted")
-                .font(.caption2)
+                .typeStyle(DesignTokens.Typography.micro)
                 .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity)
@@ -475,11 +475,11 @@ struct DashboardCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .iconSize(DesignTokens.iconLg, weight: .semibold)
                     .foregroundStyle(color)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.headline)
+                    .typeStyle(DesignTokens.Typography.subtitle)
             }
             Divider()
             content()
@@ -509,12 +509,11 @@ struct DashboardMetric: View {
     var body: some View {
         HStack {
             Text(label)
-                .font(.subheadline)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
-                .font(.subheadline.monospacedDigit())
-                .fontWeight(.medium)
+                .typeStyle(DesignTokens.Typography.dataSm.weighted(.medium))
                 .foregroundStyle(color)
         }
     }

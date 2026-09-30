@@ -1,6 +1,4 @@
 # design-lint allow-list: native residue, "<path> <max matches>".
-# Tracked by #395 — lower or remove an entry whenever a file is migrated to
-# DesignTokens.Typography; the goal is an empty file. Desktop has no entries:
-# it is held at zero.
-apps/macos/cubelite/cubelite/Views/CrossClusterDashboardView.swift 30
-apps/macos/cubelite/cubelite/Views/OverviewView.swift 41
+# Empty since #395: every native view uses DesignTokens, so any new system
+# font or raw system colour fails the lint. Add a line here only with a reason
+# recorded in docs/design-audit-2026-09.md. Desktop is held at zero too.
