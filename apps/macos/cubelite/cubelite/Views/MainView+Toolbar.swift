@@ -40,7 +40,7 @@ extension MainView {
             ToolbarItem(placement: .status) {
                 Label("Cluster not reachable", systemImage: "network.slash")
                     .foregroundStyle(.secondary)
-                    .font(.caption)
+                    .typeStyle(DesignTokens.Typography.caption)
             }
         }
         ToolbarItem(placement: .primaryAction) {
@@ -57,10 +57,10 @@ extension MainView {
                 Image(systemName: "bell")
                 if logStore.unreadErrorCount > 0 {
                     Text(logStore.unreadErrorCount < 100 ? "\(logStore.unreadErrorCount)" : "99+")
-                        .font(.system(size: 7, weight: .bold))
+                        .iconSize(DesignTokens.icon2xs, weight: .bold)
                         .foregroundStyle(.white)
                         .padding(2)
-                        .background(Color.red, in: Circle())
+                        .background(DesignTokens.statusErr, in: Circle())
                         .offset(x: 5, y: -5)
                         .accessibilityHidden(true)
                 }

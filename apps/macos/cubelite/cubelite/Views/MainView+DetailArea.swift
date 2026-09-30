@@ -66,7 +66,7 @@ extension MainView {
                         Image(systemName: "server.rack")
                             .foregroundStyle(.secondary)
                     }
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.body)
                     Spacer()
                 }
                 .padding(.horizontal, 14)

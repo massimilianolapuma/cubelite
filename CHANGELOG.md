@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **macOS design tokens, batch 4** (#395): onboarding, Preferences, the error
+  banner, the menu-bar extra, the toolbar, aggregated logs and exec drop their
+  last system fonts and colors (`title`, `subtitle`, `body`, `caption`,
+  `micro`, `dataSm`; `statusOk`/`statusWarn`/`statusErr`). Only Overview and
+  the cross-cluster dashboard remain: 71 matches in 2 files, down from 104 in 11.
 - **macOS design tokens, batch 3** (#395): the deployment and resource detail
   views, Logs and the sidebar use the drawer mapping from the desktop (`title`,
   `section`, `caption`, `dataSm`, mono `micro` for log timestamps) and status
