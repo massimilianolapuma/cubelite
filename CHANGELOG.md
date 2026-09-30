@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Core dependencies** (#366): `cubelite-core` and the desktop app now take
+  `kube`, `k8s-openapi` and `dirs` from `[workspace.dependencies]`. The whole
+  workspace targets one Kubernetes API level (`k8s-openapi` `v1_31`, was
+  `v1_30` in core), and `dirs` 5 is gone from the lockfile. `error.rs` and
+  `resources.rs` gain unit tests. The kube 4.x upgrade is tracked in #399.
+
 - **Desktop design parity, part 1** (#363):
   - pod and deployment drawers stay pinned to the right edge while the view
     scrolls;
