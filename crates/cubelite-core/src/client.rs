@@ -14,12 +14,13 @@ use kube::{
     config::{KubeConfigOptions, Kubeconfig},
     Api, Client, Config,
 };
-use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::{
     error::KubeconfigError,
     helm::{latest_releases, parse_release_secret, HelmReleaseInfo},
+    kubeconfig::split_kubeconfig_spec,
     metrics::{
         parse_cpu_millis, parse_memory_bytes, pod_metrics_from_item, NodeCapacityInfo,
         PodMetricsInfo,
@@ -54,17 +55,20 @@ impl KubeClient {
         self.inner.clone()
     }
 
-    /// Build a [`KubeClient`] from the kubeconfig at `path`.
+    /// Build a [`KubeClient`] from `kubeconfig`: a single file path or a
+    /// `KUBECONFIG`-style list (`:` on Unix, `;` on Windows).
     ///
-    /// `context` selects a named context; when `None` the file's
+    /// Several files are merged like kubectl does: the first file to define a
+    /// context, cluster or user wins, and missing files are skipped.
+    /// `context` selects a named context; when `None` the merged
     /// `current-context` is used.
     ///
     /// # Errors
     ///
-    /// Returns [`KubeconfigError`] when the file cannot be read, parsed, or
+    /// Returns [`KubeconfigError`] when no file can be read or parsed, or
     /// when the client cannot be initialised from the resulting config.
-    pub async fn new(path: &Path, context: Option<&str>) -> Result<Self, KubeconfigError> {
-        Self::build(path, context, None).await
+    pub async fn new(kubeconfig: &str, context: Option<&str>) -> Result<Self, KubeconfigError> {
+        Self::build(kubeconfig, context, None).await
     }
 
     /// Like [`KubeClient::new`] but with short connect/read timeouts —
@@ -74,21 +78,24 @@ impl KubeClient {
     ///
     /// Returns [`KubeconfigError`] when the kubeconfig cannot be loaded or
     /// the client cannot be initialised.
-    pub async fn new_probe(path: &Path, context: Option<&str>) -> Result<Self, KubeconfigError> {
-        Self::build(path, context, Some((3, 5))).await
+    pub async fn new_probe(
+        kubeconfig: &str,
+        context: Option<&str>,
+    ) -> Result<Self, KubeconfigError> {
+        Self::build(kubeconfig, context, Some((3, 5))).await
     }
 
     async fn build(
-        path: &Path,
+        kubeconfig: &str,
         context: Option<&str>,
         timeouts_secs: Option<(u64, u64)>,
     ) -> Result<Self, KubeconfigError> {
-        let raw = tokio::fs::read_to_string(path)
+        let paths = split_kubeconfig_spec(kubeconfig);
+        let kubeconfig = tokio::task::spawn_blocking(move || merged_kubeconfig(&paths))
             .await
-            .map_err(|source| KubeconfigError::Io { source })?;
-
-        let kubeconfig: Kubeconfig =
-            serde_yaml::from_str(&raw).map_err(|source| KubeconfigError::ParseError { source })?;
+            .map_err(|e| KubeconfigError::ClientError {
+                reason: e.to_string(),
+            })??;
 
         let options = KubeConfigOptions {
             context: context.map(str::to_string),
@@ -751,9 +758,118 @@ fn event_to_info(e: Event) -> EventInfo {
     }
 }
 
+/// Read and merge kubeconfig files with kube-rs, first file wins (kubectl
+/// semantics). Missing files are skipped; relative certificate/key paths are
+/// resolved against each file's directory by [`Kubeconfig::read_from`].
+fn merged_kubeconfig(paths: &[PathBuf]) -> Result<Kubeconfig, KubeconfigError> {
+    let mut merged: Option<Kubeconfig> = None;
+    for path in paths.iter().filter(|p| p.exists()) {
+        let next = Kubeconfig::read_from(path).map_err(|e| KubeconfigError::MergeError {
+            reason: format!("{}: {e}", path.display()),
+        })?;
+        merged = Some(match merged {
+            Some(acc) => acc.merge(next).map_err(|e| KubeconfigError::MergeError {
+                reason: e.to_string(),
+            })?,
+            None => next,
+        });
+    }
+    merged.ok_or_else(|| KubeconfigError::FileNotFound {
+        path: if paths.is_empty() {
+            "(no kubeconfig paths provided)".to_string()
+        } else {
+            paths
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_kubeconfig(dir: &std::path::Path, name: &str, yaml: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, yaml).expect("write kubeconfig");
+        path
+    }
+
+    const FILE_A: &str = r#"
+apiVersion: v1
+kind: Config
+current-context: dev
+contexts:
+  - name: dev
+    context: { cluster: dev-cluster, user: shared-user }
+clusters:
+  - name: dev-cluster
+    cluster: { server: "https://a.example:6443" }
+users:
+  - name: shared-user
+    user: { token: from-a }
+"#;
+
+    const FILE_B: &str = r#"
+apiVersion: v1
+kind: Config
+current-context: staging
+contexts:
+  - name: staging
+    context: { cluster: staging-cluster, user: shared-user }
+  - name: dev
+    context: { cluster: staging-cluster, user: shared-user }
+clusters:
+  - name: staging-cluster
+    cluster: { server: "https://b.example:6443" }
+users:
+  - name: shared-user
+    user: { token: from-b }
+"#;
+
+    #[tokio::test]
+    async fn merged_kubeconfig_resolves_contexts_from_every_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let a = write_kubeconfig(dir.path(), "a.yaml", FILE_A);
+        let b = write_kubeconfig(dir.path(), "b.yaml", FILE_B);
+        let missing = dir.path().join("missing.yaml");
+        let merged = merged_kubeconfig(&[a, missing, b]).expect("merge");
+
+        // A context defined only in the second file resolves to that file's
+        // cluster, and to the first file's user on a name clash (kubectl).
+        let opts = KubeConfigOptions {
+            context: Some("staging".into()),
+            ..Default::default()
+        };
+        let cfg = Config::from_custom_kubeconfig(merged.clone(), &opts)
+            .await
+            .expect("staging config");
+        assert_eq!(cfg.cluster_url.to_string(), "https://b.example:6443/");
+
+        // A clashing context name keeps the first file's definition.
+        let opts = KubeConfigOptions {
+            context: Some("dev".into()),
+            ..Default::default()
+        };
+        let cfg = Config::from_custom_kubeconfig(merged.clone(), &opts)
+            .await
+            .expect("dev config");
+        assert_eq!(cfg.cluster_url.to_string(), "https://a.example:6443/");
+
+        // current-context comes from the first file that sets it.
+        assert_eq!(merged.current_context.as_deref(), Some("dev"));
+    }
+
+    #[test]
+    fn merged_kubeconfig_errors_when_no_file_exists() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = merged_kubeconfig(&[dir.path().join("nope.yaml")]).expect_err("no files");
+        assert!(matches!(err, KubeconfigError::FileNotFound { .. }));
+        let err = merged_kubeconfig(&[]).expect_err("empty list");
+        assert!(matches!(err, KubeconfigError::FileNotFound { .. }));
+    }
     use k8s_openapi::api::core::v1::{EventSource, ObjectReference};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Time};
 

@@ -4,7 +4,9 @@
 //! inherit a minimal PATH, so kubeconfig `exec` credential plugins
 //! (`kubelogin`, `aws`, `gke-gcloud-auth-plugin`, krew plugins, …) spawned
 //! by kube-rs are not found. At startup we ask the user's login shell for
-//! its PATH and merge it into the process environment.
+//! its PATH and merge it into the process environment. The same probe
+//! imports `KUBECONFIG` when the shell exports it and the process lacks it,
+//! so a multi-file kubeconfig list set in `~/.zshrc` works from the Dock.
 
 use std::process::Command;
 
@@ -36,23 +38,36 @@ fn fallback_entries() -> String {
     .join(":")
 }
 
-/// Ask the user's login shell for its PATH (GUI processes get a minimal one).
-fn login_shell_path() -> Option<String> {
+/// Ask the user's login shell for the value of `var` (GUI processes get a
+/// minimal environment). `None` when unset, empty or the probe fails.
+fn login_shell_var(var: &str) -> Option<String> {
     let shell = std::env::var("SHELL").ok()?;
     let output = Command::new(shell)
-        .args(["-lc", "printf %s \"$PATH\""])
+        .args(["-lc", &format!("printf %s \"${var}\"")])
         .output()
         .ok()?;
     if !output.status.success() {
         return None;
     }
-    let path = String::from_utf8(output.stdout).ok()?;
-    let trimmed = path.trim();
+    let value = String::from_utf8(output.stdout).ok()?;
+    let trimmed = value.trim();
     if trimmed.is_empty() {
         None
     } else {
         Some(trimmed.to_string())
     }
+}
+
+/// The `KUBECONFIG` value to import: the shell's value, only when the
+/// process has none of its own (an explicit process value always wins).
+fn pick_kubeconfig(current: Option<&str>, shell: Option<&str>) -> Option<String> {
+    if current.is_some_and(|c| !c.trim().is_empty()) {
+        return None;
+    }
+    shell
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 /// Repair PATH so kubeconfig exec credential plugins resolve.
@@ -62,10 +77,30 @@ pub fn fix_path() {
     #[cfg(unix)]
     {
         let current = std::env::var("PATH").unwrap_or_default();
-        let shell_path = login_shell_path().unwrap_or_default();
+        let shell_path = login_shell_var("PATH").unwrap_or_default();
         let merged = merge_paths(&merge_paths(&current, &shell_path), &fallback_entries());
         // Setting PATH for our own process before any threads spawn plugins.
         std::env::set_var("PATH", merged);
+    }
+}
+
+/// Import `KUBECONFIG` from the login shell when the process has none, so
+/// the app sees the same kubeconfig file list as `kubectl` in a terminal.
+///
+/// No-op on Windows (GUI processes inherit the full user environment there).
+pub fn import_kubeconfig() {
+    #[cfg(unix)]
+    {
+        let current = std::env::var("KUBECONFIG").ok();
+        if current.as_deref().is_some_and(|c| !c.trim().is_empty()) {
+            return;
+        }
+        if let Some(value) =
+            pick_kubeconfig(current.as_deref(), login_shell_var("KUBECONFIG").as_deref())
+        {
+            // Set before any thread reads the environment.
+            std::env::set_var("KUBECONFIG", value);
+        }
     }
 }
 
@@ -83,6 +118,15 @@ mod tests {
     fn merge_skips_empty_entries() {
         let merged = merge_paths("", "/usr/local/bin::/bin");
         assert_eq!(merged, "/usr/local/bin:/bin");
+    }
+
+    #[test]
+    fn kubeconfig_from_shell_only_when_process_has_none() {
+        assert_eq!(pick_kubeconfig(None, Some("/a:/b")), Some("/a:/b".into()));
+        assert_eq!(pick_kubeconfig(Some(""), Some(" /a ")), Some("/a".into()));
+        assert_eq!(pick_kubeconfig(Some("/mine"), Some("/a:/b")), None);
+        assert_eq!(pick_kubeconfig(None, None), None);
+        assert_eq!(pick_kubeconfig(None, Some("   ")), None);
     }
 
     #[test]

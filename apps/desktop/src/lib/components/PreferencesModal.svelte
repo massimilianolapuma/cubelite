@@ -55,6 +55,20 @@
 		{ value: 60, label: '1m' },
 		{ value: 0, label: 'off' }
 	];
+
+	// One row per kubeconfig file; before sources load, show the spec path.
+	const kubeconfigRows = $derived(
+		app.kubeconfigSources.length > 0
+			? app.kubeconfigSources
+			: [
+					{
+						path: app.kubeconfigPath || '—',
+						exists: true,
+						contexts: clusters.contexts.length,
+						shadowed: [] as string[]
+					}
+				]
+	);
 </script>
 
 <Modal title="Preferences" onClose={close}>
@@ -170,12 +184,41 @@
 
 		<section>
 			<div class="type-body mb-1.5 text-text-primary">Kubeconfig</div>
-			<div class="rounded-md border border-border-faint bg-surface-window px-2.5 py-2">
-				<div class="truncate type-data-sm text-text-secondary">{app.kubeconfigPath || '—'}</div>
-				<div class="type-caption mt-0.5 text-text-tertiary">
-					{clusters.contexts.length} context{clusters.contexts.length === 1 ? '' : 's'}
-				</div>
-			</div>
+			<ul
+				class="overflow-hidden rounded-md border border-border-faint bg-surface-window"
+				aria-label="Kubeconfig files"
+			>
+				{#each kubeconfigRows as row (row.path)}
+					<li class="border-b border-border-faint px-2.5 py-2 last:border-b-0">
+						<div
+							class="truncate type-data-sm {row.exists ? 'text-text-secondary' : 'text-text-disabled'}"
+							title={row.path}
+						>
+							{row.path}
+						</div>
+						<div class="type-caption mt-0.5 text-text-tertiary">
+							{#if !row.exists}
+								not found — skipped
+							{:else}
+								{row.contexts} context{row.contexts === 1 ? '' : 's'}
+								{#if row.shadowed.length > 0}
+									<span
+										class="text-status-warn"
+										title="Also defined in an earlier file, which wins: {row.shadowed.join(', ')}"
+									>
+										· {row.shadowed.length} merged
+									</span>
+								{/if}
+							{/if}
+						</div>
+					</li>
+				{/each}
+			</ul>
+			{#if kubeconfigRows.length > 1}
+				<p class="type-caption mt-1 text-text-tertiary">
+					Files come from KUBECONFIG; on a name clash the first file wins.
+				</p>
+			{/if}
 		</section>
 
 		<section class="flex items-center justify-between gap-4">
