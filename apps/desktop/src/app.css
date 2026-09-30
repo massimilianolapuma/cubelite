@@ -100,8 +100,8 @@
     --cl-shadow-drawer: -16px 0 40px rgba(20,20,30,.12);
     --cl-shadow-toast: 0 10px 34px rgba(20,20,30,.14);
     --cl-color-accent: #3b68e2;
-    --cl-color-accent-alt-violet: #7c5ce8;
-    --cl-color-accent-alt-teal: #0f9e8e;
+    --cl-color-accent-alt-violet: #7756e7;
+    --cl-color-accent-alt-teal: #0c7e72;
 
     --alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);
     --alpha-active-nav-bg: color-mix(in srgb, var(--color-accent) 14%, transparent);
