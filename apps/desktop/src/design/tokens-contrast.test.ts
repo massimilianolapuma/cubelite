@@ -38,12 +38,10 @@ const MATRIX: { text: [string, string]; surfaces: [string, string][]; min: numbe
   // `text-surface-window` label (primary buttons). Contrast is symmetric, so
   // the `window` pairing also covers the label-on-fill case. The alternates are
   // user-selectable in Preferences → Accent (#363, #396).
-  { text: ["accent", "default"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","overlay"]] },
-  { text: ["accent", "alt-violet"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","overlay"]] },
-  { text: ["accent", "alt-teal"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","overlay"]] },
+  ...(["default", "alt-violet", "alt-teal"] as const).map((name) => ({
+    text: ["accent", name] as [string, string], min: 4.5,
+    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","overlay"]] as [string, string][],
+  })),
   { text: ["cluster-identity", "blue"], min: 4.5, surfaces: [["surface","sunken"]] },
   { text: ["cluster-identity", "teal"], min: 4.5, surfaces: [["surface","sunken"]] },
   { text: ["cluster-identity", "amber"], min: 4.5, surfaces: [["surface","sunken"]] },
