@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **kube 4.2 / k8s-openapi 0.28** (#399): the workspace moves from kube 0.97 and
+  k8s-openapi 0.23 to kube 4.2 and k8s-openapi 0.28, on Kubernetes API level
+  `v1_32` (the oldest that 0.28 supports). k8s-openapi now uses `jiff` instead
+  of `chrono`, so timestamps sent to the UI read `…Z` instead of `…+00:00`
+  (same instant; the UI parses both). TLS verification now goes through
+  `rustls-platform-verifier`, which uses the OS trust store. `client.rs` gains
+  tests against a mock API server: list scoping, delete, scale and restart
+  patches, version and node count, events, and error mapping.
 - **Core dependencies** (#366): `cubelite-core` and the desktop app now take
   `kube`, `k8s-openapi` and `dirs` from `[workspace.dependencies]`. The whole
   workspace targets one Kubernetes API level (`k8s-openapi` `v1_31`, was

@@ -21,3 +21,4 @@ flate2 = "1"
 [dev-dependencies]
 tempfile = "3"
 serial_test = "4"
+tower-test = "0.4"
