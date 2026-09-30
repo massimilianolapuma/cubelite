@@ -426,6 +426,23 @@ actor KubeAPIService {
         return info.gitVersion
     }
 
+    /// Lists events of every type, most recent first. Scoped to `namespace`
+    /// when given, cluster-wide otherwise.
+    func listEvents(namespace: String? = nil, inContext contextName: String? = nil)
+        async throws -> [EventInfo]
+    {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/api/v1/namespaces/\(encoded)/events"
+        } else {
+            path = "/api/v1/events"
+        }
+        let response: K8sListResponse<K8sEvent> = try await fetch(
+            path: path, contextName: contextName)
+        return response.items.map { $0.toEventInfo() }.sortedMostRecentFirst()
+    }
+
     /// Lists Warning events, most recent first. Scoped to `namespace` when
     /// given, cluster-wide otherwise.
     func listWarningEvents(namespace: String? = nil, inContext contextName: String? = nil)

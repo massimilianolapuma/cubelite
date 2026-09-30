@@ -22,6 +22,8 @@ final class ClusterState {
     var capacity: ClusterCapacity?
     /// Recent Warning events for the browsed scope, most recent first.
     var warningEvents: [EventInfo] = []
+    /// All events (Normal and Warning) for the browsed scope, most recent first.
+    var events: [EventInfo] = []
 
     /// Available namespaces for the currently browsed context.
     var namespaces: [NamespaceInfo] = []
@@ -111,6 +113,8 @@ enum ResourceType: String, CaseIterable, Identifiable {
     case pvcs = "PVCs"
     /// Cluster nodes (read-only).
     case nodes = "Nodes"
+    /// Cluster events (Normal and Warning).
+    case events = "Events"
     /// Aggregated multi-pod log stream.
     case logs = "Logs"
 
@@ -131,6 +135,7 @@ enum ResourceType: String, CaseIterable, Identifiable {
         case .cronJobs: "clock.arrow.circlepath"
         case .pvcs: "externaldrive"
         case .nodes: "server.rack"
+        case .events: "exclamationmark.bubble"
         case .logs: "text.alignleft"
         }
     }

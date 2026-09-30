@@ -117,6 +117,19 @@ extension MainView {
             (try? await kubeAPIService.listWarningEvents(
                 namespace: namespace, inContext: context)) ?? []
 
+        // Events (all types, for the Events view). A 403 marks "events" as
+        // forbidden so the view can say so instead of showing an empty list.
+        if let events = await fetchResource("events", {
+            try await kubeAPIService.listEvents(namespace: namespace, inContext: context)
+        }) {
+            clusterState.events = events
+        } else if fatalError != nil {
+            finishResourceLoad(fatalError: fatalError, forbidden: forbidden, namespace: namespace)
+            return
+        } else {
+            clusterState.events = []
+        }
+
         // Deployments
         if let deployments = await fetchResource("deployments", {
             try await kubeAPIService.listDeployments(namespace: namespace, inContext: context)
