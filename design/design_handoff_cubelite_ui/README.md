@@ -128,11 +128,12 @@ Most styles move up by 0.5–1px, so nothing falls below the Apple HIG 10pt mini
 - **All Clusters dashboard**: the stat cards (clusters online, pods, warnings, watched) aggregate every context. Each cluster card shows its own pods, warnings and CPU/MEM bars.
 - **Popovers and menus**: use overlay elevation (`bg/overlay`, `border/strong`, overlay shadow). Row hover is `bg/raised`.
 - **Icons**: every unicode placeholder is replaced with Lucide on desktop and SF Symbols on macOS. Toggle rows (Timestamps, Wrap lines) are `menuitemcheckbox` with a check icon.
+- **Icon sizes** (#395): inline glyphs use the `icon` tokens: `2xs` 7px (badge digits), `xs` 8px (chevrons), `sm` 10px (search), `md` 11px (palette rows).
 - **Esc**: closes only the topmost overlay, so a confirm dialog closes before the drawer under it.
+- **Kubeconfig** (#392): Preferences lists every file in `KUBECONFIG` with its context count; on a name clash the first file wins.
 
 ### Still open
 - **Light theme**: selectable in Preferences but not design-reviewed yet.
-- **Kubeconfig paths**: Preferences still takes a single path; a list of paths is tracked in #392.
 - **Native residue**: some native views still use system fonts and colors. `scripts/design-lint.sh` (see `docs/design-audit-2026-09.md`) caps them per file, and #395 tracks the migration.
 
 ## Screens / Views

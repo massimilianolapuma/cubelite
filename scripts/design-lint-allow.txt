@@ -13,9 +13,6 @@ apps/macos/cubelite/cubelite/Views/FirstLaunchView.swift 10
 apps/macos/cubelite/cubelite/Views/HelmReleaseListView.swift 8
 apps/macos/cubelite/cubelite/Views/IngressListView.swift 7
 apps/macos/cubelite/cubelite/Views/JobListView.swift 1
-apps/macos/cubelite/cubelite/Views/LogPanel/LogBodyView.swift 4
-apps/macos/cubelite/cubelite/Views/LogPanel/LogTabStrip.swift 1
-apps/macos/cubelite/cubelite/Views/LogPanel/LogToolbar.swift 5
 apps/macos/cubelite/cubelite/Views/LogsView.swift 16
 apps/macos/cubelite/cubelite/Views/MainView+ContentColumn.swift 1
 apps/macos/cubelite/cubelite/Views/MainView+DetailArea.swift 1
@@ -31,7 +28,4 @@ apps/macos/cubelite/cubelite/Views/PvcListView.swift 2
 apps/macos/cubelite/cubelite/Views/ResourceDetailView.swift 7
 apps/macos/cubelite/cubelite/Views/SecretListView.swift 8
 apps/macos/cubelite/cubelite/Views/ServiceListView.swift 9
-apps/macos/cubelite/cubelite/Views/Shell/ClusterRailView.swift 1
-apps/macos/cubelite/cubelite/Views/Shell/CommandPaletteView.swift 3
-apps/macos/cubelite/cubelite/Views/Shell/UnifiedHeaderView.swift 2
 apps/macos/cubelite/cubelite/Views/StatefulSetListView.swift 1

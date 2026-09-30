@@ -55,3 +55,31 @@ extension View {
         modifier(TypeStyleModifier(style: style)).modifier(OptionalForeground(color: color))
     }
 }
+
+// MARK: - Style variants
+
+extension DesignTokens.Typography.Style {
+    /// The same style in Geist Mono — desktop `type-* font-mono`.
+    var monospaced: Self {
+        Self(size: self.size, weight: self.weight, mono: true,
+             uppercase: self.uppercase, tracking: self.tracking)
+    }
+
+    /// The same style at another weight — desktop `type-* font-semibold`.
+    func weighted(_ newWeight: Font.Weight) -> Self {
+        Self(size: self.size, weight: newWeight, mono: self.mono,
+             uppercase: self.uppercase, tracking: self.tracking)
+    }
+}
+
+// MARK: - Icon sizes
+
+extension View {
+    /// SF Symbol glyph (or badge digits) at a design-system icon size
+    /// (`DesignTokens.icon*`), Dynamic Type scaled like `scaledFont`.
+    ///
+    ///     Image(systemName: "chevron.down").iconSize(DesignTokens.iconXs)
+    func iconSize(_ size: CGFloat, weight: Font.Weight = .regular) -> some View {
+        scaledFont(size: size, weight: weight, relativeTo: ScaledFontModifier.anchor(for: size))
+    }
+}

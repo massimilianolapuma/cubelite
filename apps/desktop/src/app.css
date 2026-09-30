@@ -117,6 +117,11 @@
     --control-height: 28px;
     --min-hit-target: 28px;
 
+    --icon-2xs: 7px;
+    --icon-xs: 8px;
+    --icon-sm: 10px;
+    --icon-md: 11px;
+
     --motion-fadein: 100ms ease;
     --motion-popin: 140ms ease;
     --motion-drawer: 160ms ease;

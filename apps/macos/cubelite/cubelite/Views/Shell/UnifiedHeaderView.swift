@@ -64,7 +64,7 @@ struct UnifiedHeaderView: View {
                         .foregroundStyle(DesignTokens.textSecondary)
                     if unreadErrorCount > 0 {
                         Text(unreadErrorCount < 100 ? "\(unreadErrorCount)" : "99+")
-                            .font(.system(size: 7, weight: .bold))
+                            .iconSize(DesignTokens.icon2xs, weight: .bold)
                             .foregroundStyle(.white)
                             .padding(2)
                             .background(DesignTokens.statusErr, in: Circle())
@@ -124,7 +124,7 @@ struct UnifiedHeaderView: View {
                     .scaledFont(size: 11.5, design: .monospaced)
                     .foregroundStyle(DesignTokens.textPrimary)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8))
+                    .iconSize(DesignTokens.iconXs)
                     .foregroundStyle(DesignTokens.textTertiary)
                     .accessibilityHidden(true)
             }
