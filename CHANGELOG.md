@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **macOS design tokens, batch 3** (#395): the deployment and resource detail
+  views, Logs and the sidebar use the drawer mapping from the desktop (`title`,
+  `section`, `caption`, `dataSm`, mono `micro` for log timestamps) and status
+  tokens for replica, reachability and severity colors. The `icon` tokens gain
+  `lg`/`xl`/`2xl` (14/28/40px). The allow-list shrinks from 164 matches in 15
+  files to 104 in 11.
 - **macOS design tokens, batch 2** (#395): the 12 list views (`*ListView.swift`)
   use `Typography.data` for the Name column and `dataSm` for every other cell,
   as the desktop tables do, and status and type-tag colors come from the

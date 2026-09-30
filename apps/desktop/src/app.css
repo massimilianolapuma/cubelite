@@ -121,6 +121,9 @@
     --icon-xs: 8px;
     --icon-sm: 10px;
     --icon-md: 11px;
+    --icon-lg: 14px;
+    --icon-xl: 28px;
+    --icon-2xl: 40px;
 
     --motion-fadein: 100ms ease;
     --motion-popin: 140ms ease;

@@ -4,16 +4,12 @@
 # it is held at zero.
 apps/macos/cubelite/cubelite/Views/AggregatedLogsView.swift 1
 apps/macos/cubelite/cubelite/Views/CrossClusterDashboardView.swift 30
-apps/macos/cubelite/cubelite/Views/DeploymentDetailView.swift 20
 apps/macos/cubelite/cubelite/Views/ErrorBannerView.swift 5
 apps/macos/cubelite/cubelite/Views/FirstLaunchView.swift 10
-apps/macos/cubelite/cubelite/Views/LogsView.swift 16
 apps/macos/cubelite/cubelite/Views/MainView+ContentColumn.swift 1
 apps/macos/cubelite/cubelite/Views/MainView+DetailArea.swift 1
-apps/macos/cubelite/cubelite/Views/MainView+Sidebar.swift 17
 apps/macos/cubelite/cubelite/Views/MainView+Toolbar.swift 3
 apps/macos/cubelite/cubelite/Views/MenuBarContextView.swift 4
 apps/macos/cubelite/cubelite/Views/OverviewView.swift 41
 apps/macos/cubelite/cubelite/Views/PodExecView.swift 1
 apps/macos/cubelite/cubelite/Views/PreferencesView.swift 7
-apps/macos/cubelite/cubelite/Views/ResourceDetailView.swift 7

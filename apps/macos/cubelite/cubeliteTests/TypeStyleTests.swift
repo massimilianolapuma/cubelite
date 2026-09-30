@@ -51,7 +51,10 @@ final class TypeStyleTests: XCTestCase {
     }
 
     func testIconTokensAreAscending() {
-        let sizes = [DesignTokens.icon2xs, DesignTokens.iconXs, DesignTokens.iconSm, DesignTokens.iconMd]
+        let sizes = [
+            DesignTokens.icon2xs, DesignTokens.iconXs, DesignTokens.iconSm, DesignTokens.iconMd,
+            DesignTokens.iconLg, DesignTokens.iconXl, DesignTokens.icon2xl,
+        ]
         XCTAssertEqual(sizes, sizes.sorted())
     }
 
