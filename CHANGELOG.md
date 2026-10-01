@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **macOS Overview parity** (#359): the native Overview counts through
+  `OverviewSummary`, which mirrors the desktop `overview-summary.ts` and is
+  tested against the same fixture. It now matches the desktop. Cards use
+  design-token surfaces with sidebar-section tints, metric values are mono
+  `data` and coloured only when non-zero, and denied kinds show a "forbidden"
+  badge. The capacity and recent-warnings cards sit side by side, and the
+  warnings card gains an "All events →" link to the Events view. The meters
+  share the desktop thresholds (accent, warn from 60%, err from 75%). The
+  extra "Cluster" card is gone, since the header shows connection state.
+
 - **Desktop Overview parity** (#359, part 1): the Overview gains the resource
   grid of the macOS app. It has eight cards (Pods, Deployments, Services,
   Namespaces, Secrets, ConfigMaps, Ingresses, Helm Releases), and a card shows
