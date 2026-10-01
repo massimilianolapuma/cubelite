@@ -16,7 +16,7 @@ struct StatusBarView: View {
     // MARK: - Labels
 
     /// `refresh off` / `refresh 1m` / `refresh Ns`, as on the desktop.
-    static func refreshLabel(interval: Int) -> String {
+    nonisolated static func refreshLabel(interval: Int) -> String {
         switch interval {
         case 0: "refresh off"
         case 60: "refresh 1m"
@@ -25,18 +25,18 @@ struct StatusBarView: View {
     }
 
     /// `k8s v1.30.2`, or nil when the version is unknown.
-    static func versionLabel(_ version: String?) -> String? {
+    nonisolated static func versionLabel(_ version: String?) -> String? {
         guard let version, !version.isEmpty else { return nil }
         return "k8s \(version)"
     }
 
     /// `N warning(s)`, or nil when there are none.
-    static func warningLabel(count: Int) -> String? {
+    nonisolated static func warningLabel(count: Int) -> String? {
         count > 0 ? "\(count) warning\(count == 1 ? "" : "s")" : nil
     }
 
     /// `N error(s)`, or nil when there are none.
-    static func errorLabel(count: Int) -> String? {
+    nonisolated static func errorLabel(count: Int) -> String? {
         count > 0 ? "\(count) error\(count == 1 ? "" : "s")" : nil
     }
 
