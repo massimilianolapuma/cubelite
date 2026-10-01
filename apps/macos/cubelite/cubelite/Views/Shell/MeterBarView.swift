@@ -3,8 +3,22 @@ import SwiftUI
 /// Horizontal usage meter: label + percentage + a 6pt capsule fill bar.
 ///
 /// A nil `fraction` renders an em dash and an empty track ("unavailable").
-/// Fill color escalates statusOk → statusWarn (≥ 70%) → statusErr (≥ 90%).
+/// Fill color (parity v2 §4, unified with the desktop `MeterBar`): accent
+/// below 60%, statusWarn from 60%, statusErr from 75%.
 struct MeterBarView: View {
+
+    /// Fill level for a usage fraction.
+    enum Level: Equatable {
+        case unavailable, normal, warn, err
+    }
+
+    /// Threshold mapping, shared with the desktop: < 0.6 / ≥ 0.6 / ≥ 0.75.
+    nonisolated static func level(for fraction: Double?) -> Level {
+        guard let fraction else { return .unavailable }
+        if fraction >= 0.75 { return .err }
+        if fraction >= 0.6 { return .warn }
+        return .normal
+    }
 
     let label: String
     /// Usage fraction in 0...1; nil means the value is unavailable.
@@ -16,16 +30,15 @@ struct MeterBarView: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(label)
-                    .scaledFont(size: 11, weight: .medium)
-                    .foregroundStyle(DesignTokens.textSecondary)
+                    .typeStyle(DesignTokens.Typography.colhead, color: DesignTokens.textTertiary)
                 Spacer()
                 Text(percentText)
-                    .scaledFont(size: 11, design: .monospaced)
-                    .foregroundStyle(DesignTokens.textPrimary)
+                    .typeStyle(
+                        DesignTokens.Typography.micro.monospaced, color: DesignTokens.textTertiary)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(DesignTokens.surfaceSunken)
+                    Capsule().fill(DesignTokens.borderFaint)
                     if let fraction {
                         Capsule()
                             .fill(fillColor)
@@ -36,8 +49,7 @@ struct MeterBarView: View {
             .frame(height: 6)
             if let detail {
                 Text(detail)
-                    .scaledFont(size: 10, relativeTo: .caption)
-                    .foregroundStyle(DesignTokens.textTertiary)
+                    .typeStyle(DesignTokens.Typography.dataSm, color: DesignTokens.textTertiary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -50,10 +62,12 @@ struct MeterBarView: View {
     }
 
     private var fillColor: Color {
-        guard let fraction else { return DesignTokens.textTertiary }
-        if fraction >= 0.9 { return DesignTokens.statusErr }
-        if fraction >= 0.7 { return DesignTokens.statusWarn }
-        return DesignTokens.statusOk
+        switch Self.level(for: fraction) {
+        case .unavailable: DesignTokens.textTertiary
+        case .normal: DesignTokens.accentDefault
+        case .warn: DesignTokens.statusWarn
+        case .err: DesignTokens.statusErr
+        }
     }
 }
 

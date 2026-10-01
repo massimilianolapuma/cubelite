@@ -2,7 +2,7 @@
  * Global app state: active cluster, current view, namespace filter, overlays.
  */
 
-import type { DeploymentInfo, PodInfo } from "$lib/tauri";
+import type { DeploymentInfo, KubeconfigSource, PodInfo } from "$lib/tauri";
 
 export const VIEWS = [
   "dashboard",
@@ -30,8 +30,13 @@ export function isView(v: unknown): v is View {
 }
 
 class AppState {
-  /** Resolved kubeconfig path (from homeDir on startup). */
+  /**
+   * Kubeconfig spec passed to every command: one path or a KUBECONFIG-style
+   * list (resolved by the backend on startup, ~/.kube/config fallback).
+   */
   kubeconfigPath = $state("");
+  /** Files behind `kubeconfigPath`, in merge order (Preferences list). */
+  kubeconfigSources = $state<KubeconfigSource[]>([]);
   /** Active kube context name; null until contexts are discovered. */
   activeCluster = $state<string | null>(null);
   view = $state<View>("dashboard");

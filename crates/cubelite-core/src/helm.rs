@@ -84,7 +84,7 @@ pub fn parse_release_secret(secret: &Secret) -> Option<HelmReleaseInfo> {
             .metadata
             .creation_timestamp
             .as_ref()
-            .map(|t| t.0.to_rfc3339())
+            .map(|t| t.0.to_string())
     });
 
     Some(HelmReleaseInfo {

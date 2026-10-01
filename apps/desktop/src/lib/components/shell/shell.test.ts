@@ -54,6 +54,7 @@ beforeEach(() => {
   app.namespace = null;
   app.activeCluster = "prod-aks";
   app.connecting = null;
+  app.kubeconfigSources = [];
   clusters.contexts = [
     { name: "prod-aks", cluster_server: "https://prod.azmk8s.io:443", namespace: "default", is_active: true },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
@@ -99,6 +100,23 @@ describe("ClusterRail", () => {
     render(ClusterRail);
     const dots = screen.getAllByTestId("health-dot");
     expect(dots.map((d) => d.dataset.health)).toEqual(["connected", "unknown"]);
+  });
+
+  it("names the defining kubeconfig file in the tooltip only with several files", () => {
+    clusters.contexts = clusters.contexts.map((c) => ({
+      ...c,
+      source: c.name === "staging" ? "/home/u/.kube/team.yaml" : "/home/u/.kube/config",
+    }));
+    const { unmount } = render(ClusterRail);
+    expect(screen.getByTitle("staging")).toBeInTheDocument();
+    unmount();
+
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
+      { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: [] },
+    ];
+    render(ClusterRail);
+    expect(screen.getByTitle("staging — /home/u/.kube/team.yaml")).toBeInTheDocument();
   });
 
   it("navigates to the dashboard from the home button", async () => {

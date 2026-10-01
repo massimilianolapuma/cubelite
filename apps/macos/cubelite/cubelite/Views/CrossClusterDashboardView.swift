@@ -24,10 +24,10 @@ struct CrossClusterDashboardView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("All Clusters")
-                    .font(.title2.bold())
+                    .typeStyle(DesignTokens.Typography.title)
                 if let updated = crossClusterState.lastUpdated {
                     Text("Updated \(updated.formatted(.relative(presentation: .named)))")
-                        .font(.caption)
+                        .typeStyle(DesignTokens.Typography.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -55,17 +55,17 @@ struct CrossClusterDashboardView: View {
             columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)],
             spacing: 16
         ) {
-            DashboardCard(title: "Pods", icon: "cube.box", color: .blue) {
+            DashboardCard(title: "Pods", icon: "cube.box", color: DesignTokens.clusterBlue) {
                 podsSummaryContent
             }
-            DashboardCard(title: "Deployments", icon: "arrow.triangle.2.circlepath", color: .purple)
+            DashboardCard(title: "Deployments", icon: "arrow.triangle.2.circlepath", color: DesignTokens.clusterViolet)
             {
                 deploymentsSummaryContent
             }
-            DashboardCard(title: "Services", icon: "network", color: .indigo) {
+            DashboardCard(title: "Services", icon: "network", color: DesignTokens.clusterPink) {
                 DashboardMetric(label: "Total", value: "\(crossClusterState.totalServices)")
             }
-            DashboardCard(title: "Clusters", icon: "server.rack", color: .teal) {
+            DashboardCard(title: "Clusters", icon: "server.rack", color: DesignTokens.clusterTeal) {
                 clustersSummaryContent
             }
         }
@@ -75,8 +75,8 @@ struct CrossClusterDashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             DashboardMetric(label: "Total", value: "\(crossClusterState.totalPods)")
             DashboardMetric(
-                label: "Running", value: "\(crossClusterState.runningPods)", color: .green)
-            DashboardMetric(label: "Failed", value: "\(crossClusterState.failedPods)", color: .red)
+                label: "Running", value: "\(crossClusterState.runningPods)", color: DesignTokens.statusOk)
+            DashboardMetric(label: "Failed", value: "\(crossClusterState.failedPods)", color: DesignTokens.statusErr)
         }
     }
 
@@ -84,7 +84,7 @@ struct CrossClusterDashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             DashboardMetric(label: "Total", value: "\(crossClusterState.totalDeployments)")
             DashboardMetric(
-                label: "Healthy", value: "\(crossClusterState.healthyDeployments)", color: .green)
+                label: "Healthy", value: "\(crossClusterState.healthyDeployments)", color: DesignTokens.statusOk)
         }
     }
 
@@ -92,11 +92,11 @@ struct CrossClusterDashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             DashboardMetric(label: "Total", value: "\(crossClusterState.snapshots.count)")
             DashboardMetric(
-                label: "Online", value: "\(crossClusterState.onlineClusters)", color: .green)
+                label: "Online", value: "\(crossClusterState.onlineClusters)", color: DesignTokens.statusOk)
             DashboardMetric(
-                label: "Limited", value: "\(crossClusterState.limitedClusters)", color: .orange)
+                label: "Limited", value: "\(crossClusterState.limitedClusters)", color: DesignTokens.statusWarn)
             DashboardMetric(
-                label: "Offline", value: "\(crossClusterState.offlineClusters)", color: .red)
+                label: "Offline", value: "\(crossClusterState.offlineClusters)", color: DesignTokens.statusErr)
         }
     }
 
@@ -105,7 +105,7 @@ struct CrossClusterDashboardView: View {
     private var clusterListSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Cluster Details")
-                .font(.headline)
+                .typeStyle(DesignTokens.Typography.subtitle)
                 .foregroundStyle(.secondary)
             if crossClusterState.snapshots.isEmpty && !crossClusterState.isLoading {
                 clusterEmptyState
@@ -163,8 +163,8 @@ private struct ClusterSnapshotRow: View {
         Circle()
             .fill(
                 snapshot.isReachable
-                    ? (snapshot.isRBACLimited ? Color.orange : Color.green)
-                    : Color.red
+                    ? (snapshot.isRBACLimited ? DesignTokens.statusWarn : DesignTokens.statusOk)
+                    : DesignTokens.statusErr
             )
             .frame(width: 10, height: 10)
             .accessibilityLabel(
@@ -176,24 +176,24 @@ private struct ClusterSnapshotRow: View {
     private var clusterInfo: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(snapshot.contextName)
-                .font(.body.weight(.medium))
+                .typeStyle(DesignTokens.Typography.body)
                 .lineLimit(1)
                 .truncationMode(.middle)
             if let error = snapshot.error {
                 Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                    .typeStyle(DesignTokens.Typography.caption)
+                    .foregroundStyle(DesignTokens.statusErr)
                     .lineLimit(2)
             } else if snapshot.isRBACLimited {
                 Text(
                     "Limited: no access to \(snapshot.forbiddenResources.joined(separator: ", "))"
                 )
-                .font(.caption)
-                .foregroundStyle(.orange)
+                .typeStyle(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.statusWarn)
                 .lineLimit(2)
             } else {
                 Text("\(snapshot.totalNamespaces) namespaces")
-                    .font(.caption)
+                    .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
             }
         }
@@ -201,9 +201,9 @@ private struct ClusterSnapshotRow: View {
 
     private var metricsGroup: some View {
         HStack(spacing: 16) {
-            metricBadge(label: "Pods", value: snapshot.totalPods, color: .blue)
-            metricBadge(label: "Deploys", value: snapshot.totalDeployments, color: .purple)
-            metricBadge(label: "Svc", value: snapshot.totalServices, color: .indigo)
+            metricBadge(label: "Pods", value: snapshot.totalPods, color: DesignTokens.clusterBlue)
+            metricBadge(label: "Deploys", value: snapshot.totalDeployments, color: DesignTokens.clusterViolet)
+            metricBadge(label: "Svc", value: snapshot.totalServices, color: DesignTokens.clusterPink)
         }
     }
 
@@ -220,12 +220,12 @@ private struct ClusterSnapshotRow: View {
             textBadge(
                 label: "Nodes",
                 value: snapshot.nodeCount.map { "\($0)" } ?? "—",
-                color: .teal)
+                color: DesignTokens.clusterTeal)
             textBadge(label: "Version", value: snapshot.version ?? "—", color: .secondary)
             textBadge(
                 label: "Warnings",
                 value: snapshot.warningCount.map { "\($0)" } ?? "—",
-                color: (snapshot.warningCount ?? 0) > 0 ? .orange : .secondary)
+                color: (snapshot.warningCount ?? 0) > 0 ? DesignTokens.statusWarn : Color.secondary)
             Spacer()
             if snapshot.cpuFraction != nil || snapshot.memFraction != nil {
                 VStack(spacing: 6) {
@@ -241,11 +241,11 @@ private struct ClusterSnapshotRow: View {
     private func textBadge(label: String, value: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(verbatim: value)
-                .font(.system(.callout, design: .monospaced).bold())
+                .typeStyle(DesignTokens.Typography.dataSm.weighted(.semibold))
                 .foregroundStyle(color)
                 .lineLimit(1)
             Text(label)
-                .font(.caption2)
+                .typeStyle(DesignTokens.Typography.micro)
                 .foregroundStyle(.secondary)
         }
         .frame(minWidth: 40)
@@ -254,10 +254,10 @@ private struct ClusterSnapshotRow: View {
     private func metricBadge(label: String, value: Int, color: Color) -> some View {
         VStack(spacing: 2) {
             Text("\(value)")
-                .font(.system(.body, design: .monospaced).bold())
+                .typeStyle(DesignTokens.Typography.data.weighted(.semibold))
                 .foregroundStyle(color)
             Text(label)
-                .font(.caption2)
+                .typeStyle(DesignTokens.Typography.micro)
                 .foregroundStyle(.secondary)
         }
         .frame(minWidth: 40)

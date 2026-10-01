@@ -14,7 +14,6 @@ use cubelite_core::{
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
@@ -82,7 +81,7 @@ pub async fn start_port_forward(
     local_port: u16,
     remote_port: u16,
 ) -> Result<ForwardStartResult, String> {
-    let kube_client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let kube_client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -141,7 +140,7 @@ pub async fn list_pods(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<PodInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -157,7 +156,7 @@ pub async fn list_namespaces(
     kubeconfig_path: String,
     context: Option<String>,
 ) -> Result<Vec<NamespaceInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -171,7 +170,7 @@ pub async fn list_deployments(
     namespace: String,
     context: Option<String>,
 ) -> Result<Vec<DeploymentInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -188,7 +187,7 @@ pub async fn list_services(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<ServiceInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -205,7 +204,7 @@ pub async fn list_ingresses(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<IngressInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -222,7 +221,7 @@ pub async fn list_configmaps(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<ConfigMapInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -242,7 +241,7 @@ pub async fn list_secrets(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<SecretInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -260,7 +259,7 @@ pub async fn list_events(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<EventInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -292,7 +291,7 @@ pub async fn watch_resources(
     let rt: ResourceType = serde_json::from_value(serde_json::Value::String(resource_type))
         .map_err(|e| format!("invalid resource_type: {e}"))?;
 
-    let kube_client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let kube_client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -331,7 +330,7 @@ pub async fn list_helm_releases(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<HelmReleaseInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -348,7 +347,7 @@ pub async fn list_pod_metrics(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<PodMetricsInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -364,7 +363,7 @@ pub async fn cluster_capacity(
     kubeconfig_path: String,
     context: Option<String>,
 ) -> Result<Vec<NodeCapacityInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -458,7 +457,7 @@ pub async fn probe_cluster(
     context: String,
     include_summary: Option<bool>,
 ) -> Result<ClusterHealthInfo, String> {
-    let client = match KubeClient::new_probe(Path::new(&kubeconfig_path), Some(&context)).await {
+    let client = match KubeClient::new_probe(&kubeconfig_path, Some(&context)).await {
         Ok(c) => c,
         Err(e) => return Ok(ClusterHealthInfo::unreachable(context, e.to_string())),
     };
@@ -558,7 +557,7 @@ pub async fn list_jobs(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<JobInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -575,7 +574,7 @@ pub async fn list_cronjobs(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<CronJobInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -592,7 +591,7 @@ pub async fn list_statefulsets(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<StatefulSetInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -609,7 +608,7 @@ pub async fn list_pvcs(
     namespace: Option<String>,
     context: Option<String>,
 ) -> Result<Vec<PvcInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -625,7 +624,7 @@ pub async fn list_nodes(
     kubeconfig_path: String,
     context: Option<String>,
 ) -> Result<Vec<NodeInfo>, String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -646,7 +645,7 @@ pub async fn get_resource_yaml(
     let rt: ResourceType = serde_json::from_value(serde_json::Value::String(resource_type))
         .map_err(|e| format!("invalid resource_type: {e}"))?;
 
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -664,7 +663,7 @@ pub async fn delete_pod(
     name: String,
     context: Option<String>,
 ) -> Result<(), String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -682,7 +681,7 @@ pub async fn restart_deployment(
     name: String,
     context: Option<String>,
 ) -> Result<(), String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -701,7 +700,7 @@ pub async fn scale_deployment(
     replicas: i32,
     context: Option<String>,
 ) -> Result<(), String> {
-    let client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -723,7 +722,7 @@ pub async fn stream_logs(
     pods: Vec<PodRef>,
     context: Option<String>,
 ) -> Result<String, String> {
-    let kube_client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let kube_client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
     let client = kube_client.client();
@@ -771,7 +770,7 @@ pub async fn stream_pod_log(
     since_time: Option<String>,
     context: Option<String>,
 ) -> Result<String, String> {
-    let kube_client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let kube_client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
     let client = kube_client.client();
@@ -813,7 +812,7 @@ pub async fn get_pod_containers(
     pod: String,
     context: Option<String>,
 ) -> Result<Vec<ContainerDetail>, String> {
-    let kube_client = KubeClient::new(Path::new(&kubeconfig_path), context.as_deref())
+    let kube_client = KubeClient::new(&kubeconfig_path, context.as_deref())
         .await
         .map_err(|e| e.to_string())?;
     kube_client
@@ -865,6 +864,29 @@ pub async fn unwatch_resources(app: AppHandle, watch_id: String) -> Result<(), S
 pub async fn list_contexts() -> Result<Vec<cubelite_core::ContextInfo>, String> {
     tokio::task::spawn_blocking(|| {
         cubelite_core::context::list_context_infos().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Resolved kubeconfig file list for the UI: `spec` is the loaded files
+/// joined like `KUBECONFIG` (what every other command takes as
+/// `kubeconfig_path`); `sources` describes each listed file in merge order.
+#[derive(Debug, Serialize)]
+pub struct KubeconfigSources {
+    pub spec: String,
+    pub sources: Vec<cubelite_core::KubeconfigSource>,
+}
+
+/// Describe the kubeconfig files in use (`KUBECONFIG` or `~/.kube/config`).
+#[tauri::command]
+pub async fn kubeconfig_sources() -> Result<KubeconfigSources, String> {
+    tokio::task::spawn_blocking(|| {
+        let cfg = cubelite_core::KubeConfig::load().map_err(|e| e.to_string())?;
+        Ok(KubeconfigSources {
+            spec: cfg.resolved_spec(),
+            sources: cfg.sources(),
+        })
     })
     .await
     .map_err(|e| e.to_string())?

@@ -35,13 +35,13 @@ struct CronJobListView: View {
 
             TableColumn("Name") { job in
                 Text(job.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
 
             TableColumn("Schedule") { job in
                 Text(job.schedule)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(DesignTokens.textSecondary)
             }
             .width(110)
