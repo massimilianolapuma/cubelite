@@ -52,7 +52,7 @@ pub use resources::{
     NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,
 };
 pub use types::{
-    ClusterDetails, ContextDetails, ContextInfo, KubeConfigFile, NamedCluster, NamedContext,
-    NamedUser, UserDetails,
+    ClusterDetails, ContextDetails, ContextInfo, KubeConfigFile, KubeconfigSource, NamedCluster,
+    NamedContext, NamedUser, UserDetails,
 };
 pub use watcher::{ResourceInfo, ResourceType, ResourceWatcher, WatchEvent};

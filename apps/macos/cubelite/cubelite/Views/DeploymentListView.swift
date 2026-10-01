@@ -49,14 +49,14 @@ struct DeploymentListView: View {
 
             TableColumn("Name") { dep in
                 Text(dep.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 220)
 
             TableColumn("Namespace") { dep in
                 Text(dep.namespace)
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -77,8 +77,8 @@ struct DeploymentListView: View {
         let allReady = ready == desired && desired > 0
         return HStack(spacing: 3) {
             Text("\(ready)/\(desired)")
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(allReady ? .green : .orange)
+                .typeStyle(DesignTokens.Typography.dataSm)
+                .foregroundStyle(allReady ? DesignTokens.statusOk : DesignTokens.statusWarn)
         }
     }
 }
@@ -100,7 +100,7 @@ private struct DeploymentStatusDot: View {
 
     private var color: Color {
         if desired == 0 { return .secondary }
-        return ready == desired ? .green : .orange
+        return ready == desired ? DesignTokens.statusOk : DesignTokens.statusWarn
     }
 
     private var helpText: String {

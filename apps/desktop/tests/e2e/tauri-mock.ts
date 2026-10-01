@@ -19,9 +19,16 @@ declare global {
 
 export const FIXTURES = {
   contexts: [
-    { name: "prod-aks", cluster_server: "https://prod.azmk8s.io:443", namespace: "default", is_active: true },
-    { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
+    { name: "prod-aks", cluster_server: "https://prod.azmk8s.io:443", namespace: "default", is_active: true, source: "/home/test/.kube/config" },
+    { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false, source: "/home/test/.kube/team.yaml" },
   ],
+  kubeconfig: {
+    spec: "/home/test/.kube/config:/home/test/.kube/team.yaml",
+    sources: [
+      { path: "/home/test/.kube/config", exists: true, contexts: 1, shadowed: [] },
+      { path: "/home/test/.kube/team.yaml", exists: true, contexts: 1, shadowed: ["prod-aks"] },
+    ],
+  },
   pods: [
     {
       name: "api-0",
@@ -128,6 +135,7 @@ export function tauriMockScript(): string {
 
   const responses = (cmd, args) => {
     switch (cmd) {
+      case "kubeconfig_sources": return fixtures.kubeconfig;
       case "list_contexts": return fixtures.contexts;
       case "get_current_context": return "prod-aks";
       case "set_context": {

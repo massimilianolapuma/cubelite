@@ -7,6 +7,8 @@
 	import LogBody from '$lib/components/logpanel/LogBody.svelte';
 	import LogToolbar from '$lib/components/logpanel/LogToolbar.svelte';
 	import Toaster from '$lib/components/ui/Toaster.svelte';
+	import { matchShortcut } from '$lib/keyboard';
+	import { isMac } from '$lib/platform';
 	import { app } from '$lib/stores/app.svelte';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import { isSessionTransfer, serializeSession } from '$lib/stores/sessionTransfer';
@@ -20,6 +22,14 @@
 		if (status === 'streaming') return 'var(--color-status-ok)';
 		if (status === 'error') return 'var(--color-status-err)';
 		return 'var(--color-status-warn)';
+	}
+
+	/** The main window's shortcut handler is off in the pop-out; only log
+	 * search applies here (#351). Everything else falls through untouched. */
+	function onKeydown(event: KeyboardEvent): void {
+		if (!session || matchShortcut(event, isMac)?.type !== 'log-search') return;
+		event.preventDefault();
+		logPanel.focusSearch();
 	}
 
 	/** Set when close-all arrived or a re-attach is in flight: the
@@ -69,6 +79,8 @@
 		};
 	});
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="flex h-screen flex-col overflow-hidden bg-surface-window">
 	{#if session}

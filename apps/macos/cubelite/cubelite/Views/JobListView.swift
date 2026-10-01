@@ -49,7 +49,7 @@ struct JobListView: View {
 
             TableColumn("Name") { job in
                 Text(job.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
 

@@ -33,7 +33,7 @@ struct LogToolbar: View {
     private var searchField: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 10))
+                .iconSize(DesignTokens.iconSm)
                 .foregroundStyle(DesignTokens.textTertiary)
                 .accessibilityHidden(true)
             TextField("search logs", text: Bindable(session.search).query)
@@ -57,7 +57,7 @@ struct LogToolbar: View {
                 }
             if session.search.isActive {
                 Text(matchCountLabel)
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .typeStyle(DesignTokens.Typography.micro.monospaced)
                     .foregroundStyle(DesignTokens.textTertiary)
                 Button {
                     session.search.previous()
@@ -176,7 +176,7 @@ struct LogToolbar: View {
                     .scaledFont(size: 11.5, weight: .medium, design: .monospaced)
                     .foregroundStyle(DesignTokens.textDataBright)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8))
+                    .iconSize(DesignTokens.iconXs)
                     .foregroundStyle(DesignTokens.textTertiary)
                     .accessibilityHidden(true)
             }
@@ -276,10 +276,10 @@ struct LogToolbar: View {
                     .scaledFont(size: 11)
                     .foregroundStyle(DesignTokens.textTertiary)
                 Text("\(session.tailLines)")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .typeStyle(DesignTokens.Typography.caption.monospaced.weighted(.medium))
                     .foregroundStyle(DesignTokens.textDataBright)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 8))
+                    .iconSize(DesignTokens.iconXs)
                     .foregroundStyle(DesignTokens.textTertiary)
                     .accessibilityHidden(true)
             }

@@ -12,6 +12,12 @@ vi.mock("$lib/tauri", () => ({
   restartDeployment: vi.fn(async () => undefined),
   scaleDeployment: vi.fn(async () => undefined),
   listEvents: vi.fn(async () => []),
+  listServices: vi.fn(async () => []),
+  listIngresses: vi.fn(async () => []),
+  listConfigMaps: vi.fn(async () => []),
+  listSecrets: vi.fn(async () => []),
+  listHelmReleases: vi.fn(async () => []),
+  listNodes: vi.fn(async () => []),
   listPodMetrics: vi.fn(async () => []),
   clusterCapacity: vi.fn(async () => []),
   watchResources: vi.fn(),
@@ -72,6 +78,7 @@ beforeEach(() => {
   resources.namespaces = [];
   resources.deployments = [];
   resources.events = [];
+  resources.clear();
   health.byContext = {};
 });
 
@@ -118,6 +125,40 @@ describe("OverviewView", () => {
     expect(screen.getByText("Recent warnings")).toBeInTheDocument();
     expect(screen.getByText("Pod/api-1")).toBeInTheDocument();
     expect(screen.getByText("0/3 nodes are available")).toBeInTheDocument();
+  });
+
+  it("shows running/total and healthy/total in the stat row", () => {
+    resources.pods = [pod(), pod({ name: "api-1", phase: "Pending" })];
+    resources.deployments = [{ name: "api", namespace: "default", replicas: 2, ready_replicas: 1, images: [], selector: {}, strategy: null, conditions: [], creation_timestamp: null }];
+    render(OverviewView);
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("Deploys healthy")).toBeInTheDocument();
+    expect(screen.getByText("0/1")).toBeInTheDocument();
+  });
+
+  it("renders the resource grid and loads its kinds on mount", async () => {
+    app.kubeconfigPath = "/home/u/.kube/config";
+    render(OverviewView);
+    const grid = screen.getByTestId("resource-grid");
+    for (const title of ["Pods", "Deployments", "Services", "Namespaces", "Secrets", "ConfigMaps", "Ingresses", "Helm Releases"]) {
+      expect(grid).toHaveTextContent(title);
+    }
+    await vi.waitFor(() => expect(resources.kindCount("services")).toBe(0));
+  });
+
+  it("shows the forbidden badge for a kind RBAC denies", async () => {
+    resources.forbiddenKinds = new Set(["secrets"]);
+    render(OverviewView);
+    expect(screen.getByRole("region", { name: "Secrets" })).toHaveTextContent("forbidden");
+    expect(screen.getAllByTestId("forbidden-badge")).toHaveLength(1);
+  });
+
+  it("adds absolute capacity sub-labels when metrics are available", () => {
+    resources.metricsAvailable = true;
+    resources.nodes = [{ name: "n1", cpu_used_millis: 1200, cpu_allocatable_millis: 4000, memory_used_bytes: 2 * 1024 ** 3, memory_allocatable_bytes: 8 * 1024 ** 3 }];
+    render(OverviewView);
+    expect(screen.getByText("1.2 / 4.0 cores")).toBeInTheDocument();
+    expect(screen.getByText("2.0 / 8.0 GiB")).toBeInTheDocument();
   });
 });
 
