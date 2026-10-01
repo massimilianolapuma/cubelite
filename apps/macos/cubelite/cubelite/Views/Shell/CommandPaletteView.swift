@@ -13,6 +13,8 @@ struct CommandPaletteView: View {
     /// Currently selected pod (if any) — surfaces the "Pod logs" action.
     var selectedPod: PodInfo?
     var onOpenPodLogs: ((PodInfo) -> Void)?
+    /// Reloads the active cluster (or the All Clusters dashboard) — ⌘R.
+    var onRefresh: (() -> Void)?
     let onClose: () -> Void
 
     @State private var query = ""
@@ -26,6 +28,7 @@ struct CommandPaletteView: View {
         case allClusters
         case resource(ResourceType)
         case podLogs(PodInfo)
+        case refresh
 
         var id: String {
             switch self {
@@ -33,6 +36,7 @@ struct CommandPaletteView: View {
             case .allClusters: "all-clusters"
             case .resource(let type): "resource-\(type.rawValue)"
             case .podLogs(let pod): "pod-logs-\(pod.id)"
+            case .refresh: "refresh"
             }
         }
 
@@ -42,6 +46,7 @@ struct CommandPaletteView: View {
             case .allClusters: "All Clusters dashboard"
             case .resource(let type): "Go to \(type.rawValue)"
             case .podLogs(let pod): "Pod logs: \(pod.name)"
+            case .refresh: "Refresh cluster data"
             }
         }
     }
@@ -54,7 +59,8 @@ struct CommandPaletteView: View {
 
     private var actionItems: [Item] {
         let podLogs = selectedPod.map { [Item.podLogs($0)] } ?? []
-        return (podLogs + [Item.allClusters] + ResourceType.allCases.map { Item.resource($0) })
+        let refresh: [Item] = onRefresh == nil ? [] : [.refresh]
+        return (podLogs + refresh + [Item.allClusters] + ResourceType.allCases.map { Item.resource($0) })
             .filter { query.isEmpty || $0.label.localizedCaseInsensitiveContains(query) }
     }
 
@@ -211,6 +217,18 @@ struct CommandPaletteView: View {
                         .scaledFont(size: 12.5, weight: .medium)
                         .foregroundStyle(DesignTokens.textSecondary)
                     Spacer(minLength: 0)
+                case .refresh:
+                    Image(systemName: "arrow.clockwise")
+                        .iconSize(DesignTokens.iconMd)
+                        .foregroundStyle(DesignTokens.textTertiary)
+                        .frame(width: 14)
+                        .accessibilityHidden(true)
+                    Text(item.label)
+                        .scaledFont(size: 12.5, weight: .medium)
+                        .foregroundStyle(DesignTokens.textSecondary)
+                    Spacer(minLength: 0)
+                    kbd("⌘R")
+                        .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, 10)
@@ -261,6 +279,8 @@ struct CommandPaletteView: View {
             onSelectResource(type)
         case .podLogs(let pod):
             onOpenPodLogs?(pod)
+        case .refresh:
+            onRefresh?()
         }
         onClose()
     }

@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **macOS Overview parity** (#359): the native Overview counts through
+  `OverviewSummary`, which mirrors the desktop `overview-summary.ts` and is
+  tested against the same fixture. It now matches the desktop. Cards use
+  design-token surfaces with sidebar-section tints, metric values are mono
+  `data` and coloured only when non-zero, and denied kinds show a "forbidden"
+  badge. The capacity and recent-warnings cards sit side by side, and the
+  warnings card gains an "All events →" link to the Events view. The meters
+  share the desktop thresholds (accent, warn from 60%, err from 75%). The
+  extra "Cluster" card is gone, since the header shows connection state.
+
+- **Desktop Overview parity** (#359, part 1): the Overview gains the resource
+  grid of the macOS app. It has eight cards (Pods, Deployments, Services,
+  Namespaces, Secrets, ConfigMaps, Ingresses, Helm Releases), and a card shows
+  a "forbidden" badge when RBAC denies its kind. The stat row reads
+  `running/total` pods and `healthy/total` deployments, with tinted icons, and
+  the capacity meters add absolute `used / allocatable` sub-labels. Counts come
+  from a pure `overview-summary.ts`, and the macOS app will mirror it. The
+  Overview now loads its extra kinds in one batch, also on auto-refresh. Meter
+  thresholds are unified at warn from 60% and err from 75%.
+
+- **macOS Events view** (#358, part 1): a new Events item in the sidebar's
+  Observe section lists every event (Normal and Warning), most recent first,
+  in the desktop's grid: Type pill, Reason with `×count`, Object, Message and
+  Age. Warning rows get a faint warn tint, and an RBAC denial reads as such
+  instead of an empty list.
+- **macOS header, status bar and commands** (#358): the header matches the
+  desktop titlebar — identity dot, name, provider chip (AKS, EKS, GKE, K3S,
+  KIND, LOCAL, K8S) and connection state, a "Search & switch…" button that
+  opens the ⌘K palette, and a namespace dropdown with per-namespace pod counts.
+  The status bar shows the API server, the Kubernetes version and the refresh
+  interval, plus warning (opens Events) and error (opens Diagnostics) counts.
+  Refresh moves to ⌘R in the View menu and the palette ("Refresh cluster
+  data"); the "Logs & Errors" sheet is now "Diagnostics…" (⇧⌘D) in the
+  Window menu.
+
 ### Changed
 
 - **macOS design tokens, batch 5** (#395): Overview and the cross-cluster

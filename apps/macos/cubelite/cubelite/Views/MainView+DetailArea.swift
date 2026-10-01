@@ -28,9 +28,9 @@ extension MainView {
         } else if let sel = sidebarSelection {
             switch selectedResourceType ?? .dashboard {
             case .dashboard:
-                OverviewView()
+                OverviewView(onShowEvents: { showEvents() })
             case .pods, .deployments, .services, .secrets, .configMaps, .ingresses,
-                .helmReleases, .nodes, .jobs, .statefulSets, .cronJobs, .pvcs, .logs:
+                .helmReleases, .nodes, .jobs, .statefulSets, .cronJobs, .pvcs, .events, .logs:
                 resourceBrowserView(context: sel.context, namespace: sel.namespace)
             }
         } else {
@@ -135,6 +135,8 @@ extension MainView {
                     PvcListView()
                 case .nodes:
                     NodeListView()
+                case .events:
+                    EventListView()
                 case .logs:
                     AggregatedLogsView(
                         streamer: kubeAPIService,

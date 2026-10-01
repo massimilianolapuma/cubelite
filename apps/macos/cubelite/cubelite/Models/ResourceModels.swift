@@ -446,6 +446,8 @@ struct EventInfo: Codable, Sendable, Identifiable {
     let count: Int?
     /// ISO 8601 timestamp of the last occurrence.
     let lastTimestamp: String?
+    /// Event type: `"Normal"` or `"Warning"` (nil for malformed events).
+    var type: String? = nil
 }
 
 /// Raw Kubernetes event as returned by the core events API.
@@ -475,7 +477,8 @@ extension K8sEvent {
             objectKind: involvedObject?.kind,
             objectName: involvedObject?.name,
             count: count,
-            lastTimestamp: lastTimestamp ?? metadata?.creationTimestamp
+            lastTimestamp: lastTimestamp ?? metadata?.creationTimestamp,
+            type: type
         )
     }
 }
