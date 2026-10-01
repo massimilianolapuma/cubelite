@@ -161,6 +161,31 @@ pub struct ContextInfo {
 
     /// Whether this is the currently active context.
     pub is_active: bool,
+
+    /// The kubeconfig file that defines this context (the first file in the
+    /// `KUBECONFIG` list that contains it). `None` for payloads from builds
+    /// that predate multi-file support.
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+/// One entry of the resolved kubeconfig file list (`KUBECONFIG` or the
+/// `~/.kube/config` fallback), in merge order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KubeconfigSource {
+    /// File path as listed in `KUBECONFIG`.
+    pub path: String,
+
+    /// `false` when the file does not exist; missing files are skipped, as
+    /// kubectl does.
+    pub exists: bool,
+
+    /// Number of contexts this file contributes to the merged config.
+    pub contexts: usize,
+
+    /// Context names defined in this file but hidden by an earlier file with
+    /// the same name (first file wins).
+    pub shadowed: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------

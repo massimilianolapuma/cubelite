@@ -18,7 +18,7 @@ struct LogTabStrip: View {
             Spacer(minLength: 8)
             if let active = store.activeSession {
                 Text(lineCountLabel(active))
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .typeStyle(DesignTokens.Typography.micro.monospaced)
                     .foregroundStyle(DesignTokens.textTertiary)
                     .lineLimit(1)
             }

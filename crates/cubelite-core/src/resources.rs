@@ -309,3 +309,131 @@ pub struct PvcInfo {
     /// RFC 3339 creation timestamp, when reported by the API server.
     pub creation_timestamp: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn pod_info_accepts_v0_1_payload_without_newer_fields() {
+        // Payload shape from before the drawer fields existed.
+        let pod: PodInfo = serde_json::from_value(json!({
+            "name": "web-1",
+            "namespace": "default",
+            "phase": "Running",
+            "ready": true,
+            "restarts": 2
+        }))
+        .expect("v0.1 PodInfo payload must deserialize");
+        assert_eq!(pod.name, "web-1");
+        assert_eq!(pod.restarts, 2);
+        assert_eq!(pod.ready_containers, 0);
+        assert!(pod.containers.is_empty());
+        assert!(pod.labels.is_empty());
+        assert!(pod.node.is_none());
+        assert!(pod.creation_timestamp.is_none());
+    }
+
+    #[test]
+    fn deployment_info_accepts_v0_1_payload_without_newer_fields() {
+        let dep: DeploymentInfo = serde_json::from_value(json!({
+            "name": "api",
+            "namespace": "prod",
+            "replicas": 3,
+            "ready_replicas": 2
+        }))
+        .expect("v0.1 DeploymentInfo payload must deserialize");
+        assert_eq!(dep.replicas, 3);
+        assert_eq!(dep.ready_replicas, 2);
+        assert!(dep.images.is_empty());
+        assert!(dep.selector.is_empty());
+        assert!(dep.strategy.is_none());
+        assert!(dep.conditions.is_empty());
+    }
+
+    #[test]
+    fn pod_info_serializes_snake_case_keys_the_frontend_reads() {
+        let mut labels = BTreeMap::new();
+        labels.insert("app".to_string(), "web".to_string());
+        let pod = PodInfo {
+            name: "web-1".into(),
+            namespace: "default".into(),
+            ready_containers: 1,
+            total_containers: 2,
+            pod_ip: Some("10.0.0.5".into()),
+            qos_class: Some("Burstable".into()),
+            labels,
+            creation_timestamp: Some("2026-09-30T10:00:00Z".into()),
+            containers: vec![ContainerInfo {
+                name: "app".into(),
+                image: None,
+                ready: true,
+            }],
+            ..PodInfo::default()
+        };
+        let v = serde_json::to_value(&pod).expect("PodInfo must serialize");
+        for key in [
+            "ready_containers",
+            "total_containers",
+            "pod_ip",
+            "qos_class",
+            "labels",
+            "creation_timestamp",
+            "containers",
+        ] {
+            assert!(v.get(key).is_some(), "missing key `{key}` in {v}");
+        }
+        assert_eq!(v["labels"]["app"], "web");
+        assert_eq!(v["containers"][0]["ready"], true);
+    }
+
+    #[test]
+    fn container_detail_round_trips() {
+        let detail = ContainerDetail {
+            name: "istio-proxy".into(),
+            sidecar: true,
+            restarts: 4,
+            state: "waiting".into(),
+            state_reason: Some("CrashLoopBackOff".into()),
+            last_terminated_reason: Some("OOMKilled".into()),
+            ..ContainerDetail::default()
+        };
+        let json = serde_json::to_string(&detail).expect("serialize");
+        let back: ContainerDetail = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.name, "istio-proxy");
+        assert!(back.sidecar && !back.init);
+        assert_eq!(back.restarts, 4);
+        assert_eq!(back.state_reason.as_deref(), Some("CrashLoopBackOff"));
+        assert_eq!(back.last_terminated_reason.as_deref(), Some("OOMKilled"));
+    }
+
+    #[test]
+    fn deployment_condition_uses_condition_type_key() {
+        let cond = DeploymentConditionInfo {
+            condition_type: "Available".into(),
+            status: "True".into(),
+            reason: Some("MinimumReplicasAvailable".into()),
+        };
+        let v = serde_json::to_value(&cond).expect("serialize");
+        assert_eq!(v["condition_type"], "Available");
+        assert_eq!(v["status"], "True");
+    }
+
+    #[test]
+    fn event_info_keeps_optional_fields_as_null() {
+        let ev = EventInfo {
+            event_type: None,
+            reason: Some("BackOff".into()),
+            object: "Pod/web-1".into(),
+            message: None,
+            namespace: "default".into(),
+            count: 3,
+            last_timestamp: None,
+        };
+        let v = serde_json::to_value(&ev).expect("serialize");
+        assert!(v["event_type"].is_null());
+        assert!(v["last_timestamp"].is_null());
+        assert_eq!(v["count"], 3);
+    }
+}

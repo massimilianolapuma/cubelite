@@ -12,7 +12,7 @@ async function boot(page: Page) {
 
 /** Opens the pod drawer for `pod` and then its log panel. */
 async function openLogPanel(page: Page, pod: string) {
-  await page.getByText("Pods", { exact: true }).click();
+  await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
   await page.getByText(pod, { exact: true }).click();
   await expect(page.getByRole("dialog", { name: pod })).toBeVisible();
   await page.getByRole("button", { name: "Log panel" }).click();
@@ -36,7 +36,7 @@ test("open logs from pod drawer, panel persists across navigation", async ({ pag
   await expect(page.getByText("e2e-hello")).toBeVisible();
 
   // navigate elsewhere: panel stays
-  await page.getByText("Services", { exact: true }).click();
+  await page.getByRole("complementary").getByText("Services", { exact: true }).click();
   await expect(page.getByLabel("Pod logs panel")).toBeVisible();
   await expect(page.getByText("e2e-hello")).toBeVisible();
 });

@@ -38,4 +38,23 @@ enum ClusterIdentity {
         }
         return "?"
     }
+
+    /// Best-effort provider label for a context (header chip), ported from
+    /// the desktop `providerOf`: matched against the context name and the
+    /// cluster's server URL.
+    static func provider(name: String, server: String?) -> String {
+        let hay = "\(name) \(server ?? "")".lowercased()
+        let rules: [(label: String, needles: [String])] = [
+            ("AKS", ["azmk8s", "aks"]),
+            ("EKS", ["amazonaws", "eks"]),
+            ("GKE", ["gke"]),
+            ("K3S", ["k3d", "k3s"]),
+            ("KIND", ["kind"]),
+            ("LOCAL", ["minikube", "docker-desktop", "localhost", "127.0.0.1"]),
+        ]
+        for rule in rules where rule.needles.contains(where: { hay.contains($0) }) {
+            return rule.label
+        }
+        return "K8S"
+    }
 }

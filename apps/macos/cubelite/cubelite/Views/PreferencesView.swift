@@ -66,7 +66,7 @@ private struct GeneralPreferencesTab: View {
                 Text(
                     "Approval required in System Settings → General → Login Items."
                 )
-                .font(.caption)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
             }
             Toggle("Show system namespaces", isOn: Bindable(settings).showSystemNamespaces)
@@ -135,7 +135,7 @@ private struct AdvancedPreferencesTab: View {
                             ? "Keychain entries removed — they will be re-imported on next use."
                             : "Removes bearer tokens and client identities from the Keychain."
                     )
-                    .font(.caption)
+                    .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
                 }
             }
@@ -152,7 +152,7 @@ private struct AdvancedPreferencesTab: View {
                 Text(
                     "⚠️ Accepts self-signed certificates from all clusters. Only enable for local development (e.g., minikube)."
                 )
-                .font(.caption)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
             }
         }
@@ -172,7 +172,7 @@ private struct KubeconfigPathsSection: View {
         if paths.isEmpty {
             Text("Using default: ~/.kube/config")
                 .foregroundStyle(.secondary)
-                .font(.callout)
+                .typeStyle(DesignTokens.Typography.body)
         }
         ForEach(Array(paths.enumerated()), id: \.offset) { index, path in
             KubeconfigPathRow(path: path) { paths.remove(at: index) }
@@ -218,11 +218,11 @@ private struct KubeconfigPathRow: View {
             Image(
                 systemName: fileExists ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
             )
-            .foregroundStyle(fileExists ? .green : .orange)
-            .font(.caption)
+            .foregroundStyle(fileExists ? DesignTokens.statusOk : DesignTokens.statusWarn)
+            .typeStyle(DesignTokens.Typography.caption)
             .accessibilityLabel(fileExists ? "File found" : "File missing")
             Text(path)
-                .font(.system(.body, design: .monospaced))
+                .typeStyle(DesignTokens.Typography.dataSm)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()

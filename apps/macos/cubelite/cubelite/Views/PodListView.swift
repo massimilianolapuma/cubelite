@@ -53,7 +53,7 @@ struct PodListView: View {
             TableColumn("Name") { pod in
                 HStack(spacing: 8) {
                     Text(pod.name)
-                        .font(.callout.monospaced())
+                        .typeStyle(DesignTokens.Typography.data)
                         .lineLimit(1)
                     if pod.id == selectedPodID {
                         Button {
@@ -80,7 +80,7 @@ struct PodListView: View {
 
             TableColumn("Namespace") { pod in
                 Text(pod.namespace)
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -88,42 +88,42 @@ struct PodListView: View {
 
             TableColumn("Status") { pod in
                 Text(pod.phase ?? "—")
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(Color.podPhase(pod.phase))
             }
             .width(min: 60, ideal: 90)
 
             TableColumn("Restarts") { pod in
                 Text("\(pod.restarts)")
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(pod.restarts > 5 ? Color.orange : Color.secondary)
+                    .typeStyle(DesignTokens.Typography.dataSm)
+                    .foregroundStyle(pod.restarts > 5 ? DesignTokens.statusWarn : Color.secondary)
             }
             .width(ideal: 70)
 
             TableColumn("Age") { pod in
                 Text(pod.creationTimestamp.k8sAge)
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
 
             TableColumn("CPU") { pod in
                 Text(pod.cpuRequest ?? "—")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
 
             TableColumn("Memory") { pod in
                 Text(pod.memoryRequest ?? "—")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 70)
 
             TableColumn("IP") { pod in
                 Text(pod.podIP ?? "—")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 90)

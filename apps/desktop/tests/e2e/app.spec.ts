@@ -38,7 +38,7 @@ test("first launch shows onboarding and completes", async ({ page }) => {
 
 test("pods view lists fixtures and opens the detail drawer, Esc closes", async ({ page }) => {
   await boot(page);
-  await page.getByText("Pods", { exact: true }).click();
+  await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
   await expect(page.getByText("api-0")).toBeVisible();
   await expect(page.getByText("Pending", { exact: true })).toBeVisible();
   await page.getByText("api-0").click();
@@ -70,6 +70,15 @@ test("preferences persist the refresh interval across reloads", async ({ page })
   await page.keyboard.press("Escape");
   await page.reload();
   await expect(page.getByText("refresh 1m")).toBeVisible();
+});
+
+test("preferences list every kubeconfig file with its context count", async ({ page }) => {
+  await boot(page);
+  await page.getByLabel("Preferences").click();
+  const files = page.getByRole("list", { name: "Kubeconfig files" });
+  await expect(files.getByRole("listitem")).toHaveCount(2);
+  await expect(files.getByText("/home/test/.kube/team.yaml")).toBeVisible();
+  await expect(files.getByText(/1 merged/)).toBeVisible();
 });
 
 test("All Clusters dashboard aggregates stats across contexts", async ({ page }) => {

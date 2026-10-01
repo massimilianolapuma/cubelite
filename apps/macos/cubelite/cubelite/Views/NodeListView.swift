@@ -38,7 +38,7 @@ struct NodeListView: View {
 
             TableColumn("Name") { node in
                 Text(node.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
 
@@ -58,7 +58,7 @@ struct NodeListView: View {
 
             TableColumn("Version") { node in
                 Text(node.version ?? "—")
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(DesignTokens.textSecondary)
             }
             .width(110)
