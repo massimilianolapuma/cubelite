@@ -45,8 +45,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       mode-watcher:
-        specifier: ^0.5.0
-        version: 0.5.1(svelte@5.55.7(@typescript-eslint/types@8.58.1))
+        specifier: ^1.1.0
+        version: 1.1.0(svelte@5.55.7(@typescript-eslint/types@8.58.1))
       tailwind-merge:
         specifier: ^3.7.0
         version: 3.7.0
@@ -1643,10 +1643,10 @@ packages:
   minimatch@3.1.5:
     resolution: {integrity: sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w==}
 
-  mode-watcher@0.5.1:
-    resolution: {integrity: sha512-adEC6T7TMX/kzQlaO/MtiQOSFekZfQu4MC+lXyoceQG+U5sKpJWZ4yKXqw846ExIuWJgedkOIPqAYYRk/xHm+w==}
+  mode-watcher@1.1.0:
+    resolution: {integrity: sha512-mUT9RRGPDYenk59qJauN1rhsIMKBmWA3xMF+uRwE8MW/tjhaDSCCARqkSuDTq8vr4/2KcAxIGVjACxTjdk5C3g==}
     peerDependencies:
-      svelte: ^4.0.0 || ^5.0.0-next.1
+      svelte: ^5.27.0
 
   mri@1.2.0:
     resolution: {integrity: sha512-tzzskb3bG8LvYGFF/mDTpq3jpI6Q9wc3LEmBaghu+DdCssd1FakN7Bc0hVNmEyGq1bq3RgfkCb3cmQLpNPOroA==}
@@ -1792,6 +1792,11 @@ packages:
 
   runed@0.23.4:
     resolution: {integrity: sha512-9q8oUiBYeXIDLWNK5DfCWlkL0EW3oGbk845VdKlPeia28l751VpfesaB/+7pI6rnbx1I6rqoZ2fZxptOJLxILA==}
+    peerDependencies:
+      svelte: ^5.7.0
+
+  runed@0.25.0:
+    resolution: {integrity: sha512-7+ma4AG9FT2sWQEA0Egf6mb7PBT2vHyuHail1ie8ropfSjvZGtEAx8YTmUjv/APCsdRRxEVvArNjALk9zFSOrg==}
     peerDependencies:
       svelte: ^5.7.0
 
@@ -3431,9 +3436,11 @@ snapshots:
     dependencies:
       brace-expansion: 1.1.21
 
-  mode-watcher@0.5.1(svelte@5.55.7(@typescript-eslint/types@8.58.1)):
+  mode-watcher@1.1.0(svelte@5.55.7(@typescript-eslint/types@8.58.1)):
     dependencies:
+      runed: 0.25.0(svelte@5.55.7(@typescript-eslint/types@8.58.1))
       svelte: 5.55.7(@typescript-eslint/types@8.58.1)
+      svelte-toolbelt: 0.7.1(svelte@5.55.7(@typescript-eslint/types@8.58.1))
 
   mri@1.2.0: {}
 
@@ -3573,6 +3580,11 @@ snapshots:
       fsevents: 2.3.3
 
   runed@0.23.4(svelte@5.55.7(@typescript-eslint/types@8.58.1)):
+    dependencies:
+      esm-env: 1.2.2
+      svelte: 5.55.7(@typescript-eslint/types@8.58.1)
+
+  runed@0.25.0(svelte@5.55.7(@typescript-eslint/types@8.58.1)):
     dependencies:
       esm-env: 1.2.2
       svelte: 5.55.7(@typescript-eslint/types@8.58.1)
