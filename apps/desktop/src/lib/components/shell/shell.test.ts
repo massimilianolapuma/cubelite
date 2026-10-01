@@ -54,6 +54,7 @@ beforeEach(() => {
   app.namespace = null;
   app.activeCluster = "prod-aks";
   app.connecting = null;
+  app.kubeconfigSources = [];
   clusters.contexts = [
     { name: "prod-aks", cluster_server: "https://prod.azmk8s.io:443", namespace: "default", is_active: true },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
@@ -101,6 +102,23 @@ describe("ClusterRail", () => {
     expect(dots.map((d) => d.dataset.health)).toEqual(["connected", "unknown"]);
   });
 
+  it("names the defining kubeconfig file in the tooltip only with several files", () => {
+    clusters.contexts = clusters.contexts.map((c) => ({
+      ...c,
+      source: c.name === "staging" ? "/home/u/.kube/team.yaml" : "/home/u/.kube/config",
+    }));
+    const { unmount } = render(ClusterRail);
+    expect(screen.getByTitle("staging")).toBeInTheDocument();
+    unmount();
+
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
+      { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: [] },
+    ];
+    render(ClusterRail);
+    expect(screen.getByTitle("staging — /home/u/.kube/team.yaml")).toBeInTheDocument();
+  });
+
   it("navigates to the dashboard from the home button", async () => {
     render(ClusterRail);
     await fireEvent.click(screen.getByLabelText("All Clusters"));
@@ -145,6 +163,37 @@ describe("Sidebar", () => {
     render(Sidebar);
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
+  });
+
+  it("shows one count for pods, red with a tooltip when pods need attention", () => {
+    resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" })];
+    render(Sidebar);
+    const count = screen.getByTitle("1 need attention");
+    expect(count).toHaveTextContent("2");
+    expect(count).toHaveClass("text-status-err");
+  });
+
+  it("shows counts for on-demand kinds only once loaded for the current namespace", () => {
+    resources.clear();
+    resources.services = [
+      {
+        name: "api",
+        namespace: "default",
+        service_type: "ClusterIP",
+        cluster_ip: null,
+        external_ips: [],
+        ports: [],
+        creation_timestamp: null,
+      },
+    ];
+    const row = () => screen.getByText("Services").closest("button");
+    const { unmount } = render(Sidebar);
+    expect(row()).not.toHaveTextContent("1");
+    unmount();
+
+    resources.loadedKinds = { services: null };
+    render(Sidebar);
+    expect(row()).toHaveTextContent("1");
   });
 
   it("navigates on item click", async () => {

@@ -20,13 +20,13 @@ struct ErrorBannerView: View {
             Spacer(minLength: 8)
             viewLogsButton
         }
-        .font(.callout)
+        .typeStyle(DesignTokens.Typography.body)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(minHeight: 44)
-        .background(Color.red.opacity(colorScheme == .dark ? 0.08 : 0.06))
+        .background(DesignTokens.statusErr.opacity(colorScheme == .dark ? 0.08 : 0.06))
         .overlay(alignment: .bottom) {
-            Color.red.opacity(0.35).frame(height: 1)
+            DesignTokens.statusErr.opacity(0.35).frame(height: 1)
         }
     }
 
@@ -34,7 +34,7 @@ struct ErrorBannerView: View {
 
     private var bannerIcon: some View {
         Image(systemName: "exclamationmark.circle.fill")
-            .foregroundStyle(.red)
+            .foregroundStyle(DesignTokens.statusErr)
             .accessibilityHidden(true)
     }
 
@@ -42,7 +42,7 @@ struct ErrorBannerView: View {
         Text(message)
             .lineLimit(1)
             .truncationMode(.tail)
-            .foregroundStyle(.red)
+            .foregroundStyle(DesignTokens.statusErr)
     }
 
     private var viewLogsButton: some View {

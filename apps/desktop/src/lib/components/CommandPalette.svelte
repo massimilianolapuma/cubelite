@@ -11,6 +11,7 @@
 	import { health } from '$lib/stores/health.svelte';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import { modLabel } from '$lib/platform';
+	import { identityVar } from '$lib/cluster-identity';
 	import { providerOf } from '$lib/provider';
 	import type { Component } from 'svelte';
 
@@ -108,12 +109,12 @@
 								>
 									<span
 										class="h-2 w-2 shrink-0 rounded-full"
-										style="background: var(--color-cluster-{clusters.identityFor(ctx.name)});"
+										style="background: {identityVar(clusters.identityFor(ctx.name))};"
 									></span>
 									<span class="type-body flex-1 truncate text-text-primary">{ctx.name}</span>
 									<span
 										class="rounded-sm px-1.5 py-px type-micro font-mono"
-										style="color: var(--color-cluster-{clusters.identityFor(ctx.name)}); background: color-mix(in srgb, var(--color-cluster-{clusters.identityFor(ctx.name)}) 12%, transparent);"
+										style="color: {identityVar(clusters.identityFor(ctx.name))}; background: color-mix(in srgb, {identityVar(clusters.identityFor(ctx.name))} 12%, transparent);"
 									>
 										{providerOf(ctx.name, ctx.cluster_server)}
 									</span>

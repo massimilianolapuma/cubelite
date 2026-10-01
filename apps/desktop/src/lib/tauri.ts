@@ -52,6 +52,23 @@ export type ContextInfo = {
   cluster_server: string | null;
   namespace: string;
   is_active: boolean;
+  /** Kubeconfig file that defines this context (first file wins). */
+  source?: string | null;
+};
+
+/** One file of the resolved kubeconfig list, in merge order. */
+export type KubeconfigSource = {
+  path: string;
+  exists: boolean;
+  contexts: number;
+  /** Context names hidden by an earlier file with the same name. */
+  shadowed: string[];
+};
+
+export type KubeconfigSources = {
+  /** Loaded files joined like KUBECONFIG; pass as `kubeconfigPath`. */
+  spec: string;
+  sources: KubeconfigSource[];
 };
 
 export type ServiceInfo = {
@@ -101,6 +118,10 @@ export type SecretInfo = {
 };
 
 // --- Invoke wrappers ---
+
+export function kubeconfigSources(): Promise<KubeconfigSources> {
+  return invoke<KubeconfigSources>("kubeconfig_sources");
+}
 
 export function listContexts(): Promise<ContextInfo[]> {
   return invoke<ContextInfo[]>("list_contexts");

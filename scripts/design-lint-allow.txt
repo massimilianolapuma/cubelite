@@ -1,0 +1,4 @@
+# design-lint allow-list: native residue, "<path> <max matches>".
+# Empty since #395: every native view uses DesignTokens, so any new system
+# font or raw system colour fails the lint. Add a line here only with a reason
+# recorded in docs/design-audit-2026-09.md. Desktop is held at zero too.

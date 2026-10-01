@@ -62,6 +62,9 @@
 		['QoS', pod.qos_class ?? '—']
 	]);
 
+	const labelEntries = $derived(
+		Object.entries(pod.labels ?? {}).sort(([a], [b]) => a.localeCompare(b))
+	);
 	const usage = $derived(resources.metricsFor(pod.namespace, pod.name));
 	// Bars are relative to the allocatable capacity of the pod's node.
 	const nodeCapacity = $derived(resources.nodes.find((n) => n.name === pod.node) ?? null);
@@ -135,6 +138,22 @@
 			{/if}
 		</div>
 
+		{#if labelEntries.length > 0}
+			<div>
+				<div class="type-section mb-1.5 text-text-tertiary">Labels</div>
+				<div class="flex flex-wrap gap-1">
+					{#each labelEntries as [key, value] (key)}
+						<span
+							class="max-w-full truncate rounded-sm border border-border-faint bg-surface-raised px-1.5 py-px type-micro font-mono text-text-secondary"
+							title="{key}={value}"
+						>
+							{key}={value}
+						</span>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		<div>
 			<div class="type-section mb-1.5 text-text-tertiary">Port forward</div>
 			<div class="flex items-center gap-1.5">
@@ -175,7 +194,7 @@
 					</span>
 					<button
 						type="button"
-						class="focus-ring type-caption flex h-6 items-center rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110"
+						class="focus-ring type-caption flex h-7 items-center rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110"
 						onclick={() => void portforward.stop(session.id)}
 					>
 						Stop

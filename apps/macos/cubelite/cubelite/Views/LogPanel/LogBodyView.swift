@@ -154,24 +154,24 @@ struct LogLineRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             if showTimestamp {
                 Text(line.time ?? "—")
-                    .font(.system(size: 10.5, design: .monospaced))
+                    .typeStyle(DesignTokens.Typography.micro.monospaced)
                     .foregroundStyle(DesignTokens.textTertiary)
                     .frame(width: 94, alignment: .leading)
             }
             if let sourceName, let sourceColor {
                 Text(sourceName)
-                    .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                    .typeStyle(DesignTokens.Typography.micro.monospaced.weighted(.semibold))
                     .foregroundStyle(sourceColor)
                     .frame(width: 52, alignment: .leading)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
             Text(levelLabel)
-                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
+                .typeStyle(DesignTokens.Typography.micro.monospaced.weighted(.semibold))
                 .foregroundStyle(levelColor)
                 .frame(width: 42, alignment: .leading)
             Text(highlightedMessage)
-                .font(.system(size: 11, design: .monospaced))
+                .typeStyle(DesignTokens.Typography.log)
                 .foregroundStyle(messageColor)
                 .textSelection(.enabled)
                 .lineLimit(wrap ? nil : 1)

@@ -22,6 +22,8 @@ final class ClusterState {
     var capacity: ClusterCapacity?
     /// Recent Warning events for the browsed scope, most recent first.
     var warningEvents: [EventInfo] = []
+    /// All events (Normal and Warning) for the browsed scope, most recent first.
+    var events: [EventInfo] = []
 
     /// Available namespaces for the currently browsed context.
     var namespaces: [NamespaceInfo] = []
@@ -78,6 +80,13 @@ final class ClusterState {
     /// `nil` means not yet checked, `true` = connected, `false` = unreachable.
     var clusterReachable: Bool?
 
+    /// Kubernetes version (`gitVersion`) of the active cluster; nil until
+    /// fetched or when `/version` is unavailable.
+    var clusterVersion: String?
+
+    /// API server URL of the active cluster, from the kubeconfig.
+    var serverURL: String?
+
     /// Resource types that returned HTTP 403 (Forbidden) during the last fetch.
     ///
     /// Populated when RBAC denies access to specific resource types while others
@@ -111,6 +120,8 @@ enum ResourceType: String, CaseIterable, Identifiable {
     case pvcs = "PVCs"
     /// Cluster nodes (read-only).
     case nodes = "Nodes"
+    /// Cluster events (Normal and Warning).
+    case events = "Events"
     /// Aggregated multi-pod log stream.
     case logs = "Logs"
 
@@ -131,6 +142,7 @@ enum ResourceType: String, CaseIterable, Identifiable {
         case .cronJobs: "clock.arrow.circlepath"
         case .pvcs: "externaldrive"
         case .nodes: "server.rack"
+        case .events: "exclamationmark.bubble"
         case .logs: "text.alignleft"
         }
     }

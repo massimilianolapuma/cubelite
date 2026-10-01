@@ -10,8 +10,10 @@
  */
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { app } from "./app.svelte";
 import { logPanel } from "./logPanel.svelte";
 import { isSessionTransfer, serializeSession } from "./sessionTransfer";
+import { toasts } from "./toasts.svelte";
 
 /**
  * Pop-out window label for a pod's log session key (`namespace/pod`).
@@ -44,6 +46,12 @@ class LogWindowsStore {
       if (!isSessionTransfer(event.payload)) return;
       const transfer = event.payload;
       this.#open.delete(transfer.key);
+      // A re-attach racing a cluster switch targets the old cluster's pod:
+      // drop it (the pop-out already stopped its streams) (#351).
+      if (app.connecting !== null || transfer.activeCluster !== app.activeCluster) {
+        toasts.push(`Log session for ${transfer.pod} closed — cluster changed`, "warn");
+        return;
+      }
       void logPanel.openSeeded(transfer);
     });
     logPanel.detachedRouter = { has: (k) => this.has(k), focus: (k) => this.focus(k) };

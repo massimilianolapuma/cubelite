@@ -41,7 +41,7 @@ A proposed replacement for `design/tokens.json` is included as **`tokens-v2.json
 |---|---|---|
 | text/primary | `#f4f4f5` | titles, resource names |
 | text/secondary | `#9c9ca6` | body, cells |
-| text/tertiary | `#71717a` | column headers, meta |
+| text/tertiary | `#7d7d86` | column headers, meta (was `#71717a`; lightened for WCAG AA, see v1.1 amendments) |
 | text/disabled | `#5c5c66` | placeholders, kbd |
 | text/data-bright | `#e4e4e7` | mono names in tables |
 | text/log | `#c8c8d0` | log message text |
@@ -53,7 +53,7 @@ A proposed replacement for `design/tokens.json` is included as **`tokens-v2.json
 | ok | `#34d399` | Running / Available / Succeeded / deployed / healthy |
 | warn | `#fbbf24` | Pending / Progressing / pending-upgrade / degraded |
 | err | `#f87171` | CrashLoop / failed / unreachable / destructive text |
-| err/solid | `#dc4646` | destructive confirm button fill |
+| err/solid | `#d72929` | destructive confirm button fill (was `#dc4646`; darkened for WCAG AA, see v1.1 amendments) |
 | info (logs) | `#7dd3fc` | INFO log level |
 
 Alpha tints (hex + alpha): selection bg = accent 10%; active nav/rail bg = accent 14–20%; status pill bg = status 10%; log error row = err 7%; log warn row = warn 4.5%; focus ring = accent 15% (3px).
@@ -62,6 +62,8 @@ Alpha tints (hex + alpha): selection bg = accent 10%; active nav/rail bg = accen
 `#60a5fa` (blue), `#f59e0b` (amber), `#f472b6` (pink), `#a78bfa` (violet), `#2dd4bf` (teal). Identity ≠ health: health is always a separate dot/badge.
 
 ### Typography
+> Superseded by the **v1.1 type scale** in [v1.1 amendments](#v11-amendments-2026-09). The table below is the original v1 scale.
+
 Families: **Geist** (UI) + **Geist Mono** (all data: resource names, metrics, IPs, logs, namespaces). Fallbacks: system-ui / ui-monospace.
 
 | Style | Spec | Use |
@@ -82,6 +84,57 @@ Families: **Geist** (UI) + **Geist Mono** (all data: resource names, metrics, IP
 - Radius: 4 (chips, kbd) · 6 (controls, buttons, inputs) · 8 (tables, log panel) · 10 (cards, rail avatars, panels) · 12 (modals, palette) · 999 (pills).
 - Elevation: overlays only — bg `#161619`, border `#34343b`, shadow `0 24px 80px rgba(0,0,0,.7)`. Drawers: `-16px 0 40px rgba(0,0,0,.45)`. Toasts: `0 10px 34px rgba(0,0,0,.5)`.
 - Row density: 9px vertical padding default, 5px "compact" preference. Controls height 28px, min hit target 28×28.
+
+## v1.1 amendments (2026-09)
+Changes made after the v1 handoff while implementing it on both apps. Where they conflict with anything above, these win. The source of truth for values is `design/tokens.json` (generated into `apps/desktop/src/app.css` and `DesignTokens.swift` by `pnpm design:tokens`).
+
+### Contrast fixes (#341)
+The WCAG AA audit (`docs/a11y/contrast-audit.md`) changed two dark tokens. Hue is unchanged; only lightness moved.
+
+| Token | v1 | v1.1 | Why |
+|---|---|---|---|
+| text/tertiary | `#71717a` | `#7d7d86` | 3.84 → 4.55:1 on surface |
+| err/solid | `#dc4646` | `#d72929` | 3.82 → 4.51:1 under text/primary |
+
+Light theme (#396): the alternate accents were darkened the same way, so they pass AA as text and as the fill behind a `bg/window`-coloured label: violet `#7c5ce8` → `#7756e7`, teal `#0f9e8e` → `#0c7e72`. The dark alternates (`#a78bfa`, `#2dd4bf`) are unchanged.
+
+### Type scale v1.1 (#355)
+Most styles move up by 0.5–1px, so nothing falls below the Apple HIG 10pt minimum. `micro` and `stat` are new, so no component needs a hard-coded size. Line heights are unchanged.
+
+| Style | v1 | v1.1 | Use |
+|---|---|---|---|
+| display | 600 28px sans | 600 28px sans | onboarding hero |
+| title | 600 16px sans | 600 16px sans | view titles |
+| subtitle | 600 12.5–13px sans | 600 13.5px sans | modal titles, titlebar cluster name, card titles |
+| body | 500 12.5px sans | 500 13px sans | nav, buttons, rows |
+| caption | 400 11–11.5px sans | 400 11.5px sans | descriptions, meta, filter inputs |
+| section | 600 9.5px · uppercase · ls .07em | 600 10px · uppercase · ls .07em | sidebar/palette section headers |
+| colhead | 600 10.5px · uppercase | 600 11px · uppercase · ls .05em | column headers, card labels |
+| data | 500 12px mono | 500 12.5px mono | resource names |
+| data-sm | 400 11–11.5px mono | 400 12px mono | cells, metrics |
+| log | 400 11px mono | 400 11.5px mono | log lines |
+| stat | — | 600 22px mono, data-bright | stat card values |
+| micro | — | 500 10.5px sans | kbd chips, pills, counters, log meta (smallest allowed) |
+
+### Components and behaviour (#362, #363, #364)
+- **Controls and hit targets**: every control, including compact ones such as the replica stepper, Restart, Reveal and Stop, is 28px tall. Smaller glyph chips, such as the pod-row "logs" chip, get an invisible 28×28 hit area.
+- **Row density**: Preferences → Density picks Default (9px vertical padding) or Compact (5px).
+- **Accent**: Preferences → Accent picks blue (default), violet (`#a78bfa`) or teal (`#2dd4bf`).
+- **Cluster identity**: each context gets an automatic identity color that the user can override in Preferences → Cluster colors. Health is still shown separately.
+- **Status**: Succeeded pods use `ok` (green), not neutral.
+- **Replica stepper**: clicks are batched for about 800ms before a single scale call. Ready and target replicas show as segments: filled ok for ready, warn outline for pending, "+N" past 8.
+- **Pod drawer**: shows label chips (`key=value`, mono, micro). Drawers are pinned to the content area's right edge and do not scroll with the table.
+- **Sidebar**: one count per item, err-colored with a tooltip when pods or events need attention. Nodes, StatefulSets, Jobs, CronJobs and PVCs are kept beyond the v1 list, each with a count once loaded. The namespace menu shows pod counts per namespace.
+- **All Clusters dashboard**: the stat cards (clusters online, pods, warnings, watched) aggregate every context. Each cluster card shows its own pods, warnings and CPU/MEM bars.
+- **Popovers and menus**: use overlay elevation (`bg/overlay`, `border/strong`, overlay shadow). Row hover is `bg/raised`.
+- **Icons**: every unicode placeholder is replaced with Lucide on desktop and SF Symbols on macOS. Toggle rows (Timestamps, Wrap lines) are `menuitemcheckbox` with a check icon.
+- **Icon sizes** (#395): glyphs use the `icon` tokens: `2xs` 7px (badge digits), `xs` 8px (chevrons), `sm` 10px (search), `md` 11px (palette rows), `lg` 14px (sidebar rows), `xl` 28px (detail headers), `2xl` 40px (empty states).
+- **Esc**: closes only the topmost overlay, so a confirm dialog closes before the drawer under it.
+- **Native parity** (#395): every macOS view uses the design tokens; `scripts/design-lint.sh` holds both apps at zero system fonts and raw colors.
+- **Kubeconfig** (#392): Preferences lists every file in `KUBECONFIG` with its context count; on a name clash the first file wins.
+
+### Still open
+- **Light theme**: selectable in Preferences but not design-reviewed yet.
 
 ## Screens / Views
 
@@ -136,7 +189,7 @@ No image assets. Fonts: Geist + Geist Mono (Google Fonts / vendored; both open l
 - `CubeLite Prototype.dc.html` — interactive prototype, the primary reference (open in a browser; requires network for fonts/runtime).
 - `Design System.dc.html` — token + component reference sheet.
 - `Explorations.dc.html` — earlier explored directions (1a/1b/1c, 2a chosen) — historical context only.
-- `tokens-v2.json` — proposed replacement for `design/tokens.json` (dark complete; light TODO; keep the repo's generator workflow `pnpm design:tokens`).
+- `tokens-v2.json` — proposed replacement for `design/tokens.json` (dark complete; light TODO; keep the repo's generator workflow `pnpm design:tokens`). Contrast values match v1.1; `design/tokens.json` stays the source of truth.
 
 ## Notes for the implementer
 - The unified identity supersedes "monospace-first for everything" from the old tokens: **sans for UI, mono strictly for data**.

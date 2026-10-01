@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 import PodTable from "./PodTable.svelte";
+import { mutations } from "$lib/stores/mutations.svelte";
 import type { PodInfo } from "$lib/tauri";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
@@ -68,13 +69,13 @@ describe("PodTable", () => {
     expect(row?.getAttribute("style")).toContain("--alpha-selection-bg");
   });
 
-  it("shows the 'logs ⏎' chip only on the selected row", () => {
+  it("shows the 'logs' chip only on the selected row", () => {
     const p = pod();
     const { rerender } = render(PodTable, { props: { pods: [p], selected: null } });
-    expect(screen.queryByText("logs ⏎")).toBeNull();
+    expect(screen.queryByText("logs")).toBeNull();
 
     rerender({ pods: [p], selected: p });
-    expect(screen.getByText("logs ⏎")).toBeInTheDocument();
+    expect(screen.getByText("logs")).toBeInTheDocument();
   });
 
   it("Enter on an already-selected row calls onLogs instead of onRowClick", async () => {
@@ -99,12 +100,12 @@ describe("PodTable", () => {
     expect(onLogs).not.toHaveBeenCalled();
   });
 
-  it("clicking the 'logs ⏎' chip opens logs directly instead of re-selecting the row", async () => {
+  it("clicking the 'logs' chip opens logs directly instead of re-selecting the row", async () => {
     const p = pod();
     const onRowClick = vi.fn();
     const onLogs = vi.fn();
     render(PodTable, { props: { pods: [p], selected: p, onRowClick, onLogs } });
-    await fireEvent.click(screen.getByText("logs ⏎"));
+    await fireEvent.click(screen.getByText("logs"));
     expect(onLogs).toHaveBeenCalledWith(p);
     expect(onRowClick).not.toHaveBeenCalled();
   });
@@ -113,7 +114,18 @@ describe("PodTable", () => {
     const p = pod();
     const onLogs = vi.fn();
     render(PodTable, { props: { pods: [p], selected: p, onLogs } });
-    await fireEvent.keyDown(screen.getByText("logs ⏎"), { key: "Enter" });
+    await fireEvent.keyDown(screen.getByText("logs"), { key: "Enter" });
     expect(onLogs).toHaveBeenCalledWith(p);
+  });
+
+  it("shows an inline spinner while the pod is being terminated", () => {
+    mutations.pendingPodDeletes = { "default/api-0": true };
+    try {
+      render(PodTable, { props: { pods: [pod()] } });
+      expect(screen.getByText("Terminating…")).toBeInTheDocument();
+      expect(screen.queryByText("Running")).toBeNull();
+    } finally {
+      mutations.pendingPodDeletes = {};
+    }
   });
 });

@@ -3,18 +3,19 @@ pub mod env;
 
 use commands::kubernetes::{
     cluster_capacity, delete_pod, export_log, get_current_context, get_pod_containers,
-    get_resource_yaml, list_configmaps, list_contexts, list_cronjobs, list_deployments,
-    list_events, list_helm_releases, list_ingresses, list_jobs, list_namespaces, list_nodes,
-    list_pod_metrics, list_pods, list_pvcs, list_secrets, list_services, list_statefulsets,
-    probe_cluster, restart_deployment, scale_deployment, set_context, start_port_forward,
-    stop_logs, stop_port_forward, stream_logs, stream_pod_log, unwatch_resources, watch_resources,
-    LogState, PortForwardState, WatchState,
+    get_resource_yaml, kubeconfig_sources, list_configmaps, list_contexts, list_cronjobs,
+    list_deployments, list_events, list_helm_releases, list_ingresses, list_jobs, list_namespaces,
+    list_nodes, list_pod_metrics, list_pods, list_pvcs, list_secrets, list_services,
+    list_statefulsets, probe_cluster, restart_deployment, scale_deployment, set_context,
+    start_port_forward, stop_logs, stop_port_forward, stream_logs, stream_pod_log,
+    unwatch_resources, watch_resources, LogState, PortForwardState, WatchState,
 };
 
 /// Entry point for the Tauri application.
 pub fn run() {
     // Must run before anything can spawn kubeconfig exec plugins.
     env::fix_path();
+    env::import_kubeconfig();
 
     if let Err(e) = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -51,6 +52,7 @@ pub fn run() {
             restart_deployment,
             scale_deployment,
             list_contexts,
+            kubeconfig_sources,
             get_current_context,
             set_context,
             start_port_forward,

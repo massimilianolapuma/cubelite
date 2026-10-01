@@ -42,6 +42,7 @@ import {
   type ServiceInfo,
 } from "$lib/tauri";
 import { errorMessage } from "$lib/errors";
+import { isForbiddenError } from "$lib/overview-summary";
 import { app } from "./app.svelte";
 import { settings } from "./settings.svelte";
 
@@ -73,8 +74,24 @@ const EXTRA_KINDS: readonly ExtraKind[] = [
   "nodes",
 ];
 
+/** Kinds the Overview resource grid summarizes (plus the node inventory). */
+export const OVERVIEW_KINDS: readonly ExtraKind[] = [
+  "services",
+  "ingresses",
+  "configmaps",
+  "secrets",
+  "helm",
+  "nodes",
+];
+
 export function isExtraKind(v: unknown): v is ExtraKind {
   return typeof v === "string" && (EXTRA_KINDS as readonly string[]).includes(v);
+}
+
+function countByNamespace(pods: PodInfo[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const p of pods) counts[p.namespace] = (counts[p.namespace] ?? 0) + 1;
+  return counts;
 }
 
 class ResourcesStore {
@@ -102,8 +119,19 @@ class ResourcesStore {
   extraLoading = $state(false);
   extraError = $state<string | null>(null);
 
+  /**
+   * Namespace filter each on-demand kind was last loaded with (null = all).
+   * A kind missing here has not been loaded for the active cluster yet.
+   */
+  loadedKinds = $state<Partial<Record<ExtraKind, string | null>>>({});
+  /** On-demand kinds the last load was denied by RBAC (HTTP 403). */
+  forbiddenKinds = $state<ReadonlySet<ExtraKind>>(new Set());
+  /** Pods per namespace from the last all-namespaces load (drives the ns menu). */
+  #allNsPodCounts = $state<Record<string, number> | null>(null);
+
   #loadSeq = 0;
   #extraSeq = 0;
+  #overviewSeq = 0;
   #watchIds: string[] = [];
   #unlisteners: UnlistenFn[] = [];
   #reloadTimer: ReturnType<typeof setTimeout> | null = null;
@@ -168,12 +196,14 @@ class ResourcesStore {
 
       if (seq !== this.#loadSeq) return true;
       this.pods = podList;
+      if (ns === null) this.#allNsPodCounts = countByNamespace(podList);
       this.namespaces = nsList;
       this.deployments = depList;
       this.events = eventList;
       void this.#loadMetrics(kc, ns ?? undefined, cluster, seq);
       // Keep the currently open extra view in sync with refresh/watch cycles.
       if (isExtraKind(app.view)) void this.loadKind(app.view);
+      else if (app.view === "overview") void this.loadOverviewExtras();
       return true;
     } catch (e) {
       if (seq === this.#loadSeq) this.error = errorMessage(e);
@@ -232,6 +262,107 @@ class ResourcesStore {
     );
   }
 
+  /**
+   * Pod count per namespace. Live when viewing all namespaces; otherwise the
+   * last all-namespaces snapshot, with the filtered namespace kept live.
+   */
+  get podCountsByNamespace(): Record<string, number> {
+    const live = countByNamespace(this.pods);
+    const base = app.namespace === null ? live : this.#allNsPodCounts;
+    const counts: Record<string, number> = {};
+    // With a full picture, namespaces without pods count as 0.
+    if (base) for (const ns of this.namespaces) counts[ns.name] = base[ns.name] ?? 0;
+    if (app.namespace !== null) counts[app.namespace] = live[app.namespace] ?? 0;
+    return counts;
+  }
+
+  /**
+   * Item count for an on-demand kind, or null when it has not been loaded
+   * for the current cluster + namespace (the sidebar then shows no number).
+   */
+  kindCount(kind: ExtraKind): number | null {
+    const loadedFor = this.loadedKinds[kind];
+    if (loadedFor === undefined) return null;
+    // Nodes are cluster-scoped; everything else must match the namespace filter.
+    if (kind !== "nodes" && loadedFor !== app.namespace) return null;
+    const lists: Record<ExtraKind, unknown[]> = {
+      services: this.services,
+      ingresses: this.ingresses,
+      configmaps: this.configmaps,
+      secrets: this.secrets,
+      helm: this.helmReleases,
+      statefulsets: this.statefulsets,
+      jobs: this.jobs,
+      cronjobs: this.cronjobs,
+      pvcs: this.pvcs,
+      nodes: this.nodeInventory,
+    };
+    return lists[kind].length;
+  }
+
+  /**
+   * Fetch one on-demand kind and return a commit that stores the result, so
+   * callers apply it only if their sequence guard still holds.
+   */
+  async #fetchKind(
+    kind: ExtraKind,
+    kc: string,
+    ns: string | undefined,
+    cluster: string,
+  ): Promise<() => void> {
+    switch (kind) {
+      case "services": {
+        const list = await listServices(kc, ns, cluster);
+        return () => (this.services = list);
+      }
+      case "ingresses": {
+        const list = await listIngresses(kc, ns, cluster);
+        return () => (this.ingresses = list);
+      }
+      case "configmaps": {
+        const list = await listConfigMaps(kc, ns, cluster);
+        return () => (this.configmaps = list);
+      }
+      case "secrets": {
+        const list = await listSecrets(kc, ns, cluster);
+        return () => (this.secrets = list);
+      }
+      case "helm": {
+        const list = await listHelmReleases(kc, ns, cluster);
+        return () => (this.helmReleases = list);
+      }
+      case "statefulsets": {
+        const list = await listStatefulSets(kc, ns, cluster);
+        return () => (this.statefulsets = list);
+      }
+      case "jobs": {
+        const list = await listJobs(kc, ns, cluster);
+        return () => (this.jobs = list);
+      }
+      case "cronjobs": {
+        const list = await listCronJobs(kc, ns, cluster);
+        return () => (this.cronjobs = list);
+      }
+      case "pvcs": {
+        const list = await listPvcs(kc, ns, cluster);
+        return () => (this.pvcs = list);
+      }
+      case "nodes": {
+        const list = await listNodes(kc, cluster);
+        return () => (this.nodeInventory = list);
+      }
+    }
+  }
+
+  /** Record (or clear) an RBAC denial for `kind`. */
+  #markForbidden(kind: ExtraKind, forbidden: boolean): void {
+    if (this.forbiddenKinds.has(kind) === forbidden) return;
+    const next = new Set(this.forbiddenKinds);
+    if (forbidden) next.add(kind);
+    else next.delete(kind);
+    this.forbiddenKinds = next;
+  }
+
   /** Load one on-demand kind (services/ingresses/configmaps/secrets). */
   async loadKind(kind: ExtraKind): Promise<void> {
     const seq = ++this.#extraSeq;
@@ -243,69 +374,59 @@ class ResourcesStore {
     this.extraLoading = true;
     this.extraError = null;
     try {
-      switch (kind) {
-        case "services": {
-          const list = await listServices(kc, ns, cluster);
-          if (seq === this.#extraSeq) this.services = list;
-          break;
-        }
-        case "ingresses": {
-          const list = await listIngresses(kc, ns, cluster);
-          if (seq === this.#extraSeq) this.ingresses = list;
-          break;
-        }
-        case "configmaps": {
-          const list = await listConfigMaps(kc, ns, cluster);
-          if (seq === this.#extraSeq) this.configmaps = list;
-          break;
-        }
-        case "secrets": {
-          const list = await listSecrets(kc, ns, cluster);
-          if (seq === this.#extraSeq) this.secrets = list;
-          break;
-        }
-        case "helm": {
-          const list = await listHelmReleases(kc, ns, cluster);
-          if (seq === this.#extraSeq) this.helmReleases = list;
-          break;
-        }
-        case "statefulsets": {
-          const list = await listStatefulSets(kc, ns, cluster);
-          if (seq === this.#extraSeq) this.statefulsets = list;
-          break;
-        }
-        case "jobs": {
-          const list = await listJobs(kc, ns, cluster);
-          if (seq === this.#extraSeq) this.jobs = list;
-          break;
-        }
-        case "cronjobs": {
-          const list = await listCronJobs(kc, ns, cluster);
-          if (seq === this.#extraSeq) this.cronjobs = list;
-          break;
-        }
-        case "pvcs": {
-          const list = await listPvcs(kc, ns, cluster);
-          if (seq === this.#extraSeq) this.pvcs = list;
-          break;
-        }
-        case "nodes": {
-          const list = await listNodes(kc, cluster);
-          if (seq === this.#extraSeq) this.nodeInventory = list;
-          break;
-        }
+      const commit = await this.#fetchKind(kind, kc, ns, cluster);
+      if (seq === this.#extraSeq) {
+        commit();
+        this.loadedKinds = { ...this.loadedKinds, [kind]: ns ?? null };
+        this.#markForbidden(kind, false);
       }
     } catch (e) {
-      if (seq === this.#extraSeq) this.extraError = errorMessage(e);
+      if (seq === this.#extraSeq) {
+        this.extraError = errorMessage(e);
+        this.#markForbidden(kind, isForbiddenError(this.extraError));
+      }
     } finally {
       if (seq === this.#extraSeq) this.extraLoading = false;
     }
+  }
+
+  /**
+   * Overview resource grid (parity v2 §4): load every kind it summarizes in
+   * one settled batch. Failures are best-effort; RBAC denials are recorded
+   * in `forbiddenKinds` so the card can say so instead of showing zeros.
+   */
+  async loadOverviewExtras(): Promise<void> {
+    const seq = ++this.#overviewSeq;
+    const kc = app.kubeconfigPath;
+    const cluster = app.activeCluster;
+    const ns = app.namespace ?? undefined;
+    if (!kc || !cluster) return;
+
+    const results = await Promise.allSettled(
+      OVERVIEW_KINDS.map((kind) => this.#fetchKind(kind, kc, ns, cluster)),
+    );
+    if (seq !== this.#overviewSeq) return;
+    const loaded = { ...this.loadedKinds };
+    const forbidden = new Set(this.forbiddenKinds);
+    results.forEach((result, i) => {
+      const kind = OVERVIEW_KINDS[i];
+      if (result.status === "fulfilled") {
+        result.value();
+        loaded[kind] = ns ?? null;
+        forbidden.delete(kind);
+      } else if (isForbiddenError(errorMessage(result.reason))) {
+        forbidden.add(kind);
+      }
+    });
+    this.loadedKinds = loaded;
+    this.forbiddenKinds = forbidden;
   }
 
   /** Invalidate in-flight loads and clear data (call before switching cluster). */
   clear(): void {
     this.#loadSeq++;
     this.#extraSeq++;
+    this.#overviewSeq++;
     this.pods = [];
     this.namespaces = [];
     this.deployments = [];
@@ -320,6 +441,9 @@ class ResourcesStore {
     this.cronjobs = [];
     this.pvcs = [];
     this.nodeInventory = [];
+    this.loadedKinds = {};
+    this.forbiddenKinds = new Set();
+    this.#allNsPodCounts = null;
     this.podMetrics = {};
     this.nodes = [];
     this.metricsAvailable = false;
