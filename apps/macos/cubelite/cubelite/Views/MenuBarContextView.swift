@@ -52,19 +52,19 @@ struct MenuBarContextView: View {
     private var activeContextHeader: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Active Context")
-                .font(.caption)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.secondary)
             if clusterState.noConfig {
                 Text("No kubeconfig found")
-                    .font(.body)
+                    .typeStyle(DesignTokens.Typography.body)
                     .foregroundStyle(.secondary)
                     .italic()
                 Text("Place config at ~/.kube/config")
-                    .font(.caption2)
+                    .typeStyle(DesignTokens.Typography.micro)
                     .foregroundStyle(.tertiary)
             } else {
                 Text(clusterState.currentContext ?? "None")
-                    .font(.body.bold())
+                    .typeStyle(DesignTokens.Typography.body.weighted(.semibold))
                     .lineLimit(1)
             }
         }

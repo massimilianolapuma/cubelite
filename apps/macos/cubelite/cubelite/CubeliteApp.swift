@@ -85,6 +85,7 @@ struct CubeliteApp: App {
             }
         }
         .windowStyle(.hiddenTitleBar)
+        .commands { MainCommands() }
         .defaultSize(
             width: hasCompletedOnboarding ? 1200 : 600,
             height: hasCompletedOnboarding ? 700 : 400

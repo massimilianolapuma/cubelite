@@ -117,7 +117,7 @@ struct AggregatedLogsView: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: store.isFollowing ? "play.fill" : "pause.fill")
-                    .font(.system(size: 8))
+                    .iconSize(DesignTokens.iconXs)
                     .accessibilityHidden(true)
                 Text(store.isFollowing ? "Following" : "Paused")
                 if !store.isFollowing, store.newSincePause > 0 {

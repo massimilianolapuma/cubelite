@@ -10,6 +10,10 @@ vi.mock("$lib/tauri", () => ({
   }),
   clusterCapacity: vi.fn(async () => []),
   listServices: vi.fn(),
+  listIngresses: vi.fn(async () => []),
+  listConfigMaps: vi.fn(async () => []),
+  listSecrets: vi.fn(async () => []),
+  listHelmReleases: vi.fn(async () => []),
   listNodes: vi.fn(),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
@@ -22,6 +26,7 @@ import {
   listNamespaces,
   listNodes,
   listPods,
+  listSecrets,
   listServices,
   type NamespaceInfo,
   type PodInfo,
@@ -126,5 +131,77 @@ describe("kindCount", () => {
     await resources.loadKind("nodes");
     resources.clear();
     expect(resources.kindCount("nodes")).toBeNull();
+  });
+});
+
+describe("loadOverviewExtras", () => {
+  const forbidden = new Error(
+    'kubernetes client error: ApiError: secrets is forbidden: User "dev" cannot list resource "secrets" (Forbidden)',
+  );
+
+  it("loads every kind the overview grid summarizes", async () => {
+    vi.mocked(listServices).mockResolvedValue([]);
+    vi.mocked(listNodes).mockResolvedValue([]);
+    await resources.loadOverviewExtras();
+    for (const kind of ["services", "ingresses", "configmaps", "secrets", "helm", "nodes"] as const) {
+      expect(resources.kindCount(kind)).toBe(0);
+    }
+    expect(resources.forbiddenKinds.size).toBe(0);
+  });
+
+  it("records RBAC denials and keeps the other kinds", async () => {
+    vi.mocked(listServices).mockResolvedValue([]);
+    vi.mocked(listNodes).mockResolvedValue([]);
+    vi.mocked(listSecrets).mockRejectedValueOnce(forbidden);
+    await resources.loadOverviewExtras();
+    expect([...resources.forbiddenKinds]).toEqual(["secrets"]);
+    expect(resources.kindCount("secrets")).toBeNull();
+    expect(resources.kindCount("services")).toBe(0);
+  });
+
+  it("treats other failures as best-effort, not forbidden", async () => {
+    vi.mocked(listServices).mockRejectedValueOnce(new Error("connection reset"));
+    vi.mocked(listNodes).mockResolvedValue([]);
+    await resources.loadOverviewExtras();
+    expect(resources.forbiddenKinds.size).toBe(0);
+    expect(resources.kindCount("services")).toBeNull();
+  });
+
+  it("clears a denial once the kind loads again", async () => {
+    vi.mocked(listServices).mockResolvedValue([]);
+    vi.mocked(listNodes).mockResolvedValue([]);
+    vi.mocked(listSecrets).mockRejectedValueOnce(forbidden);
+    await resources.loadOverviewExtras();
+    await resources.loadOverviewExtras();
+    expect(resources.forbiddenKinds.size).toBe(0);
+  });
+
+  it("drops a superseded load", async () => {
+    let resolveFirst: (v: never[]) => void = () => {};
+    vi.mocked(listServices)
+      .mockImplementationOnce(() => new Promise((r) => (resolveFirst = r)))
+      .mockResolvedValueOnce([]);
+    vi.mocked(listNodes).mockResolvedValue([]);
+    const first = resources.loadOverviewExtras();
+    resources.clear();
+    resolveFirst([]);
+    await first;
+    expect(resources.kindCount("services")).toBeNull();
+  });
+
+  it("runs with the auto-refresh load() while the overview is open", async () => {
+    vi.mocked(listPods).mockResolvedValue([]);
+    vi.mocked(listServices).mockResolvedValue([]);
+    vi.mocked(listNodes).mockResolvedValue([]);
+    await resources.load();
+    await vi.waitFor(() => expect(resources.kindCount("services")).toBe(0));
+  });
+
+  it("marks a forbidden kind from loadKind too, and clear() forgets it", async () => {
+    vi.mocked(listSecrets).mockRejectedValueOnce(forbidden);
+    await resources.loadKind("secrets");
+    expect(resources.forbiddenKinds.has("secrets")).toBe(true);
+    resources.clear();
+    expect(resources.forbiddenKinds.size).toBe(0);
   });
 });

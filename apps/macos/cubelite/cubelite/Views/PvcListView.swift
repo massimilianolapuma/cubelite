@@ -43,7 +43,7 @@ struct PvcListView: View {
 
             TableColumn("Name") { pvc in
                 Text(pvc.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
 
@@ -55,7 +55,7 @@ struct PvcListView: View {
 
             TableColumn("Volume") { pvc in
                 Text(pvc.volume ?? "—")
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(DesignTokens.textSecondary)
                     .lineLimit(1)
             }
