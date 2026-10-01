@@ -307,7 +307,7 @@ pub fn pod_to_container_details(pod: &Pod) -> Vec<crate::resources::ContainerDet
             last_terminated_reason: last_terminated.as_ref().and_then(|t| t.reason.clone()),
             last_terminated_at: last_terminated
                 .as_ref()
-                .and_then(|t| t.finished_at.as_ref().map(|ts| ts.0.to_rfc3339())),
+                .and_then(|t| t.finished_at.as_ref().map(|ts| ts.0.to_string())),
         }
     };
 
@@ -344,7 +344,7 @@ pub(crate) fn namespace_to_info(ns: Namespace) -> Option<NamespaceInfo> {
 fn creation_timestamp(
     meta: &k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
 ) -> Option<String> {
-    meta.creation_timestamp.as_ref().map(|t| t.0.to_rfc3339())
+    meta.creation_timestamp.as_ref().map(|t| t.0.to_string())
 }
 
 /// Convert a raw [`Service`] object into a [`ServiceInfo`], returning `None`
@@ -575,7 +575,7 @@ pub(crate) fn cronjob_to_info(cj: CronJob) -> Option<CronJobInfo> {
         .map(|st| {
             (
                 st.active.map(|a| a.len() as i32).unwrap_or(0),
-                st.last_schedule_time.map(|t| t.0.to_rfc3339()),
+                st.last_schedule_time.map(|t| t.0.to_string()),
             )
         })
         .unwrap_or((0, None));
@@ -1212,9 +1212,9 @@ mod tests {
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 
         let finished = Time(
-            k8s_openapi::chrono::DateTime::parse_from_rfc3339("2026-07-15T10:00:00Z")
-                .expect("valid ts")
-                .with_timezone(&k8s_openapi::chrono::Utc),
+            "2026-07-15T10:00:00Z"
+                .parse::<k8s_openapi::jiff::Timestamp>()
+                .expect("valid ts"),
         );
 
         Pod {
@@ -1320,7 +1320,7 @@ mod tests {
         assert_eq!(worker.last_terminated_reason.as_deref(), Some("OOMKilled"));
         assert_eq!(
             worker.last_terminated_at.as_deref(),
-            Some("2026-07-15T10:00:00+00:00")
+            Some("2026-07-15T10:00:00Z")
         );
     }
 

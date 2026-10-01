@@ -14,12 +14,13 @@ use kube::{
     config::{KubeConfigOptions, Kubeconfig},
     Api, Client, Config,
 };
-use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::{
     error::KubeconfigError,
     helm::{latest_releases, parse_release_secret, HelmReleaseInfo},
+    kubeconfig::split_kubeconfig_spec,
     metrics::{
         parse_cpu_millis, parse_memory_bytes, pod_metrics_from_item, NodeCapacityInfo,
         PodMetricsInfo,
@@ -54,17 +55,20 @@ impl KubeClient {
         self.inner.clone()
     }
 
-    /// Build a [`KubeClient`] from the kubeconfig at `path`.
+    /// Build a [`KubeClient`] from `kubeconfig`: a single file path or a
+    /// `KUBECONFIG`-style list (`:` on Unix, `;` on Windows).
     ///
-    /// `context` selects a named context; when `None` the file's
+    /// Several files are merged like kubectl does: the first file to define a
+    /// context, cluster or user wins, and missing files are skipped.
+    /// `context` selects a named context; when `None` the merged
     /// `current-context` is used.
     ///
     /// # Errors
     ///
-    /// Returns [`KubeconfigError`] when the file cannot be read, parsed, or
+    /// Returns [`KubeconfigError`] when no file can be read or parsed, or
     /// when the client cannot be initialised from the resulting config.
-    pub async fn new(path: &Path, context: Option<&str>) -> Result<Self, KubeconfigError> {
-        Self::build(path, context, None).await
+    pub async fn new(kubeconfig: &str, context: Option<&str>) -> Result<Self, KubeconfigError> {
+        Self::build(kubeconfig, context, None).await
     }
 
     /// Like [`KubeClient::new`] but with short connect/read timeouts —
@@ -74,21 +78,24 @@ impl KubeClient {
     ///
     /// Returns [`KubeconfigError`] when the kubeconfig cannot be loaded or
     /// the client cannot be initialised.
-    pub async fn new_probe(path: &Path, context: Option<&str>) -> Result<Self, KubeconfigError> {
-        Self::build(path, context, Some((3, 5))).await
+    pub async fn new_probe(
+        kubeconfig: &str,
+        context: Option<&str>,
+    ) -> Result<Self, KubeconfigError> {
+        Self::build(kubeconfig, context, Some((3, 5))).await
     }
 
     async fn build(
-        path: &Path,
+        kubeconfig: &str,
         context: Option<&str>,
         timeouts_secs: Option<(u64, u64)>,
     ) -> Result<Self, KubeconfigError> {
-        let raw = tokio::fs::read_to_string(path)
+        let paths = split_kubeconfig_spec(kubeconfig);
+        let kubeconfig = tokio::task::spawn_blocking(move || merged_kubeconfig(&paths))
             .await
-            .map_err(|source| KubeconfigError::Io { source })?;
-
-        let kubeconfig: Kubeconfig =
-            serde_yaml::from_str(&raw).map_err(|source| KubeconfigError::ParseError { source })?;
+            .map_err(|e| KubeconfigError::ClientError {
+                reason: e.to_string(),
+            })??;
 
         let options = KubeConfigOptions {
             context: context.map(str::to_string),
@@ -645,7 +652,7 @@ impl KubeClient {
         name: &str,
     ) -> Result<(), KubeconfigError> {
         let api: Api<Deployment> = Api::namespaced(self.inner.clone(), namespace);
-        let now = k8s_openapi::chrono::Utc::now().to_rfc3339();
+        let now = k8s_openapi::jiff::Timestamp::now().to_string();
         let patch = serde_json::json!({
             "spec": {
                 "template": {
@@ -736,9 +743,9 @@ fn event_to_info(e: Event) -> EventInfo {
     let last_timestamp = e
         .series
         .as_ref()
-        .and_then(|s| s.last_observed_time.as_ref().map(|t| t.0.to_rfc3339()))
-        .or_else(|| e.last_timestamp.as_ref().map(|t| t.0.to_rfc3339()))
-        .or_else(|| e.event_time.as_ref().map(|t| t.0.to_rfc3339()));
+        .and_then(|s| s.last_observed_time.as_ref().map(|t| t.0.to_string()))
+        .or_else(|| e.last_timestamp.as_ref().map(|t| t.0.to_string()))
+        .or_else(|| e.event_time.as_ref().map(|t| t.0.to_string()));
 
     EventInfo {
         event_type: e.type_,
@@ -751,9 +758,118 @@ fn event_to_info(e: Event) -> EventInfo {
     }
 }
 
+/// Read and merge kubeconfig files with kube-rs, first file wins (kubectl
+/// semantics). Missing files are skipped; relative certificate/key paths are
+/// resolved against each file's directory by [`Kubeconfig::read_from`].
+fn merged_kubeconfig(paths: &[PathBuf]) -> Result<Kubeconfig, KubeconfigError> {
+    let mut merged: Option<Kubeconfig> = None;
+    for path in paths.iter().filter(|p| p.exists()) {
+        let next = Kubeconfig::read_from(path).map_err(|e| KubeconfigError::MergeError {
+            reason: format!("{}: {e}", path.display()),
+        })?;
+        merged = Some(match merged {
+            Some(acc) => acc.merge(next).map_err(|e| KubeconfigError::MergeError {
+                reason: e.to_string(),
+            })?,
+            None => next,
+        });
+    }
+    merged.ok_or_else(|| KubeconfigError::FileNotFound {
+        path: if paths.is_empty() {
+            "(no kubeconfig paths provided)".to_string()
+        } else {
+            paths
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_kubeconfig(dir: &std::path::Path, name: &str, yaml: &str) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, yaml).expect("write kubeconfig");
+        path
+    }
+
+    const FILE_A: &str = r#"
+apiVersion: v1
+kind: Config
+current-context: dev
+contexts:
+  - name: dev
+    context: { cluster: dev-cluster, user: shared-user }
+clusters:
+  - name: dev-cluster
+    cluster: { server: "https://a.example:6443" }
+users:
+  - name: shared-user
+    user: { token: from-a }
+"#;
+
+    const FILE_B: &str = r#"
+apiVersion: v1
+kind: Config
+current-context: staging
+contexts:
+  - name: staging
+    context: { cluster: staging-cluster, user: shared-user }
+  - name: dev
+    context: { cluster: staging-cluster, user: shared-user }
+clusters:
+  - name: staging-cluster
+    cluster: { server: "https://b.example:6443" }
+users:
+  - name: shared-user
+    user: { token: from-b }
+"#;
+
+    #[tokio::test]
+    async fn merged_kubeconfig_resolves_contexts_from_every_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let a = write_kubeconfig(dir.path(), "a.yaml", FILE_A);
+        let b = write_kubeconfig(dir.path(), "b.yaml", FILE_B);
+        let missing = dir.path().join("missing.yaml");
+        let merged = merged_kubeconfig(&[a, missing, b]).expect("merge");
+
+        // A context defined only in the second file resolves to that file's
+        // cluster, and to the first file's user on a name clash (kubectl).
+        let opts = KubeConfigOptions {
+            context: Some("staging".into()),
+            ..Default::default()
+        };
+        let cfg = Config::from_custom_kubeconfig(merged.clone(), &opts)
+            .await
+            .expect("staging config");
+        assert_eq!(cfg.cluster_url.to_string(), "https://b.example:6443/");
+
+        // A clashing context name keeps the first file's definition.
+        let opts = KubeConfigOptions {
+            context: Some("dev".into()),
+            ..Default::default()
+        };
+        let cfg = Config::from_custom_kubeconfig(merged.clone(), &opts)
+            .await
+            .expect("dev config");
+        assert_eq!(cfg.cluster_url.to_string(), "https://a.example:6443/");
+
+        // current-context comes from the first file that sets it.
+        assert_eq!(merged.current_context.as_deref(), Some("dev"));
+    }
+
+    #[test]
+    fn merged_kubeconfig_errors_when_no_file_exists() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = merged_kubeconfig(&[dir.path().join("nope.yaml")]).expect_err("no files");
+        assert!(matches!(err, KubeconfigError::FileNotFound { .. }));
+        let err = merged_kubeconfig(&[]).expect_err("empty list");
+        assert!(matches!(err, KubeconfigError::FileNotFound { .. }));
+    }
     use k8s_openapi::api::core::v1::{EventSource, ObjectReference};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, Time};
 
@@ -792,9 +908,9 @@ mod tests {
             message: Some("Back-off restarting failed container".to_string()),
             count: Some(7),
             last_timestamp: Some(Time(
-                k8s_openapi::chrono::DateTime::parse_from_rfc3339("2026-07-11T10:00:00Z")
-                    .expect("valid test timestamp")
-                    .with_timezone(&k8s_openapi::chrono::Utc),
+                "2026-07-11T10:00:00Z"
+                    .parse::<k8s_openapi::jiff::Timestamp>()
+                    .expect("valid test timestamp"),
             )),
             source: Some(EventSource::default()),
             ..Default::default()
@@ -821,5 +937,249 @@ mod tests {
         assert_eq!(info.object, "—");
         assert_eq!(info.count, 1);
         assert!(info.last_timestamp.is_none());
+    }
+
+    // --- API calls against a mock apiserver (no network) ---
+
+    use http::{Method, Request, Response, StatusCode};
+    use kube::client::Body;
+
+    /// One request as the mock apiserver saw it.
+    struct Seen {
+        method: Method,
+        uri: String,
+        content_type: Option<String>,
+        body: serde_json::Value,
+    }
+
+    /// A [`KubeClient`] backed by a mock apiserver that answers every
+    /// request with `respond(method, uri)`. The returned handle resolves to
+    /// the requests seen once the client is dropped.
+    fn mock_client(
+        respond: impl Fn(&Method, &str) -> (StatusCode, serde_json::Value) + Send + 'static,
+    ) -> (KubeClient, tokio::task::JoinHandle<Vec<Seen>>) {
+        let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        let server = tokio::spawn(async move {
+            let mut handle = std::pin::pin!(handle);
+            let mut seen = Vec::new();
+            while let Some((request, send)) = handle.next_request().await {
+                let (parts, body) = request.into_parts();
+                let bytes = body.collect_bytes().await.expect("request body");
+                let (status, reply) = respond(&parts.method, &parts.uri.to_string());
+                seen.push(Seen {
+                    method: parts.method,
+                    uri: parts.uri.to_string(),
+                    content_type: parts
+                        .headers
+                        .get(http::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .map(str::to_string),
+                    body: serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+                });
+                let response = Response::builder()
+                    .status(status)
+                    .body(Body::from(serde_json::to_vec(&reply).expect("reply json")))
+                    .expect("response");
+                send.send_response(response);
+            }
+            seen
+        });
+        (
+            KubeClient {
+                inner: Client::new(service, "default"),
+            },
+            server,
+        )
+    }
+
+    async fn requests(client: KubeClient, server: tokio::task::JoinHandle<Vec<Seen>>) -> Vec<Seen> {
+        drop(client);
+        server.await.expect("mock apiserver")
+    }
+
+    fn list(kind: &str, items: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "apiVersion": "v1",
+            "kind": kind,
+            "metadata": { "resourceVersion": "1" },
+            "items": items,
+        })
+    }
+
+    fn pod(ns: &str, name: &str) -> serde_json::Value {
+        serde_json::json!({
+            "metadata": { "name": name, "namespace": ns },
+            "status": { "phase": "Running" },
+        })
+    }
+
+    #[tokio::test]
+    async fn list_pods_targets_one_namespace_or_all() {
+        let (client, server) = mock_client(|_, uri| {
+            let items = if uri.starts_with("/api/v1/namespaces/team/") {
+                serde_json::json!([pod("team", "api-0")])
+            } else {
+                serde_json::json!([pod("team", "api-0"), pod("infra", "dns-0")])
+            };
+            (StatusCode::OK, list("PodList", items))
+        });
+
+        let scoped = client.list_pods(Some("team")).await.expect("scoped list");
+        let all = client.list_pods(None).await.expect("cluster-wide list");
+
+        assert_eq!(
+            scoped.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
+            ["api-0"]
+        );
+        assert_eq!(
+            all.iter()
+                .map(|p| (p.namespace.as_str(), p.name.as_str()))
+                .collect::<Vec<_>>(),
+            [("team", "api-0"), ("infra", "dns-0")]
+        );
+        let seen = requests(client, server).await;
+        assert!(seen[0].uri.starts_with("/api/v1/namespaces/team/pods?"));
+        assert!(seen[1].uri.starts_with("/api/v1/pods?"));
+    }
+
+    #[tokio::test]
+    async fn server_version_and_node_count() {
+        let (client, server) = mock_client(|_, uri| {
+            if uri == "/version" {
+                (
+                    StatusCode::OK,
+                    serde_json::json!({ "gitVersion": "v1.32.4" }),
+                )
+            } else {
+                let node = serde_json::json!({ "metadata": { "name": "n" } });
+                (
+                    StatusCode::OK,
+                    list("NodeList", serde_json::json!([node.clone(), node])),
+                )
+            }
+        });
+
+        assert_eq!(client.server_version().await.expect("version"), "v1.32.4");
+        assert_eq!(client.node_count().await.expect("nodes"), 2);
+        let seen = requests(client, server).await;
+        assert!(seen[1].uri.starts_with("/api/v1/nodes?"));
+    }
+
+    #[tokio::test]
+    async fn server_version_without_git_version_is_an_error() {
+        let (client, server) = mock_client(|_, _| (StatusCode::OK, serde_json::json!({})));
+        let err = client
+            .server_version()
+            .await
+            .expect_err("missing gitVersion");
+        assert!(err.to_string().contains("missing gitVersion"));
+        requests(client, server).await;
+    }
+
+    #[tokio::test]
+    async fn delete_pod_sends_delete_to_the_pod() {
+        let (client, server) = mock_client(|_, _| (StatusCode::OK, pod("team", "api-0")));
+        client.delete_pod("team", "api-0").await.expect("delete");
+        let seen = requests(client, server).await;
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].method, Method::DELETE);
+        assert_eq!(seen[0].uri, "/api/v1/namespaces/team/pods/api-0?");
+    }
+
+    fn deployment() -> serde_json::Value {
+        serde_json::json!({
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": { "name": "web", "namespace": "team" },
+        })
+    }
+
+    #[tokio::test]
+    async fn scale_deployment_merge_patches_replicas() {
+        let (client, server) = mock_client(|_, _| (StatusCode::OK, deployment()));
+        client
+            .scale_deployment("team", "web", 3)
+            .await
+            .expect("scale");
+        let seen = requests(client, server).await;
+        assert_eq!(seen[0].method, Method::PATCH);
+        assert!(seen[0]
+            .uri
+            .starts_with("/apis/apps/v1/namespaces/team/deployments/web?"));
+        assert_eq!(
+            seen[0].content_type.as_deref(),
+            Some("application/merge-patch+json")
+        );
+        assert_eq!(
+            seen[0].body,
+            serde_json::json!({ "spec": { "replicas": 3 } })
+        );
+    }
+
+    #[tokio::test]
+    async fn restart_deployment_stamps_restarted_at() {
+        let (client, server) = mock_client(|_, _| (StatusCode::OK, deployment()));
+        client
+            .restart_deployment("team", "web")
+            .await
+            .expect("restart");
+        let seen = requests(client, server).await;
+        assert_eq!(seen[0].method, Method::PATCH);
+        let stamp = seen[0].body["spec"]["template"]["metadata"]["annotations"]
+            ["kubectl.kubernetes.io/restartedAt"]
+            .as_str()
+            .expect("restartedAt annotation");
+        stamp
+            .parse::<k8s_openapi::jiff::Timestamp>()
+            .expect("restartedAt is RFC 3339");
+    }
+
+    #[tokio::test]
+    async fn api_errors_surface_as_client_errors() {
+        let (client, server) = mock_client(|_, _| {
+            (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({
+                    "apiVersion": "v1",
+                    "kind": "Status",
+                    "status": "Failure",
+                    "message": "pods \"ghost\" not found",
+                    "reason": "NotFound",
+                    "code": 404,
+                }),
+            )
+        });
+        let err = client.delete_pod("team", "ghost").await.expect_err("404");
+        assert!(matches!(err, KubeconfigError::ClientError { .. }));
+        assert!(err.to_string().contains("not found"), "{err}");
+        requests(client, server).await;
+    }
+
+    #[tokio::test]
+    async fn list_events_maps_items() {
+        let (client, server) = mock_client(|_, _| {
+            let event = serde_json::json!({
+                "metadata": { "name": "api-0.1", "namespace": "team" },
+                "involvedObject": { "kind": "Pod", "name": "api-0" },
+                "reason": "BackOff",
+                "type": "Warning",
+                "count": 3,
+                "lastTimestamp": "2026-07-11T10:00:00Z",
+            });
+            (
+                StatusCode::OK,
+                list("EventList", serde_json::json!([event])),
+            )
+        });
+        let events = client.list_events(Some("team")).await.expect("events");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].reason.as_deref(), Some("BackOff"));
+        assert_eq!(events[0].count, 3);
+        assert_eq!(
+            events[0].last_timestamp.as_deref(),
+            Some("2026-07-11T10:00:00Z")
+        );
+        let seen = requests(client, server).await;
+        assert!(seen[0].uri.starts_with("/api/v1/namespaces/team/events?"));
     }
 }

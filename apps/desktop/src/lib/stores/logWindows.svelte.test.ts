@@ -63,8 +63,10 @@ const FAKE_TRANSFER = {
   lines: [], kubeconfigPath: "/tmp/kc", activeCluster: null,
 };
 
+import { app } from "./app.svelte";
 import { logPanel } from "./logPanel.svelte";
 import { logWindows, windowLabelFor } from "./logWindows.svelte";
+import { toasts } from "./toasts.svelte";
 
 describe("logWindows", () => {
   beforeEach(() => {
@@ -74,6 +76,9 @@ describe("logWindows", () => {
     focusCalls.length = 0;
     vi.clearAllMocks();
     (logPanel.sessions as unknown[]).length = 0;
+    app.activeCluster = null;
+    app.connecting = null;
+    toasts.items = [];
   });
 
   it("windowLabelFor prefixes the key without rewriting it (injective)", () => {
@@ -140,6 +145,37 @@ describe("logWindows", () => {
       expect(vi.mocked(logPanel.openSeeded)).toHaveBeenCalledWith(FAKE_TRANSFER);
     });
     expect(logWindows.has("default/api-0")).toBe(false);
+  });
+
+  it("drops a re-attach from a cluster that is no longer active (#351)", async () => {
+    await logWindows.init();
+    app.activeCluster = "staging";
+    eventListeners.get("log-window-reattach")?.({
+      payload: { ...FAKE_TRANSFER, activeCluster: "prod" },
+    });
+    expect(vi.mocked(logPanel.openSeeded)).not.toHaveBeenCalled();
+    expect(toasts.items.map((t) => t.message)).toEqual([
+      "Log session for api-0 closed — cluster changed",
+    ]);
+  });
+
+  it("drops a re-attach landing while a cluster switch is in flight (#351)", async () => {
+    await logWindows.init();
+    app.activeCluster = "prod";
+    app.connecting = "staging";
+    eventListeners.get("log-window-reattach")?.({
+      payload: { ...FAKE_TRANSFER, activeCluster: "prod" },
+    });
+    expect(vi.mocked(logPanel.openSeeded)).not.toHaveBeenCalled();
+  });
+
+  it("re-attaches a transfer from the active cluster", async () => {
+    await logWindows.init();
+    app.activeCluster = "prod";
+    const transfer = { ...FAKE_TRANSFER, activeCluster: "prod" };
+    eventListeners.get("log-window-reattach")?.({ payload: transfer });
+    expect(vi.mocked(logPanel.openSeeded)).toHaveBeenCalledWith(transfer);
+    expect(toasts.items).toHaveLength(0);
   });
 
   it("init ignores malformed re-attach payloads", async () => {

@@ -235,7 +235,20 @@ final class MainViewStateTests: XCTestCase {
     }
 
     func testResourceType_allCases_matchesEnum() {
-        XCTAssertEqual(ResourceType.allCases.count, 14)
+        XCTAssertEqual(ResourceType.allCases.count, 15)
+    }
+
+    func testEventsResourceTypeRawValueAndImage() {
+        XCTAssertEqual(ResourceType.events.rawValue, "Events")
+        XCTAssertEqual(ResourceType.events.systemImage, "exclamationmark.bubble")
+    }
+
+    func testEventsComesRightBeforeLogs() {
+        let all = ResourceType.allCases
+        let events = all.firstIndex(of: .events)
+        let logs = all.firstIndex(of: .logs)
+        XCTAssertNotNil(events)
+        XCTAssertEqual(events.map { $0 + 1 }, logs)
     }
 
     func testResourceType_pods_hasSystemImage() {

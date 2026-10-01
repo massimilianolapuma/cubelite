@@ -6,6 +6,9 @@
 	import { clusters } from '$lib/stores/clusters.svelte';
 	import { health } from '$lib/stores/health.svelte';
 
+	// With several kubeconfig files, the tooltip also names the defining file.
+	const multiFile = $derived(app.kubeconfigSources.length > 1);
+
 	function clickCluster(name: string) {
 		if (name === app.activeCluster) {
 			if (app.view === 'dashboard') app.navigate('overview');
@@ -38,7 +41,7 @@
 		{@const isActive = ctx.name === app.activeCluster}
 		<button
 			type="button"
-			title={ctx.name}
+			title={multiFile && ctx.source ? `${ctx.name} — ${ctx.source}` : ctx.name}
 			class="focus-ring rounded-xl hover:brightness-125"
 			onclick={() => clickCluster(ctx.name)}
 		>
