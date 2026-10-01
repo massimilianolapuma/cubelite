@@ -15,7 +15,7 @@ struct LogsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Logs & Errors")
+                Text("Diagnostics")
                     .typeStyle(DesignTokens.Typography.subtitle)
                 Spacer()
                 Button("Close") { dismiss() }

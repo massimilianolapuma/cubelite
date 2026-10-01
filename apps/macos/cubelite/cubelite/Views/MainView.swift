@@ -25,7 +25,7 @@ import SwiftUI
 /// ```
 ///
 /// > Implementation is split across multiple files to keep this composition
-/// > root focused. See `MainView+Toolbar.swift`, `MainView+Sidebar.swift`,
+/// > root focused. See `MainView+Sidebar.swift`,
 /// > `MainView+ContentColumn.swift`, `MainView+DetailArea.swift`,
 /// > `MainView+ConfigLoader.swift`, `MainView+ResourceLoader.swift`, and
 /// > `MainView+CrossClusterLoader.swift`. State property visibility is
@@ -70,7 +70,7 @@ struct MainView: View {
     @State var isLoadingNamespaces: Bool = false
     /// Namespace fetch error, if any.
     @State var namespaceError: String?
-    /// Whether the Logs & Errors sheet is presented.
+    /// Whether the Diagnostics sheet (app log entries) is presented.
     @State var showingLogs = false
     /// Whether the Cmd+K command palette is shown.
     @State var showingPalette = false
@@ -156,7 +156,13 @@ struct MainView: View {
 
     // MARK: - Actions
 
-    /// Refresh everything relevant to the current mode (used by the header).
+    /// Show the Events view for the active cluster (status bar warnings).
+    func showEvents() {
+        showAllClusters = false
+        selectedResourceType = .events
+    }
+
+    /// Refresh everything relevant to the current mode (⌘R and the palette).
     func refreshAll() {
         Task {
             await loadKubeconfig()
@@ -164,6 +170,7 @@ struct MainView: View {
                 await loadCrossClusterData()
             } else {
                 if let ctx = selectedContext {
+                    await loadClusterInfo(for: ctx)
                     await loadNamespaces(for: ctx)
                 }
                 if let sel = sidebarSelection {
@@ -180,20 +187,18 @@ struct MainView: View {
             UnifiedHeaderView(
                 contexts: clusterState.contexts,
                 selectedContext: showAllClusters ? nil : selectedContext,
+                serverURL: clusterState.serverURL,
                 clusterReachable: clusterState.clusterReachable,
                 namespaces: clusterState.namespaces,
+                namespacePodCounts: clusterState.namespacePodCounts,
                 selectedNamespace: sidebarSelection?.namespace,
-                isLoading: clusterState.isLoading || clusterState.isLoadingResources
-                    || isLoadingNamespaces,
-                unreadErrorCount: logStore.unreadErrorCount,
                 onSelectNamespace: { namespace in
                     if let context = selectedContext {
                         appSettings.rememberNamespace(namespace, for: context)
                         sidebarSelection = SidebarSelection(context: context, namespace: namespace)
                     }
                 },
-                onRefresh: { refreshAll() },
-                onShowLogs: { showingLogs = true }
+                onOpenPalette: { showingPalette = true }
             )
             HStack(spacing: 0) {
                 ClusterRailView(
@@ -231,9 +236,13 @@ struct MainView: View {
                 .background(DesignTokens.surfaceWindow)
             }
             StatusBarView(
+                serverURL: showAllClusters ? nil : clusterState.serverURL,
+                clusterVersion: showAllClusters ? nil : clusterState.clusterVersion,
                 autoRefreshInterval: appSettings.autoRefreshInterval,
+                warningCount: showAllClusters ? 0 : clusterState.warningEvents.count,
                 unreadErrorCount: logStore.unreadErrorCount,
-                onShowLogs: { showingLogs = true }
+                onShowEvents: { showEvents() },
+                onShowDiagnostics: { showingLogs = true }
             )
         }
         .overlay {
@@ -259,11 +268,19 @@ struct MainView: View {
                             logSessionStore.open(pod: pod, context: selectedContext)
                         }
                     },
+                    onRefresh: { refreshAll() },
                     onClose: { showingPalette = false }
                 )
             }
         }
         .background(shortcutButtons)
+        .focusedSceneValue(
+            \.mainCommandActions,
+            MainCommandActions(
+                refresh: { refreshAll() },
+                showDiagnostics: { showingLogs = true }
+            )
+        )
         .frame(minWidth: 900, minHeight: 550)
         .sheet(isPresented: $showingLogs) {
             LogsView()
@@ -289,7 +306,10 @@ struct MainView: View {
             clusterState.pods = []
             clusterState.deployments = []
             clusterState.namespacePodCounts = [:]
+            clusterState.serverURL = nil
+            clusterState.clusterVersion = nil
             if let context = newValue {
+                Task { await loadClusterInfo(for: context) }
                 // Restore the last namespace the user picked for this context
                 // immediately so the dashboard never sits on an empty
                 // selection; fall back to the kubeconfig default namespace.
