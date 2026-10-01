@@ -13,7 +13,7 @@ struct OverviewView: View {
     /// Opens the Events view ("All events →").
     let onShowEvents: () -> Void
 
-    init(onShowEvents: @escaping () -> Void = {}) {
+    init(onShowEvents: @escaping () -> Void) {
         self.onShowEvents = onShowEvents
     }
 
@@ -233,11 +233,13 @@ struct OverviewView: View {
         _ title: String, icon: String, tint: Color, forbiddenKind: String?,
         @ViewBuilder rows: () -> Rows
     ) -> some View {
-        DashboardCard(title: title, icon: icon, color: tint) {
-            if let kind = forbiddenKind, clusterState.forbiddenResources.contains(kind) {
+        let metrics = rows()
+        let forbidden = forbiddenKind.map { clusterState.forbiddenResources.contains($0) } ?? false
+        return DashboardCard(title: title, icon: icon, color: tint) {
+            if forbidden {
                 forbiddenBadge
             } else {
-                VStack(alignment: .leading, spacing: 4) { rows() }
+                VStack(alignment: .leading, spacing: 4) { metrics }
             }
         }
         .accessibilityIdentifier("overview.card-\(title)")
@@ -367,7 +369,7 @@ struct DashboardMetric: View {
         NamespaceInfo(name: "kube-system", phase: "Active"),
     ]
     state.clusterReachable = true
-    return OverviewView()
+    return OverviewView(onShowEvents: { /* Preview: no navigation. */ })
         .environment(state)
         .frame(width: 600, height: 500)
 }

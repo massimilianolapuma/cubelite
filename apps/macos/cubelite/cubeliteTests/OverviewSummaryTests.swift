@@ -37,7 +37,7 @@ final class OverviewSummaryTests: XCTestCase {
     }
 
     private func fixture(nodeCount: Int? = 3) -> OverviewSummary {
-        OverviewSummary(
+        OverviewSummary(.init(
             pods: [pod("Running"), pod("Running"), pod("Pending"), pod("Failed"), pod("Succeeded")],
             deployments: [
                 DeploymentInfo(name: "a", namespace: "default", replicas: 2, readyReplicas: 2),
@@ -62,7 +62,7 @@ final class OverviewSummaryTests: XCTestCase {
             ],
             ingresses: [ingress(tls: true), ingress(tls: false)],
             helmReleases: [helm("deployed"), helm("failed"), helm("superseded")],
-            nodeCount: nodeCount)
+            nodeCount: nodeCount))
     }
 
     // MARK: - Counting
@@ -86,9 +86,7 @@ final class OverviewSummaryTests: XCTestCase {
     }
 
     func testEmptyClusterCountsZeros() {
-        let summary = OverviewSummary(
-            pods: [], deployments: [], namespaces: [], services: [], secrets: [],
-            configMaps: [], ingresses: [], helmReleases: [], nodeCount: nil)
+        let summary = OverviewSummary(.init())
         XCTAssertEqual(summary.pods, .init())
         XCTAssertEqual(summary.deployments, .init())
         XCTAssertEqual(summary.configMaps, 0)
