@@ -80,6 +80,13 @@ final class ClusterState {
     /// `nil` means not yet checked, `true` = connected, `false` = unreachable.
     var clusterReachable: Bool?
 
+    /// Kubernetes version (`gitVersion`) of the active cluster; nil until
+    /// fetched or when `/version` is unavailable.
+    var clusterVersion: String?
+
+    /// API server URL of the active cluster, from the kubeconfig.
+    var serverURL: String?
+
     /// Resource types that returned HTTP 403 (Forbidden) during the last fetch.
     ///
     /// Populated when RBAC denies access to specific resource types while others

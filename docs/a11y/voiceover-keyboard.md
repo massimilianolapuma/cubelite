@@ -43,7 +43,10 @@ follows one of these seven rules:
 `ClusterRailView`, `UnifiedSidebarView`, `UnifiedHeaderView`, `StatusBarView`,
 `CommandPaletteView`, `MainView+Sidebar`, `MainView+Toolbar`,
 `MenuBarContextView`. Icon-only rail/header/toolbar buttons labeled
-("All Clusters", "Open preferences", "Refresh all", "View logs and errors");
+("All Clusters", "Open preferences", "Refresh all", "View logs and errors";
+since #358 the header's refresh and bell buttons are gone — Refresh is ⌘R
+and Diagnostics… is ⇧⌘D in the menu bar, the header carries "Search and
+switch" and "Namespace", and the dead `MainView+Toolbar` file was deleted);
 selection/connection state exposed via `.accessibilityValue`; decorative
 status dots and chevrons hidden; `MainView+Sidebar`'s `clusterHeader`
 `onTapGesture` converted to `Button` (one of three keyboard gaps fixed this

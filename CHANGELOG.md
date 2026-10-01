@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the desktop's grid: Type pill, Reason with `×count`, Object, Message and
   Age. Warning rows get a faint warn tint, and an RBAC denial reads as such
   instead of an empty list.
+- **macOS header, status bar and commands** (#358): the header matches the
+  desktop titlebar — identity dot, name, provider chip (AKS, EKS, GKE, K3S,
+  KIND, LOCAL, K8S) and connection state, a "Search & switch…" button that
+  opens the ⌘K palette, and a namespace dropdown with per-namespace pod counts.
+  The status bar shows the API server, the Kubernetes version and the refresh
+  interval, plus warning (opens Events) and error (opens Diagnostics) counts.
+  Refresh moves to ⌘R in the View menu and the palette ("Refresh cluster
+  data"); the "Logs & Errors" sheet is now "Diagnostics…" (⇧⌘D) in the
+  Window menu.
 
 ### Changed
 

@@ -6,6 +6,18 @@ import SwiftUI
 // handling. Extracted from `MainView` with no behavior change.
 extension MainView {
 
+    /// Server URL (from the kubeconfig) and Kubernetes version for the status
+    /// bar. Best-effort: either stays nil when unavailable. Dropped if the
+    /// user switched cluster while the requests were in flight.
+    @MainActor
+    func loadClusterInfo(for context: String) async {
+        let server = try? await kubeconfigService.load().serverURL(for: context)
+        let version = try? await kubeAPIService.clusterVersion(inContext: context)
+        guard selectedContext == context else { return }
+        clusterState.serverURL = server
+        clusterState.clusterVersion = version
+    }
+
     @MainActor
     func loadResources(context: String, namespace: String?) async {
         clusterState.isLoadingResources = true
