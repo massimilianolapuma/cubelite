@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **macOS Events view** (#358, part 1): a new Events item in the sidebar's
+  Observe section lists every event (Normal and Warning), most recent first,
+  in the desktop's grid: Type pill, Reason with `×count`, Object, Message and
+  Age. Warning rows get a faint warn tint, and an RBAC denial reads as such
+  instead of an empty list.
+
 ### Changed
 
 - **macOS design tokens, batch 5** (#395): Overview and the cross-cluster

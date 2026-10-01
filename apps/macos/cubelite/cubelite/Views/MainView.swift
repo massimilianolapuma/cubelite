@@ -319,6 +319,7 @@ struct MainView: View {
             clusterState.nodeMetrics = []
             clusterState.capacity = nil
             clusterState.warningEvents = []
+            clusterState.events = []
             clusterState.deployments = []
             clusterState.services = []
             clusterState.secrets = []

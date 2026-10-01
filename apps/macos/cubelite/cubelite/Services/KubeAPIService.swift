@@ -426,22 +426,33 @@ actor KubeAPIService {
         return info.gitVersion
     }
 
+    /// Lists events, most recent first. Scoped to `namespace` when given,
+    /// cluster-wide otherwise. `fieldSelector` (already URL-encoded, e.g.
+    /// `type%3DWarning`) narrows the list server-side.
+    func listEvents(
+        namespace: String? = nil, inContext contextName: String? = nil,
+        fieldSelector: String? = nil
+    ) async throws -> [EventInfo] {
+        let query = fieldSelector.map { "?fieldSelector=\($0)" } ?? ""
+        let scope: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            scope = "/namespaces/\(encoded)"
+        } else {
+            scope = ""
+        }
+        let response: K8sListResponse<K8sEvent> = try await fetch(
+            path: "/api/v1\(scope)/events\(query)", contextName: contextName)
+        return response.items.map { $0.toEventInfo() }.sortedMostRecentFirst()
+    }
+
     /// Lists Warning events, most recent first. Scoped to `namespace` when
     /// given, cluster-wide otherwise.
     func listWarningEvents(namespace: String? = nil, inContext contextName: String? = nil)
         async throws -> [EventInfo]
     {
-        let selector = "fieldSelector=type%3DWarning"
-        let path: String
-        if let ns = namespace {
-            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
-            path = "/api/v1/namespaces/\(encoded)/events?\(selector)"
-        } else {
-            path = "/api/v1/events?\(selector)"
-        }
-        let response: K8sListResponse<K8sEvent> = try await fetch(
-            path: path, contextName: contextName)
-        return response.items.map { $0.toEventInfo() }.sortedMostRecentFirst()
+        try await listEvents(
+            namespace: namespace, inContext: contextName, fieldSelector: "type%3DWarning")
     }
 
     /// Per-request connection state shared by REST calls, WebSockets, and
