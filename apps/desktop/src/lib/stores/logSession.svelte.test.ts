@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LogLine } from "$lib/tauri";
+import type { ContainerDetail, LogLine } from "$lib/tauri";
 import type { KeyedLogLine } from "./logs.svelte";
 
 const listeners = new Map<string, (event: { payload: unknown }) => void>();
@@ -355,6 +355,40 @@ describe("LogSession seeding (#298 pop-out)", () => {
     await session.open();
     expect(vi.mocked(streamPodLog).mock.lastCall?.[3]).toMatchObject({
       sinceTime: "2026-08-19T10:00:05Z",
+    });
+  });
+
+  it("merged mode resumes each container from its own last seeded line (#351)", async () => {
+    const container = (name: string): ContainerDetail => ({
+      name, init: false, sidecar: false, restarts: 0, ready: true, state: "running",
+      state_reason: null, last_terminated_reason: null, last_terminated_at: null,
+    });
+    vi.mocked(getPodContainers).mockResolvedValueOnce([
+      container("worker"), container("envoy"), container("quiet"),
+    ]);
+    const line = (id: number, c: string, time: string): KeyedLogLine => ({
+      id, pod: "api-0", namespace: "default", container: c, time, level: "info", message: `${c} ${id}`,
+    });
+    const session = new LogSession("default", "api-0", ALL_CONTAINERS, {
+      lines: [
+        line(0, "envoy", "2026-08-19T10:00:01Z"),
+        line(1, "worker", "2026-08-19T10:00:02Z"),
+        line(2, "envoy", "2026-08-19T10:00:03Z"),
+        line(3, "worker", "2026-08-19T10:00:09Z"),
+      ],
+      previous: false,
+      tailLines: 500,
+      following: true,
+    });
+    await session.open();
+    const since = Object.fromEntries(
+      vi.mocked(streamPodLog).mock.calls.map((c) => [c[3]!.container, c[3]!.sinceTime]),
+    );
+    expect(since).toEqual({
+      worker: "2026-08-19T10:00:09Z",
+      envoy: "2026-08-19T10:00:03Z",
+      // No seeded lines of its own: falls back to the newest overall.
+      quiet: "2026-08-19T10:00:09Z",
     });
   });
 

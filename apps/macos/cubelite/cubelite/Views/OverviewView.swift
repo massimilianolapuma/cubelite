@@ -1,463 +1,296 @@
 import SwiftUI
 
-/// Overview for the selected cluster/namespace (parity with desktop).
+/// Overview for the selected cluster/namespace (parity v2 §4, mirrors the
+/// desktop `OverviewView`).
 ///
 /// Top-to-bottom: stat row (nodes / running pods / healthy deployments /
 /// warnings), capacity CPU+MEM meters, recent Warning events, then the
-/// per-resource summary cards.
+/// per-resource summary cards. Counts come from `OverviewSummary`.
 struct OverviewView: View {
 
     @Environment(ClusterState.self) private var clusterState
 
+    /// Opens the Events view ("All events →").
+    let onShowEvents: () -> Void
+
+    init(onShowEvents: @escaping () -> Void) {
+        self.onShowEvents = onShowEvents
+    }
+
+    // Card tints: the desktop sidebar section palette.
+    private let workloads = DesignTokens.clusterBlue
+    private let network = DesignTokens.clusterViolet
+    private let config = DesignTokens.statusWarn
+    private let namespaceTint = DesignTokens.accentAltTeal
+
     var body: some View {
+        let summary = OverviewSummary(state: clusterState)
         ScrollView {
-            VStack(spacing: 16) {
-                statRow
-                capacityCard
-                warningsCard
-                resourceGrid
+            VStack(spacing: 12) {
+                statRow(summary)
+                HStack(alignment: .top, spacing: 12) {
+                    capacityCard
+                    warningsCard
+                }
+                resourceGrid(summary)
             }
-            .padding(20)
+            .padding(16)
         }
-        .background(Color(nsColor: .controlBackgroundColor))
+        .background(DesignTokens.surfaceWindow)
     }
 
     // MARK: - Stat Row
 
-    private var statRow: some View {
-        LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 4),
-            spacing: 16
+    private func statRow(_ summary: OverviewSummary) -> some View {
+        let warnings = clusterState.warningEvents.count
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4),
+            spacing: 12
         ) {
             statCard(
-                "Nodes", value: "\(clusterState.nodes.count)", icon: "server.rack",
-                color: .teal)
+                "Nodes", value: summary.nodes.map { "\($0)" } ?? "—", icon: "server.rack",
+                tint: DesignTokens.accentAltTeal)
             statCard(
-                "Pods running",
-                value:
-                    "\(clusterState.pods.filter { $0.phase == "Running" }.count)/\(clusterState.pods.count)",
-                icon: "cube.box", color: .blue)
+                "Pods running", value: "\(summary.pods.running)/\(summary.pods.total)",
+                icon: "cube.box", tint: DesignTokens.clusterBlue)
             statCard(
                 "Deploys healthy",
-                value:
-                    "\(clusterState.deployments.filter { $0.readyReplicas == $0.replicas }.count)/\(clusterState.deployments.count)",
-                icon: "arrow.triangle.2.circlepath", color: .purple)
+                value: "\(summary.deployments.healthy)/\(summary.deployments.total)",
+                icon: "square.stack.3d.up", tint: DesignTokens.clusterViolet)
             statCard(
-                "Warnings", value: "\(clusterState.warningEvents.count)",
-                icon: "exclamationmark.triangle",
-                color: clusterState.warningEvents.isEmpty ? .secondary : .orange)
+                "Warnings", value: "\(warnings)", icon: "exclamationmark.triangle",
+                tint: warnings > 0 ? DesignTokens.statusWarn : DesignTokens.textTertiary,
+                valueColor: warnings > 0 ? DesignTokens.statusWarn : DesignTokens.statusOk)
         }
     }
 
-    private func statCard(_ title: String, value: String, icon: String, color: Color)
-        -> some View
-    {
+    private func statCard(
+        _ title: String, value: String, icon: String, tint: Color,
+        valueColor: Color = DesignTokens.textDataBright
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(color)
+                    .iconSize(DesignTokens.iconMd, weight: .semibold)
+                    .foregroundStyle(tint)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .typeStyle(DesignTokens.Typography.colhead, color: DesignTokens.textTertiary)
                     .lineLimit(1)
             }
             Text(value)
-                .font(.title3.monospacedDigit().weight(.semibold))
+                .typeStyle(DesignTokens.Typography.stat, color: valueColor)
         }
-        .padding(12)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .windowBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
-        )
+        .dashboardSurface()
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Capacity
 
     private var capacityCard: some View {
-        DashboardCard(title: "Capacity", icon: "gauge", color: .green) {
-            if let capacity = clusterState.capacity {
-                VStack(alignment: .leading, spacing: 12) {
-                    MeterBarView(
-                        label: "CPU",
-                        fraction: capacity.cpuFraction,
-                        detail: coresDetail(capacity)
-                    )
-                    MeterBarView(
-                        label: "MEM",
-                        fraction: capacity.memFraction,
-                        detail: memoryDetail(capacity)
-                    )
-                }
-            } else {
-                Text("Metrics unavailable — metrics-server not detected")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 4)
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Capacity")
+                .typeStyle(DesignTokens.Typography.colhead, color: DesignTokens.textTertiary)
+            let capacity = clusterState.capacity
+            MeterBarView(
+                label: "CPU", fraction: capacity?.cpuFraction,
+                detail: capacity.flatMap(OverviewSummary.coresDetail))
+            MeterBarView(
+                label: "MEM", fraction: capacity?.memFraction,
+                detail: capacity.flatMap(OverviewSummary.memoryDetail))
+            if capacity == nil {
+                Text("metrics unavailable — metrics-server not detected in this cluster")
+                    .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textDisabled)
             }
         }
-    }
-
-    private func coresDetail(_ capacity: ClusterCapacity) -> String? {
-        guard capacity.cpuAllocatableCores > 0 else { return nil }
-        return String(
-            format: "%.1f / %.1f cores", capacity.cpuUsedCores, capacity.cpuAllocatableCores)
-    }
-
-    private func memoryDetail(_ capacity: ClusterCapacity) -> String? {
-        guard capacity.memAllocatableBytes > 0 else { return nil }
-        let gib = 1_073_741_824.0
-        return String(
-            format: "%.1f / %.1f GiB", capacity.memUsedBytes / gib,
-            capacity.memAllocatableBytes / gib)
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .dashboardSurface()
     }
 
     // MARK: - Recent Warnings
 
     private var warningsCard: some View {
-        DashboardCard(title: "Recent warnings", icon: "exclamationmark.triangle", color: .orange)
-        {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Recent warnings")
+                    .typeStyle(DesignTokens.Typography.colhead, color: DesignTokens.textTertiary)
+                Spacer()
+                Button(action: onShowEvents) {
+                    HStack(spacing: 4) {
+                        Text("All events")
+                        Image(systemName: "arrow.right")
+                            .iconSize(DesignTokens.iconSm)
+                            .accessibilityHidden(true)
+                    }
+                    .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("overview.all-events")
+            }
             if clusterState.warningEvents.isEmpty {
-                Text("No recent warnings")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 4)
+                Text("No warning events.")
+                    .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textDisabled)
             } else {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
                     ForEach(clusterState.warningEvents.prefix(5)) { event in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Text(event.reason ?? "Warning")
-                                .scaledFont(size: 11, weight: .semibold)
-                                .foregroundStyle(.orange)
-                                .frame(width: 110, alignment: .leading)
-                                .lineLimit(1)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(verbatim: eventObjectLabel(event))
-                                    .scaledFont(size: 11, design: .monospaced)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Text(event.message ?? "")
-                                    .scaledFont(size: 11)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-                            Spacer(minLength: 0)
-                            if let count = event.count, count > 1 {
-                                Text(verbatim: "×\(count)")
-                                    .scaledFont(size: 10, design: .monospaced, relativeTo: .caption)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                        .accessibilityElement(children: .combine)
+                        Button(action: onShowEvents) { warningRow(event) }
+                            .buttonStyle(.plain)
                     }
                 }
             }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .dashboardSurface()
     }
 
-    private func eventObjectLabel(_ event: EventInfo) -> String {
-        guard let name = event.objectName else { return event.namespace }
-        let kind = event.objectKind.map { "\($0)/" } ?? ""
-        return "\(kind)\(name)"
+    private func warningRow(_ event: EventInfo) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(DesignTokens.statusWarn).frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+            Text(verbatim: EventRowFormat.objectLabel(event))
+                .typeStyle(DesignTokens.Typography.dataSm, color: DesignTokens.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(width: 160, alignment: .leading)
+            Text(event.message ?? event.reason ?? "—")
+                .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Text(event.lastTimestamp.k8sAge)
+                .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Resource Grid
 
-    private var resourceGrid: some View {
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 16),
-                    GridItem(.flexible(), spacing: 16),
-                ],
-                spacing: 16
-            ) {
-                // Card 1: Pods Overview
-                DashboardCard(
-                    title: "Pods",
-                    icon: "cube.box",
-                    color: .blue
-                ) {
-                    if clusterState.forbiddenResources.contains("pods") {
-                        forbiddenBadge
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            DashboardMetric(
-                                label: "Total",
-                                value: "\(clusterState.pods.count)"
-                            )
-                            DashboardMetric(
-                                label: "Running",
-                                value:
-                                    "\(clusterState.pods.filter { $0.phase == "Running" }.count)",
-                                color: .green
-                            )
-                            DashboardMetric(
-                                label: "Pending",
-                                value:
-                                    "\(clusterState.pods.filter { $0.phase == "Pending" }.count)",
-                                color: .orange
-                            )
-                            DashboardMetric(
-                                label: "Failed",
-                                value:
-                                    "\(clusterState.pods.filter { $0.phase == "Failed" }.count)",
-                                color: .red
-                            )
-                        }
-                    }
-                }
-
-                // Card 2: Deployments Overview
-                DashboardCard(
-                    title: "Deployments",
-                    icon: "arrow.triangle.2.circlepath",
-                    color: .purple
-                ) {
-                    if clusterState.forbiddenResources.contains("deployments") {
-                        forbiddenBadge
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            DashboardMetric(
-                                label: "Total",
-                                value: "\(clusterState.deployments.count)"
-                            )
-                            DashboardMetric(
-                                label: "Healthy",
-                                value:
-                                    "\(clusterState.deployments.filter { $0.readyReplicas == $0.replicas }.count)",
-                                color: .green
-                            )
-                            DashboardMetric(
-                                label: "Degraded",
-                                value:
-                                    "\(clusterState.deployments.filter { $0.readyReplicas != $0.replicas }.count)",
-                                color: .orange
-                            )
-                        }
-                    }
-                }
-
-                // Card 3: Services Overview
-                DashboardCard(
-                    title: "Services",
-                    icon: "network",
-                    color: .indigo
-                ) {
-                    if clusterState.forbiddenResources.contains("services") {
-                        forbiddenBadge
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            DashboardMetric(
-                                label: "Total",
-                                value: "\(clusterState.services.count)"
-                            )
-                            DashboardMetric(
-                                label: "ClusterIP",
-                                value:
-                                    "\(clusterState.services.filter { $0.type == "ClusterIP" }.count)",
-                                color: .secondary
-                            )
-                            DashboardMetric(
-                                label: "NodePort",
-                                value:
-                                    "\(clusterState.services.filter { $0.type == "NodePort" }.count)",
-                                color: .orange
-                            )
-                            DashboardMetric(
-                                label: "LoadBalancer",
-                                value:
-                                    "\(clusterState.services.filter { $0.type == "LoadBalancer" }.count)",
-                                color: .blue
-                            )
-                        }
-                    }
-                }
-
-                // Card 4: Namespaces
-                DashboardCard(
-                    title: "Namespaces",
-                    icon: "folder",
-                    color: .teal
-                ) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        DashboardMetric(
-                            label: "Total",
-                            value: "\(clusterState.namespaces.count)"
-                        )
-                        DashboardMetric(
-                            label: "Active",
-                            value:
-                                "\(clusterState.namespaces.filter { $0.phase == "Active" }.count)",
-                            color: .green
-                        )
-                    }
-                }
-
-                // Card 5: Secrets
-                DashboardCard(
-                    title: "Secrets",
-                    icon: "lock.shield",
-                    color: .yellow
-                ) {
-                    if clusterState.forbiddenResources.contains("secrets") {
-                        forbiddenBadge
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            DashboardMetric(
-                                label: "Total",
-                                value: "\(clusterState.secrets.count)"
-                            )
-                            DashboardMetric(
-                                label: "Opaque",
-                                value:
-                                    "\(clusterState.secrets.filter { $0.type == "Opaque" }.count)",
-                                color: .secondary
-                            )
-                            DashboardMetric(
-                                label: "TLS",
-                                value:
-                                    "\(clusterState.secrets.filter { $0.type == "kubernetes.io/tls" }.count)",
-                                color: .blue
-                            )
-                            DashboardMetric(
-                                label: "Docker",
-                                value:
-                                    "\(clusterState.secrets.filter { $0.type == "kubernetes.io/dockerconfigjson" }.count)",
-                                color: .orange
-                            )
-                        }
-                    }
-                }
-
-                // Card 6: ConfigMaps
-                DashboardCard(
-                    title: "ConfigMaps",
-                    icon: "doc.text",
-                    color: .mint
-                ) {
-                    if clusterState.forbiddenResources.contains("configmaps") {
-                        forbiddenBadge
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            DashboardMetric(
-                                label: "Total",
-                                value: "\(clusterState.configMaps.count)"
-                            )
-                        }
-                    }
-                }
-
-                // Card: Ingresses
-                DashboardCard(
-                    title: "Ingresses",
-                    icon: "globe",
-                    color: .cyan
-                ) {
-                    if clusterState.forbiddenResources.contains("ingresses") {
-                        forbiddenBadge
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            DashboardMetric(
-                                label: "Total",
-                                value: "\(clusterState.ingresses.count)"
-                            )
-                            DashboardMetric(
-                                label: "TLS",
-                                value:
-                                    "\(clusterState.ingresses.filter { $0.tlsEnabled }.count)",
-                                color: .green
-                            )
-                        }
-                    }
-                }
-
-                // Card: Helm Releases
-                DashboardCard(
-                    title: "Helm Releases",
-                    icon: "shippingbox",
-                    color: .orange
-                ) {
-                    if clusterState.forbiddenResources.contains("helmreleases") {
-                        forbiddenBadge
-                    } else {
-                        let deployed = clusterState.helmReleases.filter {
-                            $0.status == "deployed"
-                        }
-                        .count
-                        let failed = clusterState.helmReleases.filter { $0.status == "failed" }
-                            .count
-                        VStack(alignment: .leading, spacing: 8) {
-                            DashboardMetric(
-                                label: "Total",
-                                value: "\(clusterState.helmReleases.count)"
-                            )
-                            DashboardMetric(
-                                label: "Deployed",
-                                value: "\(deployed)",
-                                color: .green
-                            )
-                            DashboardMetric(
-                                label: "Failed",
-                                value: "\(failed)",
-                                color: .red
-                            )
-                        }
-                    }
-                }
-
-                // Card 7: Cluster Health
-                DashboardCard(
-                    title: "Cluster",
-                    icon: "server.rack",
-                    color: clusterState.clusterReachable == true ? .green : .red
-                ) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        DashboardMetric(
-                            label: "Status",
-                            value: clusterState.clusterReachable == true
-                                ? "Connected" : "Unreachable",
-                            color: clusterState.clusterReachable == true ? .green : .red
-                        )
-                        DashboardMetric(
-                            label: "Restarts",
-                            value: "\(clusterState.pods.reduce(0) { $0 + $1.restarts })"
-                        )
-                        if clusterState.pods.contains(where: { !$0.ready }) {
-                            DashboardMetric(
-                                label: "Not Ready",
-                                value: "\(clusterState.pods.filter { !$0.ready }.count)",
-                                color: .orange
-                            )
-                        }
-                    }
-                }
+    private func resourceGrid(_ summary: OverviewSummary) -> some View {
+        LazyVGrid(
+            columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+            spacing: 12
+        ) {
+            card("Pods", icon: "cube.box", tint: workloads, forbiddenKind: "pods") {
+                metric("Total", summary.pods.total)
+                metric("Running", summary.pods.running, tone: DesignTokens.statusOk)
+                metric("Pending", summary.pods.pending, tone: DesignTokens.statusWarn)
+                metric("Failed", summary.pods.failed, tone: DesignTokens.statusErr)
             }
+            card(
+                "Deployments", icon: "square.stack.3d.up", tint: workloads,
+                forbiddenKind: "deployments"
+            ) {
+                metric("Total", summary.deployments.total)
+                metric("Healthy", summary.deployments.healthy, tone: DesignTokens.statusOk)
+                metric("Degraded", summary.deployments.degraded, tone: DesignTokens.statusWarn)
+            }
+            card("Services", icon: "network", tint: network, forbiddenKind: "services") {
+                metric("Total", summary.services.total)
+                metric("ClusterIP", summary.services.clusterIP)
+                metric("NodePort", summary.services.nodePort, tone: DesignTokens.statusWarn)
+                metric(
+                    "LoadBalancer", summary.services.loadBalancer,
+                    tone: DesignTokens.accentDefault)
+            }
+            card("Namespaces", icon: "folder", tint: namespaceTint, forbiddenKind: nil) {
+                metric("Total", summary.namespaces.total)
+                metric("Active", summary.namespaces.active, tone: DesignTokens.statusOk)
+            }
+            card("Secrets", icon: "key", tint: config, forbiddenKind: "secrets") {
+                metric("Total", summary.secrets.total)
+                metric("Opaque", summary.secrets.opaque)
+                metric("TLS", summary.secrets.tls, tone: DesignTokens.accentDefault)
+                metric("Docker", summary.secrets.docker, tone: DesignTokens.statusWarn)
+            }
+            card("ConfigMaps", icon: "doc.text", tint: config, forbiddenKind: "configmaps") {
+                metric("Total", summary.configMaps)
+            }
+            card("Ingresses", icon: "globe", tint: network, forbiddenKind: "ingresses") {
+                metric("Total", summary.ingresses.total)
+                metric("with TLS", summary.ingresses.tls, tone: DesignTokens.accentDefault)
+            }
+            card(
+                "Helm Releases", icon: "shippingbox", tint: workloads,
+                forbiddenKind: "helmreleases"
+            ) {
+                metric("Total", summary.helm.total)
+                metric("deployed", summary.helm.deployed, tone: DesignTokens.statusOk)
+                metric("failed", summary.helm.failed, tone: DesignTokens.statusErr)
+            }
+        }
     }
 
-    /// "No access" overlay shown when RBAC forbids a resource type.
-    private var forbiddenBadge: some View {
-        VStack(spacing: 6) {
-            Image(systemName: "lock.slash")
-                .font(.title2)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text("No access")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text("RBAC restricted")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+    /// A summary card; shows the forbidden badge when RBAC denied its kind.
+    private func card<Rows: View>(
+        _ title: String, icon: String, tint: Color, forbiddenKind: String?,
+        @ViewBuilder rows: () -> Rows
+    ) -> some View {
+        let metrics = rows()
+        let forbidden = forbiddenKind.map { clusterState.forbiddenResources.contains($0) } ?? false
+        return DashboardCard(title: title, icon: icon, color: tint) {
+            if forbidden {
+                forbiddenBadge
+            } else {
+                VStack(alignment: .leading, spacing: 4) { metrics }
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .accessibilityIdentifier("overview.card-\(title)")
+    }
+
+    /// Metric row; the tone colours non-zero values only ("0 failed" stays
+    /// neutral), as on the desktop.
+    private func metric(_ label: String, _ value: Int, tone: Color? = nil) -> DashboardMetric {
+        DashboardMetric(
+            label: label, value: "\(value)",
+            color: value > 0 ? (tone ?? DesignTokens.textDataBright) : DesignTokens.textDataBright)
+    }
+
+    /// RBAC badge shown in place of a card's metrics.
+    private var forbiddenBadge: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "lock")
+                    .iconSize(DesignTokens.iconSm)
+                    .accessibilityHidden(true)
+                Text("forbidden")
+                    .typeStyle(DesignTokens.Typography.micro.monospaced)
+            }
+            .foregroundStyle(DesignTokens.statusWarn)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(
+                DesignTokens.statusWarn.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: DesignTokens.radiusSm))
+            Text("RBAC restricted")
+                .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Surface
+
+extension View {
+    /// Dashboard card surface: `surface` fill, default border, xl radius
+    /// (desktop `rounded-xl border border-border-default bg-surface-surface`).
+    func dashboardSurface() -> some View {
+        background(
+            DesignTokens.surfaceSurface,
+            in: RoundedRectangle(cornerRadius: DesignTokens.radiusXl)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.radiusXl)
+                .strokeBorder(DesignTokens.borderDefault, lineWidth: 1)
+        )
     }
 }
 
@@ -472,28 +305,21 @@ struct DashboardCard<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .iconSize(DesignTokens.iconLg, weight: .semibold)
                     .foregroundStyle(color)
                     .accessibilityHidden(true)
                 Text(title)
-                    .font(.headline)
+                    .typeStyle(DesignTokens.Typography.subtitle, color: DesignTokens.textPrimary)
             }
-            Divider()
+            Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)
             content()
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(nsColor: .windowBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
-        )
+        .dashboardSurface()
     }
 }
 
@@ -504,19 +330,17 @@ struct DashboardMetric: View {
 
     let label: String
     let value: String
-    var color: Color = .primary
+    var color: Color = DesignTokens.textDataBright
 
     var body: some View {
         HStack {
             Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .typeStyle(DesignTokens.Typography.body, color: DesignTokens.textSecondary)
             Spacer()
             Text(value)
-                .font(.subheadline.monospacedDigit())
-                .fontWeight(.medium)
-                .foregroundStyle(color)
+                .typeStyle(DesignTokens.Typography.data, color: color)
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -545,7 +369,7 @@ struct DashboardMetric: View {
         NamespaceInfo(name: "kube-system", phase: "Active"),
     ]
     state.clusterReachable = true
-    return OverviewView()
+    return OverviewView(onShowEvents: { /* Preview: no navigation. */ })
         .environment(state)
         .frame(width: 600, height: 500)
 }

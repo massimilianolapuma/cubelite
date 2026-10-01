@@ -15,8 +15,8 @@ struct LogsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Logs & Errors")
-                    .font(.headline)
+                Text("Diagnostics")
+                    .typeStyle(DesignTokens.Typography.subtitle)
                 Spacer()
                 Button("Close") { dismiss() }
                     .keyboardShortcut(.cancelAction)
@@ -50,14 +50,14 @@ struct LogsView: View {
     private var logListHeader: some View {
         HStack {
             HStack {
-                Text("Logs").font(.headline)
+                Text("Logs").typeStyle(DesignTokens.Typography.subtitle)
                 entryCountBadge
             }
             .accessibilityElement(children: .combine)
             Spacer()
             Button("Clear All") { logStore.clear() }
                 .buttonStyle(.borderless)
-                .foregroundStyle(.red)
+                .foregroundStyle(DesignTokens.statusErr)
                 .accessibilityIdentifier("logsview.clear-all")
         }
         .padding(.horizontal, 12)
@@ -66,7 +66,7 @@ struct LogsView: View {
 
     private var entryCountBadge: some View {
         Text(verbatim: "\(filteredEntries.count)")
-            .font(.caption)
+            .typeStyle(DesignTokens.Typography.caption)
             .monospacedDigit()
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -111,7 +111,7 @@ struct LogsView: View {
     private var noSelectionPlaceholder: some View {
         VStack(spacing: 12) {
             Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 40))
+                .iconSize(DesignTokens.icon2xl)
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
             Text("Select an entry to view details")
@@ -189,14 +189,14 @@ private struct LogRowView: View {
 
     private var timestampLabel: some View {
         Text(Self.timestampFormatter.string(from: entry.timestamp))
-            .font(.caption.monospacedDigit())
+            .typeStyle(DesignTokens.Typography.micro.monospaced)
             .foregroundStyle(.secondary)
             .frame(width: 54, alignment: .leading)
     }
 
     private var sourceLabel: some View {
         Text(entry.source)
-            .font(.caption.monospaced())
+            .typeStyle(DesignTokens.Typography.micro.monospaced)
             .foregroundStyle(.secondary)
             .frame(width: 60, alignment: .leading)
     }
@@ -216,7 +216,7 @@ private struct SeverityBadgeView: View {
 
     var body: some View {
         Text(severity.rawValue)
-            .font(.caption2.bold())
+            .typeStyle(DesignTokens.Typography.micro.weighted(.semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
@@ -226,9 +226,9 @@ private struct SeverityBadgeView: View {
 
     private var badgeColor: Color {
         switch severity {
-        case .error: .red
-        case .warning: .orange
-        case .info: .blue
+        case .error: DesignTokens.statusErr
+        case .warning: DesignTokens.statusWarn
+        case .info: DesignTokens.statusInfo
         }
     }
 }
@@ -262,12 +262,12 @@ private struct LogDetailView: View {
             HStack {
                 SeverityBadgeView(severity: entry.severity)
                 Text(entry.source)
-                    .font(.caption.monospaced())
+                    .typeStyle(DesignTokens.Typography.micro.monospaced)
                     .foregroundStyle(.secondary)
             }
-            Text(entry.message).font(.headline)
+            Text(entry.message).typeStyle(DesignTokens.Typography.subtitle)
             Text(Self.dateFormatter.string(from: entry.timestamp))
-                .font(.caption)
+                .typeStyle(DesignTokens.Typography.caption)
                 .foregroundStyle(.tertiary)
         }
     }
@@ -284,7 +284,7 @@ private struct LogDetailView: View {
 
     private func detailSection(title: String, content: String, monospaced: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.subheadline.bold())
+            Text(title).typeStyle(DesignTokens.Typography.section)
             Text(content)
                 .font(monospaced ? .body.monospaced() : .body)
                 .textSelection(.enabled)
@@ -297,7 +297,7 @@ private struct LogDetailView: View {
     private func suggestedActionSection(_ action: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Label("Suggested Action", systemImage: "lightbulb")
-                .font(.subheadline.bold())
+                .typeStyle(DesignTokens.Typography.section)
             Text(action).foregroundStyle(.secondary)
         }
     }

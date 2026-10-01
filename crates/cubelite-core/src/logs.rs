@@ -97,11 +97,10 @@ pub fn log_params(opts: &LogStreamOptions) -> LogParams {
         timestamps: true,
         tail_lines: Some(opts.tail_lines),
         container: opts.container.clone(),
-        since_time: opts.since_time.as_deref().and_then(|raw| {
-            k8s_openapi::chrono::DateTime::parse_from_rfc3339(raw)
-                .ok()
-                .map(|dt| dt.with_timezone(&k8s_openapi::chrono::Utc))
-        }),
+        since_time: opts
+            .since_time
+            .as_deref()
+            .and_then(|raw| raw.parse::<k8s_openapi::jiff::Timestamp>().ok()),
         ..Default::default()
     }
 }
@@ -110,7 +109,7 @@ pub fn log_params(opts: &LogStreamOptions) -> LogParams {
 /// [`LogLine`], splitting the RFC 3339 prefix when present.
 pub fn parse_log_line(pod: &str, namespace: &str, raw: &str) -> LogLine {
     let (time, message) = match raw.split_once(' ') {
-        Some((first, rest)) if k8s_openapi::chrono::DateTime::parse_from_rfc3339(first).is_ok() => {
+        Some((first, rest)) if first.parse::<k8s_openapi::jiff::Timestamp>().is_ok() => {
             (Some(first.to_string()), rest)
         }
         _ => (None, raw),
@@ -253,6 +252,25 @@ mod tests {
         });
         assert_eq!(params.container.as_deref(), Some("envoy"));
         assert!(params.since_time.is_some());
+    }
+
+    #[test]
+    fn log_params_normalizes_offset_and_fractional_since_time_to_utc() {
+        let params = log_params(&LogStreamOptions {
+            since_time: Some("2026-07-15T12:00:00.123456789+02:00".into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            params.since_time.map(|t| t.to_string()).as_deref(),
+            Some("2026-07-15T10:00:00.123456789Z")
+        );
+    }
+
+    #[test]
+    fn parse_log_line_splits_nanosecond_kubelet_timestamps() {
+        let line = parse_log_line("p", "ns", "2026-07-15T10:00:00.123456789Z hello world");
+        assert_eq!(line.time.as_deref(), Some("2026-07-15T10:00:00.123456789Z"));
+        assert_eq!(line.message, "hello world");
     }
 
     #[test]

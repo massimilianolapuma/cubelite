@@ -43,14 +43,14 @@ struct IngressListView: View {
         Table(clusterState.ingresses, selection: $selectedIngressID) {
             TableColumn("Name") { ingress in
                 Text(ingress.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 200)
 
             TableColumn("Namespace") { ingress in
                 Text(ingress.namespace)
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -58,7 +58,7 @@ struct IngressListView: View {
 
             TableColumn("Class") { ingress in
                 Text(ingress.ingressClass ?? "—")
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -66,7 +66,7 @@ struct IngressListView: View {
 
             TableColumn("Hosts") { ingress in
                 Text(ingress.hosts ?? "—")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -74,7 +74,7 @@ struct IngressListView: View {
 
             TableColumn("Address") { ingress in
                 Text(ingress.address ?? "—")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -83,7 +83,7 @@ struct IngressListView: View {
             TableColumn("TLS") { ingress in
                 if ingress.tlsEnabled {
                     Image(systemName: "lock.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(DesignTokens.statusOk)
                         .help("TLS enabled")
                         .accessibilityLabel("TLS enabled")
                 } else {
@@ -97,7 +97,7 @@ struct IngressListView: View {
 
             TableColumn("Age") { ingress in
                 Text(ingress.creationTimestamp.k8sAge)
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)

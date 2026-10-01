@@ -45,14 +45,14 @@ struct HelmReleaseListView: View {
         Table(clusterState.helmReleases, selection: $selectedHelmReleaseID) {
             TableColumn("Name") { release in
                 Text(release.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 200)
 
             TableColumn("Namespace") { release in
                 Text(release.namespace)
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -60,7 +60,7 @@ struct HelmReleaseListView: View {
 
             TableColumn("Revision") { release in
                 Text("\(release.revision)")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 70)
@@ -72,7 +72,7 @@ struct HelmReleaseListView: View {
 
             TableColumn("Age") { release in
                 Text(release.creationTimestamp.k8sAge)
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
@@ -90,7 +90,7 @@ private struct HelmStatusBadge: View {
 
     var body: some View {
         Text(status ?? "unknown")
-            .font(.caption.weight(.medium))
+            .typeStyle(DesignTokens.Typography.caption.weighted(.medium))
             .foregroundStyle(badgeColor)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -100,11 +100,11 @@ private struct HelmStatusBadge: View {
     private var badgeColor: Color {
         switch status?.lowercased() {
         case "deployed":
-            return .green
+            return DesignTokens.statusOk
         case "failed":
-            return .red
+            return DesignTokens.statusErr
         case let s where s?.hasPrefix("pending") == true:
-            return .orange
+            return DesignTokens.statusWarn
         default:
             return .secondary
         }
