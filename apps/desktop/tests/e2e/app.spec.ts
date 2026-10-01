@@ -38,7 +38,7 @@ test("first launch shows onboarding and completes", async ({ page }) => {
 
 test("pods view lists fixtures and opens the detail drawer, Esc closes", async ({ page }) => {
   await boot(page);
-  await page.getByText("Pods", { exact: true }).click();
+  await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
   await expect(page.getByText("api-0")).toBeVisible();
   await expect(page.getByText("Pending", { exact: true })).toBeVisible();
   await page.getByText("api-0").click();
