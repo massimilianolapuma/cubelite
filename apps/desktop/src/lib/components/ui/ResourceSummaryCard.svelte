@@ -6,9 +6,8 @@
 </script>
 
 <script lang="ts">
-	import type { IconProps } from '@lucide/svelte';
+	import type LucideIcon from '@lucide/svelte/icons/box';
 	import Lock from '@lucide/svelte/icons/lock';
-	import type { Component } from 'svelte';
 	import { toneColor } from '$lib/status';
 
 	let {
@@ -19,7 +18,7 @@
 		forbidden = false
 	}: {
 		title: string;
-		icon: Component<IconProps>;
+		icon: typeof LucideIcon;
 		/** CSS color for the title icon (sidebar section palette). */
 		tint: string;
 		rows: SummaryRow[];
