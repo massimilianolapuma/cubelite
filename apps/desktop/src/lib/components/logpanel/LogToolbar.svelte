@@ -4,6 +4,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
+	import Check from '@lucide/svelte/icons/check';
 	import { logPanel } from '$lib/stores/logPanel.svelte';
 	import { logWindows } from '$lib/stores/logWindows.svelte';
 	import { ALL_CONTAINERS, type LogSession } from '$lib/stores/logSession.svelte';
@@ -101,18 +102,22 @@
 		</button>
 		{#if pickerOpen}
 			<div
-				class="absolute bottom-full left-0 z-20 mb-1 min-w-56 rounded-md border border-border-default bg-surface-raised py-1 shadow-lg"
+				class="absolute bottom-full left-0 z-20 mb-1 min-w-56 rounded-md border border-border-strong bg-surface-overlay py-1 shadow-overlay"
 			>
 				{#each mains as c (c.name)}
 					<button
 						type="button"
-						class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-sunken"
+						class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-raised"
 						onclick={() => pick(c.name)}
 					>
 						<span class="type-caption flex-1 font-mono text-text-primary">{c.name}</span>
-						<span class="type-caption text-text-tertiary"
-							>{c.state}{c.restarts > 0 ? ` · ↺${c.restarts}` : ''}</span
-						>
+						<span class="type-caption flex items-center gap-1 text-text-tertiary">
+							{c.state}
+							{#if c.restarts > 0}
+								<span aria-hidden="true">·</span>
+								<RotateCcw size={10} strokeWidth={1.5} aria-label="restarts" />{c.restarts}
+							{/if}
+						</span>
 					</button>
 				{/each}
 				{#if inits.length > 0}
@@ -120,7 +125,7 @@
 					{#each inits as c (c.name)}
 						<button
 							type="button"
-							class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-sunken"
+							class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-raised"
 							onclick={() => pick(c.name)}
 						>
 							<span class="type-caption flex-1 font-mono text-text-secondary">{c.name}</span>
@@ -131,7 +136,7 @@
 				<div class="my-1 border-t border-border-default"></div>
 				<button
 					type="button"
-					class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-sunken"
+					class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-raised"
 					onclick={() => pick(ALL_CONTAINERS)}
 				>
 					<span class="type-caption flex-1 font-mono text-text-primary">all containers</span>
@@ -247,39 +252,43 @@
 		</button>
 		{#if overflowOpen}
 			<div
-				class="absolute right-0 bottom-full z-20 mb-1 min-w-44 rounded-md border border-border-default bg-surface-raised py-1 shadow-lg"
+				class="absolute right-0 bottom-full z-20 mb-1 min-w-44 rounded-md border border-border-strong bg-surface-overlay py-1 shadow-overlay"
 			>
 				<button
 					type="button"
-					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-sunken"
+					role="menuitemcheckbox"
+					aria-checked={logPanel.timestamps}
+					class="type-caption flex w-full items-center gap-1.5 px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
 					onclick={() => {
 						logPanel.timestamps = !logPanel.timestamps;
 						overflowOpen = false;
 					}}
 				>
-					{logPanel.timestamps ? '✓ ' : ''}Timestamps
+					<Check size={12} strokeWidth={2} class={logPanel.timestamps ? '' : 'invisible'} />Timestamps
 				</button>
 				<button
 					type="button"
-					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-sunken"
+					role="menuitemcheckbox"
+					aria-checked={logPanel.wrap}
+					class="type-caption flex w-full items-center gap-1.5 px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
 					onclick={() => {
 						logPanel.wrap = !logPanel.wrap;
 						overflowOpen = false;
 					}}
 				>
-					{logPanel.wrap ? '✓ ' : ''}Wrap lines
+					<Check size={12} strokeWidth={2} class={logPanel.wrap ? '' : 'invisible'} />Wrap lines
 				</button>
 				<div class="my-1 border-t border-border-default"></div>
 				<button
 					type="button"
-					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-sunken"
+					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
 					onclick={exportVisible}
 				>
 					Export visible…
 				</button>
 				<button
 					type="button"
-					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-sunken"
+					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
 					onclick={exportFull}
 				>
 					Export full buffer…
@@ -287,7 +296,7 @@
 				<div class="my-1 border-t border-border-default"></div>
 				<button
 					type="button"
-					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-sunken"
+					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
 					onclick={() => {
 						session.clear();
 						overflowOpen = false;

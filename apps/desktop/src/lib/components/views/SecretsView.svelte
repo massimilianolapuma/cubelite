@@ -64,7 +64,7 @@
 								<span class="type-data-sm text-text-secondary">{formatAge(secret.creation_timestamp)}</span>
 								<button
 									type="button"
-									class="focus-ring type-caption flex h-6 w-fit items-center gap-1 rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110"
+									class="focus-ring type-caption flex h-7 w-fit items-center gap-1 rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110"
 									onclick={() => toggle(secret.namespace, secret.name)}
 								>
 									{#if isRevealed}

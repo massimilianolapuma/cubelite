@@ -6,6 +6,7 @@
 	import { app } from '$lib/stores/app.svelte';
 	import { clusters } from '$lib/stores/clusters.svelte';
 	import { isMac, modLabel } from '$lib/platform';
+	import { identityVar } from '$lib/cluster-identity';
 	import { providerOf } from '$lib/provider';
 	import { isDragSurface } from '$lib/window-drag';
 
@@ -46,14 +47,14 @@
 		<div class="flex min-w-0 items-center gap-2" data-tauri-drag-region>
 			<span
 				class="h-2 w-2 shrink-0 rounded-full"
-				style="background: var(--color-cluster-{identity});"
+				style="background: {identityVar(identity)};"
 				data-testid="identity-dot"
 			></span>
 			<span class="type-subtitle truncate">{activeContext.name}</span>
 			{#if provider}
 				<span
 					class="rounded-sm px-1.5 py-px type-micro font-mono"
-					style="color: var(--color-cluster-{identity}); background: color-mix(in srgb, var(--color-cluster-{identity}) 12%, transparent);"
+					style="color: {identityVar(identity)}; background: color-mix(in srgb, {identityVar(identity)} 12%, transparent);"
 				>
 					{provider}
 				</span>

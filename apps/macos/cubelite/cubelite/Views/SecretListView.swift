@@ -44,14 +44,14 @@ struct SecretListView: View {
         Table(clusterState.secrets, selection: $selectedSecretID) {
             TableColumn("Name") { secret in
                 Text(secret.name)
-                    .font(.callout.monospaced())
+                    .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 200)
 
             TableColumn("Namespace") { secret in
                 Text(secret.namespace)
-                    .font(.callout)
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -64,14 +64,14 @@ struct SecretListView: View {
 
             TableColumn("Data Keys") { secret in
                 Text("\(secret.dataCount)")
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 80)
 
             TableColumn("Age") { secret in
                 Text(secret.creationTimestamp.k8sAge)
-                    .font(.callout.monospacedDigit())
+                    .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
@@ -89,7 +89,7 @@ private struct SecretTypeTag: View {
 
     var body: some View {
         Text(shortType)
-            .font(.caption.weight(.medium))
+            .typeStyle(DesignTokens.Typography.caption.weighted(.medium))
             .foregroundStyle(tagColor)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -113,9 +113,9 @@ private struct SecretTypeTag: View {
 
     private var tagColor: Color {
         switch type {
-        case "kubernetes.io/tls": .blue
-        case "kubernetes.io/dockerconfigjson": .orange
-        case "kubernetes.io/service-account-token": .green
+        case "kubernetes.io/tls": DesignTokens.clusterBlue
+        case "kubernetes.io/dockerconfigjson": DesignTokens.clusterAmber
+        case "kubernetes.io/service-account-token": DesignTokens.clusterTeal
         default: .secondary
         }
     }

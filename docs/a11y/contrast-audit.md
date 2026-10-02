@@ -98,6 +98,8 @@ preserving lightness step that clears 4.5:1 in each:
 |---|---|---|---|---|
 | `status.err-solid` | light | `#c93535` | `#d35959` | 3.412 → 4.508 (lightened, +8.9pp L) |
 | `status.err-solid` | dark | `#dc4646` | `#d72929` | 3.815 → 4.507 (darkened, −6.6pp L) |
+| `accent.alt-violet` | light | `#7c5ce8` | `#7756e7` | 4.236 → 4.517 (panel) — #396 |
+| `accent.alt-teal` | light | `#0f9e8e` | `#0c7e72` | 3.061 → 4.546 (panel) — #396 |
 
 Both new hexes preserve hue exactly (H = 0°, pure red — `err-solid`'s
 green and blue channels are always equal, so no rounding drift occurs
@@ -215,6 +217,76 @@ pass. All values ≥ threshold (4.5:1, or 2.5:1 for the disabled floor).
 | window | 2.976 | 2.633 |
 | panel | 2.874 | 2.524 |
 | surface | 2.806 | 2.749 |
+
+## Type scale v1.1 and new non-text elements (2026-09)
+
+Added for #360 (unified parity v2, spec §5). **No colour token changed.** The
+v1.1 type scale (#355) only changes sizes, and the text pairings above do not
+depend on size, because this audit always applies the normal-text threshold of
+4.5:1 and never uses the large-text threshold of 3:1. So the checks here are:
+
+1. every style still meets the Apple HIG 10pt minimum;
+2. the new non-text elements (focus rings, replica segments, the destructive
+   fill, the alternate accents) meet WCAG 1.4.11 (3:1).
+
+### Type sizes: all ≥ 10px
+
+| Style | v1 | v1.1 | ≥ 10pt | Text pairing | AA |
+|---|---|---|---|---|---|
+| display | 28px | 28px | ✓ | text.primary | ✓ (unchanged) |
+| title | 16px | 16px | ✓ | text.primary | ✓ (unchanged) |
+| subtitle | 12.5–13px | 13.5px | ✓ | text.primary | ✓ (unchanged) |
+| body | 12.5px | 13px | ✓ | text.primary / secondary | ✓ (unchanged) |
+| caption | 11–11.5px | 11.5px | ✓ | text.secondary / tertiary | ✓ (unchanged) |
+| section | 9.5px ✗ | 10px | ✓ (was below) | text.tertiary | ✓ (unchanged) |
+| colhead | 10.5px | 11px | ✓ | text.tertiary | ✓ (unchanged) |
+| data | 12px | 12.5px | ✓ | text.data-bright | ✓ (unchanged) |
+| data-sm | 11–11.5px | 12px | ✓ | text.secondary | ✓ (unchanged) |
+| log | 11px | 11.5px | ✓ | text.log on sunken | ✓ (unchanged) |
+| stat (new) | — | 22px | ✓ | text.data-bright | ✓ (same pairing as data) |
+| micro (new) | — | 10.5px | ✓ | text.secondary / tertiary | ✓ (same pairings as caption) |
+
+### Non-text contrast (WCAG 1.4.11, min 3:1)
+
+These ratios use the same formula as `wcag.ts`. They are computed from
+`design/tokens.json`. The accent rows are asserted in `tokens-contrast.test.ts`
+(since #396); the rest are not yet.
+
+| Element | Pairing | Dark | Light |
+|---|---|---|---|
+| Focus ring / focused border | `accent.default` on `surface.panel` | 6.94 | 4.52 |
+| Focus ring / focused border | `accent.default` on `surface.surface` | 6.77 | 4.92 |
+| Replica segment, ready (fill) | `status.ok` on `surface.panel` | 9.88 | 4.66 |
+| Replica segment, pending (outline) | `status.warn` on `surface.panel` | 11.38 | 4.70 |
+| Focus ring, violet accent | `accent.alt-violet` on `surface.panel` | 6.98 | 4.52 (was 4.24, #396) |
+| Focus ring, teal accent | `accent.alt-teal` on `surface.panel` | 10.20 | 4.55 (was 3.06, #396) |
+| Destructive fill | `status.err-solid` on `surface.window` | 3.97 | 3.77 |
+
+All pass 3:1.
+
+### Resolved (#396): alternate accents as text in the light theme
+
+The alternate accents (Preferences → Accent, #363) are also used for
+text: the accent link in Preferences, and the `surface.window`-coloured
+label on a primary button's accent fill. Contrast is symmetric, so the
+label-on-fill case is the same pairing as the accent against
+`surface.window`. In the **light** theme two of these pairings were below
+4.5:1. #396 fixed them by darkening each accent with the same method as the
+original fix pass: only HSL lightness changed, hue and saturation stayed the
+same, and each accent moved by the smallest step that clears 4.5:1 against
+its worst surface, `surface.panel`.
+
+| Accent (light) | Before | After | ΔL | Text on panel (worst) | Label on fill (= on window) |
+|---|---|---|---|---|---|
+| default | `#3b68e2` | unchanged | — | 4.52 ✓ | 4.72 ✓ |
+| alt-violet | `#7c5ce8` | `#7756e7` | −1.3pp | 4.24 → 4.52 ✓ | 4.42 → 4.71 ✓ |
+| alt-teal | `#0f9e8e` | `#0c7e72` | −6.8pp | 3.06 → 4.55 ✓ | 3.19 → 4.74 ✓ |
+
+The dark values are unchanged; all of them are ≥ 6.6:1. `tokens-contrast.test.ts`
+now has MATRIX rows for all three accents on window, panel, surface and overlay
+in both themes. The coverage guard also includes the `accent` group, so a new
+accent without a MATRIX row fails the suite. The suite now has 109 tests,
+all passing.
 
 ## Exceptions
 

@@ -16,6 +16,8 @@
 	import { viewRegistry } from '$lib/components/views';
 	import LogPanel from '$lib/components/logpanel/LogPanel.svelte';
 	import LogWindowShell from '$lib/components/logpanel/LogWindowShell.svelte';
+	import { applyAccent, applyDensity } from '$lib/appearance';
+	import { kubeconfigSources } from '$lib/tauri';
 	import { matchShortcut } from '$lib/keyboard';
 	import { isMac } from '$lib/platform';
 	import { app } from '$lib/stores/app.svelte';
@@ -36,12 +38,22 @@
 			: null;
 
 	onMount(() => {
+		// Pop-out log windows share the appearance preferences.
+		applyDensity(settings.density.value);
+		applyAccent(settings.accent.value);
 		if (logWindowKey) return;
 		setMode(settings.theme.value);
 		let unCloseRequested: (() => void) | null = null;
 		void (async () => {
-			const dir = await homeDir();
-			app.kubeconfigPath = `${dir}/.kube/config`;
+			try {
+				// KUBECONFIG list (or ~/.kube/config) resolved like kubectl.
+				const { spec, sources } = await kubeconfigSources();
+				app.kubeconfigPath = spec;
+				app.kubeconfigSources = sources;
+			} catch {
+				// No readable kubeconfig yet: keep the default path so onboarding can explain it.
+				app.kubeconfigPath = `${await homeDir()}/.kube/config`;
+			}
 			await clusters.refresh();
 			const active =
 				clusters.contexts.find((c) => c.is_active)?.name ?? clusters.contexts[0]?.name ?? null;
@@ -149,12 +161,16 @@
 			<Sidebar />
 		{/if}
 		<div class="flex min-w-0 flex-1 flex-col">
-			<main class="relative flex min-w-0 flex-1 flex-col overflow-y-auto">
-				{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
-					<UnreachableView />
-				{:else}
-					<Current {...entry.props ?? {}} />
-				{/if}
+			<!-- Drawers portal into <main> (data-drawer-host), outside the scroller,
+			     so they stay pinned to the right edge while the view scrolls. -->
+			<main class="relative flex min-h-0 min-w-0 flex-1 flex-col" data-drawer-host>
+				<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+					{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
+						<UnreachableView />
+					{:else}
+						<Current {...entry.props ?? {}} />
+					{/if}
+				</div>
 			</main>
 			<LogPanel />
 		</div>

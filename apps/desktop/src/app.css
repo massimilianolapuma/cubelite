@@ -100,8 +100,8 @@
     --cl-shadow-drawer: -16px 0 40px rgba(20,20,30,.12);
     --cl-shadow-toast: 0 10px 34px rgba(20,20,30,.14);
     --cl-color-accent: #3b68e2;
-    --cl-color-accent-alt-violet: #7c5ce8;
-    --cl-color-accent-alt-teal: #0f9e8e;
+    --cl-color-accent-alt-violet: #7756e7;
+    --cl-color-accent-alt-teal: #0c7e72;
 
     --alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);
     --alpha-active-nav-bg: color-mix(in srgb, var(--color-accent) 14%, transparent);
@@ -116,6 +116,14 @@
     --row-pad-compact: 5px;
     --control-height: 28px;
     --min-hit-target: 28px;
+
+    --icon-2xs: 7px;
+    --icon-xs: 8px;
+    --icon-sm: 10px;
+    --icon-md: 11px;
+    --icon-lg: 14px;
+    --icon-xl: 28px;
+    --icon-2xl: 40px;
 
     --motion-fadein: 100ms ease;
     --motion-popin: 140ms ease;
@@ -383,4 +391,27 @@
     border-color: var(--color-accent);
     box-shadow: var(--focus-ring);
   }
+}
+
+/* Minimum 28×28 hit target (spec) for compact controls: an invisible
+   pseudo-element grows the clickable area without changing the layout. */
+@layer utilities {
+  .hit-target {
+    position: relative;
+  }
+  .hit-target::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 28px);
+    height: max(100%, 28px);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* Compact row density (Preferences → Density); outside @layer so it wins
+   over the generated :root token. */
+:root[data-density="compact"] {
+  --row-pad-default: var(--row-pad-compact);
 }

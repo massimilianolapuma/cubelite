@@ -52,6 +52,7 @@ interface DesignTokensV2 {
   shadow: TokenGroup;
   font: { family: TokenGroup; style: TokenGroup };
   density: TokenGroup;
+  icon: TokenGroup;
   motion: TokenGroup;
 }
 
@@ -228,6 +229,7 @@ const alphaLines = [
 ].join("\n");
 
 const densityLines = lines(tk.density, "", "    ");
+const iconLines = lines(tk.icon, "icon-", "    ");
 const motionLines = lines(tk.motion, "motion-", "    ", motionValue);
 
 // shadcn-svelte compat bridge: HSL triples derived from the active palette.
@@ -283,6 +285,8 @@ const layerContent = [
   alphaLines,
   "",
   densityLines,
+  "",
+  iconLines,
   "",
   motionLines,
   "",
@@ -406,6 +410,14 @@ ${entries(tk.density)
   .map(
     ([k, v]) =>
       `    public static let ${camel(k)}: CGFloat = ${Number.parseFloat(v)}`,
+  )
+  .join("\n")}
+
+    // MARK: - Icon sizes (pt)
+${entries(tk.icon)
+  .map(
+    ([k, v]) =>
+      `    public static let icon${camel(k).replace(/^./, (c) => c.toUpperCase())}: CGFloat = ${Number.parseFloat(v)}`,
   )
   .join("\n")}
 

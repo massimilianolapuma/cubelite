@@ -11,8 +11,13 @@ rust-version = "1.82"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
-kube = { version = "0.97", features = ["runtime", "derive", "client", "ws"] }
-k8s-openapi = { version = "0.23", features = ["v1_31"] }
+# kube and k8s-openapi are pinned to minor releases on purpose (see
+# .github/dependabot.yml): each kube release supports one k8s-openapi line,
+# so both are bumped together by hand.
+kube = { version = "4.2", features = ["runtime", "derive", "client", "ws"] }
+# Single Kubernetes API level for the whole workspace: the oldest one
+# k8s-openapi 0.28 supports, for the widest cluster compatibility.
+k8s-openapi = { version = "0.28", features = ["v1_32"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
@@ -21,3 +26,4 @@ anyhow = "1"
 futures = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "7"

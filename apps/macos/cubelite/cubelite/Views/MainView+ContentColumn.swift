@@ -20,7 +20,7 @@ extension MainView {
             List(selection: $selectedResourceType) {
                 ForEach(ResourceType.allCases) { type in
                     Label(type.rawValue, systemImage: type.systemImage)
-                        .font(.body)
+                        .typeStyle(DesignTokens.Typography.body)
                         .tag(type)
                 }
             }

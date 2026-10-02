@@ -164,4 +164,15 @@ struct KubeConfig: Sendable {
             .context?
             .namespace
     }
+
+    /// The API server URL of the cluster the given context points at, if the
+    /// kubeconfig defines one (status bar).
+    func serverURL(for contextName: String) -> String? {
+        guard
+            let clusterName = raw.contexts?.first(where: { $0.name == contextName })?.context?.cluster,
+            let server = raw.clusters?.first(where: { $0.name == clusterName })?.cluster?.server,
+            !server.isEmpty
+        else { return nil }
+        return server
+    }
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { app, type View } from '$lib/stores/app.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
+	import { isExtraKind, resources } from '$lib/stores/resources.svelte';
 
 	interface NavItem {
 		view: View;
@@ -64,10 +64,33 @@
 	const issueCount = $derived(resources.issuePods.length);
 	const warningCount = $derived(resources.warningEvents.length);
 
-	function countFor(view: View): number | null {
-		if (view === 'pods') return resources.pods.length;
-		if (view === 'deployments') return resources.deployments.length;
-		return null;
+	interface Count {
+		value: number;
+		/** Items needing attention: the count turns red and gets a tooltip. */
+		alert: string | null;
+	}
+
+	/** One right-aligned count per row; null when the kind is not loaded. */
+	function countFor(view: View): Count | null {
+		switch (view) {
+			case 'pods':
+				return {
+					value: resources.pods.length,
+					alert: issueCount > 0 ? `${issueCount} need attention` : null
+				};
+			case 'deployments':
+				return { value: resources.deployments.length, alert: null };
+			case 'events':
+				return {
+					value: resources.events.length,
+					alert: warningCount > 0 ? `${warningCount} warnings` : null
+				};
+			default: {
+				if (!isExtraKind(view)) return null;
+				const value = resources.kindCount(view);
+				return value === null ? null : { value, alert: null };
+			}
+		}
 	}
 </script>
 
@@ -88,14 +111,13 @@
 					<span class="type-body flex-1 {active ? 'text-text-primary' : 'text-text-secondary'}">
 						{item.label}
 					</span>
-					{#if item.view === 'pods' && issueCount > 0}
-						<span class="type-micro font-mono text-status-err">{issueCount}</span>
-					{/if}
-					{#if item.view === 'events' && warningCount > 0}
-						<span class="type-micro font-mono text-status-err">{warningCount}</span>
-					{/if}
-					{#if count !== null}
-						<span class="type-micro font-mono text-text-tertiary">{count}</span>
+					{#if count}
+						<span
+							class="type-micro font-mono {count.alert ? 'text-status-err' : 'text-text-tertiary'}"
+							title={count.alert ?? undefined}
+						>
+							{count.value}
+						</span>
 					{/if}
 				</button>
 			{/each}

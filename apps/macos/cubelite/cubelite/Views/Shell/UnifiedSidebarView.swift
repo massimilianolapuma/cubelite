@@ -31,7 +31,7 @@ struct UnifiedSidebarView: View {
                 items: [.configMaps, .secrets, .pvcs]),
             Section(
                 label: "Observe", dot: DesignTokens.accentAltTeal,
-                items: [.logs]),
+                items: [.events, .logs]),
         ]
     }
 

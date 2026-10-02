@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   IDENTITY_COLORS,
   assignIdentityColors,
+  identityVar,
   initials,
   isIdentityColor,
 } from "$lib/cluster-identity";
@@ -58,5 +59,17 @@ describe("isIdentityColor", () => {
     expect(isIdentityColor("blue")).toBe(true);
     expect(isIdentityColor("magenta")).toBe(false);
     expect(isIdentityColor(3)).toBe(false);
+  });
+});
+
+describe("identityVar", () => {
+  it("uses the always-emitted base variables for every palette color (#391)", () => {
+    expect(IDENTITY_COLORS.map(identityVar)).toEqual([
+      "var(--cl-color-cluster-blue)",
+      "var(--cl-color-cluster-amber)",
+      "var(--cl-color-cluster-pink)",
+      "var(--cl-color-cluster-violet)",
+      "var(--cl-color-cluster-teal)",
+    ]);
   });
 });
