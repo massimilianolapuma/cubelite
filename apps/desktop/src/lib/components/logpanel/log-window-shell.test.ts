@@ -12,8 +12,8 @@ vi.mock("@tauri-apps/api/window", () => ({
     destroy: vi.fn(async () => {}),
   }),
 }));
-vi.mock("$lib/tauri", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("$lib/tauri")>()),
+vi.mock("#lib/tauri.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#lib/tauri.ts")>()),
   streamPodLog: vi.fn(async () => "1"),
   stopLogs: vi.fn(async () => {}),
   getPodContainers: vi.fn(async () => []),
@@ -23,8 +23,8 @@ vi.mock("../../stores/logWindows.svelte", () => ({
 }));
 
 import LogWindowShell from "./LogWindowShell.svelte";
-import { LogSession } from "$lib/stores/logSession.svelte";
-import { logPanel } from "$lib/stores/logPanel.svelte";
+import { LogSession } from "#lib/stores/logSession.svelte.ts";
+import { logPanel } from "#lib/stores/logPanel.svelte.ts";
 
 function withSession(): void {
   const s = new LogSession("default", "api-0");

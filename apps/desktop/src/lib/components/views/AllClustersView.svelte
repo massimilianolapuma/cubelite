@@ -1,15 +1,15 @@
 <script lang="ts">
-	import IdentityAvatar from '$lib/components/ui/IdentityAvatar.svelte';
-	import MeterBar from '$lib/components/ui/MeterBar.svelte';
-	import StatCard from '$lib/components/ui/StatCard.svelte';
-	import StatusPill from '$lib/components/ui/StatusPill.svelte';
-	import { app } from '$lib/stores/app.svelte';
-	import { clusters } from '$lib/stores/clusters.svelte';
-	import { health } from '$lib/stores/health.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
-	import { formatAge } from '$lib/age';
-	import { percentOf } from '$lib/units';
-	import { buildSnapshot, dashboardTotals, type LiveCluster } from '$lib/all-clusters';
+	import IdentityAvatar from '#lib/components/ui/IdentityAvatar.svelte';
+	import MeterBar from '#lib/components/ui/MeterBar.svelte';
+	import StatCard from '#lib/components/ui/StatCard.svelte';
+	import StatusPill from '#lib/components/ui/StatusPill.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusters } from '#lib/stores/clusters.svelte.ts';
+	import { health } from '#lib/stores/health.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { formatAge } from '#lib/age.ts';
+	import { percentOf } from '#lib/units.ts';
+	import { buildSnapshot, dashboardTotals, type LiveCluster } from '#lib/all-clusters.ts';
 
 	/** Live store data for the active cluster (fresher than the 60s probe). */
 	const live = $derived<LiveCluster>({

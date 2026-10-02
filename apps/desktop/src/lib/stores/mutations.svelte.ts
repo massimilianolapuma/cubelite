@@ -8,8 +8,8 @@ import {
   deletePod as deletePodCmd,
   restartDeployment as restartDeploymentCmd,
   scaleDeployment as scaleDeploymentCmd,
-} from "$lib/tauri";
-import { errorMessage } from "$lib/errors";
+} from "#lib/tauri.ts";
+import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
 import { resources } from "./resources.svelte";
 import { toasts } from "./toasts.svelte";

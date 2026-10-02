@@ -3,7 +3,7 @@
  * Theme (light/dark) stays with mode-watcher.
  */
 
-import type { Accent, Density } from "$lib/stores/settings.svelte";
+import type { Accent, Density } from "#lib/stores/settings.svelte.ts";
 
 const ACCENT_VAR: Record<Accent, string | null> = {
   blue: null, // token default

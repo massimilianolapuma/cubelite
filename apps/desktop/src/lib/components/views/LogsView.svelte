@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { logs, type LevelFilter } from '$lib/stores/logs.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
-	import { app } from '$lib/stores/app.svelte';
-	import { matchesSelector, parseLabelSelector } from '$lib/k8s-match';
-	import type { LogLevel } from '$lib/tauri';
+	import { logs, type LevelFilter } from '#lib/stores/logs.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { matchesSelector, parseLabelSelector } from '#lib/k8s-match.ts';
+	import type { LogLevel } from '#lib/tauri.ts';
 
 	/** Backend streams at most this many pods (MAX_LOG_PODS in Rust). */
 	const MAX_STREAMED_PODS = 20;

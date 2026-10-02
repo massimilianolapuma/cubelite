@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { deploymentStatus, podStatusLabel, podTone } from "./status";
-import type { DeploymentInfo, PodInfo } from "$lib/tauri";
+import type { DeploymentInfo, PodInfo } from "#lib/tauri.ts";
 
 function pod(phase: string | null, ready = true): PodInfo {
   return {

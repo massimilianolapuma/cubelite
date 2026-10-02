@@ -5,13 +5,13 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
 	import Check from '@lucide/svelte/icons/check';
-	import { logPanel } from '$lib/stores/logPanel.svelte';
-	import { logWindows } from '$lib/stores/logWindows.svelte';
-	import { ALL_CONTAINERS, type LogSession } from '$lib/stores/logSession.svelte';
-	import { exportLog } from '$lib/tauri';
-	import { toasts } from '$lib/stores/toasts.svelte';
-	import { errorMessage } from '$lib/errors';
-	import type { KeyedLogLine } from '$lib/stores/logs.svelte';
+	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
+	import { logWindows } from '#lib/stores/logWindows.svelte.ts';
+	import { ALL_CONTAINERS, type LogSession } from '#lib/stores/logSession.svelte.ts';
+	import { exportLog } from '#lib/tauri.ts';
+	import { toasts } from '#lib/stores/toasts.svelte.ts';
+	import { errorMessage } from '#lib/errors.ts';
+	import type { KeyedLogLine } from '#lib/stores/logs.svelte.ts';
 
 	let { session, detached = false }: { session: LogSession; detached?: boolean } = $props();
 

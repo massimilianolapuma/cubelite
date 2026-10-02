@@ -3,7 +3,7 @@
  * init containers always amber; regular containers cycle blue → teal by
  * pod-spec order. Identity, never status colors.
  */
-import type { ContainerDetail } from "$lib/tauri";
+import type { ContainerDetail } from "#lib/tauri.ts";
 
 const CYCLE = ["var(--color-cluster-blue)", "var(--color-cluster-teal)"];
 

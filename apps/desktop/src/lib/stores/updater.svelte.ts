@@ -7,7 +7,7 @@
  */
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { errorMessage } from "$lib/errors";
+import { errorMessage } from "#lib/errors.ts";
 
 export type UpdaterStatus = "idle" | "checking" | "available" | "downloading" | "ready" | "error";
 

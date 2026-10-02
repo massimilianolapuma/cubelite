@@ -6,8 +6,8 @@
  * its sub-streams — exactly one in single-container mode, one per pod
  * container (init included) when `container === ALL_CONTAINERS`.
  */
-import { getPodContainers, type ContainerDetail, type LogLine } from "$lib/tauri";
-import { errorMessage } from "$lib/errors";
+import { getPodContainers, type ContainerDetail, type LogLine } from "#lib/tauri.ts";
+import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
 import { LogRing } from "./logRing.svelte";
 import { FLUSH_MS } from "./logs.svelte";

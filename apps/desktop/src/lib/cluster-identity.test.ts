@@ -5,7 +5,7 @@ import {
   identityVar,
   initials,
   isIdentityColor,
-} from "$lib/cluster-identity";
+} from "#lib/cluster-identity.ts";
 
 describe("assignIdentityColors", () => {
   it("assigns palette colors by first-appearance order", () => {

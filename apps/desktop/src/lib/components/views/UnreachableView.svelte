@@ -1,7 +1,7 @@
 <script lang="ts">
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-	import { app } from '$lib/stores/app.svelte';
-	import { clusters } from '$lib/stores/clusters.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusters } from '#lib/stores/clusters.svelte.ts';
 
 	const server = $derived(
 		clusters.contexts.find((c) => c.name === app.activeCluster)?.cluster_server ?? null

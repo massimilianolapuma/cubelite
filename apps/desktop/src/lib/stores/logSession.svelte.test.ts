@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ContainerDetail, LogLine } from "$lib/tauri";
+import type { ContainerDetail, LogLine } from "#lib/tauri.ts";
 import type { KeyedLogLine } from "./logs.svelte";
 
 const listeners = new Map<string, (event: { payload: unknown }) => void>();
@@ -11,8 +11,8 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
-vi.mock("$lib/tauri", async (importOriginal) => {
-  const original = await importOriginal<typeof import("$lib/tauri")>();
+vi.mock("#lib/tauri.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("#lib/tauri.ts")>();
   return {
     ...original,
     streamPodLog: vi.fn(async () => "7"),
@@ -24,7 +24,7 @@ vi.mock("$lib/tauri", async (importOriginal) => {
   };
 });
 
-import { getPodContainers, streamPodLog, stopLogs } from "$lib/tauri";
+import { getPodContainers, streamPodLog, stopLogs } from "#lib/tauri.ts";
 import { app } from "./app.svelte";
 import { ALL_CONTAINERS, LogSession, RING_CAP } from "./logSession.svelte";
 

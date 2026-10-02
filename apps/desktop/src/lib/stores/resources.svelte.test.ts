@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   listPods: vi.fn(),
   listNamespaces: vi.fn(),
   listDeployments: vi.fn(async () => []),
@@ -30,7 +30,7 @@ import {
   listServices,
   type NamespaceInfo,
   type PodInfo,
-} from "$lib/tauri";
+} from "#lib/tauri.ts";
 import { resources } from "./resources.svelte";
 import { app } from "./app.svelte";
 

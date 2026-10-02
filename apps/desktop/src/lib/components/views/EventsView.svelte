@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { formatAge } from '$lib/age';
-	import { resources } from '$lib/stores/resources.svelte';
+	import { formatAge } from '#lib/age.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
 
 	const grid = 'grid-template-columns: 0.7fr 1fr 1.4fr 2.6fr 0.5fr;';
 </script>

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   streamLogs: vi.fn(async () => "1"),
   stopLogs: vi.fn(async () => undefined),
 }));
@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
 
-import { streamLogs, type LogLine } from "$lib/tauri";
+import { streamLogs, type LogLine } from "#lib/tauri.ts";
 import { logs, FLUSH_MS } from "./logs.svelte";
 import { app } from "./app.svelte";
 

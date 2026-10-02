@@ -1,8 +1,8 @@
 <script lang="ts">
-	import DeploymentTable from '$lib/components/DeploymentTable.svelte';
-	import DeploymentDrawer from '$lib/components/deployments/DeploymentDrawer.svelte';
-	import { app } from '$lib/stores/app.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
+	import DeploymentTable from '#lib/components/DeploymentTable.svelte';
+	import DeploymentDrawer from '#lib/components/deployments/DeploymentDrawer.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
 
 	const filtered = $derived(
 		app.deploymentFilter

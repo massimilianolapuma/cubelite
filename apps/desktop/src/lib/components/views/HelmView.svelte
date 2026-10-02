@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { formatAge } from '$lib/age';
-	import StatusPill from '$lib/components/ui/StatusPill.svelte';
-	import type { PillTone } from '$lib/components/ui/StatusPill.svelte';
-	import { app } from '$lib/stores/app.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
+	import { formatAge } from '#lib/age.ts';
+	import StatusPill from '#lib/components/ui/StatusPill.svelte';
+	import type { PillTone } from '#lib/components/ui/StatusPill.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
 
 	$effect(() => {
 		void [app.namespace, app.activeCluster];

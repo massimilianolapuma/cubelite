@@ -17,13 +17,16 @@ Guidelines for all code under `apps/desktop/`.
 ## TypeScript
 
 - `strict: true` is enforced in `tsconfig.json` — no `any` types
+- Import library code via the `#lib` subpath import (SvelteKit 3), with the file
+  extension: `#lib/tauri.ts`, `#lib/stores/app.svelte.ts`, `#lib/components/X.svelte`
+- SvelteKit config lives in `sveltekit({...})` in `vite.config.ts` (there is no `svelte.config.js`)
 - Use `satisfies` operator for config objects
 - Prefer `type` over `interface` for unions and mapped types; `interface` for extensible shapes
 - All Tauri command payloads typed with matching Rust serialization (`#[serde]`)
 
 ## shadcn-svelte & Tailwind v4
 
-- Use shadcn-svelte components from `$lib/components/ui/`
+- Use shadcn-svelte components from `#lib/components/ui/`
 - Do not override component internals — compose or extend via slot props
 - Tailwind utility classes only — no inline styles, no CSS-in-JS
 - Design tokens defined in `src/app.css` as CSS custom properties; reference via Tailwind `theme()`

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { identityColorFor } from "./identityColor";
-import type { ContainerDetail } from "$lib/tauri";
+import type { ContainerDetail } from "#lib/tauri.ts";
 
 const cs = [
   { name: "worker", init: false },
