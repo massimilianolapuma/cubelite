@@ -65,6 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declared in `package.json` `imports`, with explicit file extensions
   (`#lib/tauri.ts`), replacing the removed `$lib` alias. Vitest therefore needs
   no alias of its own. Node.js 22.17+ is now required.
+  SonarCloud now leaves desktop unit tests out of its duplication metric
+  (`.sonarcloud.properties`), because their shared `vi.mock` headers repeat
+  by design.
 
 - **Vite 8** — the desktop builds with Vite 8 (Rolldown), the version
   vite-plugin-svelte 7 requires, which clears its unmet-peer warning.
