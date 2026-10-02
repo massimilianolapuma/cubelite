@@ -37,14 +37,11 @@ function seedSinceTimes(lines: KeyedLogLine[]): {
   latest?: string;
   byContainer: Map<string, string>;
 } {
-  let latest: string | undefined;
-  const byContainer = new Map<string, string>();
-  for (const l of lines) {
-    if (!l.time) continue;
-    latest = l.time;
-    if (l.container) byContainer.set(l.container, l.time);
-  }
-  return { latest, byContainer };
+  const timed = lines.filter((l) => l.time);
+  const byContainer = new Map(
+    timed.flatMap((l) => (l.container ? [[l.container, l.time as string] as const] : [])),
+  );
+  return { latest: timed.at(-1)?.time ?? undefined, byContainer };
 }
 
 export class LogSession {
