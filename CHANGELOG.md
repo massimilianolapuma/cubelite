@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-02
+
 ### Added
 
 - **macOS Overview parity** (#359): the native Overview counts through
@@ -43,6 +45,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Refresh moves to ⌘R in the View menu and the palette ("Refresh cluster
   data"); the "Logs & Errors" sheet is now "Diagnostics…" (⇧⌘D) in the
   Window menu.
+
+- **Multiple kubeconfig files** (desktop, #392): the app follows `KUBECONFIG`
+  like kubectl. It reads every listed file, first file wins on name clashes,
+  and missing files are skipped. Before, contexts from extra files showed up
+  in the rail, but connecting to them failed because commands only read
+  `~/.kube/config`. The list is imported from the login shell when the app
+  is launched from the Dock or Finder, and it is split with the platform
+  separator (`;` on Windows). Preferences list each file with its context
+  count and note merged or missing files. The rail tooltip names the file
+  that defines a context.
+
+- **Design lint** (#360): `scripts/design-lint.sh` runs in CI (job "Design
+  Lint", with its own self-test). It blocks `text-[Npx]` classes and raw hex
+  colours in desktop Svelte components (held at 0), and system fonts and colours
+  in native views (capped per file by `scripts/design-lint-allow.txt`; the
+  residue is tracked in #395). Audit report: `docs/design-audit-2026-09.md`.
+- **Handoff v1.1 amendments** (#360): the handoff README and `tokens-v2.json`
+  now record the contrast-fixed tokens (`text/tertiary` `#7d7d86`, `err/solid`
+  `#d72929`), the v1.1 type scale and the parity decisions. The contrast audit
+  confirms every v1.1 type size meets AA and non-text contrast reaches 3:1, and records a light-theme accent gap (#396).
+- **All Clusters dashboard** (desktop, #362): stat cards now show clusters
+  online, total pods, warnings and contexts watched aggregated across every
+  context; each online cluster card shows its pods, warnings and CPU/MEM
+  bars (or "metrics unavailable"). The background health probe now also
+  returns pod, issue-pod and capacity totals per cluster.
 
 ### Changed
 
@@ -127,6 +154,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preferences add row density (default/compact), accent color
     (blue/violet/teal) and a per-cluster identity color override.
 
+- **Tauri 2.12** (desktop): `tauri` 2.12.0 with `@tauri-apps/api` and
+  `@tauri-apps/plugin-updater` 2.12, kept in lockstep; plus the Rust
+  minor/patch updates from Dependabot (tokio 1.53, serde, thiserror, …).
+  Tauri packages are now excluded from Dependabot and updated manually.
+
+- **Type scale v1.1** (both apps): body 13px, caption 11.5px, section 10px,
+  column headers 11px, data 12.5px; new `stat` and `micro` styles. The scale is
+  generated from `design/tokens.json` into Tailwind `type-*` utilities and
+  `DesignTokens.Typography` for SwiftUI; no size falls below the 10pt HIG floor.
+- **macOS**: Geist and Geist Mono (OFL 1.1) are bundled and used by every
+  `scaledFont` call and the new `typeStyle` modifier — same families as the
+  desktop app.
+
 ### Fixed
 
 - **Desktop log pop-out follow-ups** (#351):
@@ -148,32 +188,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   replaced with Lucide icons; the Timestamps/Wrap toggles expose their state
   as `menuitemcheckbox`.
 
-### Added
-
-- **Multiple kubeconfig files** (desktop, #392): the app follows `KUBECONFIG`
-  like kubectl. It reads every listed file, first file wins on name clashes,
-  and missing files are skipped. Before, contexts from extra files showed up
-  in the rail, but connecting to them failed because commands only read
-  `~/.kube/config`. The list is imported from the login shell when the app
-  is launched from the Dock or Finder, and it is split with the platform
-  separator (`;` on Windows). Preferences list each file with its context
-  count and note merged or missing files. The rail tooltip names the file
-  that defines a context.
-
-- **Design lint** (#360): `scripts/design-lint.sh` runs in CI (job "Design
-  Lint", with its own self-test). It blocks `text-[Npx]` classes and raw hex
-  colours in desktop Svelte components (held at 0), and system fonts and colours
-  in native views (capped per file by `scripts/design-lint-allow.txt`; the
-  residue is tracked in #395). Audit report: `docs/design-audit-2026-09.md`.
-- **Handoff v1.1 amendments** (#360): the handoff README and `tokens-v2.json`
-  now record the contrast-fixed tokens (`text/tertiary` `#7d7d86`, `err/solid`
-  `#d72929`), the v1.1 type scale and the parity decisions. The contrast audit
-  confirms every v1.1 type size meets AA and non-text contrast reaches 3:1, and records a light-theme accent gap (#396).
-- **All Clusters dashboard** (desktop, #362): stat cards now show clusters
-  online, total pods, warnings and contexts watched aggregated across every
-  context; each online cluster card shows its pods, warnings and CPU/MEM
-  bars (or "metrics unavailable"). The background health probe now also
-  returns pod, issue-pod and capacity totals per cluster.
+- **Desktop**: Esc closes the topmost overlay first — the Delete Pod and YAML
+  dialogs now close before the drawer underneath them, and Esc cancels an
+  in-flight cluster switch (#361). Table rows, log level chips and the Follow
+  toggle show the accent focus ring.
 
 ### Security
 
@@ -181,30 +199,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   devalue 5.9.4, @humanfs/node, postcss-selector-parser 6.1.4, tsx 4.23 /
   esbuild 0.28 (npm); rustls 0.23.45 and plist 1.10 / quick-xml 0.42 (Rust).
   `pnpm audit` and `cargo audit` now run in CI (#365).
-
-### Changed
-
-- **Tauri 2.12** (desktop): `tauri` 2.12.0 with `@tauri-apps/api` and
-  `@tauri-apps/plugin-updater` 2.12, kept in lockstep; plus the Rust
-  minor/patch updates from Dependabot (tokio 1.53, serde, thiserror, …).
-  Tauri packages are now excluded from Dependabot and updated manually.
-
-### Changed
-
-- **Type scale v1.1** (both apps): body 13px, caption 11.5px, section 10px,
-  column headers 11px, data 12.5px; new `stat` and `micro` styles. The scale is
-  generated from `design/tokens.json` into Tailwind `type-*` utilities and
-  `DesignTokens.Typography` for SwiftUI; no size falls below the 10pt HIG floor.
-- **macOS**: Geist and Geist Mono (OFL 1.1) are bundled and used by every
-  `scaledFont` call and the new `typeStyle` modifier — same families as the
-  desktop app.
-
-### Fixed
-
-- **Desktop**: Esc closes the topmost overlay first — the Delete Pod and YAML
-  dialogs now close before the drawer underneath them, and Esc cancels an
-  in-flight cluster switch (#361). Table rows, log level chips and the Follow
-  toggle show the accent focus ring.
 
 ## [0.4.2] - 2026-08-19
 
