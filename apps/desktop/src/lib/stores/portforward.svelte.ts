@@ -3,8 +3,8 @@
  * store is the UI's source of truth for what is forwarding where.
  */
 
-import { startPortForward, stopPortForward } from "$lib/tauri";
-import { errorMessage } from "$lib/errors";
+import { startPortForward, stopPortForward } from "#lib/tauri.ts";
+import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
 import { toasts } from "./toasts.svelte";
 

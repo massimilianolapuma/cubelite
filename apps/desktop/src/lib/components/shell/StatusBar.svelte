@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { app } from '$lib/stores/app.svelte';
-	import { clusters } from '$lib/stores/clusters.svelte';
-	import { health } from '$lib/stores/health.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
-	import { settings } from '$lib/stores/settings.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusters } from '#lib/stores/clusters.svelte.ts';
+	import { health } from '#lib/stores/health.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { settings } from '#lib/stores/settings.svelte.ts';
 
 	const server = $derived(
 		clusters.contexts.find((c) => c.name === app.activeCluster)?.cluster_server ?? null

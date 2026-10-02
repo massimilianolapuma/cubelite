@@ -1,7 +1,7 @@
 <script lang="ts">
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
-	import { app } from '$lib/stores/app.svelte';
-	import { clusters } from '$lib/stores/clusters.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusters } from '#lib/stores/clusters.svelte.ts';
 </script>
 
 {#if app.connecting !== null}

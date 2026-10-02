@@ -1,11 +1,11 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
-	import IdentityAvatar from '$lib/components/ui/IdentityAvatar.svelte';
-	import Kbd from '$lib/components/ui/Kbd.svelte';
-	import { app } from '$lib/stores/app.svelte';
-	import { clusters } from '$lib/stores/clusters.svelte';
-	import { settings } from '$lib/stores/settings.svelte';
-	import { modLabel } from '$lib/platform';
+	import IdentityAvatar from '#lib/components/ui/IdentityAvatar.svelte';
+	import Kbd from '#lib/components/ui/Kbd.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusters } from '#lib/stores/clusters.svelte.ts';
+	import { settings } from '#lib/stores/settings.svelte.ts';
+	import { modLabel } from '#lib/platform.ts';
 
 	let step = $state(0);
 

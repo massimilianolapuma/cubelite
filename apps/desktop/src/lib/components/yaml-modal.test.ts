@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/svelte";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   getResourceYaml: vi.fn(),
   listContexts: vi.fn(),
   setContext: vi.fn(),
@@ -20,8 +20,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import YamlModal from "./YamlModal.svelte";
-import { getResourceYaml } from "$lib/tauri";
-import { app } from "$lib/stores/app.svelte";
+import { getResourceYaml } from "#lib/tauri.ts";
+import { app } from "#lib/stores/app.svelte.ts";
 
 beforeEach(() => {
   vi.clearAllMocks();

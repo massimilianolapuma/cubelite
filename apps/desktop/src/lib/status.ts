@@ -1,6 +1,6 @@
 /** Status → tone mapping shared by tables, pills and drawers. */
 
-import type { DeploymentInfo, PodInfo } from "$lib/tauri";
+import type { DeploymentInfo, PodInfo } from "#lib/tauri.ts";
 
 export type StatusTone = "ok" | "warn" | "err" | "neutral";
 

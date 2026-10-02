@@ -4,8 +4,8 @@
  * the rest) and the cross-cluster totals shown in the stat cards.
  */
 
-import type { ClusterHealth } from "$lib/stores/health.svelte";
-import type { CapacityTotals } from "$lib/tauri";
+import type { ClusterHealth } from "#lib/stores/health.svelte.ts";
+import type { CapacityTotals } from "#lib/tauri.ts";
 
 export type ClusterState = "connected" | "unreachable" | "unknown";
 

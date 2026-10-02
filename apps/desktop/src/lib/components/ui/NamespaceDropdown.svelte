@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import { app } from '$lib/stores/app.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
 
 	const podCounts = $derived(resources.podCountsByNamespace);
 

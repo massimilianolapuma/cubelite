@@ -5,15 +5,15 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
-vi.mock("$lib/tauri", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("$lib/tauri")>()),
+vi.mock("#lib/tauri.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#lib/tauri.ts")>()),
   streamPodLog: vi.fn(async () => "1"),
   stopLogs: vi.fn(async () => {}),
   getPodContainers: vi.fn(async () => []),
 }));
 
 import LogTabStrip from "./LogTabStrip.svelte";
-import { logPanel } from "$lib/stores/logPanel.svelte";
+import { logPanel } from "#lib/stores/logPanel.svelte.ts";
 
 describe("LogTabStrip", () => {
   afterEach(async () => {

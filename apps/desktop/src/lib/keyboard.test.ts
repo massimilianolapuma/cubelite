@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchShortcut, type KeyLike } from "$lib/keyboard";
+import { matchShortcut, type KeyLike } from "#lib/keyboard.ts";
 
 function key(overrides: Partial<KeyLike>): KeyLike {
   return { key: "", metaKey: false, ctrlKey: false, altKey: false, ...overrides };

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LogLine } from "$lib/tauri";
+import type { LogLine } from "#lib/tauri.ts";
 
 const listeners = new Map<string, (event: { payload: unknown }) => void>();
 
@@ -10,8 +10,8 @@ vi.mock("@tauri-apps/api/event", () => ({
   }),
 }));
 
-vi.mock("$lib/tauri", async (importOriginal) => {
-  const original = await importOriginal<typeof import("$lib/tauri")>();
+vi.mock("#lib/tauri.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("#lib/tauri.ts")>();
   return {
     ...original,
     streamPodLog: vi.fn(async () => "1"),

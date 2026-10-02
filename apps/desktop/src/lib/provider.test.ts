@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { providerOf } from "$lib/provider";
+import { providerOf } from "#lib/provider.ts";
 
 describe("providerOf", () => {
   it("detects managed providers from name or server", () => {

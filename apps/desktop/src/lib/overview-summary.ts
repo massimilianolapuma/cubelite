@@ -12,7 +12,7 @@ import type {
   PodInfo,
   SecretInfo,
   ServiceInfo,
-} from "$lib/tauri";
+} from "#lib/tauri.ts";
 
 export type OverviewInput = {
   pods: PodInfo[];

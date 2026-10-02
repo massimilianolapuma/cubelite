@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
   setContext: vi.fn(),
   listPods: vi.fn(),
@@ -29,12 +29,12 @@ import Toaster from "./ui/Toaster.svelte";
 import DeletePodDialog from "./DeletePodDialog.svelte";
 import PreferencesModal from "./PreferencesModal.svelte";
 import OnboardingModal from "./OnboardingModal.svelte";
-import { app } from "$lib/stores/app.svelte";
-import { clusters } from "$lib/stores/clusters.svelte";
-import { settings } from "$lib/stores/settings.svelte";
-import { toasts } from "$lib/stores/toasts.svelte";
-import { installLocalStorageMock } from "$lib/stores/storage-mock";
-import type { PodInfo } from "$lib/tauri";
+import { app } from "#lib/stores/app.svelte.ts";
+import { clusters } from "#lib/stores/clusters.svelte.ts";
+import { settings } from "#lib/stores/settings.svelte.ts";
+import { toasts } from "#lib/stores/toasts.svelte.ts";
+import { installLocalStorageMock } from "#lib/stores/storage-mock.ts";
+import type { PodInfo } from "#lib/tauri.ts";
 
 const pod: PodInfo = {
   name: "api-0",

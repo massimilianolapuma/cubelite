@@ -2,7 +2,7 @@
 	import LogBody from './LogBody.svelte';
 	import LogTabStrip from './LogTabStrip.svelte';
 	import LogToolbar from './LogToolbar.svelte';
-	import { logPanel, PANEL_COLLAPSED, PANEL_MAX, PANEL_MIN } from '$lib/stores/logPanel.svelte';
+	import { logPanel, PANEL_COLLAPSED, PANEL_MAX, PANEL_MIN } from '#lib/stores/logPanel.svelte.ts';
 
 	let dragging = $state(false);
 

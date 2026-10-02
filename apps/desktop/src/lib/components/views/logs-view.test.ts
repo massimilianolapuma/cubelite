@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
   setContext: vi.fn(),
   listPods: vi.fn(),
@@ -29,10 +29,10 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import LogsView from "./LogsView.svelte";
-import { app } from "$lib/stores/app.svelte";
-import { logs } from "$lib/stores/logs.svelte";
-import { resources } from "$lib/stores/resources.svelte";
-import type { LogLine } from "$lib/tauri";
+import { app } from "#lib/stores/app.svelte.ts";
+import { logs } from "#lib/stores/logs.svelte.ts";
+import { resources } from "#lib/stores/resources.svelte.ts";
+import type { LogLine } from "#lib/tauri.ts";
 
 function line(overrides: Partial<LogLine> = {}): LogLine {
   return {

@@ -5,18 +5,18 @@ import { render, screen, waitFor } from "@testing-library/svelte";
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
-vi.mock("$lib/tauri", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("$lib/tauri")>()),
+vi.mock("#lib/tauri.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#lib/tauri.ts")>()),
   streamPodLog: vi.fn(async () => "1"),
   stopLogs: vi.fn(async () => {}),
   getPodContainers: vi.fn(async () => []),
 }));
 
 import LogBody from "./LogBody.svelte";
-import { LogSession, ALL_CONTAINERS } from "$lib/stores/logSession.svelte";
-import { logPanel } from "$lib/stores/logPanel.svelte";
-import { SEARCH_DEBOUNCE_MS } from "$lib/stores/logSearch.svelte";
-import type { ContainerDetail } from "$lib/tauri";
+import { LogSession, ALL_CONTAINERS } from "#lib/stores/logSession.svelte.ts";
+import { logPanel } from "#lib/stores/logPanel.svelte.ts";
+import { SEARCH_DEBOUNCE_MS } from "#lib/stores/logSearch.svelte.ts";
+import type { ContainerDetail } from "#lib/tauri.ts";
 
 function sessionWith(messages: string[]): LogSession {
   const s = new LogSession("default", "api-0");

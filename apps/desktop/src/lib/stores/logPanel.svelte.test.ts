@@ -9,8 +9,8 @@ vi.mock("@tauri-apps/api/event", () => ({
     return () => listeners.delete(name);
   }),
 }));
-vi.mock("$lib/tauri", async (importOriginal) => {
-  const original = await importOriginal<typeof import("$lib/tauri")>();
+vi.mock("#lib/tauri.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("#lib/tauri.ts")>();
   return {
     ...original,
     streamPodLog: vi.fn(async () => "9"),
@@ -124,9 +124,9 @@ describe("logPanel store", () => {
 
   it("openFor on the already-open pod focuses without restarting the stream", async () => {
     await logPanel.openFor({ namespace: "default", name: "api-0" });
-    const calls = vi.mocked((await import("$lib/tauri")).streamPodLog).mock.calls.length;
+    const calls = vi.mocked((await import("#lib/tauri.ts")).streamPodLog).mock.calls.length;
     await logPanel.openFor({ namespace: "default", name: "api-0" });
-    expect(vi.mocked((await import("$lib/tauri")).streamPodLog).mock.calls.length).toBe(calls);
+    expect(vi.mocked((await import("#lib/tauri.ts")).streamPodLog)).toHaveBeenCalledTimes(calls);
   });
 
   it("remembers the container choice per pod across reopen", async () => {
@@ -147,7 +147,7 @@ describe("logPanel store", () => {
 
     expect(logPanel.sessions).toHaveLength(0);
     expect(logPanel.activeKey).toBeNull();
-    expect(vi.mocked((await import("$lib/tauri")).stopLogs)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked((await import("#lib/tauri.ts")).stopLogs)).toHaveBeenCalledTimes(2);
   });
 
   it("closeAll awaits the onCloseAll hook before closing sessions (#298 broadcast-first ordering)", async () => {

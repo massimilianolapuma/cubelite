@@ -5,14 +5,14 @@
 	import Layers from '@lucide/svelte/icons/layers';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Settings from '@lucide/svelte/icons/settings';
-	import Kbd from '$lib/components/ui/Kbd.svelte';
-	import { app, type View } from '$lib/stores/app.svelte';
-	import { clusters } from '$lib/stores/clusters.svelte';
-	import { health } from '$lib/stores/health.svelte';
-	import { logPanel } from '$lib/stores/logPanel.svelte';
-	import { modLabel } from '$lib/platform';
-	import { identityVar } from '$lib/cluster-identity';
-	import { providerOf } from '$lib/provider';
+	import Kbd from '#lib/components/ui/Kbd.svelte';
+	import { app, type View } from '#lib/stores/app.svelte.ts';
+	import { clusters } from '#lib/stores/clusters.svelte.ts';
+	import { health } from '#lib/stores/health.svelte.ts';
+	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
+	import { modLabel } from '#lib/platform.ts';
+	import { identityVar } from '#lib/cluster-identity.ts';
+	import { providerOf } from '#lib/provider.ts';
 	import type { Component } from 'svelte';
 
 	interface Action {

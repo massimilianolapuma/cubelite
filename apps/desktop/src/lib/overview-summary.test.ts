@@ -13,7 +13,7 @@ import type {
   PodInfo,
   SecretInfo,
   ServiceInfo,
-} from "$lib/tauri";
+} from "#lib/tauri.ts";
 
 // Same fixture as cubeliteTests/OverviewSummaryTests.swift: both apps must
 // produce the same numbers.

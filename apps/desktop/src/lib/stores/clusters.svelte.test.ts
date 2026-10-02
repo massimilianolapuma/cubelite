@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
   setContext: vi.fn(),
   probeCluster: vi.fn(),
@@ -30,7 +30,7 @@ import {
   setContext,
   watchResources,
   type ContextInfo,
-} from "$lib/tauri";
+} from "#lib/tauri.ts";
 import { clusters } from "./clusters.svelte";
 import { resources } from "./resources.svelte";
 import { app } from "./app.svelte";

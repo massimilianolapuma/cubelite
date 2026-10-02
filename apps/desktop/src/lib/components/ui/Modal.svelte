@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import X from '@lucide/svelte/icons/x';
-	import { app } from '$lib/stores/app.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
 
 	let {
 		title,

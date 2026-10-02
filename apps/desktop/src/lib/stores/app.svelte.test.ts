@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { app, isView, VIEWS } from "./app.svelte";
-import type { PodInfo } from "$lib/tauri";
+import type { PodInfo } from "#lib/tauri.ts";
 
 const pod: PodInfo = {
   name: "api-0",

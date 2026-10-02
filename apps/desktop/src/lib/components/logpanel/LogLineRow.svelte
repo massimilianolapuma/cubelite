@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { KeyedLogLine } from '$lib/stores/logs.svelte';
-	import type { LogLevel } from '$lib/tauri';
+	import type { KeyedLogLine } from '#lib/stores/logs.svelte.ts';
+	import type { LogLevel } from '#lib/tauri.ts';
 
 	let {
 		line,

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   deletePod: vi.fn(async () => undefined),
   restartDeployment: vi.fn(async () => undefined),
   scaleDeployment: vi.fn(async () => undefined),
@@ -22,7 +22,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
 
-import { deletePod, restartDeployment, scaleDeployment } from "$lib/tauri";
+import { deletePod, restartDeployment, scaleDeployment } from "#lib/tauri.ts";
 import { mutations } from "./mutations.svelte";
 import { app } from "./app.svelte";
 import { toasts } from "./toasts.svelte";

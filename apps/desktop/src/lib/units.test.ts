@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatBytes, formatCpu, percentOf } from "$lib/units";
+import { formatBytes, formatCpu, percentOf } from "#lib/units.ts";
 
 describe("formatCpu", () => {
   it("renders millicores below one core", () => {

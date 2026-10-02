@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { StatusTone } from '$lib/status';
+	import type { StatusTone } from '#lib/status.ts';
 
 	/** One metric row; a null value renders "—" (kind not loaded yet). */
 	export type SummaryRow = { label: string; value: number | null; tone?: StatusTone | 'accent' };
@@ -8,7 +8,7 @@
 <script lang="ts">
 	import type LucideIcon from '@lucide/svelte/icons/box';
 	import Lock from '@lucide/svelte/icons/lock';
-	import { toneColor } from '$lib/status';
+	import { toneColor } from '#lib/status.ts';
 
 	let {
 		title,

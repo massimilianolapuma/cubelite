@@ -3,7 +3,7 @@
  * `totalAppended` is monotonic so the "↓ N new lines" pill can count
  * arrivals even after eviction.
  */
-import type { LogLine } from "$lib/tauri";
+import type { LogLine } from "#lib/tauri.ts";
 import type { KeyedLogLine } from "./logs.svelte";
 
 export class LogRing {

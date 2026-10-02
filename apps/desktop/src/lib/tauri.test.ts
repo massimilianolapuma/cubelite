@@ -16,13 +16,13 @@ import {
   listDeployments,
   watchResources,
   unwatchResources,
-} from "$lib/tauri";
+} from "#lib/tauri.ts";
 import type {
   ContextInfo,
   PodInfo,
   NamespaceInfo,
   DeploymentInfo,
-} from "$lib/tauri";
+} from "#lib/tauri.ts";
 
 const mockedInvoke = vi.mocked(invoke);
 

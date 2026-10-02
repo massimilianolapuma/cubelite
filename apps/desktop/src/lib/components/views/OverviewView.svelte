@@ -11,14 +11,14 @@
 	import Server from '@lucide/svelte/icons/server';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { onMount } from 'svelte';
-	import { formatAge } from '$lib/age';
-	import MeterBar from '$lib/components/ui/MeterBar.svelte';
-	import ResourceSummaryCard from '$lib/components/ui/ResourceSummaryCard.svelte';
-	import StatCard from '$lib/components/ui/StatCard.svelte';
-	import { coresDetail, memoryDetail, summarize } from '$lib/overview-summary';
-	import { app } from '$lib/stores/app.svelte';
-	import { resources, type ExtraKind } from '$lib/stores/resources.svelte';
-	import { percentOf } from '$lib/units';
+	import { formatAge } from '#lib/age.ts';
+	import MeterBar from '#lib/components/ui/MeterBar.svelte';
+	import ResourceSummaryCard from '#lib/components/ui/ResourceSummaryCard.svelte';
+	import StatCard from '#lib/components/ui/StatCard.svelte';
+	import { coresDetail, memoryDetail, summarize } from '#lib/overview-summary.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { resources, type ExtraKind } from '#lib/stores/resources.svelte.ts';
+	import { percentOf } from '#lib/units.ts';
 
 	const WORKLOADS = 'var(--color-cluster-blue)';
 	const NETWORK = 'var(--color-cluster-violet)';

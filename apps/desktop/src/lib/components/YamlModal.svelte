@@ -1,10 +1,10 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
 	import Copy from '@lucide/svelte/icons/copy';
-	import Modal from '$lib/components/ui/Modal.svelte';
-	import { errorMessage } from '$lib/errors';
-	import { app } from '$lib/stores/app.svelte';
-	import { getResourceYaml, type YamlResourceType } from '$lib/tauri';
+	import Modal from '#lib/components/ui/Modal.svelte';
+	import { errorMessage } from '#lib/errors.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { getResourceYaml, type YamlResourceType } from '#lib/tauri.ts';
 
 	let {
 		resourceType,

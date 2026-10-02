@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   deletePod: vi.fn(async () => undefined),
   restartDeployment: vi.fn(async () => undefined),
   scaleDeployment: vi.fn(async () => undefined),
@@ -25,9 +25,9 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import DeploymentTable from "./DeploymentTable.svelte";
-import { restartDeployment, scaleDeployment, type DeploymentInfo } from "$lib/tauri";
-import { SCALE_DEBOUNCE_MS } from "$lib/stores/mutations.svelte";
-import { app } from "$lib/stores/app.svelte";
+import { restartDeployment, scaleDeployment, type DeploymentInfo } from "#lib/tauri.ts";
+import { SCALE_DEBOUNCE_MS } from "#lib/stores/mutations.svelte.ts";
+import { app } from "#lib/stores/app.svelte.ts";
 
 beforeEach(() => {
   vi.clearAllMocks();

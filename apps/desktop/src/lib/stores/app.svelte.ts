@@ -2,7 +2,7 @@
  * Global app state: active cluster, current view, namespace filter, overlays.
  */
 
-import type { DeploymentInfo, KubeconfigSource, PodInfo } from "$lib/tauri";
+import type { DeploymentInfo, KubeconfigSource, PodInfo } from "#lib/tauri.ts";
 
 export const VIEWS = [
   "dashboard",
