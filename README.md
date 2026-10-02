@@ -70,7 +70,7 @@ See [docs/architecture.md](docs/architecture.md) for a full diagram.
 |---|---|
 | Rust | 1.82+ |
 | Xcode | 16+ (macOS app) |
-| Node.js | 20+ |
+| Node.js | 20.19+ or 22.12+ |
 | pnpm | 9+ |
 
 ### Build the Rust core

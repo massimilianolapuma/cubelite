@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   proposes TypeScript major updates until typescript-eslint supports
   TypeScript 7.
 
+- **Vite 8** — the desktop builds with Vite 8 (Rolldown), the version
+  vite-plugin-svelte 7 requires, which clears its unmet-peer warning.
+  SvelteKit 2.70 and Vitest 5 already support it. Node.js 20.19+ or 22.12+
+  is now required (root `engines` and README updated), and the Vitest config
+  uses `import.meta.dirname` instead of `__dirname`.
+
 - **Vitest config** — dropped the obsolete `hot` option of
   vite-plugin-svelte (an svelte-hmr option, gone since Svelte 5 builds HMR
   into the compiler), which made every test run print "invalid plugin option
