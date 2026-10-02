@@ -126,7 +126,7 @@ describe("logPanel store", () => {
     await logPanel.openFor({ namespace: "default", name: "api-0" });
     const calls = vi.mocked((await import("#lib/tauri.ts")).streamPodLog).mock.calls.length;
     await logPanel.openFor({ namespace: "default", name: "api-0" });
-    expect(vi.mocked((await import("#lib/tauri.ts")).streamPodLog).mock.calls.length).toBe(calls);
+    expect(vi.mocked((await import("#lib/tauri.ts")).streamPodLog)).toHaveBeenCalledTimes(calls);
   });
 
   it("remembers the container choice per pod across reopen", async () => {
