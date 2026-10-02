@@ -3,11 +3,11 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import path from "path";
 
 export default defineConfig({
-  plugins: [svelte({ hot: !process.env.VITEST })],
+  plugins: [svelte()],
   resolve: {
     conditions: ["browser"],
     alias: {
-      $lib: path.resolve(__dirname, "./src/lib"),
+      $lib: path.resolve(import.meta.dirname, "./src/lib"),
     },
   },
   test: {
