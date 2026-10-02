@@ -3,9 +3,9 @@
 	import { untrack } from 'svelte';
 	import { createVirtualizer, type SvelteVirtualizer } from '@tanstack/svelte-virtual';
 	import LogLineRow from './LogLineRow.svelte';
-	import { logPanel } from '$lib/stores/logPanel.svelte';
-	import type { LogSession } from '$lib/stores/logSession.svelte';
-	import { identityColorFor } from '$lib/stores/identityColor';
+	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
+	import type { LogSession } from '#lib/stores/logSession.svelte.ts';
+	import { identityColorFor } from '#lib/stores/identityColor.ts';
 
 	let { session }: { session: LogSession } = $props();
 

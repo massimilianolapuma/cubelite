@@ -1,7 +1,7 @@
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
-	import { toasts } from '$lib/stores/toasts.svelte';
-	import { toneColor } from '$lib/status';
+	import { toasts } from '#lib/stores/toasts.svelte.ts';
+	import { toneColor } from '#lib/status.ts';
 </script>
 
 {#if toasts.items.length > 0}

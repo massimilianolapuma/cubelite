@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type LucideIcon from '@lucide/svelte/icons/box';
-	import type { StatusTone } from '$lib/status';
-	import { toneColor } from '$lib/status';
+	import type { StatusTone } from '#lib/status.ts';
+	import { toneColor } from '#lib/status.ts';
 
 	let {
 		label,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchesSelector, parseLabelSelector } from "$lib/k8s-match";
+import { matchesSelector, parseLabelSelector } from "#lib/k8s-match.ts";
 
 describe("matchesSelector", () => {
   it("matches when all selector entries are present", () => {

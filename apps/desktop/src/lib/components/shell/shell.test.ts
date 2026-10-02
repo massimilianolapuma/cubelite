@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
   setContext: vi.fn(),
   listPods: vi.fn(),
@@ -25,10 +25,10 @@ import Titlebar from "./Titlebar.svelte";
 import ClusterRail from "./ClusterRail.svelte";
 import Sidebar from "./Sidebar.svelte";
 import StatusBar from "./StatusBar.svelte";
-import { app } from "$lib/stores/app.svelte";
-import { clusters } from "$lib/stores/clusters.svelte";
-import { resources } from "$lib/stores/resources.svelte";
-import type { PodInfo } from "$lib/tauri";
+import { app } from "#lib/stores/app.svelte.ts";
+import { clusters } from "#lib/stores/clusters.svelte.ts";
+import { resources } from "#lib/stores/resources.svelte.ts";
+import type { PodInfo } from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
   return {

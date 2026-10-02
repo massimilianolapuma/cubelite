@@ -1,12 +1,12 @@
 <script lang="ts">
-	import PodTable from '$lib/components/PodTable.svelte';
-	import DeletePodDialog from '$lib/components/DeletePodDialog.svelte';
-	import PodDrawer from '$lib/components/pods/PodDrawer.svelte';
-	import { app } from '$lib/stores/app.svelte';
-	import { logPanel } from '$lib/stores/logPanel.svelte';
-	import { mutations } from '$lib/stores/mutations.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
-	import type { PodInfo } from '$lib/tauri';
+	import PodTable from '#lib/components/PodTable.svelte';
+	import DeletePodDialog from '#lib/components/DeletePodDialog.svelte';
+	import PodDrawer from '#lib/components/pods/PodDrawer.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
+	import { mutations } from '#lib/stores/mutations.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
+	import type { PodInfo } from '#lib/tauri.ts';
 
 	let deleteTarget = $state<PodInfo | null>(null);
 

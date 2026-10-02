@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { app, type View } from '$lib/stores/app.svelte';
-	import { isExtraKind, resources } from '$lib/stores/resources.svelte';
+	import { app, type View } from '#lib/stores/app.svelte.ts';
+	import { isExtraKind, resources } from '#lib/stores/resources.svelte.ts';
 
 	interface NavItem {
 		view: View;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildSnapshot, dashboardTotals, type LiveCluster } from "./all-clusters";
-import type { ClusterHealth } from "$lib/stores/health.svelte";
+import type { ClusterHealth } from "#lib/stores/health.svelte.ts";
 
 const capacity = {
   cpu_used_millis: 500,

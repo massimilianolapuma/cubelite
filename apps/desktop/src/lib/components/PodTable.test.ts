@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 import PodTable from "./PodTable.svelte";
-import { mutations } from "$lib/stores/mutations.svelte";
-import type { PodInfo } from "$lib/tauri";
+import { mutations } from "#lib/stores/mutations.svelte.ts";
+import type { PodInfo } from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
   return {

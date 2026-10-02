@@ -1,14 +1,14 @@
 <script lang="ts">
 	import Search from '@lucide/svelte/icons/search';
-	import Kbd from '$lib/components/ui/Kbd.svelte';
-	import NamespaceDropdown from '$lib/components/ui/NamespaceDropdown.svelte';
+	import Kbd from '#lib/components/ui/Kbd.svelte';
+	import NamespaceDropdown from '#lib/components/ui/NamespaceDropdown.svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
-	import { app } from '$lib/stores/app.svelte';
-	import { clusters } from '$lib/stores/clusters.svelte';
-	import { isMac, modLabel } from '$lib/platform';
-	import { identityVar } from '$lib/cluster-identity';
-	import { providerOf } from '$lib/provider';
-	import { isDragSurface } from '$lib/window-drag';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusters } from '#lib/stores/clusters.svelte.ts';
+	import { isMac, modLabel } from '#lib/platform.ts';
+	import { identityVar } from '#lib/cluster-identity.ts';
+	import { providerOf } from '#lib/provider.ts';
+	import { isDragSurface } from '#lib/window-drag.ts';
 
 	// Explicit drag fallback: Tauri's injected data-tauri-drag-region
 	// handler is unreliable with the Overlay title bar on macOS (#317).

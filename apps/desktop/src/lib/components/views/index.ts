@@ -1,7 +1,7 @@
 /** View registry: maps the app view enum to a component (+ static props). */
 
 import type { Component } from "svelte";
-import type { View } from "$lib/stores/app.svelte";
+import type { View } from "#lib/stores/app.svelte.ts";
 import AllClustersView from "./AllClustersView.svelte";
 import ConfigMapsView from "./ConfigMapsView.svelte";
 import CronJobsView from "./CronJobsView.svelte";

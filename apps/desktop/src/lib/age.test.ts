@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatAge } from "$lib/age";
+import { formatAge } from "#lib/age.ts";
 
 const now = new Date("2026-07-11T12:00:00Z");
 

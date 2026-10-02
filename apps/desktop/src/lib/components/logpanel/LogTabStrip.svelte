@@ -2,8 +2,8 @@
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import X from '@lucide/svelte/icons/x';
-	import { logPanel } from '$lib/stores/logPanel.svelte';
-	import type { SessionStatus } from '$lib/stores/logSession.svelte';
+	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
+	import type { SessionStatus } from '#lib/stores/logSession.svelte.ts';
 
 	function dot(status: SessionStatus): string {
 		if (status === 'streaming') return 'var(--color-status-ok)';

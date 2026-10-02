@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LogRing } from "./logRing.svelte";
-import type { LogLine } from "$lib/tauri";
+import type { LogLine } from "#lib/tauri.ts";
 
 function line(message: string): LogLine {
   return { pod: "api-0", namespace: "default", time: "2026-08-04T10:00:00Z", level: "info", message };

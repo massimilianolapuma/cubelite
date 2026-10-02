@@ -1,6 +1,6 @@
 <script lang="ts">
-	import Modal from '$lib/components/ui/Modal.svelte';
-	import type { PodInfo } from '$lib/tauri';
+	import Modal from '#lib/components/ui/Modal.svelte';
+	import type { PodInfo } from '#lib/tauri.ts';
 
 	// Destructive confirm for the pod drawer's Delete action (wired in PodsView).
 	// `confirmDisabled` defaults to true so a caller must opt in to enabling it.

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
   setContext: vi.fn(),
   listPods: vi.fn(),
@@ -35,8 +35,8 @@ import ServicesView from "./ServicesView.svelte";
 import IngressesView from "./IngressesView.svelte";
 import ConfigMapsView from "./ConfigMapsView.svelte";
 import SecretsView from "./SecretsView.svelte";
-import { app } from "$lib/stores/app.svelte";
-import { resources } from "$lib/stores/resources.svelte";
+import { app } from "#lib/stores/app.svelte.ts";
+import { resources } from "#lib/stores/resources.svelte.ts";
 
 beforeEach(() => {
   app.view = "services";
@@ -74,7 +74,7 @@ describe("ServicesView", () => {
   });
 
   it("shows the load error", async () => {
-    const { listServices } = await import("$lib/tauri");
+    const { listServices } = await import("#lib/tauri.ts");
     vi.mocked(listServices).mockRejectedValueOnce(new Error("forbidden"));
     render(ServicesView);
     expect(await screen.findByText("forbidden")).toBeInTheDocument();
@@ -122,7 +122,7 @@ describe("SecretsView", () => {
   };
 
   async function renderWithSecret() {
-    const { listSecrets } = await import("$lib/tauri");
+    const { listSecrets } = await import("#lib/tauri.ts");
     vi.mocked(listSecrets).mockResolvedValue([secret]);
     render(SecretsView);
     await screen.findByText("creds");

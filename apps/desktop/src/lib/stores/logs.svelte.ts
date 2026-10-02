@@ -9,8 +9,8 @@
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { stopLogs, streamLogs, type LogLine, type PodRef } from "$lib/tauri";
-import { errorMessage } from "$lib/errors";
+import { stopLogs, streamLogs, type LogLine, type PodRef } from "#lib/tauri.ts";
+import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
 import { toasts } from "./toasts.svelte";
 

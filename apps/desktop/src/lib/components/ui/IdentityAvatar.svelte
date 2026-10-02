@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { identityVar as colorVar, initials } from '$lib/cluster-identity';
-	import type { IdentityColor } from '$lib/cluster-identity';
+	import { identityVar as colorVar, initials } from '#lib/cluster-identity.ts';
+	import type { IdentityColor } from '#lib/cluster-identity.ts';
 
 	export type Health = 'connected' | 'unreachable' | 'unknown';
 

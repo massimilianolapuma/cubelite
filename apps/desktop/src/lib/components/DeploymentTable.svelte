@@ -3,10 +3,10 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
-	import { formatAge } from '$lib/age';
-	import type { DeploymentInfo } from '$lib/tauri';
-	import { deploymentStatus, toneColor } from '$lib/status';
-	import { mutations } from '$lib/stores/mutations.svelte';
+	import { formatAge } from '#lib/age.ts';
+	import type { DeploymentInfo } from '#lib/tauri.ts';
+	import { deploymentStatus, toneColor } from '#lib/status.ts';
+	import { mutations } from '#lib/stores/mutations.svelte.ts';
 
 	let {
 		deployments,

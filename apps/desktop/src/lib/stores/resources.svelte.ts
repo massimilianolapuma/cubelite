@@ -40,9 +40,9 @@ import {
   type SecretInfo,
   type StatefulSetInfo,
   type ServiceInfo,
-} from "$lib/tauri";
-import { errorMessage } from "$lib/errors";
-import { isForbiddenError } from "$lib/overview-summary";
+} from "#lib/tauri.ts";
+import { errorMessage } from "#lib/errors.ts";
+import { isForbiddenError } from "#lib/overview-summary.ts";
 import { app } from "./app.svelte";
 import { settings } from "./settings.svelte";
 

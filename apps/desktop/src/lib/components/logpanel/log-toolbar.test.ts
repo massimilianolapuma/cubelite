@@ -5,8 +5,8 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
-vi.mock("$lib/tauri", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("$lib/tauri")>()),
+vi.mock("#lib/tauri.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#lib/tauri.ts")>()),
   streamPodLog: vi.fn(async () => "1"),
   stopLogs: vi.fn(async () => {}),
   getPodContainers: vi.fn(async () => []),
@@ -18,11 +18,11 @@ vi.mock("../../stores/logWindows.svelte", () => ({
 
 import LogToolbar from "./LogToolbar.svelte";
 import { logWindows } from "../../stores/logWindows.svelte";
-import { LogSession, ALL_CONTAINERS } from "$lib/stores/logSession.svelte";
-import { logPanel } from "$lib/stores/logPanel.svelte";
-import { SEARCH_DEBOUNCE_MS } from "$lib/stores/logSearch.svelte";
-import { toasts } from "$lib/stores/toasts.svelte";
-import type { ContainerDetail } from "$lib/tauri";
+import { LogSession, ALL_CONTAINERS } from "#lib/stores/logSession.svelte.ts";
+import { logPanel } from "#lib/stores/logPanel.svelte.ts";
+import { SEARCH_DEBOUNCE_MS } from "#lib/stores/logSearch.svelte.ts";
+import { toasts } from "#lib/stores/toasts.svelte.ts";
+import type { ContainerDetail } from "#lib/tauri.ts";
 
 function container(overrides: Partial<ContainerDetail> = {}): ContainerDetail {
   return {
@@ -240,7 +240,7 @@ describe("LogToolbar export", () => {
   });
 
   it("export visible writes via exportLog and toasts the path", async () => {
-    const { exportLog } = await import("$lib/tauri");
+    const { exportLog } = await import("#lib/tauri.ts");
     vi.mocked(exportLog).mockResolvedValueOnce("/Users/x/Downloads/api-0_worker.log");
     const s = new LogSession("default", "api-0");
     s.container = "worker";
@@ -267,7 +267,7 @@ describe("LogToolbar export", () => {
   });
 
   it("export visible respects filter mode — only serializes matching lines", async () => {
-    const { exportLog } = await import("$lib/tauri");
+    const { exportLog } = await import("#lib/tauri.ts");
     vi.mocked(exportLog).mockResolvedValueOnce("/tmp/api-0_worker.log");
     const s = new LogSession("default", "api-0");
     s.container = "worker";
@@ -290,7 +290,7 @@ describe("LogToolbar export", () => {
   });
 
   it("export full buffer serializes ring.lines regardless of filter mode, with a _full filename", async () => {
-    const { exportLog } = await import("$lib/tauri");
+    const { exportLog } = await import("#lib/tauri.ts");
     vi.mocked(exportLog).mockResolvedValueOnce("/Users/x/Downloads/api-0_worker_full.log");
     const s = new LogSession("default", "api-0");
     s.container = "worker";
@@ -314,7 +314,7 @@ describe("LogToolbar export", () => {
   });
 
   it("export visible uses an '_all' filename in merged mode", async () => {
-    const { exportLog } = await import("$lib/tauri");
+    const { exportLog } = await import("#lib/tauri.ts");
     vi.mocked(exportLog).mockResolvedValueOnce("/tmp/api-0_all.log");
     const s = new LogSession("default", "api-0");
     s.container = ALL_CONTAINERS;
@@ -329,7 +329,7 @@ describe("LogToolbar export", () => {
   });
 
   it("export full buffer uses an '_all_full' filename in merged mode", async () => {
-    const { exportLog } = await import("$lib/tauri");
+    const { exportLog } = await import("#lib/tauri.ts");
     vi.mocked(exportLog).mockResolvedValueOnce("/tmp/api-0_all_full.log");
     const s = new LogSession("default", "api-0");
     s.container = ALL_CONTAINERS;
@@ -344,7 +344,7 @@ describe("LogToolbar export", () => {
   });
 
   it("toasts an error message when export fails", async () => {
-    const { exportLog } = await import("$lib/tauri");
+    const { exportLog } = await import("#lib/tauri.ts");
     vi.mocked(exportLog).mockRejectedValueOnce(new Error("disk full"));
     const s = new LogSession("default", "api-0");
     s.container = "worker";

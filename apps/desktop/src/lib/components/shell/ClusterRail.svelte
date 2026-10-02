@@ -1,10 +1,10 @@
 <script lang="ts">
 	import House from '@lucide/svelte/icons/house';
 	import Settings from '@lucide/svelte/icons/settings';
-	import IdentityAvatar from '$lib/components/ui/IdentityAvatar.svelte';
-	import { app } from '$lib/stores/app.svelte';
-	import { clusters } from '$lib/stores/clusters.svelte';
-	import { health } from '$lib/stores/health.svelte';
+	import IdentityAvatar from '#lib/components/ui/IdentityAvatar.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusters } from '#lib/stores/clusters.svelte.ts';
+	import { health } from '#lib/stores/health.svelte.ts';
 
 	// With several kubeconfig files, the tooltip also names the defining file.
 	const multiFile = $derived(app.kubeconfigSources.length > 1);

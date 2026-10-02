@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("$lib/tauri", () => ({
+vi.mock("#lib/tauri.ts", () => ({
   startPortForward: vi.fn(async () => ({ id: "1", localPort: 8080 })),
   stopPortForward: vi.fn(async () => undefined),
 }));
 
-import { startPortForward, stopPortForward } from "$lib/tauri";
+import { startPortForward, stopPortForward } from "#lib/tauri.ts";
 import { portforward } from "./portforward.svelte";
 import { app } from "./app.svelte";
 

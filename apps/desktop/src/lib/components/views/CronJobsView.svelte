@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { formatAge } from '$lib/age';
-	import { app } from '$lib/stores/app.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
+	import { formatAge } from '#lib/age.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
 
 	$effect(() => {
 		void [app.namespace, app.activeCluster];

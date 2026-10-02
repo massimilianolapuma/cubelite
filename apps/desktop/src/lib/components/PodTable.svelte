@@ -1,12 +1,12 @@
 <script lang="ts">
 	import CornerDownLeft from '@lucide/svelte/icons/corner-down-left';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
-	import { formatAge } from '$lib/age';
-	import type { PodInfo } from '$lib/tauri';
-	import { podStatusLabel, podTone, toneColor } from '$lib/status';
-	import { mutations } from '$lib/stores/mutations.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
-	import { formatBytes, formatCpu } from '$lib/units';
+	import { formatAge } from '#lib/age.ts';
+	import type { PodInfo } from '#lib/tauri.ts';
+	import { podStatusLabel, podTone, toneColor } from '#lib/status.ts';
+	import { mutations } from '#lib/stores/mutations.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { formatBytes, formatCpu } from '#lib/units.ts';
 
 	let {
 		pods,

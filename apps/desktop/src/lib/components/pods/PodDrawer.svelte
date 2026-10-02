@@ -4,19 +4,19 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
-	import { formatAge } from '$lib/age';
-	import Drawer from '$lib/components/ui/Drawer.svelte';
-	import YamlModal from '$lib/components/YamlModal.svelte';
-	import MeterBar from '$lib/components/ui/MeterBar.svelte';
-	import StatusPill from '$lib/components/ui/StatusPill.svelte';
-	import { podStatusLabel, podTone } from '$lib/status';
-	import { logPanel } from '$lib/stores/logPanel.svelte';
-	import { mutations } from '$lib/stores/mutations.svelte';
-	import { portforward } from '$lib/stores/portforward.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
-	import { parsePort, resolveLocalPort } from '$lib/ports';
-	import { formatBytes, formatCpu, percentOf } from '$lib/units';
-	import type { PodInfo } from '$lib/tauri';
+	import { formatAge } from '#lib/age.ts';
+	import Drawer from '#lib/components/ui/Drawer.svelte';
+	import YamlModal from '#lib/components/YamlModal.svelte';
+	import MeterBar from '#lib/components/ui/MeterBar.svelte';
+	import StatusPill from '#lib/components/ui/StatusPill.svelte';
+	import { podStatusLabel, podTone } from '#lib/status.ts';
+	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
+	import { mutations } from '#lib/stores/mutations.svelte.ts';
+	import { portforward } from '#lib/stores/portforward.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { parsePort, resolveLocalPort } from '#lib/ports.ts';
+	import { formatBytes, formatCpu, percentOf } from '#lib/units.ts';
+	import type { PodInfo } from '#lib/tauri.ts';
 
 	let {
 		pod,

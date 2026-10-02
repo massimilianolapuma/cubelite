@@ -4,15 +4,15 @@
 	import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import SquareArrowOutDownLeft from '@lucide/svelte/icons/square-arrow-out-down-left';
-	import LogBody from '$lib/components/logpanel/LogBody.svelte';
-	import LogToolbar from '$lib/components/logpanel/LogToolbar.svelte';
-	import Toaster from '$lib/components/ui/Toaster.svelte';
-	import { matchShortcut } from '$lib/keyboard';
-	import { isMac } from '$lib/platform';
-	import { app } from '$lib/stores/app.svelte';
-	import { logPanel } from '$lib/stores/logPanel.svelte';
-	import { isSessionTransfer, serializeSession } from '$lib/stores/sessionTransfer';
-	import { settings } from '$lib/stores/settings.svelte';
+	import LogBody from '#lib/components/logpanel/LogBody.svelte';
+	import LogToolbar from '#lib/components/logpanel/LogToolbar.svelte';
+	import Toaster from '#lib/components/ui/Toaster.svelte';
+	import { matchShortcut } from '#lib/keyboard.ts';
+	import { isMac } from '#lib/platform.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
+	import { isSessionTransfer, serializeSession } from '#lib/stores/sessionTransfer.ts';
+	import { settings } from '#lib/stores/settings.svelte.ts';
 
 	let { windowKey }: { windowKey: string } = $props();
 

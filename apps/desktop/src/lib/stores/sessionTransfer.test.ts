@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
-vi.mock("$lib/tauri", async (importOriginal) => {
-  const original = await importOriginal<typeof import("$lib/tauri")>();
+vi.mock("#lib/tauri.ts", async (importOriginal) => {
+  const original = await importOriginal<typeof import("#lib/tauri.ts")>();
   return {
     ...original,
     streamPodLog: vi.fn(async () => "1"),

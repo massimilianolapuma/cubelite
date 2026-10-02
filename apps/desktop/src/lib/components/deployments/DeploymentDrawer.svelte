@@ -3,17 +3,17 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
-	import { formatAge } from '$lib/age';
-	import { matchesSelector } from '$lib/k8s-match';
-	import Drawer from '$lib/components/ui/Drawer.svelte';
-	import YamlModal from '$lib/components/YamlModal.svelte';
-	import StatusPill from '$lib/components/ui/StatusPill.svelte';
-	import { deploymentStatus, podStatusLabel, podTone, toneColor } from '$lib/status';
-	import { app } from '$lib/stores/app.svelte';
-	import { logs } from '$lib/stores/logs.svelte';
-	import { mutations } from '$lib/stores/mutations.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
-	import type { DeploymentInfo } from '$lib/tauri';
+	import { formatAge } from '#lib/age.ts';
+	import { matchesSelector } from '#lib/k8s-match.ts';
+	import Drawer from '#lib/components/ui/Drawer.svelte';
+	import YamlModal from '#lib/components/YamlModal.svelte';
+	import StatusPill from '#lib/components/ui/StatusPill.svelte';
+	import { deploymentStatus, podStatusLabel, podTone, toneColor } from '#lib/status.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { logs } from '#lib/stores/logs.svelte.ts';
+	import { mutations } from '#lib/stores/mutations.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
+	import type { DeploymentInfo } from '#lib/tauri.ts';
 
 	let { deployment, onClose }: { deployment: DeploymentInfo; onClose: () => void } = $props();
 

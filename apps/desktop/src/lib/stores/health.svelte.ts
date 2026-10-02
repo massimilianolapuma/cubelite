@@ -4,7 +4,7 @@
  * "unknown" for inactive clusters.
  */
 
-import { probeCluster, type CapacityTotals } from "$lib/tauri";
+import { probeCluster, type CapacityTotals } from "#lib/tauri.ts";
 import { app } from "./app.svelte";
 import { clusters } from "./clusters.svelte";
 import { settings } from "./settings.svelte";

@@ -4,9 +4,9 @@
  * the backend has no health probe for inactive clusters).
  */
 
-import { listContexts, probeCluster, setContext, type ContextInfo } from "$lib/tauri";
-import { assignIdentityColors, type IdentityColor } from "$lib/cluster-identity";
-import { errorMessage } from "$lib/errors";
+import { listContexts, probeCluster, setContext, type ContextInfo } from "#lib/tauri.ts";
+import { assignIdentityColors, type IdentityColor } from "#lib/cluster-identity.ts";
+import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
 import { logPanel } from "./logPanel.svelte";
 import { portforward } from "./portforward.svelte";

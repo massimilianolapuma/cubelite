@@ -1,20 +1,20 @@
 <script lang="ts">
 	import { setMode } from 'mode-watcher';
-	import { applyAccent, applyDensity } from '$lib/appearance';
-	import { IDENTITY_COLORS, identityVar } from '$lib/cluster-identity';
-	import Modal from '$lib/components/ui/Modal.svelte';
-	import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
-	import { app } from '$lib/stores/app.svelte';
-	import { resources } from '$lib/stores/resources.svelte';
-	import { clusters } from '$lib/stores/clusters.svelte';
+	import { applyAccent, applyDensity } from '#lib/appearance.ts';
+	import { IDENTITY_COLORS, identityVar } from '#lib/cluster-identity.ts';
+	import Modal from '#lib/components/ui/Modal.svelte';
+	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { clusters } from '#lib/stores/clusters.svelte.ts';
 	import {
 		settings,
 		type Accent,
 		type Density,
 		type RefreshInterval,
 		type Theme
-	} from '$lib/stores/settings.svelte';
-	import { updater } from '$lib/stores/updater.svelte';
+	} from '#lib/stores/settings.svelte.ts';
+	import { updater } from '#lib/stores/updater.svelte.ts';
 
 	function close() {
 		app.preferencesOpen = false;
