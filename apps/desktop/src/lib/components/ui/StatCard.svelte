@@ -1,6 +1,5 @@
 <script lang="ts">
-	import type { IconProps } from '@lucide/svelte';
-	import type { Component } from 'svelte';
+	import type LucideIcon from '@lucide/svelte/icons/box';
 	import type { StatusTone } from '$lib/status';
 	import { toneColor } from '$lib/status';
 
@@ -16,7 +15,7 @@
 		/** Colors the value; omit for default bright text. */
 		tone?: StatusTone;
 		/** Lucide icon shown before the label (parity v2 §4). */
-		icon?: Component<IconProps>;
+		icon?: typeof LucideIcon;
 		/** CSS color for the icon (a design-token var). */
 		tint?: string;
 	} = $props();
