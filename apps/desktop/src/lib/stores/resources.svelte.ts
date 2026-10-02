@@ -137,15 +137,6 @@ class ResourcesStore {
   #reloadTimer: ReturnType<typeof setTimeout> | null = null;
   #refreshTimer: ReturnType<typeof setInterval> | null = null;
 
-  /** Pod counts per namespace (all namespaces, from the current pod list). */
-  get podCountByNamespace(): Map<string, number> {
-    const counts = new Map<string, number>();
-    for (const p of this.pods) {
-      counts.set(p.namespace, (counts.get(p.namespace) ?? 0) + 1);
-    }
-    return counts;
-  }
-
   get runningPods(): number {
     return this.pods.filter((p) => p.phase === "Running").length;
   }
@@ -357,10 +348,8 @@ class ResourcesStore {
   /** Record (or clear) an RBAC denial for `kind`. */
   #markForbidden(kind: ExtraKind, forbidden: boolean): void {
     if (this.forbiddenKinds.has(kind) === forbidden) return;
-    const next = new Set(this.forbiddenKinds);
-    if (forbidden) next.add(kind);
-    else next.delete(kind);
-    this.forbiddenKinds = next;
+    const others = [...this.forbiddenKinds].filter((k) => k !== kind);
+    this.forbiddenKinds = new Set(forbidden ? [...others, kind] : others);
   }
 
   /** Load one on-demand kind (services/ingresses/configmaps/secrets). */
@@ -407,19 +396,23 @@ class ResourcesStore {
     );
     if (seq !== this.#overviewSeq) return;
     const loaded = { ...this.loadedKinds };
-    const forbidden = new Set(this.forbiddenKinds);
+    const denied: ExtraKind[] = [];
+    const succeeded: ExtraKind[] = [];
     results.forEach((result, i) => {
       const kind = OVERVIEW_KINDS[i];
       if (result.status === "fulfilled") {
         result.value();
         loaded[kind] = ns ?? null;
-        forbidden.delete(kind);
+        succeeded.push(kind);
       } else if (isForbiddenError(errorMessage(result.reason))) {
-        forbidden.add(kind);
+        denied.push(kind);
       }
     });
     this.loadedKinds = loaded;
-    this.forbiddenKinds = forbidden;
+    this.forbiddenKinds = new Set([
+      ...[...this.forbiddenKinds].filter((k) => !succeeded.includes(k)),
+      ...denied,
+    ]);
   }
 
   /** Invalidate in-flight loads and clear data (call before switching cluster). */

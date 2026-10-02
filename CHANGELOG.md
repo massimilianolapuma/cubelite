@@ -46,6 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **ESLint 10 + eslint-plugin-svelte 3** (#414): the desktop lint stack moves
+  to ESLint 10, with `@eslint/js` as a direct dev dependency, and
+  eslint-plugin-svelte 3. The config now uses the v3 `recommended` preset and
+  parses `.svelte.ts`/`.svelte.js` runes modules with the TypeScript parser
+  and the Svelte config. The stores satisfy the new
+  `svelte/prefer-svelte-reactivity` rule: copy-on-write sets and maps are
+  built without in-place mutation, the log-search match set is a `SvelteSet`,
+  and the unused `podCountByNamespace` getter is removed. Dependabot no longer
+  proposes TypeScript major updates until typescript-eslint supports
+  TypeScript 7.
+
 - **macOS design tokens, batch 5** (#395): Overview and the cross-cluster
   dashboard use cluster-identity tints per resource (the same ones as the type
   tags) and status tokens for health metrics, with `stat`, `subtitle` and

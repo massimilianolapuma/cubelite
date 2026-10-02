@@ -3,6 +3,7 @@
  * precomputed off the render path (150 ms debounce), n/N cursor with wrap,
  * optional filter mode that hides non-matching lines.
  */
+import { SvelteSet } from "svelte/reactivity";
 import type { KeyedLogLine } from "./logs.svelte";
 
 export const SEARCH_DEBOUNCE_MS = 150;
@@ -24,7 +25,7 @@ export class LogSearch {
     return this.matchIds.length;
   }
 
-  matchSet = $derived(new Set(this.matchIds));
+  matchSet: ReadonlySet<number> = $derived(new SvelteSet(this.matchIds));
 
   attach(getLines: () => KeyedLogLine[]): void {
     this.#getLines = getLines;
