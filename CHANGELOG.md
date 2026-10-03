@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **SonarCloud scope** — the analysis exclusions (Swift test targets,
+  `tests/` directories, `target/`, `design/`) move to `.sonarcloud.properties`.
+  SonarCloud Automatic Analysis reads only that file, so the old
+  `sonar-project.properties` was never applied and is removed. Its Swift
+  test-naming rule exceptions are covered by excluding the test targets.
+
 - **SvelteKit 3** — the desktop moves to SvelteKit 3 and
   `@sveltejs/adapter-static` 4, with TypeScript 6, which Kit 3 requires.
   The Kit config moves from the removed `svelte.config.js` into
