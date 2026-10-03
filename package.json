@@ -13,7 +13,7 @@
     "design:test": "tsx --test design/*.test.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "^26.6.3",
     "tsx": "^4.23.15"
   },
   "engines": {
