@@ -1,7 +1,8 @@
 //! Kubeconfig file loading, parsing, and manipulation.
 //!
 //! Supports:
-//! - Single-file load from `~/.kube/config`
+//! - Load from `~/.kube/config` plus the kubeconfig files discovered in
+//!   `~/.kube/`, or from a `KUBECONFIG` list
 //! - Multi-file merge via `KUBECONFIG` environment variable (platform path
 //!   list: `:` on Unix, `;` on Windows), first file wins on name clashes
 //! - Context switching with optional disk persistence
@@ -48,8 +49,8 @@ pub struct KubeConfig {
 
 impl KubeConfig {
     /// Load kubeconfig from the path(s) specified by the `KUBECONFIG`
-    /// environment variable, falling back to `~/.kube/config` when the
-    /// variable is absent or empty.
+    /// environment variable, falling back to `~/.kube/config` plus the kubeconfig
+    /// files discovered in `~/.kube/` when the variable is absent or empty.
     ///
     /// Multiple paths in `KUBECONFIG` are `:` separated.  The first file's
     /// `current-context` takes precedence during merging.
@@ -402,11 +403,7 @@ fn resolve_kubeconfig_paths() -> Result<Vec<PathBuf>, KubeconfigError> {
     Ok(paths)
 }
 
-/// Kubeconfig files to merge in addition to the default one: regular,
-/// non-hidden files directly inside `dir` (so nothing under `cache/`), other
-/// than `excluding`, whose first 512 bytes contain `kind: Config` or
-/// `kind: "Config"`, whose `kind` is `Config` and that parse as a kubeconfig
-/// document. Sorted by path; empty when `dir` cannot be read.
+/// Kubeconfig files to merge in addition to the default one: regular, non-hidden files directly inside `dir` (so nothing under `cache/`), other than `excluding`, whose first 512 bytes carry a `kind: Config` marker (cheap prefilter) and which then parse as a kubeconfig document with `kind` exactly `Config`. Sorted by path; empty when `dir` cannot be read.
 pub fn discover_kubeconfig_files(dir: &Path, excluding: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();

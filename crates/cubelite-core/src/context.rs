@@ -49,8 +49,8 @@ pub fn current_context() -> Result<Option<String>, ContextError> {
 
 /// Switch the active context to `name` and persist the change to disk.
 ///
-/// On success the first kubeconfig file (from `KUBECONFIG` or `~/.kube/config`)
-/// is rewritten with the new `current-context` value.
+/// On success the first file of the resolved kubeconfig list (`KUBECONFIG`,
+/// or `~/.kube/config` plus discovered files) is rewritten with the new `current-context` value.
 ///
 /// # Errors
 ///
@@ -226,6 +226,29 @@ contexts:
 "#;
         with_kubeconfig(yaml, || {
             assert!(!context_exists("nonexistent").expect("context_exists"));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn load_from_spec_blank_falls_back_to_default() {
+        let yaml = r#"
+apiVersion: v1
+kind: Config
+current-context: dev
+clusters: []
+users: []
+contexts:
+  - name: dev
+    context:
+      cluster: c
+      user: u
+"#;
+        with_kubeconfig(yaml, || {
+            let cfg = KubeConfig::load_from_spec("  ").expect("load");
+            assert!(cfg.context_names().contains(&"dev".to_string()));
+            let infos = list_context_infos_in(Some("")).expect("list");
+            assert!(infos.iter().any(|c| c.name == "dev"));
         });
     }
 
