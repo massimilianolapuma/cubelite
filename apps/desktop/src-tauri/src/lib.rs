@@ -21,6 +21,7 @@ pub fn run() {
     if let Err(e) = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(WatchState::default())
         .manage(KubeconfigWatchState::default())
         .manage(LogState::default())
