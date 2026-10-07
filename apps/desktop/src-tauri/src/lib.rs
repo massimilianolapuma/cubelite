@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod env;
 
+use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
 use commands::kubernetes::{
     cluster_capacity, delete_pod, export_log, get_current_context, get_pod_containers,
     get_resource_yaml, kubeconfig_sources, list_configmaps, list_contexts, list_cronjobs,
@@ -21,6 +22,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(WatchState::default())
+        .manage(KubeconfigWatchState::default())
         .manage(LogState::default())
         .manage(PortForwardState::default())
         .invoke_handler(tauri::generate_handler![
@@ -44,6 +46,8 @@ pub fn run() {
             get_resource_yaml,
             watch_resources,
             unwatch_resources,
+            watch_kubeconfig,
+            unwatch_kubeconfig,
             stream_logs,
             stream_pod_log,
             get_pod_containers,

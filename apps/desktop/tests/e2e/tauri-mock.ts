@@ -166,6 +166,8 @@ export function tauriMockScript(): string {
           : { context: args.context, reachable: true, version: "v1.30.2", node_count: 3, pod_count: 12, issue_pod_count: 0, capacity: { cpu_used_millis: 400, cpu_allocatable_millis: 4000, memory_used_bytes: 2147483648, memory_allocatable_bytes: 8589934592 }, error: null };
       case "watch_resources": return "w1";
       case "unwatch_resources": return null;
+      case "watch_kubeconfig": return "kw1";
+      case "unwatch_kubeconfig": return null;
       case "stream_logs": return "l1";
       case "stop_logs": return null;
       case "get_pod_containers": return fixtures.podContainers;

@@ -620,6 +620,18 @@ export function unwatchResources(watchId: string): Promise<void> {
   return invoke("unwatch_resources", { watchId });
 }
 
+/** Tauri event emitted when a watched kubeconfig file changes on disk. */
+export const KUBECONFIG_CHANGED = "kubeconfig-changed";
+export type KubeconfigChanged = { paths: string[] };
+
+export function watchKubeconfig(paths: string[]): Promise<string> {
+  return invoke<string>("watch_kubeconfig", { paths });
+}
+
+export function unwatchKubeconfig(watchId: string): Promise<void> {
+  return invoke("unwatch_kubeconfig", { watchId });
+}
+
 /** Result of starting a port-forward session. */
 export interface ForwardStartResult {
   id: string;
