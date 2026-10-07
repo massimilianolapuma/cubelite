@@ -6,6 +6,8 @@
 	import { IDENTITY_COLORS, identityVar } from '#lib/cluster-identity.ts';
 	import Modal from '#lib/components/ui/Modal.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import { errorMessage } from '#lib/errors.ts';
+	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import { clusters } from '#lib/stores/clusters.svelte.ts';
@@ -76,11 +78,21 @@
 
 	async function applyKubeconfigList(next: string[]) {
 		settings.kubeconfigPaths.value = next;
-		await clusters.reloadKubeconfig('preferences');
+		try {
+			await clusters.reloadKubeconfig('preferences');
+		} catch (e) {
+			toasts.push(`Failed to update kubeconfig list: ${errorMessage(e)}`, 'err');
+		}
 	}
 
 	async function addKubeconfigFiles() {
-		const picked = await open({ multiple: true, directory: false, title: 'Select kubeconfig files' });
+		let picked: string | string[] | null;
+		try {
+			picked = await open({ multiple: true, directory: false, title: 'Select kubeconfig files' });
+		} catch (e) {
+			toasts.push(`Could not open the file picker: ${errorMessage(e)}`, 'err');
+			return;
+		}
 		const files = Array.isArray(picked) ? picked : picked ? [picked] : [];
 		if (files.length === 0) return;
 		const seeded = seedIfEmpty(settings.kubeconfigPaths.value, resolvedPaths);
@@ -242,6 +254,7 @@
 								{/if}
 							</div>
 						</div>
+						{#if app.kubeconfigSources.length > 0}
 						<button
 							type="button"
 							class="focus-ring type-caption shrink-0 rounded-sm px-1.5 py-0.5 text-text-tertiary hover:text-status-err"
@@ -250,6 +263,7 @@
 						>
 							Remove
 						</button>
+						{/if}
 					</li>
 				{/each}
 			</ul>

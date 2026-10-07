@@ -117,6 +117,38 @@ describe("DeletePodDialog", () => {
 });
 
 describe("PreferencesModal", () => {
+  it("shows a toast when the file picker fails", async () => {
+    vi.mocked(open).mockRejectedValue(new Error("denied"));
+    app.preferencesOpen = true;
+    render(PreferencesModal);
+    await fireEvent.click(screen.getByRole("button", { name: "Add file…" }));
+    await vi.waitFor(() =>
+      expect(toasts.items.at(-1)?.message).toBe("Could not open the file picker: denied"),
+    );
+    expect(settings.kubeconfigPaths.value).toEqual([]);
+  });
+
+  it("shows a toast when the reload after a list change fails", async () => {
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
+    ];
+    const reload = vi.spyOn(clusters, "reloadKubeconfig").mockRejectedValue(new Error("boom"));
+    app.preferencesOpen = true;
+    render(PreferencesModal);
+    await fireEvent.click(screen.getByRole("button", { name: "Remove /home/u/.kube/config" }));
+    await vi.waitFor(() =>
+      expect(toasts.items.at(-1)?.message).toBe("Failed to update kubeconfig list: boom"),
+    );
+    reload.mockRestore();
+  });
+
+  it("hides Remove when no sources are known", () => {
+    app.kubeconfigSources = [];
+    app.preferencesOpen = true;
+    render(PreferencesModal);
+    expect(screen.queryByRole("button", { name: /^Remove / })).toBeNull();
+  });
+
   it("shows where the kubeconfig list comes from", () => {
     app.kubeconfigOrigin = "env";
     app.preferencesOpen = true;
@@ -150,7 +182,7 @@ describe("PreferencesModal", () => {
     app.preferencesOpen = true;
     render(PreferencesModal);
     await fireEvent.click(screen.getByRole("button", { name: "Remove /home/u/.kube/team.yaml" }));
-    expect(settings.kubeconfigPaths.value).toEqual(["/home/u/.kube/config"]);
+    await vi.waitFor(() => expect(settings.kubeconfigPaths.value).toEqual(["/home/u/.kube/config"]));
     app.kubeconfigOrigin = "custom";
     await fireEvent.click(await screen.findByRole("button", { name: "Use defaults" }));
     expect(settings.kubeconfigPaths.value).toEqual([]);
