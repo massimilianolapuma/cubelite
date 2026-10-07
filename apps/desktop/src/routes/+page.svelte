@@ -47,6 +47,9 @@
 		let unKubeconfigChanged: (() => void) | null = null;
 		void (async () => {
 			await clusters.reloadKubeconfig('startup');
+			unKubeconfigChanged = await listen(KUBECONFIG_CHANGED, () => {
+				void clusters.reloadKubeconfig('file-change');
+			});
 			const active =
 				clusters.contexts.find((c) => c.is_active)?.name ?? clusters.contexts[0]?.name ?? null;
 			app.activeCluster = active;
@@ -58,9 +61,6 @@
 				app.onboardingOpen = true;
 			}
 			health.start();
-			unKubeconfigChanged = await listen(KUBECONFIG_CHANGED, () => {
-				void clusters.reloadKubeconfig('file-change');
-			});
 			void updater.checkForUpdates(true);
 			void logWindows.init();
 			unCloseRequested = await getCurrentWindow().onCloseRequested(async () => {
