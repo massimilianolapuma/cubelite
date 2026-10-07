@@ -961,9 +961,15 @@ pub async fn get_current_context(
 /// the spec, like `kubectl config use-context`).
 #[tauri::command]
 pub async fn set_context(
+    app: AppHandle,
     context_name: String,
     kubeconfig_path: Option<String>,
 ) -> Result<(), String> {
+    // Mark before the write so the watcher ignores our own change events.
+    crate::commands::kubeconfig_watch::mark_self_write(
+        &app.state::<crate::commands::kubeconfig_watch::KubeconfigWatchState>(),
+    )
+    .await;
     tokio::task::spawn_blocking(move || {
         cubelite_core::context::set_active_context_in(kubeconfig_path.as_deref(), &context_name)
             .map_err(|e| e.to_string())
