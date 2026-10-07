@@ -96,9 +96,9 @@ export const settings = {
   accent: persisted<Accent>("accent", "blue", isAccent),
   skipTls: persisted<boolean>("skipTls", false, isBoolean),
   onboardingSeen: persisted<boolean>("onboardingSeen", false, isBoolean),
-  /** contextName → identity color key; written back on context discovery. */
   /** Custom kubeconfig file list; empty = follow KUBECONFIG / ~/.kube. */
   kubeconfigPaths: persisted<string[]>("kubeconfigPaths", [], isStringArray),
+  /** contextName → identity color key; written back on context discovery. */
   identityColors: persisted<Record<string, string>>("identityColors", {}, isStringRecord),
   /** contextName → RFC 3339 of the last successful reachability probe. */
   lastSeen: persisted<Record<string, string>>("lastSeen", {}, isStringRecord),

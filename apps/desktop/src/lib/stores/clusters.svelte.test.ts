@@ -234,6 +234,7 @@ describe("reloadKubeconfig", () => {
     expect(app.kubeconfigSources).toHaveLength(1);
     expect(app.kubeconfigOrigin).toBe("default");
     expect(listContexts).toHaveBeenCalledWith("/home/u/.kube/config");
+    expect(watchKubeconfig).toHaveBeenCalledWith(["/home/u/.kube/config"]);
   });
 
   it("(re)starts the file watcher with the requested paths", async () => {
@@ -266,5 +267,39 @@ describe("reloadKubeconfig", () => {
     vi.mocked(kubeconfigSources).mockRejectedValue(new Error("no kubeconfig"));
     await clusters.reloadKubeconfig("startup");
     expect(app.kubeconfigPath.endsWith("/.kube/config")).toBe(true);
+  });
+
+  it("clears state when the reloaded kubeconfig has no contexts", async () => {
+    vi.mocked(listContexts).mockResolvedValue([]);
+    app.activeCluster = "prod";
+    clusters.connectionState = "connected";
+    const stop = vi.spyOn(resources, "stopWatching").mockResolvedValue();
+    await clusters.reloadKubeconfig("file-change");
+    expect(app.activeCluster).toBeNull();
+    expect(clusters.connectionState).toBe("unknown");
+    expect(stop).toHaveBeenCalled();
+    stop.mockRestore();
+  });
+
+  it("reports a failed re-switch as a toast instead of throwing", async () => {
+    app.activeCluster = "gone";
+    const spy = vi.spyOn(clusters, "switchCluster").mockRejectedValue(new Error("boom"));
+    await expect(clusters.reloadKubeconfig("preferences")).resolves.toBeUndefined();
+    expect(toasts.items.at(-1)).toMatchObject({
+      message: "Failed to switch context: boom",
+      tone: "err",
+    });
+    spy.mockRestore();
+  });
+
+  it("does not reload resources while a switch is in flight", async () => {
+    app.activeCluster = "prod";
+    app.connecting = "prod";
+    const load = vi.spyOn(resources, "load").mockResolvedValue(true);
+    await clusters.reloadKubeconfig("file-change");
+    expect(load).not.toHaveBeenCalled();
+    expect(toasts.items.at(-1)?.message).toBe("Kubeconfig updated");
+    load.mockRestore();
+    app.connecting = null;
   });
 });

@@ -140,7 +140,8 @@ class ClustersStore {
       app.kubeconfigOrigin = origin;
     } catch {
       // No readable kubeconfig yet: keep the default path so onboarding can explain it.
-      app.kubeconfigPath = `${await homeDir()}/.kube/config`;
+      const home = await homeDir().catch(() => "~");
+      app.kubeconfigPath = `${home}/.kube/config`;
       app.kubeconfigSources = [];
       app.kubeconfigOrigin = settings.kubeconfigPaths.value.length > 0 ? "custom" : "default";
     }
@@ -152,9 +153,21 @@ class ClustersStore {
     if (reason === "startup") return; // +page.svelte picks the initial cluster
     if (!activeSurvives) {
       const next = this.contexts.find((c) => c.is_active)?.name ?? this.contexts[0]?.name ?? null;
-      if (next) await this.switchCluster(next);
-      else app.activeCluster = null;
-    } else if (reason === "file-change") {
+      if (next) {
+        try {
+          await this.switchCluster(next);
+        } catch (e) {
+          toasts.push(`Failed to switch context: ${errorMessage(e)}`, "err");
+        }
+      } else {
+        app.activeCluster = null;
+        this.connectionState = "unknown";
+        this.unreachableReason = null;
+        await resources.stopWatching();
+        resources.clear();
+      }
+    } else if (reason === "file-change" && app.connecting === null) {
+      // A switch in flight will load the resources itself.
       await resources.load();
     }
     if (reason === "file-change") toasts.push("Kubeconfig updated", "ok");
