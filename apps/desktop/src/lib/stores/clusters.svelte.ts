@@ -132,26 +132,48 @@ class ClustersStore {
    * on-disk watcher. Single entry point for startup, Preferences edits and
    * `kubeconfig-changed` events.
    */
-  async reloadKubeconfig(reason: "startup" | "preferences" | "file-change"): Promise<void> {
+  async reloadKubeconfig(reason: "startup" | "preferences" | "file-change"): Promise<boolean> {
+    let resolved = true;
     try {
       const { spec, sources, origin } = await kubeconfigSources(settings.kubeconfigPaths.value);
       app.kubeconfigPath = spec;
       app.kubeconfigSources = sources;
       app.kubeconfigOrigin = origin;
-    } catch {
-      // No readable kubeconfig yet: keep the default path so onboarding can explain it.
-      const home = await homeDir().catch(() => "~");
-      app.kubeconfigPath = `${home}/.kube/config`;
-      app.kubeconfigSources = [];
-      app.kubeconfigOrigin = settings.kubeconfigPaths.value.length > 0 ? "custom" : "default";
+    } catch (e) {
+      if (reason !== "startup") {
+        // Keep contexts, active cluster, resources and the running watcher:
+        // fixing the file triggers a new `kubeconfig-changed`.
+        toasts.push(`Could not load kubeconfig: ${errorMessage(e)}`, "err");
+        return false;
+      }
+      if (settings.kubeconfigPaths.value.length === 0) {
+        // No kubeconfig at all: keep the default path so onboarding can explain it.
+        const home = await homeDir().catch(() => "~");
+        app.kubeconfigPath = `${home}/.kube/config`;
+        app.kubeconfigSources = [];
+        app.kubeconfigOrigin = "default";
+        resolved = false;
+      } else {
+        // Broken custom list: Preferences offers "Use defaults".
+        app.kubeconfigPath = "";
+        app.kubeconfigSources = [];
+        app.kubeconfigOrigin = "custom";
+        this.contexts = [];
+        toasts.push(`Could not load kubeconfig: ${errorMessage(e)}`, "err");
+        return false;
+      }
     }
     await this.refresh();
     await this.#restartKubeconfigWatch();
+    if (reason === "file-change" && this.error === null) {
+      toasts.push("Kubeconfig updated", "ok");
+    }
 
     const names = this.contexts.map((c) => c.name);
     const activeSurvives = app.activeCluster !== null && names.includes(app.activeCluster);
-    if (reason === "startup") return; // +page.svelte picks the initial cluster
-    if (!activeSurvives) {
+    const connectingSurvives = app.connecting !== null && names.includes(app.connecting);
+    if (reason === "startup") return resolved; // +page.svelte picks the initial cluster
+    if (!activeSurvives && !connectingSurvives) {
       const next = this.contexts.find((c) => c.is_active)?.name ?? this.contexts[0]?.name ?? null;
       if (next) {
         try {
@@ -166,11 +188,11 @@ class ClustersStore {
         await resources.stopWatching();
         resources.clear();
       }
-    } else if (reason === "file-change" && app.connecting === null) {
+    } else if (activeSurvives && reason === "file-change" && app.connecting === null) {
       // A switch in flight will load the resources itself.
-      await resources.load();
+      await this.retry();
     }
-    if (reason === "file-change") toasts.push("Kubeconfig updated", "ok");
+    return true;
   }
 
   async stopKubeconfigWatch(): Promise<void> {
@@ -192,6 +214,8 @@ class ClustersStore {
       this.#kubeconfigWatchId = await watchKubeconfig(paths);
     } catch {
       // Watching is best-effort (e.g. no listed directory exists yet).
+      // Do not leave the previous watch running on stale paths.
+      await this.stopKubeconfigWatch();
       this.#kubeconfigWatchId = null;
     }
   }
