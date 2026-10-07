@@ -15,19 +15,27 @@ vi.mock("#lib/tauri.ts", () => ({
   clusterCapacity: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
+  kubeconfigSources: vi.fn(),
+  watchKubeconfig: vi.fn(async () => "kw1"),
+  unwatchKubeconfig: vi.fn(async () => undefined),
 }));
+
+vi.mock("@tauri-apps/api/path", () => ({ homeDir: vi.fn(async () => "/home/u") }));
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
 
 import {
+  kubeconfigSources,
   listContexts,
   listDeployments,
   listNamespaces,
   listPods,
   probeCluster,
   setContext,
+  unwatchKubeconfig,
+  watchKubeconfig,
   watchResources,
   type ContextInfo,
 } from "#lib/tauri.ts";
@@ -35,6 +43,7 @@ import { clusters } from "./clusters.svelte";
 import { resources } from "./resources.svelte";
 import { app } from "./app.svelte";
 import { settings } from "./settings.svelte";
+import { toasts } from "./toasts.svelte";
 import { installLocalStorageMock } from "./storage-mock";
 
 const contexts: ContextInfo[] = [
@@ -95,7 +104,7 @@ describe("switchCluster", () => {
 
     await clusters.switchCluster("staging");
 
-    expect(setContext).toHaveBeenCalledWith("staging");
+    expect(setContext).toHaveBeenCalledWith("staging", "/home/u/.kube/config");
     expect(app.activeCluster).toBe("staging");
     expect(app.namespace).toBeNull();
     expect(app.view).toBe("overview");
@@ -200,5 +209,62 @@ describe("switchCluster", () => {
     // The stale unreachable result was discarded.
     expect(clusters.connectionState).toBe("unknown");
     expect(app.connecting).toBeNull();
+  });
+});
+
+describe("reloadKubeconfig", () => {
+  beforeEach(() => {
+    toasts.items = [];
+    settings.kubeconfigPaths.value = [];
+    vi.mocked(kubeconfigSources).mockResolvedValue({
+      spec: "/home/u/.kube/config",
+      sources: [{ path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] }],
+      origin: "default",
+    });
+    vi.mocked(listContexts).mockResolvedValue([
+      { name: "prod", cluster_server: null, namespace: "default", is_active: true },
+    ]);
+  });
+
+  it("passes the custom list to the backend and stores spec, sources and origin", async () => {
+    settings.kubeconfigPaths.value = ["/custom/a", "/custom/b"];
+    await clusters.reloadKubeconfig("preferences");
+    expect(kubeconfigSources).toHaveBeenCalledWith(["/custom/a", "/custom/b"]);
+    expect(app.kubeconfigPath).toBe("/home/u/.kube/config");
+    expect(app.kubeconfigSources).toHaveLength(1);
+    expect(app.kubeconfigOrigin).toBe("default");
+    expect(listContexts).toHaveBeenCalledWith("/home/u/.kube/config");
+  });
+
+  it("(re)starts the file watcher with the requested paths", async () => {
+    await clusters.reloadKubeconfig("startup");
+    await clusters.reloadKubeconfig("preferences");
+    expect(watchKubeconfig).toHaveBeenCalledTimes(2);
+    expect(watchKubeconfig).toHaveBeenLastCalledWith(["/home/u/.kube/config"]);
+    await clusters.stopKubeconfigWatch();
+    expect(unwatchKubeconfig).toHaveBeenCalledWith("kw1");
+  });
+
+  it("switches to the first context when the active one disappeared", async () => {
+    app.activeCluster = "gone";
+    const spy = vi.spyOn(clusters, "switchCluster").mockResolvedValue();
+    await clusters.reloadKubeconfig("file-change");
+    expect(spy).toHaveBeenCalledWith("prod");
+    spy.mockRestore();
+  });
+
+  it("keeps the view and reloads resources when the active context survives a file change", async () => {
+    app.activeCluster = "prod";
+    const load = vi.spyOn(resources, "load").mockResolvedValue(true);
+    await clusters.reloadKubeconfig("file-change");
+    expect(load).toHaveBeenCalled();
+    expect(toasts.items.at(-1)?.message).toBe("Kubeconfig updated");
+    load.mockRestore();
+  });
+
+  it("falls back to the default path when no kubeconfig can be read", async () => {
+    vi.mocked(kubeconfigSources).mockRejectedValue(new Error("no kubeconfig"));
+    await clusters.reloadKubeconfig("startup");
+    expect(app.kubeconfigPath.endsWith("/.kube/config")).toBe(true);
   });
 });

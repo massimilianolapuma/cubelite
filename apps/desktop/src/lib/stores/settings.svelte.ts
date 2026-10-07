@@ -81,6 +81,8 @@ const isDensity = (v: unknown): v is Density => v === "default" || v === "compac
 
 const isAccent = (v: unknown): v is Accent => v === "blue" || v === "violet" || v === "teal";
 
+const isStringArray = (v: unknown): v is string[] =>
+  Array.isArray(v) && v.every((x) => typeof x === "string");
 const isStringRecord = (v: unknown): v is Record<string, string> =>
   typeof v === "object" &&
   v !== null &&
@@ -95,6 +97,8 @@ export const settings = {
   skipTls: persisted<boolean>("skipTls", false, isBoolean),
   onboardingSeen: persisted<boolean>("onboardingSeen", false, isBoolean),
   /** contextName → identity color key; written back on context discovery. */
+  /** Custom kubeconfig file list; empty = follow KUBECONFIG / ~/.kube. */
+  kubeconfigPaths: persisted<string[]>("kubeconfigPaths", [], isStringArray),
   identityColors: persisted<Record<string, string>>("identityColors", {}, isStringRecord),
   /** contextName → RFC 3339 of the last successful reachability probe. */
   lastSeen: persisted<Record<string, string>>("lastSeen", {}, isStringRecord),
