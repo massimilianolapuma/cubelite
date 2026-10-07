@@ -129,6 +129,7 @@ describe("PreferencesModal", () => {
   });
 
   it("shows a toast when the reload after a list change fails", async () => {
+    app.kubeconfigOrigin = "custom";
     app.kubeconfigSources = [
       { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
     ];
@@ -139,7 +140,33 @@ describe("PreferencesModal", () => {
     await vi.waitFor(() =>
       expect(toasts.items.at(-1)?.message).toBe("Failed to update kubeconfig list: boom"),
     );
+    expect(settings.kubeconfigPaths.value).toEqual([]);
     reload.mockRestore();
+  });
+
+  it("restores the previous list when the reload reports failure", async () => {
+    app.kubeconfigOrigin = "default";
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
+      { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: [] },
+    ];
+    const reload = vi.spyOn(clusters, "reloadKubeconfig").mockResolvedValue(false);
+    app.preferencesOpen = true;
+    render(PreferencesModal);
+    await fireEvent.click(screen.getByRole("button", { name: "Remove /home/u/.kube/team.yaml" }));
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledWith("preferences"));
+    await vi.waitFor(() => expect(settings.kubeconfigPaths.value).toEqual([]));
+    reload.mockRestore();
+  });
+
+  it("hides Remove on a single non-custom file", () => {
+    app.kubeconfigOrigin = "env";
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
+    ];
+    app.preferencesOpen = true;
+    render(PreferencesModal);
+    expect(screen.queryByRole("button", { name: /^Remove / })).toBeNull();
   });
 
   it("hides Remove when no sources are known", () => {
@@ -161,7 +188,7 @@ describe("PreferencesModal", () => {
       { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
     ];
     vi.mocked(open).mockResolvedValue(["/home/u/team.yaml"]);
-    const reload = vi.spyOn(clusters, "reloadKubeconfig").mockResolvedValue();
+    const reload = vi.spyOn(clusters, "reloadKubeconfig").mockResolvedValue(true);
     app.preferencesOpen = true;
     render(PreferencesModal);
     await fireEvent.click(screen.getByRole("button", { name: "Add file…" }));
@@ -178,7 +205,7 @@ describe("PreferencesModal", () => {
       { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
       { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: [] },
     ];
-    const reload = vi.spyOn(clusters, "reloadKubeconfig").mockResolvedValue();
+    const reload = vi.spyOn(clusters, "reloadKubeconfig").mockResolvedValue(true);
     app.preferencesOpen = true;
     render(PreferencesModal);
     await fireEvent.click(screen.getByRole("button", { name: "Remove /home/u/.kube/team.yaml" }));

@@ -77,10 +77,14 @@
 	const resolvedPaths = $derived(app.kubeconfigSources.map((s) => s.path));
 
 	async function applyKubeconfigList(next: string[]) {
+		const prev = settings.kubeconfigPaths.value;
 		settings.kubeconfigPaths.value = next;
 		try {
-			await clusters.reloadKubeconfig('preferences');
+			// The reload itself toasts a load failure.
+			const ok = await clusters.reloadKubeconfig('preferences');
+			if (!ok) settings.kubeconfigPaths.value = prev;
 		} catch (e) {
+			settings.kubeconfigPaths.value = prev;
 			toasts.push(`Failed to update kubeconfig list: ${errorMessage(e)}`, 'err');
 		}
 	}
@@ -254,15 +258,15 @@
 								{/if}
 							</div>
 						</div>
-						{#if app.kubeconfigSources.length > 0}
-						<button
-							type="button"
-							class="focus-ring type-caption shrink-0 rounded-sm px-1.5 py-0.5 text-text-tertiary hover:text-status-err"
-							aria-label="Remove {row.path}"
-							onclick={() => void removeKubeconfigFile(row.path)}
-						>
-							Remove
-						</button>
+						{#if app.kubeconfigSources.length > 0 && !(app.kubeconfigOrigin !== 'custom' && kubeconfigRows.length === 1)}
+							<button
+								type="button"
+								class="focus-ring type-caption shrink-0 rounded-sm px-1.5 py-0.5 text-text-tertiary hover:text-status-err"
+								aria-label="Remove {row.path}"
+								onclick={() => void removeKubeconfigFile(row.path)}
+							>
+								Remove
+							</button>
 						{/if}
 					</li>
 				{/each}
