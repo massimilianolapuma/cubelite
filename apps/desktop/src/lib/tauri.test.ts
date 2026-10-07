@@ -47,7 +47,9 @@ describe("kubeconfigSources", () => {
 
     const result = await kubeconfigSources();
 
-    expect(mockedInvoke).toHaveBeenCalledWith("kubeconfig_sources");
+    expect(mockedInvoke).toHaveBeenCalledWith("kubeconfig_sources", {
+      customPaths: [],
+    });
     expect(result).toEqual(payload);
   });
 });
@@ -76,7 +78,9 @@ describe("listContexts", () => {
 
     const result = await listContexts();
 
-    expect(mockedInvoke).toHaveBeenCalledWith("list_contexts");
+    expect(mockedInvoke).toHaveBeenCalledWith("list_contexts", {
+      kubeconfigPath: null,
+    });
     expect(result).toEqual(mockContexts);
     expect(result).toHaveLength(2);
   });
@@ -106,7 +110,9 @@ describe("getCurrentContext", () => {
 
     const result = await getCurrentContext();
 
-    expect(mockedInvoke).toHaveBeenCalledWith("get_current_context");
+    expect(mockedInvoke).toHaveBeenCalledWith("get_current_context", {
+      kubeconfigPath: null,
+    });
     expect(result).toBe("minikube");
   });
 
@@ -131,6 +137,7 @@ describe("setContext", () => {
 
     expect(mockedInvoke).toHaveBeenCalledWith("set_context", {
       contextName: "production",
+      kubeconfigPath: null,
     });
   });
 

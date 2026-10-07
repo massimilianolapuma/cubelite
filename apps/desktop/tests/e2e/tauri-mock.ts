@@ -23,6 +23,7 @@ export const FIXTURES = {
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false, source: "/home/test/.kube/team.yaml" },
   ],
   kubeconfig: {
+    origin: "env",
     spec: "/home/test/.kube/config:/home/test/.kube/team.yaml",
     sources: [
       { path: "/home/test/.kube/config", exists: true, contexts: 1, shadowed: [] },
