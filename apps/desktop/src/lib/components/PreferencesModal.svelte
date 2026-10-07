@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { setMode } from 'mode-watcher';
+	import { open } from '@tauri-apps/plugin-dialog';
+	import { addPaths, originLabel, removePath, seedIfEmpty } from '#lib/kubeconfig-list.ts';
 	import { applyAccent, applyDensity } from '#lib/appearance.ts';
 	import { IDENTITY_COLORS, identityVar } from '#lib/cluster-identity.ts';
 	import Modal from '#lib/components/ui/Modal.svelte';
@@ -69,6 +71,30 @@
 					}
 				]
 	);
+
+	const resolvedPaths = $derived(app.kubeconfigSources.map((s) => s.path));
+
+	async function applyKubeconfigList(next: string[]) {
+		settings.kubeconfigPaths.value = next;
+		await clusters.reloadKubeconfig('preferences');
+	}
+
+	async function addKubeconfigFiles() {
+		const picked = await open({ multiple: true, directory: false, title: 'Select kubeconfig files' });
+		const files = Array.isArray(picked) ? picked : picked ? [picked] : [];
+		if (files.length === 0) return;
+		const seeded = seedIfEmpty(settings.kubeconfigPaths.value, resolvedPaths);
+		await applyKubeconfigList(addPaths(seeded, files));
+	}
+
+	async function removeKubeconfigFile(path: string) {
+		const seeded = seedIfEmpty(settings.kubeconfigPaths.value, resolvedPaths);
+		await applyKubeconfigList(removePath(seeded, path));
+	}
+
+	async function useDefaultKubeconfig() {
+		await applyKubeconfigList([]);
+	}
 </script>
 
 <Modal title="Preferences" onClose={close}>
@@ -183,38 +209,73 @@
 		{/if}
 
 		<section>
-			<div class="type-body mb-1.5 text-text-primary">Kubeconfig</div>
+			<div class="mb-1.5 flex items-baseline justify-between gap-3">
+				<div class="type-body text-text-primary">Kubeconfig</div>
+				<div class="type-caption text-text-tertiary">{originLabel(app.kubeconfigOrigin)}</div>
+			</div>
 			<ul
 				class="overflow-hidden rounded-md border border-border-faint bg-surface-window"
 				aria-label="Kubeconfig files"
 			>
 				{#each kubeconfigRows as row (row.path)}
-					<li class="border-b border-border-faint px-2.5 py-2 last:border-b-0">
-						<div
-							class="truncate type-data-sm {row.exists ? 'text-text-secondary' : 'text-text-disabled'}"
-							title={row.path}
-						>
-							{row.path}
-						</div>
-						<div class="type-caption mt-0.5 text-text-tertiary">
-							{#if !row.exists}
-								not found — skipped
-							{:else}
-								{row.contexts} context{row.contexts === 1 ? '' : 's'}
-								{#if row.shadowed.length > 0}
-									<span
-										class="text-status-warn"
-										title="Also defined in an earlier file, which wins: {row.shadowed.join(', ')}"
-									>
-										· {row.shadowed.length} merged
-									</span>
+					<li class="flex items-start gap-2 border-b border-border-faint px-2.5 py-2 last:border-b-0">
+						<div class="min-w-0 flex-1">
+							<div
+								class="truncate type-data-sm {row.exists ? 'text-text-secondary' : 'text-text-disabled'}"
+								title={row.path}
+							>
+								{row.path}
+							</div>
+							<div class="type-caption mt-0.5 text-text-tertiary">
+								{#if !row.exists}
+									not found — skipped
+								{:else}
+									{row.contexts} context{row.contexts === 1 ? '' : 's'}
+									{#if row.shadowed.length > 0}
+										<span
+											class="text-status-warn"
+											title="Also defined in an earlier file, which wins: {row.shadowed.join(', ')}"
+										>
+											· {row.shadowed.length} merged
+										</span>
+									{/if}
 								{/if}
-							{/if}
+							</div>
 						</div>
+						<button
+							type="button"
+							class="focus-ring type-caption shrink-0 rounded-sm px-1.5 py-0.5 text-text-tertiary hover:text-status-err"
+							aria-label="Remove {row.path}"
+							onclick={() => void removeKubeconfigFile(row.path)}
+						>
+							Remove
+						</button>
 					</li>
 				{/each}
 			</ul>
-			{#if kubeconfigRows.length > 1}
+			<div class="mt-1.5 flex items-center gap-3">
+				<button
+					type="button"
+					class="focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110"
+					onclick={() => void addKubeconfigFiles()}
+				>
+					Add file…
+				</button>
+				{#if app.kubeconfigOrigin === 'custom'}
+					<button
+						type="button"
+						class="focus-ring type-caption rounded-sm text-accent hover:brightness-110"
+						onclick={() => void useDefaultKubeconfig()}
+					>
+						Use defaults
+					</button>
+				{/if}
+			</div>
+			{#if app.kubeconfigOrigin === 'custom'}
+				<p class="type-caption mt-1 text-text-tertiary">
+					Custom list replaces KUBECONFIG; remove every file to go back to defaults.
+				</p>
+			{:else if kubeconfigRows.length > 1}
 				<p class="type-caption mt-1 text-text-tertiary">
 					Files come from KUBECONFIG; on a name clash the first file wins.
 				</p>

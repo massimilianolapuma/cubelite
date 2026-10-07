@@ -16,7 +16,11 @@ vi.mock("#lib/tauri.ts", () => ({
   clusterCapacity: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
+  kubeconfigSources: vi.fn(async () => ({ spec: "", sources: [], origin: "default" })),
+  watchKubeconfig: vi.fn(async () => "kw1"),
+  unwatchKubeconfig: vi.fn(async () => undefined),
 }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
@@ -25,6 +29,7 @@ vi.mock("mode-watcher", () => ({
 }));
 
 import { setMode } from "mode-watcher";
+import { open } from "@tauri-apps/plugin-dialog";
 import Toaster from "./ui/Toaster.svelte";
 import DeletePodDialog from "./DeletePodDialog.svelte";
 import PreferencesModal from "./PreferencesModal.svelte";
@@ -59,6 +64,8 @@ beforeEach(() => {
   app.onboardingOpen = false;
   app.kubeconfigPath = "/home/u/.kube/config";
   app.kubeconfigSources = [];
+  settings.kubeconfigPaths.value = [];
+  app.kubeconfigOrigin = "env";
   settings.onboardingSeen.value = false;
   settings.skipTls.value = false;
   settings.refreshInterval.value = 30;
@@ -110,6 +117,47 @@ describe("DeletePodDialog", () => {
 });
 
 describe("PreferencesModal", () => {
+  it("shows where the kubeconfig list comes from", () => {
+    app.kubeconfigOrigin = "env";
+    app.preferencesOpen = true;
+    render(PreferencesModal);
+    expect(screen.getByText("From KUBECONFIG")).toBeInTheDocument();
+  });
+
+  it("Add file… seeds the custom list with the resolved files, then appends the picked ones", async () => {
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
+    ];
+    vi.mocked(open).mockResolvedValue(["/home/u/team.yaml"]);
+    const reload = vi.spyOn(clusters, "reloadKubeconfig").mockResolvedValue();
+    app.preferencesOpen = true;
+    render(PreferencesModal);
+    await fireEvent.click(screen.getByRole("button", { name: "Add file…" }));
+    await vi.waitFor(() =>
+      expect(settings.kubeconfigPaths.value).toEqual(["/home/u/.kube/config", "/home/u/team.yaml"]),
+    );
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ multiple: true, directory: false }));
+    expect(reload).toHaveBeenCalledWith("preferences");
+    reload.mockRestore();
+  });
+
+  it("Remove pins the list as custom and drops the file; Use defaults clears it", async () => {
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] },
+      { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: [] },
+    ];
+    const reload = vi.spyOn(clusters, "reloadKubeconfig").mockResolvedValue();
+    app.preferencesOpen = true;
+    render(PreferencesModal);
+    await fireEvent.click(screen.getByRole("button", { name: "Remove /home/u/.kube/team.yaml" }));
+    expect(settings.kubeconfigPaths.value).toEqual(["/home/u/.kube/config"]);
+    app.kubeconfigOrigin = "custom";
+    await fireEvent.click(await screen.findByRole("button", { name: "Use defaults" }));
+    expect(settings.kubeconfigPaths.value).toEqual([]);
+    expect(reload).toHaveBeenCalledTimes(2);
+    reload.mockRestore();
+  });
+
   it("offers all three appearance modes and applies the choice", async () => {
     app.preferencesOpen = true;
     render(PreferencesModal);
