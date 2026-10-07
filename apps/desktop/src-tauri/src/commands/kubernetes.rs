@@ -885,8 +885,18 @@ pub fn select_kubeconfig_origin(custom_non_empty: bool, env_set: bool) -> Kubeco
 /// True when `KUBECONFIG` is set to a non-blank value.
 pub fn kubeconfig_env_is_set() -> bool {
     std::env::var("KUBECONFIG")
-        .map(|v| !v.trim().is_empty())
+        .map(|v| !cubelite_core::kubeconfig::split_kubeconfig_spec(&v).is_empty())
         .unwrap_or(false)
+}
+
+/// Trim custom kubeconfig paths and drop blank entries, keeping order.
+pub fn clean_custom_paths(paths: Vec<String>) -> Vec<std::path::PathBuf> {
+    paths
+        .into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .map(std::path::PathBuf::from)
+        .collect()
 }
 
 /// Resolved kubeconfig file list for the UI: `spec` is the loaded files
@@ -906,12 +916,7 @@ pub struct KubeconfigSources {
 pub async fn kubeconfig_sources(
     custom_paths: Option<Vec<String>>,
 ) -> Result<KubeconfigSources, String> {
-    let custom: Vec<std::path::PathBuf> = custom_paths
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|p| !p.trim().is_empty())
-        .map(std::path::PathBuf::from)
-        .collect();
+    let custom = clean_custom_paths(custom_paths.unwrap_or_default());
     tokio::task::spawn_blocking(move || {
         let origin = select_kubeconfig_origin(!custom.is_empty(), kubeconfig_env_is_set());
         let cfg = if custom.is_empty() {
@@ -1091,6 +1096,23 @@ mod kubeconfig_origin_tests {
             select_kubeconfig_origin(false, false),
             KubeconfigOrigin::Default
         ));
+    }
+
+    #[test]
+    fn clean_custom_paths_drops_blanks_and_keeps_order() {
+        let cleaned = clean_custom_paths(vec![
+            " /a ".to_string(),
+            "".to_string(),
+            "   ".to_string(),
+            "/b".to_string(),
+        ]);
+        assert_eq!(
+            cleaned,
+            vec![
+                std::path::PathBuf::from("/a"),
+                std::path::PathBuf::from("/b")
+            ]
+        );
     }
 
     #[test]

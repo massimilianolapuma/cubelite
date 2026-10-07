@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Branch `feat/desktop-kubeconfig-files` (from `main`). PR A targets `main`. Conventional Commits; no AI attribution footer.
+- Branch `feat/428-desktop-kubeconfig-files` (from `main`). PR A targets `main`. Conventional Commits; no AI attribution footer.
 - Rust gates before every commit: `cargo fmt --check && cargo clippy --workspace --all-targets -- --deny warnings && cargo test --workspace; echo "EXIT=$?"`. No `unwrap()` / `expect()` outside `#[cfg(test)]`.
 - Desktop gates when `apps/desktop` files change: `pnpm --filter desktop lint && pnpm --filter desktop typecheck && pnpm --filter desktop test; echo "EXIT=$?"` (run `pnpm --filter desktop exec svelte-kit sync` once first).
 - Discovery rule (spec §1.2, verbatim): regular, non-hidden files directly in `~/.kube/` (so nothing inside `cache/`), excluding `~/.kube/config` itself, whose first 512 bytes contain `kind: Config` or `kind: "Config"`; sorted by path; the default file comes first in the resolved list. Applies only when neither a custom list nor `KUBECONFIG` is in effect.
@@ -858,11 +858,11 @@ git commit -m "chore(desktop): add tauri-plugin-dialog for the kubeconfig file p
 - [ ] **Step 4: Push + PR**
 
 ```bash
-git -c credential.helper= -c credential.helper='!f() { echo username=massilp; echo "password=$(gh auth token --user massilp)"; }; f' push -u origin feat/desktop-kubeconfig-files
-GH_TOKEN=$(gh auth token --user massilp) gh pr create --base main --head feat/desktop-kubeconfig-files \
+git -c credential.helper= -c credential.helper='!f() { echo username=massilp; echo "password=$(gh auth token --user massilp)"; }; f' push -u origin feat/428-desktop-kubeconfig-files
+GH_TOKEN=$(gh auth token --user massilp) gh pr create --base main --head feat/428-desktop-kubeconfig-files \
   --title "feat(core,desktop): kubeconfig discovery, spec-aware context commands and file watcher" \
   --label "area:desktop,area:core,type:feat,status:review" \
-  --body "Part of #N (PR A of 2) …"
+  --body "Part of #428 (PR A of 2) …"
 ```
 
 PR body: What (one bullet per task), Spec path (§2, §3), Verification (gate commands + test counts), "PR B (Preferences UI) follows on top". Then `gh pr checks --watch` (cap 20 min) and report.

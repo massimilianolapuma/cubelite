@@ -93,7 +93,7 @@ plugin: paths go to the backend, the webview never reads the files. Dependency
 
 ## 6. Delivery
 
-Branch `feat/desktop-kubeconfig-files` from `main`. Two stacked PRs:
+Branch `feat/428-desktop-kubeconfig-files` from `main`. Two stacked PRs:
 
 - **PR A** `feat(core,desktop): kubeconfig discovery, spec-aware context commands and file watcher` — §2, §3 (already visible: `~/.kube/*` contexts appear; no UI change).
 - **PR B** `feat(desktop): manage kubeconfig files in Preferences` — §4, docs (`CHANGELOG`, `docs/guide/faq.md` wording "In Preferences you can add kubeconfig files"), e2e.
