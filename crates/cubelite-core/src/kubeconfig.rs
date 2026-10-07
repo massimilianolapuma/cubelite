@@ -64,6 +64,21 @@ impl KubeConfig {
         Self::load_from_paths(&paths)
     }
 
+    /// Load kubeconfig from a `KUBECONFIG`-style path list. A blank spec
+    /// behaves like [`KubeConfig::load`].
+    ///
+    /// # Errors
+    ///
+    /// Same as [`KubeConfig::load_from_paths`].
+    pub fn load_from_spec(spec: &str) -> Result<Self, KubeconfigError> {
+        let paths = split_kubeconfig_spec(spec);
+        if paths.is_empty() {
+            Self::load()
+        } else {
+            Self::load_from_paths(&paths)
+        }
+    }
+
     /// Load kubeconfig from an explicit list of file paths.
     ///
     /// Contexts, clusters, and users are merged across all files; name
@@ -390,7 +405,7 @@ fn resolve_kubeconfig_paths() -> Result<Vec<PathBuf>, KubeconfigError> {
 /// Kubeconfig files to merge in addition to the default one: regular,
 /// non-hidden files directly inside `dir` (so nothing under `cache/`), other
 /// than `excluding`, whose first 512 bytes contain `kind: Config` or
-/// `kind: "Config"`. Sorted by path; empty when `dir` cannot be read.
+/// `kind: "Config"` and that parse as a kubeconfig document. Sorted by path; empty when `dir` cannot be read.
 pub fn discover_kubeconfig_files(dir: &Path, excluding: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -407,9 +422,18 @@ pub fn discover_kubeconfig_files(dir: &Path, excluding: &Path) -> Vec<PathBuf> {
         // `metadata` follows symlinks, so a symlink to a directory is skipped too.
         .filter(|path| std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false))
         .filter(|path| looks_like_kubeconfig(path))
+        .filter(|path| parses_as_kubeconfig(path))
         .collect();
     found.sort();
     found
+}
+
+/// True when the file deserialises as a kubeconfig document.
+fn parses_as_kubeconfig(path: &Path) -> bool {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|content| serde_yaml::from_str::<KubeConfigFile>(&content).ok())
+        .is_some()
 }
 
 /// True when the first 512 bytes of `path` carry the kubeconfig `kind` marker.
@@ -688,6 +712,19 @@ clusters:
     }
 
     #[test]
+    fn load_from_spec_merges_the_listed_files() {
+        let fa = write_temp(TWO_FILE_A);
+        let fb = write_temp(TWO_FILE_B);
+        let spec = env::join_paths([fa.path(), fb.path()])
+            .expect("join")
+            .to_string_lossy()
+            .into_owned();
+        let cfg = KubeConfig::load_from_spec(&spec).expect("load");
+        assert_eq!(cfg.sources().len(), 2);
+        assert_eq!(split_kubeconfig_spec(&cfg.resolved_spec()).len(), 2);
+    }
+
+    #[test]
     fn split_spec_drops_empty_entries() {
         let sep = if cfg!(windows) { ";" } else { ":" };
         let spec = format!("  /a/config{sep}{sep}/b/config{sep}  ");
@@ -936,6 +973,24 @@ contexts:
             found,
             vec![dir.path().join("alpha.yaml"), dir.path().join("zeta.yaml")]
         );
+    }
+
+    #[test]
+    fn discover_skips_files_that_do_not_parse_as_kubeconfig() {
+        let dir = kube_dir_with(&[
+            (
+                "configmap.yaml",
+                "apiVersion: v1\nkind: ConfigMap\ndata: {a: b}\n",
+            ),
+            ("broken.yaml", "kind: Config\ncontexts: [\n"),
+            ("good.yaml", MARKED),
+        ]);
+        let found = discover_kubeconfig_files(dir.path(), &dir.path().join("config"));
+        assert!(!found.contains(&dir.path().join("broken.yaml")));
+        assert!(found.contains(&dir.path().join("good.yaml")));
+        // `configmap.yaml` deserialises into the all-optional `KubeConfigFile`,
+        // so it is tolerated by the loader (unknown fields ignored) rather than
+        // filtered out; it contributes no contexts.
     }
 
     #[test]
