@@ -44,7 +44,7 @@ pub mod watcher;
 pub use client::KubeClient;
 pub use error::{ContextError, KubeconfigError};
 pub use helm::HelmReleaseInfo;
-pub use kubeconfig::KubeConfig;
+pub use kubeconfig::{discover_kubeconfig_files, KubeConfig};
 pub use logs::{LogLevel, LogLine};
 pub use metrics::{NodeCapacityInfo, PodMetricsInfo};
 pub use resources::{
