@@ -405,7 +405,8 @@ fn resolve_kubeconfig_paths() -> Result<Vec<PathBuf>, KubeconfigError> {
 /// Kubeconfig files to merge in addition to the default one: regular,
 /// non-hidden files directly inside `dir` (so nothing under `cache/`), other
 /// than `excluding`, whose first 512 bytes contain `kind: Config` or
-/// `kind: "Config"` and that parse as a kubeconfig document. Sorted by path; empty when `dir` cannot be read.
+/// `kind: "Config"`, whose `kind` is `Config` and that parse as a kubeconfig
+/// document. Sorted by path; empty when `dir` cannot be read.
 pub fn discover_kubeconfig_files(dir: &Path, excluding: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -428,12 +429,23 @@ pub fn discover_kubeconfig_files(dir: &Path, excluding: &Path) -> Vec<PathBuf> {
     found
 }
 
-/// True when the file deserialises as a kubeconfig document.
+/// Minimal view of a YAML document used to confirm `kind: Config`.
+#[derive(serde::Deserialize)]
+struct KindProbe {
+    kind: Option<String>,
+}
+
+/// True when the file is a kubeconfig document: `kind` is exactly `Config`
+/// and the whole document deserialises as `KubeConfigFile`.
 fn parses_as_kubeconfig(path: &Path) -> bool {
-    std::fs::read_to_string(path)
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let is_config_kind = serde_yaml::from_str::<KindProbe>(&content)
         .ok()
-        .and_then(|content| serde_yaml::from_str::<KubeConfigFile>(&content).ok())
-        .is_some()
+        .and_then(|probe| probe.kind)
+        .is_some_and(|kind| kind == "Config");
+    is_config_kind && serde_yaml::from_str::<KubeConfigFile>(&content).is_ok()
 }
 
 /// True when the first 512 bytes of `path` carry the kubeconfig `kind` marker.
@@ -986,11 +998,7 @@ contexts:
             ("good.yaml", MARKED),
         ]);
         let found = discover_kubeconfig_files(dir.path(), &dir.path().join("config"));
-        assert!(!found.contains(&dir.path().join("broken.yaml")));
-        assert!(found.contains(&dir.path().join("good.yaml")));
-        // `configmap.yaml` deserialises into the all-optional `KubeConfigFile`,
-        // so it is tolerated by the loader (unknown fields ignored) rather than
-        // filtered out; it contributes no contexts.
+        assert_eq!(found, vec![dir.path().join("good.yaml")]);
     }
 
     #[test]
