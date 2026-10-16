@@ -2,7 +2,7 @@ name: CI macOS
 
 on:
   push:
-    branches: [main, "feat/**", "fix/**", "chore/**"]
+    branches: [main, "feat/**", "fix/**", "chore/**", "design/**"]
     paths:
       - "apps/macos/**"
   pull_request:
@@ -33,7 +33,7 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
-            CHANGED=$(git diff --name-only "$BASE_SHA" HEAD -- apps/macos/ || true)
+            CHANGED=$(git diff --name-only "$BASE_SHA" HEAD -- ':/apps/macos/' || true)
             if [ -n "$CHANGED" ]; then
               echo "macos_changed=true" >> "$GITHUB_OUTPUT"
             else
