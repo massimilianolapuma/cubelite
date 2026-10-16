@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Manage kubeconfig files from Preferences** (desktop, #428): Add file…
+  opens a file picker, each file has Remove, and "Use defaults" returns to
+  `KUBECONFIG` / `~/.kube`. The custom list replaces the environment, as in
+  the macOS app. A caption shows where the list comes from, and when a listed
+  file changes on disk the contexts reload with a "Kubeconfig updated" toast.
+
+- **Kubeconfig discovery** (desktop, core): without `KUBECONFIG`, CubeLite now
+  merges `~/.kube/config` with every other kubeconfig found in `~/.kube/`
+  (files whose head says `kind: Config`; hidden files and `cache/` ignored),
+  matching the macOS app. The backend also exposes an origin-aware
+  `kubeconfig_sources`, spec-aware context commands and a debounced
+  `kubeconfig-changed` watcher, ready for file management in Preferences.
+
 ### Changed
 
 - **SonarCloud scope** — the analysis exclusions (Swift test targets,

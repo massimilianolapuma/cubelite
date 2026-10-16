@@ -15,19 +15,27 @@ vi.mock("#lib/tauri.ts", () => ({
   clusterCapacity: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
+  kubeconfigSources: vi.fn(),
+  watchKubeconfig: vi.fn(async () => "kw1"),
+  unwatchKubeconfig: vi.fn(async () => undefined),
 }));
+
+vi.mock("@tauri-apps/api/path", () => ({ homeDir: vi.fn(async () => "/home/u") }));
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
 
 import {
+  kubeconfigSources,
   listContexts,
   listDeployments,
   listNamespaces,
   listPods,
   probeCluster,
   setContext,
+  unwatchKubeconfig,
+  watchKubeconfig,
   watchResources,
   type ContextInfo,
 } from "#lib/tauri.ts";
@@ -35,6 +43,7 @@ import { clusters } from "./clusters.svelte";
 import { resources } from "./resources.svelte";
 import { app } from "./app.svelte";
 import { settings } from "./settings.svelte";
+import { toasts } from "./toasts.svelte";
 import { installLocalStorageMock } from "./storage-mock";
 
 const contexts: ContextInfo[] = [
@@ -95,7 +104,7 @@ describe("switchCluster", () => {
 
     await clusters.switchCluster("staging");
 
-    expect(setContext).toHaveBeenCalledWith("staging");
+    expect(setContext).toHaveBeenCalledWith("staging", "/home/u/.kube/config");
     expect(app.activeCluster).toBe("staging");
     expect(app.namespace).toBeNull();
     expect(app.view).toBe("overview");
@@ -200,5 +209,153 @@ describe("switchCluster", () => {
     // The stale unreachable result was discarded.
     expect(clusters.connectionState).toBe("unknown");
     expect(app.connecting).toBeNull();
+  });
+});
+
+describe("reloadKubeconfig", () => {
+  beforeEach(() => {
+    toasts.items = [];
+    settings.kubeconfigPaths.value = [];
+    vi.mocked(kubeconfigSources).mockResolvedValue({
+      spec: "/home/u/.kube/config",
+      sources: [{ path: "/home/u/.kube/config", exists: true, contexts: 1, shadowed: [] }],
+      origin: "default",
+    });
+    vi.mocked(listContexts).mockResolvedValue([
+      { name: "prod", cluster_server: null, namespace: "default", is_active: true },
+    ]);
+  });
+
+  it("passes the custom list to the backend and stores spec, sources and origin", async () => {
+    settings.kubeconfigPaths.value = ["/custom/a", "/custom/b"];
+    await clusters.reloadKubeconfig("preferences");
+    expect(kubeconfigSources).toHaveBeenCalledWith(["/custom/a", "/custom/b"]);
+    expect(app.kubeconfigPath).toBe("/home/u/.kube/config");
+    expect(app.kubeconfigSources).toHaveLength(1);
+    expect(app.kubeconfigOrigin).toBe("default");
+    expect(listContexts).toHaveBeenCalledWith("/home/u/.kube/config");
+    expect(watchKubeconfig).toHaveBeenCalledWith(["/home/u/.kube/config"]);
+  });
+
+  it("(re)starts the file watcher with the requested paths", async () => {
+    await clusters.reloadKubeconfig("startup");
+    await clusters.reloadKubeconfig("preferences");
+    expect(watchKubeconfig).toHaveBeenCalledTimes(2);
+    expect(watchKubeconfig).toHaveBeenLastCalledWith(["/home/u/.kube/config"]);
+    await clusters.stopKubeconfigWatch();
+    expect(unwatchKubeconfig).toHaveBeenCalledWith("kw1");
+  });
+
+  it("switches to the first context when the active one disappeared", async () => {
+    app.activeCluster = "gone";
+    const spy = vi.spyOn(clusters, "switchCluster").mockResolvedValue();
+    await clusters.reloadKubeconfig("file-change");
+    expect(spy).toHaveBeenCalledWith("prod");
+    spy.mockRestore();
+  });
+
+  it("keeps the view and reloads resources when the active context survives a file change", async () => {
+    app.activeCluster = "prod";
+    const load = vi.spyOn(resources, "load").mockResolvedValue(true);
+    await clusters.reloadKubeconfig("file-change");
+    expect(load).toHaveBeenCalled();
+    expect(toasts.items.at(-1)?.message).toBe("Kubeconfig updated");
+    load.mockRestore();
+  });
+
+  it("falls back to the default path when no kubeconfig can be read", async () => {
+    settings.kubeconfigPaths.value = [];
+    vi.mocked(kubeconfigSources).mockRejectedValue(new Error("no kubeconfig"));
+    await expect(clusters.reloadKubeconfig("startup")).resolves.toBe(false);
+    expect(app.kubeconfigPath).toBe("/home/u/.kube/config");
+    expect(app.kubeconfigSources).toEqual([]);
+    expect(app.kubeconfigOrigin).toBe("default");
+  });
+
+  it("startup with a broken custom list toasts and leaves contexts empty", async () => {
+    settings.kubeconfigPaths.value = ["/bad"];
+    clusters.contexts = [];
+    vi.mocked(kubeconfigSources).mockRejectedValue(new Error("bad file"));
+    await expect(clusters.reloadKubeconfig("startup")).resolves.toBe(false);
+    expect(app.kubeconfigOrigin).toBe("custom");
+    expect(app.kubeconfigPath).toBe("");
+    expect(clusters.contexts).toEqual([]);
+    expect(toasts.items.at(-1)?.message.startsWith("Could not load kubeconfig:")).toBe(true);
+    expect(listContexts).not.toHaveBeenCalled();
+    expect(watchKubeconfig).not.toHaveBeenCalled();
+  });
+
+  it("file-change load failure keeps the active cluster and does not switch", async () => {
+    app.activeCluster = "prod";
+    clusters.contexts = [
+      { name: "prod", cluster_server: null, namespace: "default", is_active: true },
+    ];
+    vi.mocked(kubeconfigSources).mockRejectedValue(new Error("broken"));
+    const sw = vi.spyOn(clusters, "switchCluster").mockResolvedValue();
+    const load = vi.spyOn(resources, "load").mockResolvedValue(true);
+    await expect(clusters.reloadKubeconfig("file-change")).resolves.toBe(false);
+    expect(app.activeCluster).toBe("prod");
+    expect(sw).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
+    expect(toasts.items.some((t) => t.message === "Kubeconfig updated")).toBe(false);
+    expect(toasts.items.some((t) => t.tone === "err")).toBe(true);
+    sw.mockRestore();
+    load.mockRestore();
+  });
+
+  it("file-change re-pick yields to an in-flight switch", async () => {
+    app.activeCluster = "gone";
+    app.connecting = "prod";
+    const sw = vi.spyOn(clusters, "switchCluster").mockResolvedValue();
+    await clusters.reloadKubeconfig("file-change");
+    expect(sw).not.toHaveBeenCalled();
+    sw.mockRestore();
+    app.connecting = null;
+  });
+
+  it("file-change updates connection state via retry", async () => {
+    app.activeCluster = "prod";
+    let toastsAtRetry = -1;
+    const retry = vi.spyOn(clusters, "retry").mockImplementation(async () => {
+      toastsAtRetry = toasts.items.filter((t) => t.message === "Kubeconfig updated").length;
+    });
+    await clusters.reloadKubeconfig("file-change");
+    expect(retry).toHaveBeenCalled();
+    expect(toastsAtRetry).toBe(1);
+    retry.mockRestore();
+  });
+
+  it("clears state when the reloaded kubeconfig has no contexts", async () => {
+    vi.mocked(listContexts).mockResolvedValue([]);
+    app.activeCluster = "prod";
+    clusters.connectionState = "connected";
+    const stop = vi.spyOn(resources, "stopWatching").mockResolvedValue();
+    await clusters.reloadKubeconfig("file-change");
+    expect(app.activeCluster).toBeNull();
+    expect(clusters.connectionState).toBe("unknown");
+    expect(stop).toHaveBeenCalled();
+    stop.mockRestore();
+  });
+
+  it("reports a failed re-switch as a toast instead of throwing", async () => {
+    app.activeCluster = "gone";
+    const spy = vi.spyOn(clusters, "switchCluster").mockRejectedValue(new Error("boom"));
+    await expect(clusters.reloadKubeconfig("preferences")).resolves.toBe(true);
+    expect(toasts.items.at(-1)).toMatchObject({
+      message: "Failed to switch context: boom",
+      tone: "err",
+    });
+    spy.mockRestore();
+  });
+
+  it("does not reload resources while a switch is in flight", async () => {
+    app.activeCluster = "prod";
+    app.connecting = "prod";
+    const load = vi.spyOn(resources, "load").mockResolvedValue(true);
+    await clusters.reloadKubeconfig("file-change");
+    expect(load).not.toHaveBeenCalled();
+    expect(toasts.items.at(-1)?.message).toBe("Kubeconfig updated");
+    load.mockRestore();
+    app.connecting = null;
   });
 });

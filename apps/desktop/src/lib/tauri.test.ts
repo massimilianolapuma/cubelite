@@ -16,6 +16,8 @@ import {
   listDeployments,
   watchResources,
   unwatchResources,
+  watchKubeconfig,
+  unwatchKubeconfig,
 } from "#lib/tauri.ts";
 import type {
   ContextInfo,
@@ -47,7 +49,9 @@ describe("kubeconfigSources", () => {
 
     const result = await kubeconfigSources();
 
-    expect(mockedInvoke).toHaveBeenCalledWith("kubeconfig_sources");
+    expect(mockedInvoke).toHaveBeenCalledWith("kubeconfig_sources", {
+      customPaths: [],
+    });
     expect(result).toEqual(payload);
   });
 });
@@ -76,7 +80,9 @@ describe("listContexts", () => {
 
     const result = await listContexts();
 
-    expect(mockedInvoke).toHaveBeenCalledWith("list_contexts");
+    expect(mockedInvoke).toHaveBeenCalledWith("list_contexts", {
+      kubeconfigPath: null,
+    });
     expect(result).toEqual(mockContexts);
     expect(result).toHaveLength(2);
   });
@@ -106,7 +112,9 @@ describe("getCurrentContext", () => {
 
     const result = await getCurrentContext();
 
-    expect(mockedInvoke).toHaveBeenCalledWith("get_current_context");
+    expect(mockedInvoke).toHaveBeenCalledWith("get_current_context", {
+      kubeconfigPath: null,
+    });
     expect(result).toBe("minikube");
   });
 
@@ -131,6 +139,7 @@ describe("setContext", () => {
 
     expect(mockedInvoke).toHaveBeenCalledWith("set_context", {
       contextName: "production",
+      kubeconfigPath: null,
     });
   });
 
@@ -337,6 +346,49 @@ describe("unwatchResources", () => {
 
     expect(mockedInvoke).toHaveBeenCalledWith("unwatch_resources", {
       watchId: "watch-abc-123",
+    });
+  });
+});
+
+describe("kubeconfig wrapper arguments", () => {
+  it("kubeconfigSources passes customPaths", async () => {
+    mockedInvoke.mockResolvedValueOnce({ spec: "", sources: [], origin: "default" });
+    await kubeconfigSources(["/a"]);
+    expect(mockedInvoke).toHaveBeenCalledWith("kubeconfig_sources", {
+      customPaths: ["/a"],
+    });
+  });
+
+  it("setContext passes contextName and kubeconfigPath", async () => {
+    mockedInvoke.mockResolvedValueOnce(undefined);
+    await setContext("x", "/spec");
+    expect(mockedInvoke).toHaveBeenCalledWith("set_context", {
+      contextName: "x",
+      kubeconfigPath: "/spec",
+    });
+  });
+
+  it("listContexts passes kubeconfigPath", async () => {
+    mockedInvoke.mockResolvedValueOnce([]);
+    await listContexts("/spec");
+    expect(mockedInvoke).toHaveBeenCalledWith("list_contexts", {
+      kubeconfigPath: "/spec",
+    });
+  });
+
+  it("watchKubeconfig passes paths", async () => {
+    mockedInvoke.mockResolvedValueOnce("kw1");
+    await watchKubeconfig(["/p"]);
+    expect(mockedInvoke).toHaveBeenCalledWith("watch_kubeconfig", {
+      paths: ["/p"],
+    });
+  });
+
+  it("unwatchKubeconfig passes watchId", async () => {
+    mockedInvoke.mockResolvedValueOnce(undefined);
+    await unwatchKubeconfig("kw1");
+    expect(mockedInvoke).toHaveBeenCalledWith("unwatch_kubeconfig", {
+      watchId: "kw1",
     });
   });
 });

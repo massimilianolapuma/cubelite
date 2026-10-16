@@ -4,7 +4,16 @@
  * the backend has no health probe for inactive clusters).
  */
 
-import { listContexts, probeCluster, setContext, type ContextInfo } from "#lib/tauri.ts";
+import { homeDir } from "@tauri-apps/api/path";
+import {
+  kubeconfigSources,
+  listContexts,
+  probeCluster,
+  setContext,
+  unwatchKubeconfig,
+  watchKubeconfig,
+  type ContextInfo,
+} from "#lib/tauri.ts";
 import { assignIdentityColors, type IdentityColor } from "#lib/cluster-identity.ts";
 import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
@@ -39,7 +48,7 @@ class ClustersStore {
     this.loading = true;
     this.error = null;
     try {
-      this.contexts = await listContexts();
+      this.contexts = await listContexts(app.kubeconfigPath || undefined);
       this.identityColors = assignIdentityColors(
         this.contexts.map((c) => c.name),
         settings.identityColors.value,
@@ -79,7 +88,7 @@ class ClustersStore {
       // Log sessions are pod-scoped too — same story.
       void logPanel.closeAll();
       try {
-        await setContext(name);
+        await setContext(name, app.kubeconfigPath || undefined);
       } catch (e) {
         if (epoch !== this.#switchEpoch) return;
         toasts.push(`Failed to switch context: ${errorMessage(e)}`, "err");
@@ -112,6 +121,102 @@ class ClustersStore {
       if (epoch === this.#switchEpoch) {
         app.connecting = null;
       }
+    }
+  }
+
+  #kubeconfigWatchId: string | null = null;
+
+  /**
+   * Re-resolve the kubeconfig list (custom list → KUBECONFIG → ~/.kube),
+   * refresh contexts, keep or re-pick the active cluster and restart the
+   * on-disk watcher. Single entry point for startup, Preferences edits and
+   * `kubeconfig-changed` events.
+   */
+  async reloadKubeconfig(reason: "startup" | "preferences" | "file-change"): Promise<boolean> {
+    let resolved = true;
+    try {
+      const { spec, sources, origin } = await kubeconfigSources(settings.kubeconfigPaths.value);
+      app.kubeconfigPath = spec;
+      app.kubeconfigSources = sources;
+      app.kubeconfigOrigin = origin;
+    } catch (e) {
+      if (reason !== "startup") {
+        // Keep contexts, active cluster, resources and the running watcher:
+        // fixing the file triggers a new `kubeconfig-changed`.
+        toasts.push(`Could not load kubeconfig: ${errorMessage(e)}`, "err");
+        return false;
+      }
+      if (settings.kubeconfigPaths.value.length === 0) {
+        // No kubeconfig at all: keep the default path so onboarding can explain it.
+        const home = await homeDir().catch(() => "~");
+        app.kubeconfigPath = `${home}/.kube/config`;
+        app.kubeconfigSources = [];
+        app.kubeconfigOrigin = "default";
+        resolved = false;
+      } else {
+        // Broken custom list: Preferences offers "Use defaults".
+        app.kubeconfigPath = "";
+        app.kubeconfigSources = [];
+        app.kubeconfigOrigin = "custom";
+        this.contexts = [];
+        toasts.push(`Could not load kubeconfig: ${errorMessage(e)}`, "err");
+        return false;
+      }
+    }
+    await this.refresh();
+    await this.#restartKubeconfigWatch();
+    if (reason === "file-change" && this.error === null) {
+      toasts.push("Kubeconfig updated", "ok");
+    }
+
+    const names = this.contexts.map((c) => c.name);
+    const activeSurvives = app.activeCluster !== null && names.includes(app.activeCluster);
+    const connectingSurvives = app.connecting !== null && names.includes(app.connecting);
+    if (reason === "startup") return resolved; // +page.svelte picks the initial cluster
+    if (!activeSurvives && !connectingSurvives) {
+      const next = this.contexts.find((c) => c.is_active)?.name ?? this.contexts[0]?.name ?? null;
+      if (next) {
+        try {
+          await this.switchCluster(next);
+        } catch (e) {
+          toasts.push(`Failed to switch context: ${errorMessage(e)}`, "err");
+        }
+      } else {
+        app.activeCluster = null;
+        this.connectionState = "unknown";
+        this.unreachableReason = null;
+        await resources.stopWatching();
+        resources.clear();
+      }
+    } else if (activeSurvives && reason === "file-change" && app.connecting === null) {
+      // A switch in flight will load the resources itself.
+      await this.retry();
+    }
+    return true;
+  }
+
+  async stopKubeconfigWatch(): Promise<void> {
+    if (this.#kubeconfigWatchId) {
+      const id = this.#kubeconfigWatchId;
+      this.#kubeconfigWatchId = null;
+      await unwatchKubeconfig(id).catch(() => undefined);
+    }
+  }
+
+  async #restartKubeconfigWatch(): Promise<void> {
+    // The backend keeps a single kubeconfig watch: a new call replaces the old one.
+    const paths = app.kubeconfigSources.map((s) => s.path);
+    if (paths.length === 0) {
+      await this.stopKubeconfigWatch();
+      return;
+    }
+    try {
+      this.#kubeconfigWatchId = await watchKubeconfig(paths);
+    } catch {
+      // Watching is best-effort (e.g. no listed directory exists yet).
+      // Do not leave the previous watch running on stale paths.
+      await this.stopKubeconfigWatch();
+      this.#kubeconfigWatchId = null;
     }
   }
 

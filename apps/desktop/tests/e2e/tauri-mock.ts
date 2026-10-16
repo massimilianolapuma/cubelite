@@ -23,12 +23,15 @@ export const FIXTURES = {
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false, source: "/home/test/.kube/team.yaml" },
   ],
   kubeconfig: {
+    origin: "env",
     spec: "/home/test/.kube/config:/home/test/.kube/team.yaml",
     sources: [
       { path: "/home/test/.kube/config", exists: true, contexts: 1, shadowed: [] },
       { path: "/home/test/.kube/team.yaml", exists: true, contexts: 1, shadowed: ["prod-aks"] },
     ],
   },
+  extraKubeconfig: { path: "/home/test/.kube/extra.yaml", exists: true, contexts: 1, shadowed: [] },
+  extraContext: { name: "extra", cluster_server: "https://extra:6443", namespace: "default", is_active: false, source: "/home/test/.kube/extra.yaml" },
   pods: [
     {
       name: "api-0",
@@ -132,11 +135,28 @@ export function tauriMockScript(): string {
   // container and each gets its own stream id.
   let streamIdCounter = 1;
   const streamIdsByContainer = {};
+  // Last custom kubeconfig list handed to kubeconfig_sources (null = defaults).
+  let customSpec = null;
 
   const responses = (cmd, args) => {
     switch (cmd) {
-      case "kubeconfig_sources": return fixtures.kubeconfig;
-      case "list_contexts": return fixtures.contexts;
+      case "kubeconfig_sources": {
+        const custom = Array.isArray(args.customPaths) ? args.customPaths : [];
+        if (!custom.length) {
+          customSpec = null;
+          return fixtures.kubeconfig;
+        }
+        customSpec = custom;
+        return {
+          spec: custom.join(":"),
+          origin: "custom",
+          sources: custom.map((p) => fixtures.kubeconfig.sources.find((s) => s.path === p) ?? fixtures.extraKubeconfig),
+        };
+      }
+      case "list_contexts":
+        return customSpec && customSpec.includes(fixtures.extraKubeconfig.path)
+          ? [...fixtures.contexts, fixtures.extraContext]
+          : fixtures.contexts;
       case "get_current_context": return "prod-aks";
       case "set_context": {
         fixtures.contexts = fixtures.contexts.map((c) => ({ ...c, is_active: c.name === args.contextName }));
@@ -165,6 +185,8 @@ export function tauriMockScript(): string {
           : { context: args.context, reachable: true, version: "v1.30.2", node_count: 3, pod_count: 12, issue_pod_count: 0, capacity: { cpu_used_millis: 400, cpu_allocatable_millis: 4000, memory_used_bytes: 2147483648, memory_allocatable_bytes: 8589934592 }, error: null };
       case "watch_resources": return "w1";
       case "unwatch_resources": return null;
+      case "watch_kubeconfig": return "kw1";
+      case "unwatch_kubeconfig": return null;
       case "stream_logs": return "l1";
       case "stop_logs": return null;
       case "get_pod_containers": return fixtures.podContainers;
@@ -193,6 +215,7 @@ export function tauriMockScript(): string {
     },
     async invoke(cmd, args) {
       if (cmd.startsWith("plugin:path|")) return "/home/test";
+      if (cmd === "plugin:dialog|open") return ["/home/test/.kube/extra.yaml"];
       if (cmd === "plugin:event|listen") {
         const eventId = callbackId++;
         const handlers = eventListeners[args.event] ?? (eventListeners[args.event] = new Map());

@@ -65,10 +65,14 @@ export type KubeconfigSource = {
   shadowed: string[];
 };
 
+/** Which precedence level produced the kubeconfig list (spec §1.1). */
+export type KubeconfigOrigin = "custom" | "env" | "default";
+
 export type KubeconfigSources = {
   /** Loaded files joined like KUBECONFIG; pass as `kubeconfigPath`. */
   spec: string;
   sources: KubeconfigSource[];
+  origin: KubeconfigOrigin;
 };
 
 export type ServiceInfo = {
@@ -119,20 +123,21 @@ export type SecretInfo = {
 
 // --- Invoke wrappers ---
 
-export function kubeconfigSources(): Promise<KubeconfigSources> {
-  return invoke<KubeconfigSources>("kubeconfig_sources");
+/** Resolve the kubeconfig list; a non-empty `customPaths` replaces KUBECONFIG. */
+export function kubeconfigSources(customPaths: string[] = []): Promise<KubeconfigSources> {
+  return invoke<KubeconfigSources>("kubeconfig_sources", { customPaths });
 }
 
-export function listContexts(): Promise<ContextInfo[]> {
-  return invoke<ContextInfo[]>("list_contexts");
+export function listContexts(kubeconfigPath?: string): Promise<ContextInfo[]> {
+  return invoke<ContextInfo[]>("list_contexts", { kubeconfigPath: kubeconfigPath ?? null });
 }
 
-export function getCurrentContext(): Promise<string | null> {
-  return invoke<string | null>("get_current_context");
+export function getCurrentContext(kubeconfigPath?: string): Promise<string | null> {
+  return invoke<string | null>("get_current_context", { kubeconfigPath: kubeconfigPath ?? null });
 }
 
-export function setContext(contextName: string): Promise<void> {
-  return invoke("set_context", { contextName });
+export function setContext(contextName: string, kubeconfigPath?: string): Promise<void> {
+  return invoke("set_context", { contextName, kubeconfigPath: kubeconfigPath ?? null });
 }
 
 export function listPods(
@@ -613,6 +618,18 @@ export function watchResources(
 
 export function unwatchResources(watchId: string): Promise<void> {
   return invoke("unwatch_resources", { watchId });
+}
+
+/** Tauri event emitted when a watched kubeconfig file changes on disk. */
+export const KUBECONFIG_CHANGED = "kubeconfig-changed";
+export type KubeconfigChanged = { paths: string[] };
+
+export function watchKubeconfig(paths: string[]): Promise<string> {
+  return invoke<string>("watch_kubeconfig", { paths });
+}
+
+export function unwatchKubeconfig(watchId: string): Promise<void> {
+  return invoke("unwatch_kubeconfig", { watchId });
 }
 
 /** Result of starting a port-forward session. */
