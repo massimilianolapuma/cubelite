@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { setMode } from 'mode-watcher';
-	import { homeDir } from '@tauri-apps/api/path';
+	import { listen } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import Titlebar from '#lib/components/shell/Titlebar.svelte';
 	import ClusterRail from '#lib/components/shell/ClusterRail.svelte';
@@ -17,7 +17,7 @@
 	import LogPanel from '#lib/components/logpanel/LogPanel.svelte';
 	import LogWindowShell from '#lib/components/logpanel/LogWindowShell.svelte';
 	import { applyAccent, applyDensity } from '#lib/appearance.ts';
-	import { kubeconfigSources } from '#lib/tauri.ts';
+	import { KUBECONFIG_CHANGED } from '#lib/tauri.ts';
 	import { matchShortcut } from '#lib/keyboard.ts';
 	import { isMac } from '#lib/platform.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -44,17 +44,12 @@
 		if (logWindowKey) return;
 		setMode(settings.theme.value);
 		let unCloseRequested: (() => void) | null = null;
+		let unKubeconfigChanged: (() => void) | null = null;
 		void (async () => {
-			try {
-				// KUBECONFIG list (or ~/.kube/config) resolved like kubectl.
-				const { spec, sources } = await kubeconfigSources();
-				app.kubeconfigPath = spec;
-				app.kubeconfigSources = sources;
-			} catch {
-				// No readable kubeconfig yet: keep the default path so onboarding can explain it.
-				app.kubeconfigPath = `${await homeDir()}/.kube/config`;
-			}
-			await clusters.refresh();
+			await clusters.reloadKubeconfig('startup');
+			unKubeconfigChanged = await listen(KUBECONFIG_CHANGED, () => {
+				void clusters.reloadKubeconfig('file-change');
+			});
 			const active =
 				clusters.contexts.find((c) => c.is_active)?.name ?? clusters.contexts[0]?.name ?? null;
 			app.activeCluster = active;
@@ -75,6 +70,8 @@
 
 		return () => {
 			unCloseRequested?.();
+			unKubeconfigChanged?.();
+			void clusters.stopKubeconfigWatch();
 			void resources.stopWatching();
 			resources.stopAutoRefresh();
 			health.stop();

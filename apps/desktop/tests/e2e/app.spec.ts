@@ -81,6 +81,20 @@ test("preferences list every kubeconfig file with its context count", async ({ p
   await expect(files.getByText(/1 merged/)).toBeVisible();
 });
 
+test("adding a kubeconfig file lists it and reloads contexts", async ({ page }) => {
+  await boot(page);
+  await page.getByLabel("Preferences").click();
+  await page.getByRole("button", { name: "Add file…" }).click();
+  const files = page.getByRole("list", { name: "Kubeconfig files" });
+  await expect(files.getByText("/home/test/.kube/extra.yaml")).toBeVisible();
+  await expect(page.getByText("Custom list", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTitle(/^extra/)).toBeVisible(); // rail avatar of the new context
+  await page.getByLabel("Preferences").click();
+  await page.getByRole("button", { name: "Use defaults" }).click();
+  await expect(page.getByText("From KUBECONFIG", { exact: true })).toBeVisible();
+});
+
 test("All Clusters dashboard aggregates stats across contexts", async ({ page }) => {
   await boot(page);
   await page.getByLabel("All Clusters").click();

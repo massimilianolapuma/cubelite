@@ -2,7 +2,7 @@
  * Global app state: active cluster, current view, namespace filter, overlays.
  */
 
-import type { DeploymentInfo, KubeconfigSource, PodInfo } from "#lib/tauri.ts";
+import type { DeploymentInfo, KubeconfigOrigin, KubeconfigSource, PodInfo } from "#lib/tauri.ts";
 
 export const VIEWS = [
   "dashboard",
@@ -37,6 +37,8 @@ class AppState {
   kubeconfigPath = $state("");
   /** Files behind `kubeconfigPath`, in merge order (Preferences list). */
   kubeconfigSources = $state<KubeconfigSource[]>([]);
+  /** Which precedence level produced kubeconfigSources. */
+  kubeconfigOrigin = $state<KubeconfigOrigin>("default");
   /** Active kube context name; null until contexts are discovered. */
   activeCluster = $state<string | null>(null);
   view = $state<View>("dashboard");
