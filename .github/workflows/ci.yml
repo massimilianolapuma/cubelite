@@ -13,14 +13,13 @@ jobs:
   lint-rust:
     name: Lint Rust
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 30 instead of the default 15: the apt step retries with a timeout per
+    # attempt and may legitimately take ~20 min on a bad mirror day (#435).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install system dependencies (Tauri / WebKit)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev \
-            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev
+        uses: ./.github/actions/tauri-linux-deps
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
         with:
           toolchain: stable
@@ -34,15 +33,12 @@ jobs:
   test-rust:
     name: Test Rust
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30 # see lint-rust
     needs: lint-rust
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install system dependencies (Tauri / WebKit)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev \
-            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev
+        uses: ./.github/actions/tauri-linux-deps
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
         with:
           toolchain: stable

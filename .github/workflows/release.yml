@@ -111,10 +111,11 @@ jobs:
 
       - name: Install system dependencies (Tauri / WebKit)
         if: matrix.platform == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev \
-            libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev
+        uses: ./.github/actions/tauri-linux-deps
+        with:
+          # Keep the Recommends: the AppImage bundle picks up runtime libraries
+          # (GStreamer plug-ins etc.) that clippy and the tests do not need.
+          install-recommends: "true"
 
       - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # stable
         with:

@@ -1,0 +1,23 @@
+name: Install Tauri Linux dependencies
+description: >-
+  apt-get installs the GTK / WebKit packages the Tauri crates need, with a
+  timeout per attempt, retries and a mirror fallback, so a slow Ubuntu mirror
+  does not time the whole job out (#435).
+
+inputs:
+  install-recommends:
+    description: >-
+      Also install the packages' Recommends. Off for lint/test jobs (the -dev
+      packages are enough to compile); on for release bundles, which keep the
+      full runtime set the previous inline apt-get step installed.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: apt-get install with retries
+      shell: bash
+      env:
+        INSTALL_RECOMMENDS: ${{ inputs.install-recommends }}
+      run: '"${GITHUB_ACTION_PATH}/install.sh"'
