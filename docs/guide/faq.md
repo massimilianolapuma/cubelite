@@ -19,7 +19,10 @@ macOS 14 Sonoma and later.
 ## Clusters & credentials
 
 **CubeLite shows "no kubeconfig found".**
-Check that `~/.kube/config` exists or `KUBECONFIG` is set. In Settings you can point CubeLite at explicit kubeconfig paths. If `kubectl` works in your terminal but CubeLite finds nothing, your `KUBECONFIG` is probably set only in your shell profile — launch CubeLite from that shell or configure the paths in Settings.
+Check that `~/.kube/config` exists or `KUBECONFIG` is set. In Preferences → Kubeconfig you can add kubeconfig files; a custom list replaces `KUBECONFIG`. If `kubectl` works in your terminal but CubeLite finds nothing, your `KUBECONFIG` is probably set only in your shell profile — launch CubeLite from that shell or add the files in Preferences.
+
+**I switched to a cluster in CubeLite and now `kubectl` says "context not found".**
+CubeLite merges every kubeconfig it lists (`KUBECONFIG`, `~/.kube/config` plus the other kubeconfig files in `~/.kube/`, or your custom list) and writes `current-context` into the first file, exactly like `kubectl config use-context` with `KUBECONFIG` set. A plain `kubectl` without `KUBECONFIG` reads only `~/.kube/config`, so a context that lives in another file is invisible to it. Set `KUBECONFIG` to the same list in your shell, or merge the files.
 
 **A cluster shows as offline but kubectl reaches it.**
 CubeLite talks to the API server directly. VPN-only clusters need the VPN up. Clusters using exec credential plugins (`kubelogin`, `aws eks get-token`, `gke-gcloud-auth-plugin`) are supported: CubeLite runs the plugin exactly like kubectl does and caches the returned token until it expires. If the plugin binary isn't found, CubeLite shows which command is missing — install it or use an absolute path in the kubeconfig's `exec.command`. Legacy `auth-provider` blocks (pre-exec OIDC/GCP) are not supported; migrate them to an exec plugin.

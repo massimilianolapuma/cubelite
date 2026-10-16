@@ -44,6 +44,17 @@ describe("settings", () => {
     expect(settings.identityColors.value).toEqual({});
   });
 
+  it("validates the stored kubeconfigPaths list", async () => {
+    window.localStorage.setItem("cubelite.kubeconfigPaths", JSON.stringify([1, "a"]));
+    expect((await freshSettings()).kubeconfigPaths.value).toEqual([]);
+    window.localStorage.setItem("cubelite.kubeconfigPaths", JSON.stringify("x"));
+    expect((await freshSettings()).kubeconfigPaths.value).toEqual([]);
+
+    const first = await freshSettings();
+    first.kubeconfigPaths.value = ["/a", "/b"];
+    expect((await freshSettings()).kubeconfigPaths.value).toEqual(["/a", "/b"]);
+  });
+
   it("reset clears storage and restores the default", async () => {
     const settings = await freshSettings();
     settings.skipTls.value = true;
