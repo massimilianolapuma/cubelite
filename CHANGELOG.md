@@ -22,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `kubeconfig_sources`, spec-aware context commands and a debounced
   `kubeconfig-changed` watcher, ready for file management in Preferences.
 
+### Fixed
+
+- **Dependency audit** (#445): `rustls-webpki` 0.103.16 and
+  `webpki-root-certs` 1.0.10 pick up the RUSTSEC-2026-0382/0383 fixes. The
+  three `zip` 4.x advisories (RUSTSEC-2026-0367/0368/0369) are allow-listed in
+  `.cargo/audit.toml`: the crate comes only from `tauri-plugin-updater`, which
+  extracts a bundle only after verifying its signature, and no published
+  plugin release uses zip 9 yet.
+
 ### Changed
 
 - **SonarCloud scope** — the analysis exclusions (Swift test targets,

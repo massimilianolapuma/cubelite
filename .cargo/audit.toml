@@ -1,0 +1,16 @@
+# Configuration for `cargo audit` (CI job "Dependency Audit").
+
+[advisories]
+# zip 4.x advisories about `ZipArchive::extract` on attacker-controlled
+# archives (symlink targets outside the destination, SUID/SGID bits,
+# permissions applied through symlinks). zip is pulled only by
+# tauri-plugin-updater, which extracts an update bundle only after verifying
+# its minisign signature against our public key, so the vulnerable path is
+# not reachable with untrusted input. Every published tauri-plugin-updater
+# (<= 2.14.0) requires zip ^4; upstream's v2 branch already moved to zip 9.
+# Remove these entries when the plugin ships with zip >= 9 (see #445).
+ignore = [
+  "RUSTSEC-2026-0367",
+  "RUSTSEC-2026-0368",
+  "RUSTSEC-2026-0369",
+]
