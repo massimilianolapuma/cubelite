@@ -95,7 +95,9 @@ describe("LogBody", () => {
 
       const sourceLabel = await screen.findByText("envoy");
       expect(sourceLabel).toBeInTheDocument();
-      expect(sourceLabel).toHaveStyle("color: var(--color-cluster-teal)");
+      // Assert the rendered inline style, not the computed one: jsdom resolves
+      // shorthands/custom properties differently across releases (#444).
+      expect(sourceLabel.getAttribute("style")).toContain("var(--color-cluster-teal)");
     });
 
     it("omits the source column in single-container mode", async () => {
@@ -136,7 +138,7 @@ describe("LogBody", () => {
       render(LogBody, { props: { session: s } });
       const mark = await screen.findByText("needle");
       expect(mark.tagName).toBe("MARK");
-      expect(mark).toHaveStyle("background: var(--color-status-warn)");
+      expect(mark.getAttribute("style")).toContain("background: var(--color-status-warn)");
     });
 
     it("shows a no-matches message when filter mode yields nothing", async () => {
