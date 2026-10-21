@@ -899,6 +899,17 @@ pub fn clean_custom_paths(paths: Vec<String>) -> Vec<std::path::PathBuf> {
         .collect()
 }
 
+/// First custom path that exists but is not a kubeconfig document. Missing
+/// files are skipped, as `kubectl` does with `KUBECONFIG`; present files must
+/// carry `kind: Config`, otherwise any YAML or JSON mapping would load as an
+/// empty kubeconfig (#448).
+pub fn first_non_kubeconfig(paths: &[std::path::PathBuf]) -> Option<&std::path::Path> {
+    paths
+        .iter()
+        .map(std::path::PathBuf::as_path)
+        .find(|p| p.exists() && !cubelite_core::is_kubeconfig_file(p))
+}
+
 /// Resolved kubeconfig file list for the UI: `spec` is the loaded files
 /// joined like `KUBECONFIG` (what every other command takes as
 /// `kubeconfig_path`); `sources` describes each listed file in merge order;
@@ -919,6 +930,12 @@ pub async fn kubeconfig_sources(
     let custom = clean_custom_paths(custom_paths.unwrap_or_default());
     tokio::task::spawn_blocking(move || {
         let origin = select_kubeconfig_origin(!custom.is_empty(), kubeconfig_env_is_set());
+        if let Some(bad) = first_non_kubeconfig(&custom) {
+            return Err(format!(
+                "{} is not a kubeconfig file (expected a YAML document with `kind: Config`)",
+                bad.display()
+            ));
+        }
         let cfg = if custom.is_empty() {
             cubelite_core::KubeConfig::load()
         } else {
@@ -1112,6 +1129,23 @@ mod kubeconfig_origin_tests {
                 std::path::PathBuf::from("/a"),
                 std::path::PathBuf::from("/b")
             ]
+        );
+    }
+
+    #[test]
+    fn first_non_kubeconfig_flags_present_non_config_files_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = dir.path().join("good.yaml");
+        let blob = dir.path().join("blob.json");
+        let missing = dir.path().join("missing.yaml");
+        std::fs::write(&good, "apiVersion: v1\nkind: Config\ncontexts: []\n").unwrap();
+        std::fs::write(&blob, "{\"name\": \"x\"}\n").unwrap();
+
+        assert_eq!(first_non_kubeconfig(&[]), None);
+        assert_eq!(first_non_kubeconfig(&[good.clone(), missing.clone()]), None);
+        assert_eq!(
+            first_non_kubeconfig(&[good, missing, blob.clone()]),
+            Some(blob.as_path())
         );
     }
 

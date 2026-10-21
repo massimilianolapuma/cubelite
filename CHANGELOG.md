@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Add file… rejects non-kubeconfig files** (desktop, #448): a file picked
+  in Preferences must be a kubeconfig document (`kind: Config`), like the
+  files discovered in `~/.kube`. Before, any YAML or JSON file was added with
+  0 contexts; now the error toast shows and the list is unchanged.
+
 - **Dependency audit** (#445): `rustls-webpki` 0.103.16 and
   `webpki-root-certs` 1.0.10 pick up the RUSTSEC-2026-0382/0383 fixes. The
   three `zip` 4.x advisories (RUSTSEC-2026-0367/0368/0369) are allow-listed in

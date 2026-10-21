@@ -420,7 +420,7 @@ pub fn discover_kubeconfig_files(dir: &Path, excluding: &Path) -> Vec<PathBuf> {
         // `metadata` follows symlinks, so a symlink to a directory is skipped too.
         .filter(|path| std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false))
         .filter(|path| looks_like_kubeconfig(path))
-        .filter(|path| parses_as_kubeconfig(path))
+        .filter(|path| is_kubeconfig_file(path))
         .collect();
     found.sort();
     found
@@ -434,7 +434,12 @@ struct KindProbe {
 
 /// True when the file is a kubeconfig document: `kind` is exactly `Config`
 /// and the whole document deserialises as `KubeConfigFile`.
-fn parses_as_kubeconfig(path: &Path) -> bool {
+///
+/// Every field of a kubeconfig is optional, so a bare parse accepts any YAML
+/// or JSON mapping as an empty config; the `kind` check is what tells a
+/// kubeconfig apart from an unrelated file. Used by `~/.kube` discovery and
+/// by the desktop app to validate files the user adds explicitly.
+pub fn is_kubeconfig_file(path: &Path) -> bool {
     let Ok(content) = std::fs::read_to_string(path) else {
         return false;
     };
@@ -996,6 +1001,28 @@ contexts:
         ]);
         let found = discover_kubeconfig_files(dir.path(), &dir.path().join("config"));
         assert_eq!(found, vec![dir.path().join("good.yaml")]);
+    }
+
+    #[test]
+    fn is_kubeconfig_file_requires_kind_config_and_a_full_parse() {
+        let dir = kube_dir_with(&[
+            ("good.yaml", MARKED),
+            ("quoted.yaml", "apiVersion: v1\nkind: \"Config\"\n"),
+            ("blob.json", "{\"name\": \"x\", \"items\": [1, 2]}\n"),
+            ("no-kind.yaml", "apiVersion: v1\ncontexts: []\n"),
+            ("secret.yaml", "apiVersion: v1\nkind: Secret\ndata: {}\n"),
+            ("broken.yaml", "kind: Config\ncontexts: [\n"),
+            ("empty.yaml", ""),
+        ]);
+        let at = |name: &str| dir.path().join(name);
+        assert!(is_kubeconfig_file(&at("good.yaml")));
+        assert!(is_kubeconfig_file(&at("quoted.yaml")));
+        assert!(!is_kubeconfig_file(&at("blob.json")));
+        assert!(!is_kubeconfig_file(&at("no-kind.yaml")));
+        assert!(!is_kubeconfig_file(&at("secret.yaml")));
+        assert!(!is_kubeconfig_file(&at("broken.yaml")));
+        assert!(!is_kubeconfig_file(&at("empty.yaml")));
+        assert!(!is_kubeconfig_file(&at("missing.yaml")));
     }
 
     #[test]
