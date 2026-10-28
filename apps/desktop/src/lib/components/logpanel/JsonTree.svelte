@@ -98,7 +98,10 @@
     {#each entries as [key, child] (key)}
       <!-- Relative indent: nested trees sit inside the parent row, so 12px per level compounds to depth * 12. -->
       <div style="padding-left: {depth > 0 ? 12 : 0}px">
-        {#if isComposite(child)}
+        {#if isComposite(child) && Object.keys(child).length === 0}
+          {@render label(key)}
+          <span class="text-text-tertiary" data-json="empty">{Array.isArray(child) ? "[]" : "{}"}</span>
+        {:else if isComposite(child)}
           {@const open = isOpen(key)}
           <button
             type="button"

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseJsonLine, mapLevel, compactValue, prettyJson } from "#lib/log-json.ts";
+import { parseJsonLine, mapLevel, compactValue, prettyJson, displayText } from "#lib/log-json.ts";
 
 describe("parseJsonLine detection", () => {
   it("returns a view for a JSON object line", () => {
@@ -105,5 +105,30 @@ describe("compactValue / prettyJson", () => {
   });
   it("pretty prints with two spaces", () => {
     expect(prettyJson({ a: 1 })).toBe('{\n  "a": 1\n}');
+  });
+});
+
+describe("review fixes (#454)", () => {
+  it("message fallback skips consumed keys", () => {
+    const v = parseJsonLine('{"level":"info","ts":"2026-01-01T00:00:00Z","orderId":"A"}');
+    expect(v?.message).toBe("A");
+    const w = parseJsonLine('{"ts":"2026-10-28T09:41:02Z","cpu":0.3}');
+    expect(w?.message).toBe('{"ts":"2026-10-28T09:41:02Z","cpu":0.3}');
+  });
+  it("compact JSON fallback leaves the tail empty", () => {
+    expect(parseJsonLine('{"ts":"2026-10-28T09:41:02Z","cpu":0.3}')?.tail).toEqual([]);
+  });
+  it("displayText flattens control characters", () => {
+    expect(displayText("a\r\nb\nc\td\u0001e")).toBe("a↵ b↵ c d e");
+  });
+  it("flattens control characters in the message and string tail values only", () => {
+    const v = parseJsonLine('{"msg":"a\\nb\\tc","stack":"x\\ny"}');
+    expect(v?.message).toBe("a↵ b c");
+    expect(v?.tail).toEqual([{ key: "stack", value: "x↵ y" }]);
+    expect(v?.object.msg).toBe("a\nb\tc");
+  });
+  it("maps verbose and dpanic", () => {
+    expect(mapLevel("verbose")).toBe("debug");
+    expect(mapLevel("DPANIC")).toBe("error");
   });
 });

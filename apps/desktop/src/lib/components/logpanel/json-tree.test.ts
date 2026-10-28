@@ -89,4 +89,11 @@ describe("JsonTree", () => {
     render(JsonTree, { props: { value: { msg: "x".repeat(300) }, raw: "{}" } });
     expect(screen.getByText(`"${"x".repeat(300)}"`)).toHaveClass("break-words");
   });
+  it("renders empty containers as plain values without a toggle", () => {
+    render(JsonTree, { props: { value: { a: {}, b: [] }, raw: "{}" } });
+    expect(screen.getByText("{}")).toBeInTheDocument();
+    expect(screen.getByText("[]")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle a" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Toggle b" })).toBeNull();
+  });
 });

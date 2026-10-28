@@ -35,6 +35,8 @@ const LEVEL_NAMES: Record<string, LogLevel> = {
   emerg: "error",
   emergency: "error",
   panic: "error",
+  dpanic: "error",
+  verbose: "debug",
 };
 
 function isObject(value: unknown): value is JsonObject {
@@ -64,6 +66,14 @@ export function compactValue(value: JsonValue, max = 60): string {
   if (typeof value !== "object" || value === null) return String(value);
   const json = JSON.stringify(value);
   return json.length > max ? `${json.slice(0, max)}…` : json;
+}
+
+/** One-line form for the collapsed row: newlines become "↵ ", tabs and other control characters a space. */
+export function displayText(s: string): string {
+  return s
+    .replace(/\r\n|\n/g, "↵ ")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f]/g, " ");
 }
 
 export function prettyJson(object: JsonObject): string {
@@ -119,22 +129,26 @@ export function parseJsonLine(message: string): JsonLogView | null {
 
   const messageKey = findKey(object, MESSAGE_KEYS, (v) => typeof v === "string");
   let text: string;
+  let compactFallback = false;
   if (messageKey !== null) {
     text = object[messageKey] as string;
     consumed.add(messageKey);
   } else {
-    const firstKey = Object.keys(object).find((k) => typeof object[k] === "string");
+    const firstKey = Object.keys(object).find((k) => !consumed.has(k) && typeof object[k] === "string");
     if (firstKey !== undefined) {
       text = object[firstKey] as string;
       consumed.add(firstKey);
     } else {
       text = JSON.stringify(object);
+      compactFallback = true;
     }
   }
 
-  const tail = Object.keys(object)
-    .filter((k) => !consumed.has(k))
-    .map((key) => ({ key, value: compactValue(object[key]) }));
+  const tail = compactFallback
+    ? []
+    : Object.keys(object)
+        .filter((k) => !consumed.has(k))
+        .map((key) => ({ key, value: displayText(compactValue(object[key])) }));
 
-  return { object, time, level, message: text, tail };
+  return { object, time, level, message: displayText(text), tail };
 }

@@ -12,6 +12,19 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   getPodContainers: vi.fn(async () => []),
 }));
 
+const virtualizers: unknown[] = [];
+vi.mock("@tanstack/svelte-virtual", async (importOriginal) => {
+  const m = await importOriginal<typeof import("@tanstack/svelte-virtual")>();
+  return {
+    ...m,
+    createVirtualizer: ((o: Parameters<typeof m.createVirtualizer>[0]) => {
+      const store = m.createVirtualizer(o);
+      virtualizers.push(store);
+      return store;
+    }) as typeof m.createVirtualizer,
+  };
+});
+
 import LogBody from "./LogBody.svelte";
 import { LogSession, ALL_CONTAINERS } from "#lib/stores/logSession.svelte.ts";
 import { logPanel } from "#lib/stores/logPanel.svelte.ts";
@@ -211,6 +224,25 @@ describe("JSON view (#454)", () => {
     expect(s.expanded.size).toBe(1);
     await fireEvent.click(row);
     expect(screen.queryByTestId("json-tree")).toBeNull();
+  });
+  it("expanding while following keeps follow and scrolls to the end", async () => {
+    logPanel.jsonView = true;
+    const s = sessionWith([json]);
+    expect(s.following).toBe(true);
+    render(LogBody, { props: { session: s } });
+    const row = await screen.findByTestId("json-row");
+    const { get } = await import("svelte/store");
+    const v = get(virtualizers[virtualizers.length - 1] as Parameters<typeof get>[0]) as {
+      scrollToIndex: (i: number, o: unknown) => void;
+    };
+    const spy = vi.spyOn(v, "scrollToIndex");
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+    await fireEvent.click(row);
+    expect(s.following).toBe(true);
+    await waitFor(() => expect(spy).toHaveBeenCalledWith(0, { align: "end" }));
   });
   it("highlights the search query inside the humanised message", async () => {
     logPanel.jsonView = true;
