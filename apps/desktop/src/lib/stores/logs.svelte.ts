@@ -9,10 +9,14 @@
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { SvelteSet } from "svelte/reactivity";
 import { stopLogs, streamLogs, type LogLine, type PodRef } from "#lib/tauri.ts";
 import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
+import { persisted } from "./settings.svelte";
 import { toasts } from "./toasts.svelte";
+
+const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
 
 /** Spec: buffer cap ~180 lines. */
 const BUFFER_CAP = 180;
@@ -33,6 +37,17 @@ class LogsStore {
   /** Lines waiting in the queue while paused (drives the "buffered" pill). */
   bufferedWhilePaused = $state(0);
   streaming = $state(false);
+  /** Line ids currently expanded into their JSON tree (JSON view, #461). */
+  expanded = new SvelteSet<number>();
+
+  /** Humanise JSON lines; own preference, independent of the log panel's. */
+  #jsonView = persisted<boolean>("logs.jsonView", false, isBoolean);
+  get jsonView(): boolean {
+    return this.#jsonView.value;
+  }
+  set jsonView(v: boolean) {
+    this.#jsonView.value = v;
+  }
 
   #streamId: string | null = null;
   #unlisten: UnlistenFn | null = null;
@@ -98,10 +113,16 @@ class LogsStore {
     }
   }
 
+  toggleExpanded(id: number): void {
+    if (this.expanded.has(id)) this.expanded.delete(id);
+    else this.expanded.add(id);
+  }
+
   clear(): void {
     this.lines = [];
     this.#pending = [];
     this.bufferedWhilePaused = 0;
+    this.expanded.clear();
   }
 
   /** Start streaming the given pods (restarts any previous stream). */
