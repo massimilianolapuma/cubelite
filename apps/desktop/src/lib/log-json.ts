@@ -53,9 +53,9 @@ export function mapLevel(raw: unknown): LogLevel | null {
     n = raw;
   }
   if (n === null) return null;
-  if (n <= 20) return "debug";
-  if (n <= 30) return "info";
-  if (n <= 40) return "warn";
+  if (n < 30) return "debug";
+  if (n < 40) return "info";
+  if (n < 50) return "warn";
   return "error";
 }
 

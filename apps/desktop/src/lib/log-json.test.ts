@@ -71,6 +71,14 @@ describe("mapLevel", () => {
     expect(mapLevel(40)).toBe("warn");
     expect(mapLevel(60)).toBe("error");
   });
+  it("maps numeric level boundaries", () => {
+    expect(mapLevel(29)).toBe("debug");
+    expect(mapLevel(30)).toBe("info");
+    expect(mapLevel(39)).toBe("info");
+    expect(mapLevel(40)).toBe("warn");
+    expect(mapLevel(49)).toBe("warn");
+    expect(mapLevel(50)).toBe("error");
+  });
   it("maps numeric level strings", () => {
     expect(mapLevel("30")).toBe("info");
   });
