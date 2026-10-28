@@ -82,6 +82,7 @@ Level mapping to the existing `LogLevel` union (`debug | info | warn | error`):
 - `info`, `notice` → `info`
 - `warn`, `warning` → `warn`
 - `error`, `err`, `fatal`, `panic`, `critical`, `crit`, `alert`, `emerg` → `error`
+- `verbose` → `debug`, `dpanic` (zap) → `error`
 - numeric (pino/bunyan): `< 30` → `debug`, `30–39` → `info`, `40–49` → `warn`,
   `≥ 50` → `error`
 - anything else or missing → keep the core-detected `line.level`
@@ -102,13 +103,17 @@ timestamp column, optional container badge in merged mode), then:
 - `LEVEL` and the row tint use the JSON level when recognised, else the
   core level (display-only override; the core `line.level` is untouched, see §6).
 - `message` in `type-log` / `text-text-log` like a raw line. If no message
-  field exists, the first string field is used; if none, the message cell
-  shows the compact JSON itself.
+  field exists, the first *remaining* string field is used (never the
+  recognised time/level fields); if none, the message cell shows the compact
+  JSON itself and the tail is empty (no field shown twice).
 - The tail lists the remaining top-level fields in insertion order, `type-micro`
   monospace, key in `text-text-tertiary`, value in `text-text-secondary`,
   separated by two spaces. The recognised time/level/message fields are not
   repeated in the tail (for the nested ECS case the `log` object stays in
-  the tail, compacted). Values: strings as-is, numbers/booleans/null as
+  the tail, compacted). In the collapsed row, control characters inside
+  strings are flattened for display only (`↵ ` for newlines, a space for
+  tabs and other C0 characters) so a stack trace stays on one line; the tree
+  and the copy buttons keep the real value. Values: strings as-is, numbers/booleans/null as
   literals, objects and arrays compacted with `JSON.stringify` and cut at
   60 characters with `…`.
 - With `wrap` off the row is one line and truncates like today; with `wrap`
@@ -211,6 +216,14 @@ Follow-ups (separate issues, not blocking)
   payload); would make the toolbar level filter consistent with the badge.
 - macOS app parity: same toggle and tree in `LogsView` / `LogPanel`.
 - Logfmt humanisation.
+- Integers above 2^53 are rounded by `JSON.parse` in the tail, tree and
+  Copy JSON (#455); Copy raw is exact.
+- Text selection inside a humanised row: the message cell is a button, so a
+  drag-select toggles the row; candidates are making only the chevron the
+  toggle or ignoring clicks when a selection exists.
+- Virtual rows are keyed by index: at ring cap every flush re-parses the
+  rendered rows and a reused `JsonTree`'s local collapse state can carry over
+  to a neighbouring line; `getItemKey: i => lines[i].id` would fix both.
 
 ## 7. Scope decision
 
