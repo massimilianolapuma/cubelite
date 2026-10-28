@@ -83,8 +83,11 @@ class LogWindowsStore {
     });
     // Register listener BEFORE spawning window to avoid race condition
     const unlistenReady = await listen(`log-window-ready:${key}`, () => resolveReady());
+    // Root-relative: `index.html?…` resolved to /index.html, which the
+    // SvelteKit dev server does not route (404 in `tauri dev`, #459); `/`
+    // works there and in the static build alike.
     const win = new WebviewWindow(label, {
-      url: `index.html?logWindow=${encodeURIComponent(key)}`,
+      url: `/?logWindow=${encodeURIComponent(key)}`,
       title: `${transfer.pod} — logs`,
       width: 900,
       height: 500,

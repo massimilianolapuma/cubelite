@@ -94,6 +94,9 @@ describe("logWindows", () => {
       expect(eventListeners.has("log-window-ready:default/api-0")).toBe(true);
     });
     expect(spawned[0]?.label).toBe("logs-default/api-0");
+    // Root-relative so it resolves in both the Vite dev server (no
+    // /index.html route) and the static build (#459).
+    expect(spawned[0]?.options.url).toBe("/?logWindow=default%2Fapi-0");
     // seed not sent before ready
     expect(emitted.filter((e) => e.name.startsWith("log-window-seed:"))).toHaveLength(0);
     eventListeners.get("log-window-ready:default/api-0")?.({ payload: null });
