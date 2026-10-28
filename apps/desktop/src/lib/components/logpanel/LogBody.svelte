@@ -180,6 +180,9 @@
 							source={session.merged && line.container
 								? { name: line.container, color: identityColorFor(session.containers, line.container) }
 								: null}
+							jsonView={logPanel.jsonView}
+							expanded={session.expanded.has(line.id)}
+							ontoggle={() => session.toggleExpanded(line.id)}
 						/>
 					</div>
 				{/each}
