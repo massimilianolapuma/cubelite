@@ -66,4 +66,27 @@ describe("JsonTree", () => {
     render(JsonTree, { props: { value: { a: 1 }, raw: "{}", depth: 1 } });
     expect(screen.queryByRole("button", { name: "Copy JSON" })).toBeNull();
   });
+
+  it("indents 12px per nesting level (relative padding, effective 36px at depth 3)", async () => {
+    render(JsonTree, { props: { value: obj, raw } });
+    await fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]);
+    await fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]);
+    const row = screen.getByText("deepest").closest<HTMLElement>("div[style]")!;
+    expect(row.style.paddingLeft).toBe("12px");
+    let total = 0;
+    for (let el: HTMLElement | null = row; el; el = el.parentElement) {
+      total += parseInt(el.style.paddingLeft || "0", 10);
+    }
+    expect(total).toBe(36);
+  });
+  it("shows [i] indices for array elements and their keys", () => {
+    render(JsonTree, { props: { value: [{ k: "x" }, { k: "y" }], raw: "{}" } });
+    expect(screen.getByText("[0]")).toHaveClass("text-text-tertiary");
+    expect(screen.getByText("[1]")).toBeInTheDocument();
+    expect(screen.getAllByText("k")).toHaveLength(2);
+  });
+  it("lets long scalar values wrap", () => {
+    render(JsonTree, { props: { value: { msg: "x".repeat(300) }, raw: "{}" } });
+    expect(screen.getByText(`"${"x".repeat(300)}"`)).toHaveClass("break-words");
+  });
 });

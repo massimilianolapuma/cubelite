@@ -65,7 +65,9 @@
 </script>
 
 {#snippet label(key: string)}
-  {#if !Array.isArray(value)}
+  {#if Array.isArray(value)}
+    <span class="text-text-tertiary">[{key}]</span>
+  {:else}
     <span class="text-text-secondary">{key}</span>
     <span class="text-text-tertiary">:</span>
   {/if}
@@ -89,19 +91,20 @@
     </div>
   {/if}
   {#if !isComposite(value)}
-    <span data-json={scalarType(value)} style="color: {SCALAR_COLOR[scalarType(value)]}"
+    <span class="break-words" data-json={scalarType(value)} style="color: {SCALAR_COLOR[scalarType(value)]}"
       >{JSON.stringify(value)}</span
     >
   {:else}
     {#each entries as [key, child] (key)}
-      <div style="padding-left: {depth * 12}px">
+      <!-- Relative indent: nested trees sit inside the parent row, so 12px per level compounds to depth * 12. -->
+      <div style="padding-left: {depth > 0 ? 12 : 0}px">
         {#if isComposite(child)}
           {@const open = isOpen(key)}
           <button
             type="button"
             class="inline-flex items-center"
             aria-expanded={open}
-            aria-label={key}
+            aria-label="Toggle {key}"
             onclick={() => toggle(key)}
           >
             <ChevronRight size={10} class={open ? "rotate-90" : ""} />
@@ -114,7 +117,7 @@
           {/if}
         {:else}
           {@render label(key)}
-          <span data-json={scalarType(child)} style="color: {SCALAR_COLOR[scalarType(child)]}"
+          <span class="break-words" data-json={scalarType(child)} style="color: {SCALAR_COLOR[scalarType(child)]}"
             >{JSON.stringify(child)}</span
           >
         {/if}
