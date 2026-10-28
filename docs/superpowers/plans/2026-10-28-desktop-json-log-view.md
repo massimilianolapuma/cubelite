@@ -343,9 +343,10 @@ describe("JsonTree", () => {
   });
   it("expands a collapsed node on click", async () => {
     render(JsonTree, { props: { value: obj, raw } });
-    const toggle = screen.getAllByRole("button", { expanded: false })[0];
+    const toggle = screen.getAllByRole("button", { expanded: false })[0]; // the collapsed `deep` node
     await fireEvent.click(toggle);
-    expect(screen.getByText("deepest")).toBeInTheDocument();
+    expect(screen.getByText("deeper")).toBeInTheDocument();   // its direct child key appears
+    expect(screen.queryByText("deepest")).toBeNull();         // `deeper` (depth 3) stays collapsed
   });
   it("shows [N items] for collapsed arrays", () => {
     render(JsonTree, { props: { value: { l: { m: [1, 2] } }, raw: "{}" } });
