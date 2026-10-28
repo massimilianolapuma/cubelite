@@ -381,3 +381,22 @@ describe("detach button (#298)", () => {
     expect(screen.queryByLabelText("Pop out log session")).toBeNull();
   });
 });
+
+describe("JSON view toggle (#454)", () => {
+  afterEach(() => {
+    logPanel.jsonView = false;
+  });
+  it("is off by default and flips logPanel.jsonView with aria-pressed", async () => {
+    render(LogToolbar, { props: { session: sessionWith(["x"]) } });
+    const btn = screen.getByRole("button", { name: "JSON view" });
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+    await fireEvent.click(btn);
+    expect(logPanel.jsonView).toBe(true);
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+  });
+  it("persists under logPanel.jsonView", async () => {
+    render(LogToolbar, { props: { session: sessionWith(["x"]) } });
+    await fireEvent.click(screen.getByRole("button", { name: "JSON view" }));
+    expect(window.localStorage.getItem("cubelite.logPanel.jsonView")).toBe("true");
+  });
+});
