@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **JSON view for structured logs** (desktop, #454): a `{}` toggle in the log
+  toolbar (off by default, remembered) renders JSON log lines as
+  `LEVEL  message  key=value …`, taking the level from the line itself, and a
+  click expands the line into a formatted tree with Copy JSON / Copy raw.
+  Plain-text lines, search, export and the pop-out window are unchanged.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added

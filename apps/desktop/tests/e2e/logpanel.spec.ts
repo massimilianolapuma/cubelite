@@ -73,3 +73,34 @@ test("merged all-containers view interleaves color-tagged lines", async ({ page 
   // previous-instance chip is gone in merged mode
   await expect(page.getByRole("button", { name: "prev" })).toHaveCount(0);
 });
+
+test("JSON view humanises structured lines and expands them on click (#454)", async ({ page }) => {
+  await boot(page);
+  await openLogPanel(page, "api-0");
+  const json = '{"level":"error","msg":"e2e-json-boom","orderId":"A-1931"}';
+  await page.evaluate(
+    (message) =>
+      window.__emitTauriEvent?.("pod-log-line:1", {
+        pod: "api-0",
+        namespace: "default",
+        time: "2026-08-04T10:00:00Z",
+        level: "info",
+        message,
+      }),
+    json,
+  );
+  await expect(page.getByText(json)).toBeVisible();
+
+  await page.getByRole("button", { name: "JSON view" }).click();
+  const row = page.getByTestId("json-row");
+  await expect(row).toContainText("e2e-json-boom");
+  await expect(row).toContainText("orderId=A-1931");
+  await expect(page.getByText(json, { exact: true })).toHaveCount(0);
+
+  await row.click();
+  await expect(page.getByTestId("json-tree")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy raw" })).toBeVisible();
+
+  await page.getByRole("button", { name: "JSON view" }).click();
+  await expect(page.getByText(json)).toBeVisible();
+});
