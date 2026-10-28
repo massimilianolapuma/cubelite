@@ -398,3 +398,19 @@ describe("LogSession seeding (#298 pop-out)", () => {
     expect(vi.mocked(streamPodLog).mock.lastCall?.[3]?.sinceTime).toBeUndefined();
   });
 });
+
+describe("expanded lines (#454)", () => {
+  it("toggles ids on and off", () => {
+    const s = new LogSession("default", "api-0");
+    s.toggleExpanded(3);
+    expect(s.expanded.has(3)).toBe(true);
+    s.toggleExpanded(3);
+    expect(s.expanded.has(3)).toBe(false);
+  });
+  it("is cleared with the buffer", () => {
+    const s = new LogSession("default", "api-0");
+    s.toggleExpanded(1);
+    s.clear();
+    expect(s.expanded.size).toBe(0);
+  });
+});

@@ -75,6 +75,19 @@
 		}
 	});
 
+	// Expanding or collapsing a row while following re-measures it; once it
+	// has, scroll to the end again so the newest row's tree stays in view.
+	// follow is left untouched.
+	$effect(() => {
+		void session.expanded.size;
+		if (!session.following || !scrollEl) return;
+		const raf = requestAnimationFrame(() => {
+			const n = untrack(() => lines.length);
+			if (n > 0) get(virtualizer).scrollToIndex(n - 1, { align: 'end' });
+		});
+		return () => cancelAnimationFrame(raf);
+	});
+
 	// Jump to the active search match on n/N navigation and pause follow.
 	// Depends only on `cursor` (not `activeId`/`matchIds`/`lines`, which are
 	// read `untrack`ed) so recomputing matches while typing doesn't yank the
@@ -180,6 +193,9 @@
 							source={session.merged && line.container
 								? { name: line.container, color: identityColorFor(session.containers, line.container) }
 								: null}
+							jsonView={logPanel.jsonView}
+							expanded={session.expanded.has(line.id)}
+							ontoggle={() => session.toggleExpanded(line.id)}
 						/>
 					</div>
 				{/each}

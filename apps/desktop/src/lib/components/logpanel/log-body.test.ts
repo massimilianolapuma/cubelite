@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/svelte";
+import { render, screen, waitFor, fireEvent } from "@testing-library/svelte";
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -11,6 +11,19 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   stopLogs: vi.fn(async () => {}),
   getPodContainers: vi.fn(async () => []),
 }));
+
+const virtualizers: unknown[] = [];
+vi.mock("@tanstack/svelte-virtual", async (importOriginal) => {
+  const m = await importOriginal<typeof import("@tanstack/svelte-virtual")>();
+  return {
+    ...m,
+    createVirtualizer: ((o: Parameters<typeof m.createVirtualizer>[0]) => {
+      const store = m.createVirtualizer(o);
+      virtualizers.push(store);
+      return store;
+    }) as typeof m.createVirtualizer,
+  };
+});
 
 import LogBody from "./LogBody.svelte";
 import { LogSession, ALL_CONTAINERS } from "#lib/stores/logSession.svelte.ts";
@@ -171,5 +184,76 @@ describe("LogBody", () => {
       logPanel.search.next(); // same store call Enter-nav in the toolbar makes
       await waitFor(() => expect(s.following).toBe(false));
     });
+  });
+});
+
+describe("JSON view (#454)", () => {
+  const json = '{"level":"warn","msg":"order accepted","orderId":"A-1931","meta":{"a":1}}';
+  afterEach(() => {
+    logPanel.jsonView = false;
+  });
+  it("renders raw lines unchanged with the toggle on", async () => {
+    logPanel.jsonView = true;
+    render(LogBody, { props: { session: sessionWith(["plain text"]) } });
+    expect(await screen.findByText("plain text")).toBeInTheDocument();
+    expect(screen.queryByTestId("json-row")).toBeNull();
+  });
+  it("humanises a JSON line: message, tail and JSON level", async () => {
+    logPanel.jsonView = true;
+    render(LogBody, { props: { session: sessionWith([json]) } });
+    const row = await screen.findByTestId("json-row");
+    expect(row).toHaveTextContent("order accepted");
+    expect(row).toHaveTextContent("orderId=A-1931");
+    expect(row).toHaveTextContent('meta={"a":1}');
+    expect(screen.getByText("warn")).toBeInTheDocument(); // badge from the JSON level, core level is info
+    expect(row).toHaveAttribute("aria-expanded", "false");
+  });
+  it("leaves the JSON line raw with the toggle off", async () => {
+    render(LogBody, { props: { session: sessionWith([json]) } });
+    expect(await screen.findByText(json)).toBeInTheDocument();
+  });
+  it("click expands the tree and toggles session.expanded", async () => {
+    logPanel.jsonView = true;
+    const s = sessionWith([json]);
+    render(LogBody, { props: { session: s } });
+    const row = await screen.findByTestId("json-row");
+    await fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("json-tree")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy raw" })).toBeInTheDocument();
+    expect(s.expanded.size).toBe(1);
+    await fireEvent.click(row);
+    expect(screen.queryByTestId("json-tree")).toBeNull();
+  });
+  it("expanding while following keeps follow and scrolls to the end", async () => {
+    logPanel.jsonView = true;
+    const s = sessionWith([json]);
+    expect(s.following).toBe(true);
+    render(LogBody, { props: { session: s } });
+    const row = await screen.findByTestId("json-row");
+    const { get } = await import("svelte/store");
+    const v = get(virtualizers[virtualizers.length - 1] as Parameters<typeof get>[0]) as {
+      scrollToIndex: (i: number, o: unknown) => void;
+    };
+    const spy = vi.spyOn(v, "scrollToIndex");
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
+      cb(0);
+      return 0;
+    });
+    await fireEvent.click(row);
+    expect(s.following).toBe(true);
+    await waitFor(() => expect(spy).toHaveBeenCalledWith(0, { align: "end" }));
+  });
+  it("highlights the search query inside the humanised message", async () => {
+    logPanel.jsonView = true;
+    const s = sessionWith([json]);
+    logPanel.search.attach(() => s.ring.lines);
+    vi.useFakeTimers();
+    logPanel.search.setQuery("accepted");
+    vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
+    vi.useRealTimers();
+    render(LogBody, { props: { session: s } });
+    const mark = await screen.findByText("accepted");
+    expect(mark.tagName).toBe("MARK");
   });
 });
