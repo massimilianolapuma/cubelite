@@ -24,19 +24,22 @@ class ResizeObserverStub implements ResizeObserver {
 globalThis.ResizeObserver ??= ResizeObserverStub;
 
 // jsdom performs no layout, so every element reports 0x0. @tanstack/virtual-
-// core (LogBody's virtualized list) sizes its viewport from
-// `offsetWidth`/`offsetHeight` (not `getBoundingClientRect`), and treats a
-// 0-height scroll container as "nothing visible" — it renders zero virtual
-// items. Stub a fixed non-zero size so virtualized rows actually mount.
-Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
-  configurable: true,
-  get(): number {
-    return 400;
-  },
-});
-Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
-  configurable: true,
-  get(): number {
-    return 800;
-  },
-});
+// core (LogBody's virtualized list) sizes its viewport from the element's
+// own size properties (not `getBoundingClientRect`): `offsetWidth`/
+// `offsetHeight` up to 3.19.5, `clientWidth`/`clientHeight` from 3.19.7. It
+// treats a 0-height scroll container as "nothing visible" and renders zero
+// virtual items. Stub a fixed non-zero size on both pairs so virtualized
+// rows actually mount whichever one the installed version reads.
+for (const [prop, value] of [
+  ["offsetHeight", 400],
+  ["clientHeight", 400],
+  ["offsetWidth", 800],
+  ["clientWidth", 800],
+] as const) {
+  Object.defineProperty(HTMLElement.prototype, prop, {
+    configurable: true,
+    get(): number {
+      return value;
+    },
+  });
+}
