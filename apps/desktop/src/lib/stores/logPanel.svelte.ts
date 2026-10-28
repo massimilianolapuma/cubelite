@@ -43,6 +43,7 @@ class LogPanelStore {
   #collapsed = persisted<boolean>("logPanel.collapsed", false, isBoolean);
   #timestamps = persisted<boolean>("logPanel.timestamps", true, isBoolean);
   #wrap = persisted<boolean>("logPanel.wrap", false, isBoolean);
+  #jsonView = persisted<boolean>("logPanel.jsonView", false, isBoolean);
   /** `namespace/pod` → last chosen container. */
   #containers = persisted<Record<string, string>>("logPanel.containers", {}, isStringRecord);
 
@@ -80,6 +81,12 @@ class LogPanelStore {
   }
   set wrap(v: boolean) {
     this.#wrap.value = v;
+  }
+  get jsonView(): boolean {
+    return this.#jsonView.value;
+  }
+  set jsonView(v: boolean) {
+    this.#jsonView.value = v;
   }
 
   rememberContainer(key: string, container: string): void {

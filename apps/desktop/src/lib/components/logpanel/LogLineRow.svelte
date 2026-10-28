@@ -1,25 +1,34 @@
 <script lang="ts">
 	import type { KeyedLogLine } from '#lib/stores/logs.svelte.ts';
 	import type { LogLevel } from '#lib/tauri.ts';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import { parseJsonLine } from '#lib/log-json.ts';
+	import JsonTree from './JsonTree.svelte';
 
 	let {
 		line,
 		timestamps,
 		wrap,
 		search = null,
-		source = null
+		source = null,
+		jsonView = false,
+		expanded = false,
+		ontoggle
 	}: {
 		line: KeyedLogLine;
 		timestamps: boolean;
 		wrap: boolean;
 		search?: { query: string; active: boolean } | null;
 		source?: { name: string; color: string } | null;
+		jsonView?: boolean;
+		expanded?: boolean;
+		ontoggle?: () => void;
 	} = $props();
 
-	const segments = $derived.by(() => {
-		if (!search || !search.query) return [{ text: line.message, hit: false }];
+	/** Split `src` into plain / search-hit segments for the active query. */
+	function segmentsOf(src: string): { text: string; hit: boolean }[] {
+		if (!search || !search.query) return [{ text: src, hit: false }];
 		const q = search.query.toLowerCase();
-		const src = line.message;
 		const out: { text: string; hit: boolean }[] = [];
 		let i = 0;
 		for (;;) {
@@ -32,7 +41,11 @@
 			out.push({ text: src.slice(at, at + q.length), hit: true });
 			i = at + q.length;
 		}
-	});
+	}
+
+	const segments = $derived(segmentsOf(line.message));
+	const view = $derived(jsonView ? parseJsonLine(line.message) : null);
+	const shownLevel = $derived(view?.level ?? line.level);
 
 	const levelColor: Record<LogLevel, string> = {
 		debug: 'var(--color-text-tertiary)',
@@ -56,7 +69,7 @@
 	}
 </script>
 
-<div class="flex items-baseline gap-2.5 px-2.5 py-px" style={rowStyle(line.level)}>
+{#snippet gutter()}
 	{#if timestamps}
 		<span class="w-[94px] shrink-0 type-micro font-mono text-text-disabled">{clock(line.time)}</span>
 	{/if}
@@ -68,10 +81,55 @@
 	{/if}
 	<span
 		class="w-[38px] shrink-0 type-micro font-mono font-semibold uppercase"
-		style="color: {levelColor[line.level]};"
+		style="color: {levelColor[shownLevel]};"
 	>
-		{line.level}
+		{shownLevel}
 	</span>
+{/snippet}
+
+{#snippet marks(segs: { text: string; hit: boolean }[])}
+	{#each segs as seg, i (i)}
+		{#if seg.hit}<mark
+				style={search?.active
+					? 'background: var(--color-status-warn); color: var(--color-surface-window);'
+					: 'background: var(--alpha-pill-warn); color: inherit;'}>{seg.text}</mark>
+		{:else}{seg.text}{/if}
+	{/each}
+{/snippet}
+
+{#if view}
+	<div style={rowStyle(shownLevel)}>
+		<div class="flex items-baseline gap-2.5 px-2.5 py-px">
+			{@render gutter()}
+			<button
+				type="button"
+				aria-expanded={expanded}
+				data-testid="json-row"
+				class="focus-ring min-w-0 cursor-pointer text-left type-log text-text-log {wrap
+					? 'break-all whitespace-pre-wrap'
+					: 'whitespace-pre'}"
+				onclick={() => ontoggle?.()}
+			>
+				<ChevronRight size={10} class="inline-block align-baseline {expanded ? 'rotate-90' : ''}" />
+				{@render marks(segmentsOf(view.message))}
+				{#each view.tail as item, n (item.key)}
+					<span class="whitespace-pre">{n === 0 ? ' ' : '  '}</span><span class="type-micro font-mono"
+						><span class="text-text-tertiary">{item.key}</span>=<span class="text-text-secondary"
+							>{@render marks(segmentsOf(item.value))}</span
+						></span
+					>
+				{/each}
+			</button>
+		</div>
+		{#if expanded}
+			<div class="bg-surface-raised px-2.5 py-1">
+				<JsonTree value={view.object} raw={line.message} />
+			</div>
+		{/if}
+	</div>
+{:else}
+<div class="flex items-baseline gap-2.5 px-2.5 py-px" style={rowStyle(line.level)}>
+	{@render gutter()}
 	<span class="type-log text-text-log {wrap ? 'break-all whitespace-pre-wrap' : 'whitespace-pre'}">
 		{#each segments as seg, i (i)}
 			{#if seg.hit}<mark
@@ -82,3 +140,4 @@
 		{/each}
 	</span>
 </div>
+{/if}

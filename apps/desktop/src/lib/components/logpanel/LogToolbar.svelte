@@ -4,6 +4,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
+	import Braces from '@lucide/svelte/icons/braces';
 	import Check from '@lucide/svelte/icons/check';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { logWindows } from '#lib/stores/logWindows.svelte.ts';
@@ -224,6 +225,20 @@
 		onclick={() => session.toggleFollow()}
 	>
 		{session.following ? '● Following' : '⏸ Paused'}
+	</button>
+
+	<!-- JSON view -->
+	<button
+		type="button"
+		class="focus-ring flex h-7 w-7 items-center justify-center rounded-md hover:text-text-secondary"
+		style={logPanel.jsonView ? 'color: var(--color-accent);' : 'color: var(--color-text-tertiary);'}
+		title="JSON view"
+		aria-label="JSON view"
+		aria-pressed={logPanel.jsonView}
+		data-testid="logpanel-json-view"
+		onclick={() => (logPanel.jsonView = !logPanel.jsonView)}
+	>
+		<Braces size={14} strokeWidth={1.5} />
 	</button>
 
 	<!-- pop out to separate window -->

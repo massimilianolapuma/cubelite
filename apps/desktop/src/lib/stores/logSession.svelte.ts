@@ -6,6 +6,7 @@
  * its sub-streams — exactly one in single-container mode, one per pod
  * container (init included) when `container === ALL_CONTAINERS`.
  */
+import { SvelteSet } from "svelte/reactivity";
 import { getPodContainers, type ContainerDetail, type LogLine } from "#lib/tauri.ts";
 import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
@@ -58,6 +59,8 @@ export class LogSession {
   tailLines = $state(DEFAULT_TAIL);
   seenCount = $state(0);
   ring = new LogRing(RING_CAP);
+  /** Line ids (KeyedLogLine.id) whose JSON view is expanded. */
+  expanded = new SvelteSet<number>();
 
   #streams = $state<ContainerStream[]>([]);
   #openError = $state<string | null>(null);
@@ -248,15 +251,22 @@ export class LogSession {
     for (const s of this.#streams) s.retryNow();
   }
 
+  toggleExpanded(id: number): void {
+    if (this.expanded.has(id)) this.expanded.delete(id);
+    else this.expanded.add(id);
+  }
+
   clear(): void {
     this.ring.clear();
     this.#pending = [];
+    this.expanded.clear();
   }
 
   #resetBuffer(): void {
     this.ring.clear();
     this.#pending = [];
     this.seenCount = 0;
+    this.expanded.clear();
   }
 
   async #stopStreams(): Promise<void> {
