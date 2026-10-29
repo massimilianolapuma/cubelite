@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   click expands the line into a formatted tree with Copy JSON / Copy raw.
   Plain-text lines, search, export and the pop-out window are unchanged.
 
+### Fixed
+
+- **Log pop-out showed 404 in dev** (desktop, #459): the detached log window
+  opened `index.html?logWindow=…`, which the SvelteKit dev server does not
+  route; it now opens `/?logWindow=…`, valid in dev and in the static build.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added
