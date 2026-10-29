@@ -158,3 +158,39 @@ describe("start/stop", () => {
     expect(streamLogs).not.toHaveBeenCalled();
   });
 });
+
+describe("JSON view (#461)", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem("cubelite.logs.jsonView");
+    logs.jsonView = false;
+  });
+
+  it("jsonView defaults to off and persists under its own key", () => {
+    expect(logs.jsonView).toBe(false);
+    logs.jsonView = true;
+    expect(window.localStorage.getItem("cubelite.logs.jsonView")).toBe("true");
+    expect(
+      window.localStorage.getItem("cubelite.logPanel.jsonView"),
+    ).toBeNull();
+  });
+
+  it("toggleExpanded flips a line id; clear() and start() drop every expansion", async () => {
+    logs.push(line());
+    vi.advanceTimersByTime(FLUSH_MS);
+    const id = logs.lines[0]!.id;
+    logs.toggleExpanded(id);
+    expect(logs.expanded.has(id)).toBe(true);
+    logs.toggleExpanded(id);
+    expect(logs.expanded.has(id)).toBe(false);
+
+    logs.toggleExpanded(id);
+    logs.clear();
+    expect(logs.expanded.size).toBe(0);
+
+    logs.toggleExpanded(7);
+    app.activeCluster = "prod";
+    app.kubeconfigPath = "/home/u/.kube/config";
+    await logs.start([{ namespace: "default", name: "api-0" }]);
+    expect(logs.expanded.size).toBe(0);
+  });
+});

@@ -3,7 +3,8 @@
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { matchesSelector, parseLabelSelector } from '#lib/k8s-match.ts';
-	import type { LogLevel } from '#lib/tauri.ts';
+	import Braces from '@lucide/svelte/icons/braces';
+	import LogLineRow from '#lib/components/logpanel/LogLineRow.svelte';
 
 	/** Backend streams at most this many pods (MAX_LOG_PODS in Rust). */
 	const MAX_STREAMED_PODS = 20;
@@ -53,26 +54,6 @@
 		{ value: 'error', label: 'ERROR', color: 'var(--color-status-err)' }
 	];
 
-	const levelColor: Record<LogLevel, string> = {
-		debug: 'var(--color-text-tertiary)',
-		info: 'var(--color-status-info)',
-		warn: 'var(--color-status-warn)',
-		error: 'var(--color-status-err)'
-	};
-
-	function rowStyle(level: LogLevel): string {
-		if (level === 'error')
-			return 'border-left: 2px solid var(--color-status-err); background: var(--alpha-log-error-row);';
-		if (level === 'warn')
-			return 'border-left: 2px solid color-mix(in srgb, var(--color-status-warn) 50%, transparent); background: var(--alpha-log-warn-row);';
-		return 'border-left: 2px solid transparent;';
-	}
-
-	function clock(iso: string | null): string {
-		if (!iso) return '—';
-		const d = new Date(iso);
-		return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString([], { hour12: false });
-	}
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col gap-3 p-4">
@@ -117,6 +98,20 @@
 			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
 		/>
 
+		<!-- JSON view: own preference, independent of the log panel's (#461) -->
+		<button
+			type="button"
+			class="focus-ring flex h-7 w-7 items-center justify-center rounded-md hover:text-text-secondary"
+			style={logs.jsonView ? 'color: var(--color-accent);' : 'color: var(--color-text-tertiary);'}
+			title="JSON view"
+			aria-label="JSON view"
+			aria-pressed={logs.jsonView}
+			data-testid="logs-json-view"
+			onclick={() => (logs.jsonView = !logs.jsonView)}
+		>
+			<Braces size={14} strokeWidth={1.5} />
+		</button>
+
 		<button
 			type="button"
 			class="focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md px-2.5 font-medium"
@@ -156,17 +151,15 @@
 				</p>
 			{:else}
 				{#each logs.filtered as line (line.id)}
-					<div class="flex items-baseline gap-2.5 px-2.5 py-px" style={rowStyle(line.level)}>
-						<span class="shrink-0 type-micro font-mono text-text-disabled">{clock(line.time)}</span>
-						<span
-							class="w-[38px] shrink-0 type-micro font-mono font-semibold uppercase"
-							style="color: {levelColor[line.level]};"
-						>
-							{line.level}
-						</span>
-						<span class="shrink-0 type-micro font-mono text-text-secondary">{line.pod}</span>
-						<span class="type-log break-all text-text-log">{line.message}</span>
-					</div>
+					<LogLineRow
+						{line}
+						timestamps={true}
+						wrap={true}
+						source={{ name: line.pod, color: 'var(--color-text-secondary)', wide: true }}
+						jsonView={logs.jsonView}
+						expanded={logs.expanded.has(line.id)}
+						ontoggle={() => logs.toggleExpanded(line.id)}
+					/>
 				{/each}
 			{/if}
 		</div>

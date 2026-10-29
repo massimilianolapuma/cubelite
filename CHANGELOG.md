@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `LEVEL  message  key=value …`, taking the level from the line itself, and a
   click expands the line into a formatted tree with Copy JSON / Copy raw.
   Plain-text lines, search, export and the pop-out window are unchanged.
+- **JSON view in the aggregated Logs view** (desktop, #461): the same `{}`
+  toggle and expandable tree as the log panel, with its own remembered
+  preference; rows now share the log panel's row component and show the
+  full pod name on hover.
 
 ### Fixed
 

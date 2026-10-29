@@ -19,7 +19,8 @@
 		timestamps: boolean;
 		wrap: boolean;
 		search?: { query: string; active: boolean } | null;
-		source?: { name: string; color: string } | null;
+		/** `wide` widens the column for pod names (aggregated Logs view). */
+		source?: { name: string; color: string; wide?: boolean } | null;
 		jsonView?: boolean;
 		expanded?: boolean;
 		ontoggle?: () => void;
@@ -75,8 +76,9 @@
 	{/if}
 	{#if source}
 		<span
-			class="w-[52px] shrink-0 truncate type-micro font-mono font-semibold"
-			style="color: {source.color};">{source.name}</span
+			class="{source.wide ? 'w-[140px]' : 'w-[52px]'} shrink-0 truncate type-micro font-mono font-semibold"
+			style="color: {source.color};"
+			title={source.name}>{source.name}</span
 		>
 	{/if}
 	<span

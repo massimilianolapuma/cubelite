@@ -109,3 +109,61 @@ describe("LogsView", () => {
     expect(logs.lines).toHaveLength(0);
   });
 });
+
+describe("LogsView JSON view (#461)", () => {
+  const json =
+    '{"level":"warn","msg":"disk almost full","disk":"/var","pct":91}';
+
+  beforeEach(() => {
+    window.localStorage.removeItem("cubelite.logs.jsonView");
+    logs.jsonView = false;
+  });
+
+  it("header toggle flips logs.jsonView and persists it", async () => {
+    render(LogsView);
+    const toggle = screen.getByRole("button", { name: "JSON view" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await fireEvent.click(toggle);
+    expect(logs.jsonView).toBe(true);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(window.localStorage.getItem("cubelite.logs.jsonView")).toBe("true");
+  });
+
+  it("toggle off: a JSON line renders raw", async () => {
+    render(LogsView);
+    await new Promise((r) => setTimeout(r, 0));
+    logs.push(line({ message: json }));
+    expect(await screen.findByText(json)).toBeInTheDocument();
+    expect(screen.queryByTestId("json-row")).toBeNull();
+  });
+
+  it("toggle on: humanised row with JSON level, click expands the tree, Clear collapses", async () => {
+    logs.jsonView = true;
+    render(LogsView);
+    await new Promise((r) => setTimeout(r, 0));
+    logs.push(line({ message: json }));
+    const row = await screen.findByTestId("json-row");
+    expect(row).toHaveTextContent("disk almost full");
+    expect(row).toHaveTextContent("disk=/var");
+    expect(row).toHaveTextContent("pct=91");
+    expect(screen.getByText("warn")).toBeInTheDocument();
+    expect(screen.queryByText(json)).toBeNull();
+
+    await fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("json-tree")).toBeInTheDocument();
+    expect(logs.expanded.has(logs.lines[0]!.id)).toBe(true);
+
+    await fireEvent.click(screen.getByText("Clear"));
+    expect(logs.expanded.size).toBe(0);
+  });
+
+  it("pod column is wide and carries the full name as title", async () => {
+    render(LogsView);
+    await new Promise((r) => setTimeout(r, 0));
+    logs.push(line({ pod: "simulator-bff-5dd4ff54cf-9bq7n" }));
+    const pod = await screen.findByText("simulator-bff-5dd4ff54cf-9bq7n");
+    expect(pod).toHaveAttribute("title", "simulator-bff-5dd4ff54cf-9bq7n");
+    expect(pod.className).toContain("w-[140px]");
+  });
+});
