@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preference; rows now share the log panel's row component and show the
   full pod name on hover.
 
+### Fixed
+
+- **Log pop-out showed 404 in dev** (desktop, #459): the detached log window
+  opened `index.html?logWindow=…`, which the SvelteKit dev server does not
+  route; it now opens `/?logWindow=…`, valid in dev and in the static build.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added
