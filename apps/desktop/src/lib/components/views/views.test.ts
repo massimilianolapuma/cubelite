@@ -304,3 +304,37 @@ describe("EventsView", () => {
     expect(screen.getByText("No events found.")).toBeInTheDocument();
   });
 });
+
+describe("OverviewView stat cards navigate (#463)", () => {
+  const cases: [string, string][] = [
+    ["Nodes", "nodes"],
+    ["Pods running", "pods"],
+    ["Deploys healthy", "deployments"],
+    ["Warnings", "events"],
+  ];
+
+  for (const [label, view] of cases) {
+    it(`${label} card opens the ${view} view`, async () => {
+      app.view = "overview";
+      render(OverviewView);
+      const card = screen.getByRole("button", { name: new RegExp(`^${label}:.*Open `) });
+      await fireEvent.click(card);
+      expect(app.view).toBe(view);
+    });
+  }
+
+  it("cards expose label and value in the accessible name", () => {
+    resources.pods = [pod(), pod({ name: "api-1", phase: "Pending" })];
+    render(OverviewView);
+    expect(screen.getByRole("button", { name: "Pods running: 1/2. Open Pods" })).toBeInTheDocument();
+  });
+});
+
+describe("StatCard (#463)", () => {
+  it("stays a static card without onclick", async () => {
+    const { default: StatCard } = await import("#lib/components/ui/StatCard.svelte");
+    render(StatCard, { label: "Total pods", value: 7 });
+    expect(screen.getByText("Total pods")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});
