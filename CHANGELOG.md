@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **JSON view rounded large integers** (desktop, #455): ids and nanosecond
+  timestamps beyond 2^53 are now kept exact in the row tail, the tree and
+  Copy JSON (engines without `JSON.parse` source access keep the old
+  rounding).
+
 - **Log pop-out showed 404 in dev** (desktop, #459): the detached log window
   opened `index.html?logWindow=…`, which the SvelteKit dev server does not
   route; it now opens `/?logWindow=…`, valid in dev and in the static build.

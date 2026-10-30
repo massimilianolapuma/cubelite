@@ -1,6 +1,7 @@
 import type { LogLevel } from "#lib/tauri.ts";
 
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+/** `bigint` holds integers outside the safe range, kept exact from the source text (#455). */
+export type JsonValue = string | number | bigint | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
 export type JsonLogView = {
@@ -61,10 +62,52 @@ export function mapLevel(raw: unknown): LogLevel | null {
   return "error";
 }
 
+type ReviverContext = { source?: string } | undefined;
+type ParseWithContext = (
+  text: string,
+  reviver: (key: string, value: unknown, context?: ReviverContext) => unknown,
+) => unknown;
+
+/**
+ * `JSON.parse` that keeps integers beyond ±2^53 exact as `bigint`, using the
+ * reviver's source text (ES2025 "JSON.parse source text access"). Engines
+ * without it pass no context and the value stays a rounded number.
+ */
+function parseJson(text: string): unknown {
+  return (JSON.parse as unknown as ParseWithContext)(text, (_key, value, context) => {
+    if (typeof value !== "number" || Number.isSafeInteger(value) || !Number.isFinite(value)) return value;
+    const source = context?.source;
+    return source !== undefined && /^-?\d+$/.test(source) ? BigInt(source) : value;
+  });
+}
+
+/**
+ * Serialises like `JSON.stringify(value, null, indent)` but prints `bigint`
+ * values as bare digits, which `JSON.stringify` refuses.
+ */
+export function jsonText(value: JsonValue, indent = 0, depth = 0): string {
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value !== "object" || value === null) return JSON.stringify(value);
+  const pad = (d: number) => " ".repeat(indent * d);
+  const inner = pad(depth + 1);
+  const join = indent > 0 ? `,\n${inner}` : ",";
+  const open = indent > 0 ? `\n${inner}` : "";
+  const close = indent > 0 ? `\n${pad(depth)}` : "";
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    return `[${open}${value.map((v) => jsonText(v, indent, depth + 1)).join(join)}${close}]`;
+  }
+  const keys = Object.keys(value);
+  if (keys.length === 0) return "{}";
+  const sep = indent > 0 ? ": " : ":";
+  const entries = keys.map((k) => `${JSON.stringify(k)}${sep}${jsonText(value[k] as JsonValue, indent, depth + 1)}`);
+  return `{${open}${entries.join(join)}${close}}`;
+}
+
 /** Scalars as literals; containers as compact JSON cut to `max` characters. */
 export function compactValue(value: JsonValue, max = 60): string {
   if (typeof value !== "object" || value === null) return String(value);
-  const json = JSON.stringify(value);
+  const json = jsonText(value);
   return json.length > max ? `${json.slice(0, max)}…` : json;
 }
 
@@ -77,7 +120,7 @@ export function displayText(s: string): string {
 }
 
 export function prettyJson(object: JsonObject): string {
-  return JSON.stringify(object, null, 2);
+  return jsonText(object, 2);
 }
 
 /** First own key matching a candidate (candidate order wins) whose value passes `accept`. */
@@ -100,7 +143,7 @@ export function parseJsonLine(message: string): JsonLogView | null {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(s);
+    parsed = parseJson(s);
   } catch {
     return null;
   }
@@ -109,7 +152,11 @@ export function parseJsonLine(message: string): JsonLogView | null {
 
   const consumed = new Set<string>();
 
-  const timeKey = findKey(object, TIME_KEYS, (v) => typeof v === "string" || typeof v === "number");
+  const timeKey = findKey(
+    object,
+    TIME_KEYS,
+    (v) => typeof v === "string" || typeof v === "number" || typeof v === "bigint",
+  );
   const time = timeKey === null ? null : String(object[timeKey]);
   if (timeKey !== null) consumed.add(timeKey);
 
@@ -139,7 +186,7 @@ export function parseJsonLine(message: string): JsonLogView | null {
       text = object[firstKey] as string;
       consumed.add(firstKey);
     } else {
-      text = JSON.stringify(object);
+      text = jsonText(object);
       compactFallback = true;
     }
   }
