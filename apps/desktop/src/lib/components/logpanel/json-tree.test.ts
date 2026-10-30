@@ -97,3 +97,16 @@ describe("JsonTree", () => {
     expect(screen.queryByRole("button", { name: "Toggle b" })).toBeNull();
   });
 });
+
+describe("big integers (#455)", () => {
+  it("renders a bigint as a number and copies it exact", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.assign(navigator, { clipboard: { writeText } });
+    const big = 12345678901234567890n;
+    render(JsonTree, { props: { value: { id: big, n: 1 }, raw: '{"id":12345678901234567890,"n":1}' } });
+    const cell = screen.getByText("12345678901234567890");
+    expect(cell.getAttribute("style")).toContain("var(--color-cluster-amber)");
+    await fireEvent.click(screen.getByRole("button", { name: "Copy JSON" }));
+    expect(writeText).toHaveBeenLastCalledWith('{\n  "id": 12345678901234567890,\n  "n": 1\n}');
+  });
+});

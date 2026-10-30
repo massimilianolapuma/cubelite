@@ -1,7 +1,7 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
-  import { prettyJson, type JsonValue, type JsonObject } from "#lib/log-json.ts";
+  import { jsonText, prettyJson, type JsonValue, type JsonObject } from "#lib/log-json.ts";
   import JsonTree from "./JsonTree.svelte";
 
   interface Props {
@@ -44,7 +44,7 @@
   function scalarType(v: JsonValue): "string" | "number" | "boolean" | "null" {
     if (v === null) return "null";
     if (typeof v === "string") return "string";
-    if (typeof v === "number") return "number";
+    if (typeof v === "number" || typeof v === "bigint") return "number";
     return "boolean";
   }
 
@@ -80,7 +80,7 @@
         type="button"
         class="type-caption text-text-secondary hover:underline"
         aria-label="Copy JSON"
-        onclick={() => copy(isComposite(value) && !Array.isArray(value) ? prettyJson(value) : JSON.stringify(value, null, 2))}
+        onclick={() => copy(isComposite(value) && !Array.isArray(value) ? prettyJson(value) : jsonText(value, 2))}
       >Copy JSON</button>
       <button
         type="button"
@@ -92,7 +92,7 @@
   {/if}
   {#if !isComposite(value)}
     <span class="break-words" data-json={scalarType(value)} style="color: {SCALAR_COLOR[scalarType(value)]}"
-      >{JSON.stringify(value)}</span
+      >{jsonText(value)}</span
     >
   {:else}
     {#each entries as [key, child] (key)}
@@ -121,7 +121,7 @@
         {:else}
           {@render label(key)}
           <span class="break-words" data-json={scalarType(child)} style="color: {SCALAR_COLOR[scalarType(child)]}"
-            >{JSON.stringify(child)}</span
+            >{jsonText(child)}</span
           >
         {/if}
       </div>

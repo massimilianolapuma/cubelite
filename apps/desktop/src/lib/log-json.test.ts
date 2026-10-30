@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { parseJsonLine, mapLevel, compactValue, prettyJson, displayText } from "#lib/log-json.ts";
+import {
+  parseJsonLine,
+  mapLevel,
+  compactValue,
+  prettyJson,
+  displayText,
+  type JsonObject,
+} from "#lib/log-json.ts";
 
 describe("parseJsonLine detection", () => {
   it("returns a view for a JSON object line", () => {
@@ -130,5 +137,49 @@ describe("review fixes (#454)", () => {
   it("maps verbose and dpanic", () => {
     expect(mapLevel("verbose")).toBe("debug");
     expect(mapLevel("DPANIC")).toBe("error");
+  });
+});
+
+describe("big integers (#455)", () => {
+  const big = "12345678901234567890";
+  const nanos = "1730000000000000123";
+
+  it("keeps an unsafe integer exact in the tail", () => {
+    const view = parseJsonLine(`{"msg":"x","id":${big}}`);
+    expect(view?.tail).toEqual([{ key: "id", value: big }]);
+    expect(typeof view?.object.id).toBe("bigint");
+  });
+
+  it("keeps safe integers and decimals as plain numbers", () => {
+    const view = parseJsonLine('{"msg":"x","n":42,"f":1.5,"e":1e3,"max":9007199254740991}');
+    expect(view?.object.n).toBe(42);
+    expect(view?.object.f).toBe(1.5);
+    expect(view?.object.e).toBe(1000);
+    expect(view?.object.max).toBe(9007199254740991);
+  });
+
+  it("accepts a nanosecond epoch as the time field", () => {
+    const view = parseJsonLine(`{"ts":${nanos},"msg":"x"}`);
+    expect(view?.time).toBe(nanos);
+    expect(view?.tail).toEqual([]);
+  });
+
+  it("compactValue and prettyJson print it unquoted and exact", () => {
+    const view = parseJsonLine(`{"msg":"x","meta":{"id":${big},"list":[${big}]}}`);
+    expect(view?.tail).toEqual([{ key: "meta", value: `{"id":${big},"list":[${big}]}` }]);
+    expect(prettyJson(view!.object)).toBe(
+      `{\n  "msg": "x",\n  "meta": {\n    "id": ${big},\n    "list": [\n      ${big}\n    ]\n  }\n}`,
+    );
+  });
+
+  it("compact-JSON message fallback keeps the digits", () => {
+    const view = parseJsonLine(`{"id":${big}}`);
+    expect(view?.message).toBe(`{"id":${big}}`);
+  });
+
+  it("prettyJson still matches JSON.stringify for ordinary values", () => {
+    const obj: JsonObject = { s: 'q"\\n', n: -0.5, b: false, z: null, a: [1, "x", { k: [] }, {}], o: {} };
+    expect(prettyJson(obj)).toBe(JSON.stringify(obj, null, 2));
+    expect(compactValue(obj, 1000)).toBe(JSON.stringify(obj));
   });
 });
