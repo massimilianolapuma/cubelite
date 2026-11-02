@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opened `index.html?logWindow=…`, which the SvelteKit dev server does not
   route; it now opens `/?logWindow=…`, valid in dev and in the static build.
 
+- **Dependency audit** (#470): `minimatch` is pinned to `>=11.0.1` through a
+  root `pnpm.overrides` entry so `pnpm audit` passes GHSA-g3hv-75wg-m249. The
+  package reaches the tree only through dev tooling (`eslint`,
+  `@eslint/config-array`, `@typescript-eslint/typescript-estree`), which
+  still declare `^10` while their own bumps are in flight; the override goes
+  once they ship minimatch 11.
+
 ## [0.6.0] - 2026-10-21
 
 ### Added
