@@ -3,14 +3,14 @@ pub mod env;
 
 use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
 use commands::kubernetes::{
-    cluster_capacity, delete_pod, exec_send, export_log, get_current_context, get_pod_containers,
-    get_resource_yaml, kubeconfig_sources, list_configmaps, list_contexts, list_cronjobs,
-    list_deployments, list_events, list_helm_releases, list_ingresses, list_jobs, list_namespaces,
-    list_nodes, list_pod_metrics, list_pods, list_pvcs, list_secrets, list_services,
-    list_statefulsets, probe_cluster, restart_deployment, scale_deployment, set_context,
-    start_exec, start_port_forward, stop_exec, stop_logs, stop_port_forward, stream_logs,
-    stream_pod_log, unwatch_resources, watch_resources, ExecState, LogState, PortForwardState,
-    WatchState,
+    apply_resource_yaml, cluster_capacity, delete_pod, exec_send, export_log, get_current_context,
+    get_pod_containers, get_resource_yaml, kubeconfig_sources, list_configmaps, list_contexts,
+    list_cronjobs, list_deployments, list_events, list_helm_releases, list_ingresses, list_jobs,
+    list_namespaces, list_nodes, list_pod_metrics, list_pods, list_pvcs, list_secrets,
+    list_services, list_statefulsets, probe_cluster, restart_deployment, scale_deployment,
+    set_context, start_exec, start_port_forward, stop_exec, stop_logs, stop_port_forward,
+    stream_logs, stream_pod_log, unwatch_resources, watch_resources, ExecState, LogState,
+    PortForwardState, WatchState,
 };
 
 /// Entry point for the Tauri application.
@@ -47,6 +47,7 @@ pub fn run() {
             list_nodes,
             list_pvcs,
             get_resource_yaml,
+            apply_resource_yaml,
             start_exec,
             exec_send,
             stop_exec,

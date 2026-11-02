@@ -18,6 +18,8 @@ declare global {
     __lastExec?: Record<string, unknown>;
     /** Test hook: every `exec_send` payload, in order. */
     __execSent?: string[];
+    /** Test hook: arguments of the last `apply_resource_yaml` call. */
+    __lastApply?: Record<string, unknown>;
   }
 }
 
@@ -210,6 +212,10 @@ export function tauriMockScript(): string {
         return null;
       }
       case "stop_exec": return null;
+      case "apply_resource_yaml": {
+        window.__lastApply = args;
+        return null;
+      }
       default: return null;
     }
   };

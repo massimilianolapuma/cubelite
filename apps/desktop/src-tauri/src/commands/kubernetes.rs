@@ -775,6 +775,34 @@ pub async fn get_resource_yaml(
         .map_err(|e| e.to_string())
 }
 
+/// Replace one resource with an edited YAML manifest (PUT, `kubectl replace`
+/// semantics). `resource_type` accepts the same names as `get_resource_yaml`.
+#[tauri::command]
+pub async fn apply_resource_yaml(
+    kubeconfig_path: String,
+    resource_type: String,
+    namespace: String,
+    name: String,
+    yaml: String,
+    context: Option<String>,
+) -> Result<(), String> {
+    let rt: ResourceType = serde_json::from_value(serde_json::Value::String(resource_type))
+        .map_err(|e| format!("invalid resource_type: {e}"))?;
+
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .apply_resource_yaml(rt, &namespace, &name, &yaml)
+        .await
+        // The editor shows the reason as is, without the error-kind prefix.
+        .map_err(|e| match e {
+            cubelite_core::KubeconfigError::ClientError { reason } => reason,
+            other => other.to_string(),
+        })
+}
+
 /// Delete a pod (the owning controller will recreate it).
 #[tauri::command]
 pub async fn delete_pod(

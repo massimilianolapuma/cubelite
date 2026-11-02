@@ -516,6 +516,28 @@ export function stopExec(sessionId: string): Promise<void> {
 }
 
 /**
+ * Replace a resource with an edited YAML manifest (PUT, `kubectl replace`).
+ * Rejects with a message ready to show (invalid manifest, conflict, API error).
+ */
+export function applyResourceYaml(
+  kubeconfigPath: string,
+  resourceType: YamlResourceType,
+  namespace: string,
+  name: string,
+  yaml: string,
+  context?: string,
+): Promise<void> {
+  return invoke<void>("apply_resource_yaml", {
+    kubeconfigPath,
+    resourceType,
+    namespace,
+    name,
+    yaml,
+    context: context ?? null,
+  });
+}
+
+/**
  * Reachability probe (short timeouts). `summary` adds pod and capacity
  * totals for the All Clusters dashboard; leave it off on hot paths.
  */

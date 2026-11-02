@@ -70,6 +70,29 @@ test("pod shell runs a line and shows its output (#488)", async ({ page }) => {
   await expect(modal.getByText("hi", { exact: true })).toBeVisible();
 });
 
+test("YAML modal edits and applies the pod manifest", async ({ page }) => {
+  await boot(page);
+  await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
+  await page.getByText("api-0").click();
+  await page.getByRole("button", { name: "YAML" }).click();
+  const modal = page.getByRole("dialog", { name: "api-0.yaml" });
+  await expect(modal.getByText("kind: Pod")).toBeVisible();
+
+  await modal.getByRole("button", { name: "Edit" }).click();
+  const editor = modal.getByRole("textbox", { name: "Manifest YAML" });
+  await editor.fill("kind: Pod\nmetadata:\n  name: api-0\n  labels: {tier: web}\n");
+  await modal.getByRole("button", { name: "Apply" }).click();
+
+  await expect(modal).not.toBeVisible();
+  const applied = await page.evaluate(() => window.__lastApply);
+  expect(applied).toMatchObject({
+    resourceType: "pod",
+    namespace: "default",
+    name: "api-0",
+    yaml: "kind: Pod\nmetadata:\n  name: api-0\n  labels: {tier: web}\n",
+  });
+});
+
 test("command palette navigates views", async ({ page }) => {
   await boot(page);
   await page.getByText("Search & switch…").click();
