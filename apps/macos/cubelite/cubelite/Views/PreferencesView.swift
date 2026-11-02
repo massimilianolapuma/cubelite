@@ -167,6 +167,8 @@ private struct AdvancedPreferencesTab: View {
 private struct KubeconfigPathsSection: View {
 
     @Binding var paths: [String]
+    /// Picked files rejected by the last Add File… (#450); non-empty shows the alert.
+    @State private var rejectedFiles: [String] = []
 
     var body: some View {
         if paths.isEmpty {
@@ -179,6 +181,18 @@ private struct KubeconfigPathsSection: View {
         }
         Button("Add File…") { addFiles() }
             .accessibilityIdentifier("preferences.add-kubeconfig-file")
+            .alert("Not a kubeconfig file", isPresented: showsRejection) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(KubeconfigPathsEditor.rejectionMessage(for: rejectedFiles))
+            }
+    }
+
+    private var showsRejection: Binding<Bool> {
+        Binding(
+            get: { !rejectedFiles.isEmpty },
+            set: { if !$0 { rejectedFiles = [] } }
+        )
     }
 
     private func addFiles() {
@@ -187,19 +201,14 @@ private struct KubeconfigPathsSection: View {
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.message = "Select kubeconfig files"
-        if panel.runModal() == .OK {
-            // When adding to an empty list, seed with the currently resolved
-            // default paths so the user doesn't lose their existing config.
-            if paths.isEmpty {
-                paths = KubeconfigService.resolveKubeconfigPaths().map(\.path)
-            }
-            for url in panel.urls {
-                let path = url.path
-                if !paths.contains(path) {
-                    paths.append(path)
-                }
-            }
+        guard panel.runModal() == .OK else { return }
+        // Only kubeconfig documents are added; the list is seeded with the
+        // resolved defaults when it was empty (see KubeconfigPathsEditor).
+        let result = KubeconfigPathsEditor.adding(panel.urls, to: paths)
+        if result.paths != paths {
+            paths = result.paths
         }
+        rejectedFiles = result.rejected
     }
 }
 
