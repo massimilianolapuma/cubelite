@@ -901,8 +901,8 @@ pub fn clean_custom_paths(paths: Vec<String>) -> Vec<std::path::PathBuf> {
 
 /// First custom path that exists but is not a kubeconfig document. Missing
 /// files are skipped, as `kubectl` does with `KUBECONFIG`; present files must
-/// carry `kind: Config`, otherwise any YAML or JSON mapping would load as an
-/// empty kubeconfig (#448).
+/// carry `kind: Config` or, without `kind`, kubeconfig entries (#481),
+/// otherwise any YAML or JSON mapping would load as an empty kubeconfig (#448).
 pub fn first_non_kubeconfig(paths: &[std::path::PathBuf]) -> Option<&std::path::Path> {
     paths
         .iter()
@@ -932,7 +932,7 @@ pub async fn kubeconfig_sources(
         let origin = select_kubeconfig_origin(!custom.is_empty(), kubeconfig_env_is_set());
         if let Some(bad) = first_non_kubeconfig(&custom) {
             return Err(format!(
-                "{} is not a kubeconfig file (expected a YAML document with `kind: Config`)",
+                "{} is not a kubeconfig file (expected a YAML document with `kind: Config` or kubeconfig clusters, contexts or users)",
                 bad.display()
             ));
         }

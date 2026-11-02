@@ -75,8 +75,37 @@ final class KubeconfigPathsEditorTests: XCTestCase {
         XCTAssertFalse(KubeconfigService.isKubeconfigFile(at: url))
     }
 
-    func testIsKubeconfigFile_rejectsMissingKind() throws {
+    func testIsKubeconfigFile_rejectsMissingKindWithoutEntries() throws {
         let url = try write("no-kind.yaml", "apiVersion: v1\ncontexts: []\n")
+        XCTAssertFalse(KubeconfigService.isKubeconfigFile(at: url))
+        let mapping = try write("mapping.yaml", "name: x\nitems: [1, 2]\n")
+        XCTAssertFalse(KubeconfigService.isKubeconfigFile(at: mapping))
+    }
+
+    /// kubectl loads files without `apiVersion` / `kind` (#481).
+    func testIsKubeconfigFile_acceptsMissingKindWithEntries() throws {
+        let url = try write(
+            "lab",
+            """
+            clusters:
+            - name: lab
+              cluster: {server: "https://lab.example:6443"}
+            contexts:
+            - name: lab
+              context: {cluster: lab, user: admin}
+            current-context: lab
+            users:
+            - name: admin
+              user: {token: t}
+            """)
+        XCTAssertTrue(KubeconfigService.isKubeconfigFile(at: url))
+        let usersOnly = try write("users-only.yaml", "users:\n- name: u\n  user: {}\n")
+        XCTAssertTrue(KubeconfigService.isKubeconfigFile(at: usersOnly))
+    }
+
+    func testIsKubeconfigFile_rejectsOtherKindEvenWithEntries() throws {
+        let url = try write(
+            "other.yaml", "kind: Secret\ncontexts:\n- name: c\n  context: {cluster: c, user: u}\n")
         XCTAssertFalse(KubeconfigService.isKubeconfigFile(at: url))
     }
 

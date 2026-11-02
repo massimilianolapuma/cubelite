@@ -46,7 +46,9 @@ enum KubeconfigPathsEditor {
     /// Alert text naming the rejected files.
     static func rejectionMessage(for rejected: [String]) -> String {
         let names = rejected.map { "“\(URL(fileURLWithPath: $0).lastPathComponent)”" }
-        let expectation = "A kubeconfig is a YAML or JSON document with `kind: Config`."
+        let expectation =
+            "A kubeconfig is a YAML or JSON document with `kind: Config`"
+            + " or with clusters, contexts or users."
         if names.count == 1 {
             return "\(names[0]) is not a kubeconfig file and was not added. \(expectation)"
         }

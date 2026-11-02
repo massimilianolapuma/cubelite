@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Overview stat cards open their view** (desktop, #463): Nodes, Pods
   running, Deploys healthy and Warnings are now buttons with an arrow that
   jump to Nodes, Pods, Deployments and Events.
+- **Kubeconfigs without `kind` are accepted** (desktop + macOS, #481): like
+  kubectl, a file with no `kind` loads when it has at least one cluster,
+  context or user; a `kind` other than `Config` is still rejected.
 - **Overview stat cards open their view** (macOS, #464): same as the desktop;
   the four tiles are buttons that raise on hover and select Nodes, Pods,
   Deployments and Events.
