@@ -33,12 +33,16 @@ final class LogSession {
     /// switches and stream restarts (matches recompute against the new buffer).
     let search = LogSearchModel()
     /// Lines expanded into a JSON tree by the JSON view (#477). Cleared with
-    /// the buffer; ids evicted by the ring simply never render again.
+    /// the buffer; ids evicted by the ring are dropped on the next toggle.
     private(set) var expandedLineIDs: Set<Int> = []
 
-    /// Expands or collapses the JSON tree of line `id`.
+    /// Expands or collapses the JSON tree of line `id`, dropping ids the
+    /// ring has evicted (line ids only grow).
     func toggleExpanded(_ id: Int) {
         if expandedLineIDs.remove(id) == nil { expandedLineIDs.insert(id) }
+        if let oldest = buffer.lines.first?.id {
+            expandedLineIDs = expandedLineIDs.filter { $0 >= oldest }
+        }
     }
 
     /// Lines appended since the user paused (drives the "new lines" pill).

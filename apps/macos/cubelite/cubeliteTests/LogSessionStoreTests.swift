@@ -711,4 +711,22 @@ final class LogSessionStoreTests: XCTestCase {
         session.clear()
         XCTAssertEqual(session.expandedLineIDs, [])
     }
+
+    func testToggleExpanded_dropsIdsEvictedByTheRing() async throws {
+        streamer.containers = [makeContainer("worker")]
+        streamer.liveLines = [#"2026-07-15T10:00:00Z {"msg":"first"}"#]
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.buffer.lines.count == 1 }
+        let session = try XCTUnwrap(store.activeSession)
+        let evicted = try XCTUnwrap(session.buffer.lines.first?.id)
+        session.toggleExpanded(evicted)
+
+        for i in 0..<5000 {
+            session.simulateAppendForTesting(#"2026-07-15T10:00:01Z {"n":\#(i)}"#)
+        }
+        let live = try XCTUnwrap(session.buffer.lines.last?.id)
+        session.toggleExpanded(live)
+
+        XCTAssertEqual(session.expandedLineIDs, [live])
+    }
 }

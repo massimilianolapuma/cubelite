@@ -178,9 +178,8 @@ struct LogLineRow: View {
     private var rawRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             gutter(line.level)
-            Text(highlighted(line.message))
+            Text(highlighted(line.message, base: Self.messageColor(line.level)))
                 .typeStyle(DesignTokens.Typography.log)
-                .foregroundStyle(Self.messageColor(line.level))
                 .textSelection(.enabled)
                 .lineLimit(wrap ? nil : 1)
         }
@@ -256,8 +255,7 @@ struct LogLineRow: View {
     /// `message  key=value  key2=value2`: message in the log style, tail in
     /// micro monospace with tertiary keys and secondary values.
     private func humanised(_ json: JSONLogView, level: LogLine.Level) -> AttributedString {
-        var text = highlighted(json.message)
-        text.foregroundColor = Self.messageColor(level)
+        var text = highlighted(json.message, base: Self.messageColor(level))
         let tailFont = AppFont.font(
             mono: true, weight: DesignTokens.Typography.micro.weight, size: tailFontSize)
         for (n, field) in json.tail.enumerated() {
@@ -265,8 +263,7 @@ struct LogLineRow: View {
             key.foregroundColor = DesignTokens.textTertiary
             var equals = AttributedString("=")
             equals.foregroundColor = DesignTokens.textLog
-            var value = highlighted(field.value)
-            value.foregroundColor = DesignTokens.textSecondary
+            let value = highlighted(field.value, base: DesignTokens.textSecondary)
             var item = key + equals + value
             item.font = tailFont
             text += item
@@ -274,10 +271,11 @@ struct LogLineRow: View {
         return text
     }
 
-    /// `text` with every query occurrence tinted; the active match gets the
-    /// solid warn treatment from the design.
-    private func highlighted(_ text: String) -> AttributedString {
+    /// `text` in `base` with every query occurrence tinted; the active match
+    /// gets the solid warn treatment from the design (its own foreground).
+    private func highlighted(_ text: String, base: Color) -> AttributedString {
         var attributed = AttributedString(text)
+        attributed.foregroundColor = base
         guard let searchQuery, !searchQuery.isEmpty else { return attributed }
         var searchStart = attributed.startIndex
         while let range = attributed[searchStart...].range(

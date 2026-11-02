@@ -8,7 +8,8 @@ struct JSONMember: Equatable, Sendable {
 
 /// A parsed JSON document that keeps what `JSONSerialization` loses for log
 /// display: object key order, and numbers as their source text (integers
-/// beyond 2^53 stay exact, cf. desktop #455).
+/// beyond 2^53 stay exact, cf. desktop #455). Unlike the desktop, numbers
+/// are shown as logged (`1.0`, `1e3`), not normalised (`1`, `1000`).
 indirect enum JSONValue: Equatable, Sendable {
     case string(String)
     /// Source text of a JSON number, already validated against the grammar.
@@ -23,15 +24,16 @@ indirect enum JSONValue: Equatable, Sendable {
     static let maxDepth = 512
 
     /// Parses a complete JSON text (RFC 8259); nil on any syntax error,
-    /// trailing garbage, lone surrogate escapes or nesting beyond `maxDepth`.
-    /// Duplicate keys keep the first key's position and the last value, like
+    /// trailing garbage or nesting beyond `maxDepth`. Duplicate keys keep the
+    /// first key's position and the last value, and lone surrogate escapes
+    /// are accepted (as U+FFFD, a Swift string cannot hold them), like
     /// `JSON.parse`.
     static func parse(_ text: String) -> JSONValue? {
         var parser = JSONTextParser(bytes: Array(text.utf8))
         return parser.parseDocument()
     }
 
-    /// Compact JSON, like `JSON.stringify(value)`.
+    /// Compact JSON, like `JSON.stringify(value)` (numbers as source text).
     var compactText: String {
         var out = ""
         write(to: &out, indent: 0, depth: 0)
@@ -39,7 +41,7 @@ indirect enum JSONValue: Equatable, Sendable {
     }
 
     /// Pretty-printed JSON with a two-space indent, like
-    /// `JSON.stringify(value, null, 2)`.
+    /// `JSON.stringify(value, null, 2)` (numbers as source text).
     var prettyText: String {
         var out = ""
         write(to: &out, indent: 2, depth: 0)
@@ -262,14 +264,26 @@ private struct JSONTextParser {
         case UInt8(ascii: "t"): return "\t"
         case UInt8(ascii: "u"):
             guard let high = parseHex4() else { return nil }
-            if (0xD800...0xDBFF).contains(high) {
-                guard consume("\\u"), let low = parseHex4(), (0xDC00...0xDFFF).contains(low)
-                else { return nil }
+            if (0xD800...0xDBFF).contains(high), let low = peekLowSurrogate() {
+                index += 6
                 return Unicode.Scalar(0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00))
             }
-            return Unicode.Scalar(high)  // nil for a lone low surrogate
+            // Lone surrogates (high without a low half, or a stray low).
+            return Unicode.Scalar(high) ?? "\u{FFFD}"
         default: return nil
         }
+    }
+
+    /// The low surrogate of a `\\uDC00`–`\\uDFFF` escape at the cursor,
+    /// without consuming it.
+    private func peekLowSurrogate() -> UInt32? {
+        guard index + 6 <= bytes.count, bytes[index] == UInt8(ascii: "\\"),
+            bytes[index + 1] == UInt8(ascii: "u"),
+            let text = String(bytes: bytes[index + 2..<index + 6], encoding: .ascii),
+            text.allSatisfy(\.isHexDigit), let value = UInt32(text, radix: 16),
+            (0xDC00...0xDFFF).contains(value)
+        else { return nil }
+        return value
     }
 
     private mutating func parseHex4() -> UInt32? {

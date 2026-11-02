@@ -51,12 +51,17 @@ final class AggregatedLogStore {
     var jsonView: Bool {
         didSet { defaults.set(jsonView, forKey: "logs.jsonView") }
     }
-    /// Lines expanded into a JSON tree; cleared with the buffer.
+    /// Lines expanded into a JSON tree; cleared with the buffer, ids evicted
+    /// by the ring are dropped on the next toggle.
     private(set) var expandedLineIDs: Set<Int> = []
 
-    /// Expands or collapses the JSON tree of line `id`.
+    /// Expands or collapses the JSON tree of line `id`, dropping ids the
+    /// ring has evicted (line ids only grow).
     func toggleExpanded(_ id: Int) {
         if expandedLineIDs.remove(id) == nil { expandedLineIDs.insert(id) }
+        if let oldest = buffer.first?.id {
+            expandedLineIDs = expandedLineIDs.filter { $0 >= oldest }
+        }
     }
 
     /// Lines arrived since the user paused.

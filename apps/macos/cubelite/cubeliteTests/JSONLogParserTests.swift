@@ -45,10 +45,16 @@ final class JSONLogParserTests: XCTestCase {
         for text in [
             "", "{", "{\"a\":}", "{\"a\":1,}", "[1,]", "01", "1.", "-", "+1", ".5", "1e",
             "{'a':1}", "{\"a\":1} x", "\"unterminated", "\"bad \\x escape\"", "\"raw\ttab\"",
-            "tru", "nul", "{\"a\" 1}", "\"\\ud83d\"",
+            "tru", "nul", "{\"a\" 1}", "\"\\ud83d",
         ] {
             XCTAssertNil(JSONValue.parse(text), text)
         }
+    }
+
+    func testParse_loneSurrogatesBecomeReplacementCharacter() {
+        XCTAssertEqual(JSONValue.parse(#""a\ud83db""#), .string("a\u{FFFD}b"))
+        XCTAssertEqual(JSONValue.parse(#""\udc00""#), .string("\u{FFFD}"))
+        XCTAssertEqual(JSONValue.parse(#""\ud83d\u0041""#), .string("\u{FFFD}A"))
     }
 
     func testParse_rejectsExcessiveNesting() {
