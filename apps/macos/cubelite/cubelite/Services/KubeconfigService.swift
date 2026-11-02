@@ -29,10 +29,9 @@ actor KubeconfigService {
     /// falling back to `~/.kube/config` plus any additional kubeconfig files
     /// discovered in the `~/.kube/` directory.
     ///
-    /// Auto-discovery scans `~/.kube/` for regular files whose first bytes
-    /// contain a YAML `kind: Config` marker, which is present in all valid
-    /// kubeconfig files. The default `config` file always comes first so its
-    /// `current-context` takes precedence during merge.
+    /// Auto-discovery scans `~/.kube/` for files that pass
+    /// `isKubeconfigFile(at:)`. The default `config` file always comes first
+    /// so its `current-context` takes precedence during merge.
     static func resolveKubeconfigPaths() -> [URL] {
         if let envValue = ProcessInfo.processInfo.environment["KUBECONFIG"],
             !envValue.isEmpty
@@ -50,13 +49,13 @@ actor KubeconfigService {
         return paths
     }
 
-    /// Scans a directory for files that look like valid kubeconfig YAML.
+    /// Scans a directory for kubeconfig files, sorted by name.
     ///
-    /// A file qualifies when it is a regular file (not a directory or symlink
-    /// to a directory) and its first 512 bytes contain `kind: Config` or
-    /// `kind: "Config"`. Hidden files (starting with `.`) and the `cache`
-    /// directory are skipped.
-    private static func discoverKubeconfigFiles(
+    /// A file qualifies when it passes `isKubeconfigFile(at:)`: the whole file
+    /// is parsed, because kubectl writes keys alphabetically and puts `kind`
+    /// after the inline certificates (a header check missed those, #473).
+    /// Hidden files, directories such as `cache/`, and `excluded` are skipped.
+    static func discoverKubeconfigFiles(
         in directory: URL,
         excluding excluded: URL
     ) -> [URL] {
@@ -71,20 +70,8 @@ actor KubeconfigService {
 
         return entries
             .filter { url in
-                // Skip the already-included default config
-                guard url.standardizedFileURL != excluded.standardizedFileURL else {
-                    return false
-                }
-                // Skip directories (e.g. cache/, kubens/)
-                let isDir =
-                    (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-                guard !isDir else { return false }
-                // Quick heuristic: read first 512 bytes and check for kubeconfig marker
-                guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
-                defer { handle.closeFile() }
-                guard let header = try? handle.read(upToCount: 512) else { return false }
-                guard let text = String(data: header, encoding: .utf8) else { return false }
-                return text.contains("kind: Config") || text.contains("kind: \"Config\"")
+                url.standardizedFileURL != excluded.standardizedFileURL
+                    && isKubeconfigFile(at: url)
             }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
@@ -94,8 +81,9 @@ actor KubeconfigService {
     /// file picked by mistake from stalling the UI while it is parsed.
     static let maxKubeconfigFileSize = 16 * 1024 * 1024
 
-    /// Returns `true` when `url` is a kubeconfig document: a regular file that
-    /// parses as a kubeconfig and declares `kind: Config` (YAML or JSON).
+    /// Returns `true` when `url` is a kubeconfig document: a regular file (a
+    /// symlink is followed) that parses as a kubeconfig and declares
+    /// `kind: Config` (YAML or JSON).
     ///
     /// Every kubeconfig field is optional, so a bare parse accepts any YAML or
     /// JSON mapping as an empty config; the `kind` check is what tells a
@@ -104,11 +92,13 @@ actor KubeconfigService {
     /// after the inline certificates. Same rule as the desktop app (#448);
     /// used to validate files added from Preferences (#450).
     static func isKubeconfigFile(at url: URL) -> Bool {
+        // Resource values describe a symlink itself, not its target.
+        let target = url.resolvingSymlinksInPath()
         guard
-            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+            let values = try? target.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
             values.isRegularFile == true,
             (values.fileSize ?? 0) <= maxKubeconfigFileSize,
-            let data = try? Data(contentsOf: url),
+            let data = try? Data(contentsOf: target),
             let raw = try? YAMLDecoder().decode(RawKubeConfig.self, from: data)
         else { return false }
         return raw.kind == "Config"
