@@ -76,7 +76,12 @@ struct LogBodyView: View {
                             sourceName: session.isMerged ? line.container : nil,
                             sourceColor: (session.isMerged ? line.container : nil).map {
                                 ContainerIdentity.color(for: $0, in: session.containers)
-                            })
+                            },
+                            jsonView: store.jsonView,
+                            isExpanded: session.expandedLineIDs.contains(line.id),
+                            onToggleExpanded: { session.toggleExpanded(line.id) }
+                        )
+                        .id(line.id)
                     }
                 }
                 .padding(.vertical, 6)
@@ -140,7 +145,9 @@ struct LogBodyView: View {
     }
 }
 
-/// One rendered log line.
+/// One rendered log line. With `jsonView` on, a line whose message is a
+/// JSON object renders humanised (`message  key=value …`) and toggles a
+/// JSON tree below it (#477); every other line renders raw.
 struct LogLineRow: View {
     let line: LogLine
     let showTimestamp: Bool
@@ -149,44 +156,126 @@ struct LogLineRow: View {
     var isActiveMatch = false
     var sourceName: String?
     var sourceColor: Color?
+    /// Source column width: container names in the panel, wider for pod
+    /// names in the aggregated Logs view.
+    var sourceWidth: CGFloat = 52
+    var jsonView = false
+    var isExpanded = false
+    var onToggleExpanded: (() -> Void)?
+
+    @ScaledMetric(
+        relativeTo: ScaledFontModifier.anchor(for: DesignTokens.Typography.micro.size))
+    private var tailFontSize = DesignTokens.Typography.micro.size
 
     var body: some View {
+        if jsonView, let json = JSONLogView.parse(line.message) {
+            jsonRow(json)
+        } else {
+            rawRow
+        }
+    }
+
+    private var rawRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            if showTimestamp {
-                Text(line.time ?? "—")
-                    .typeStyle(DesignTokens.Typography.micro.monospaced)
-                    .foregroundStyle(DesignTokens.textTertiary)
-                    .frame(width: 94, alignment: .leading)
-            }
-            if let sourceName, let sourceColor {
-                Text(sourceName)
-                    .typeStyle(DesignTokens.Typography.micro.monospaced.weighted(.semibold))
-                    .foregroundStyle(sourceColor)
-                    .frame(width: 52, alignment: .leading)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            Text(levelLabel)
-                .typeStyle(DesignTokens.Typography.micro.monospaced.weighted(.semibold))
-                .foregroundStyle(levelColor)
-                .frame(width: 42, alignment: .leading)
-            Text(highlightedMessage)
+            gutter(line.level)
+            Text(highlighted(line.message, base: Self.messageColor(line.level)))
                 .typeStyle(DesignTokens.Typography.log)
-                .foregroundStyle(messageColor)
                 .textSelection(.enabled)
                 .lineLimit(wrap ? nil : 1)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 1)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(rowTint)
-        .id(line.id)
+        .background(Self.rowTint(line.level))
     }
 
-    /// Message with every query occurrence tinted; the active match gets the
-    /// solid warn treatment from the design.
-    private var highlightedMessage: AttributedString {
-        var attributed = AttributedString(line.message)
+    private func jsonRow(_ json: JSONLogView) -> some View {
+        let level = json.level ?? line.level
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                gutter(level)
+                Button {
+                    onToggleExpanded?()
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Image(systemName: "chevron.right")
+                            .iconSize(DesignTokens.iconXs, weight: .semibold)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .foregroundStyle(DesignTokens.textTertiary)
+                            .accessibilityHidden(true)
+                        Text(humanised(json, level: level))
+                            .typeStyle(DesignTokens.Typography.log)
+                            .lineLimit(wrap ? nil : 1)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                .accessibilityHint("Shows all JSON fields")
+                .accessibilityIdentifier("logpanel.json-row")
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 1)
+            if isExpanded {
+                JSONTreeView(value: json.object, raw: line.message)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(DesignTokens.surfaceRaised)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Self.rowTint(level))
+    }
+
+    @ViewBuilder
+    private func gutter(_ level: LogLine.Level) -> some View {
+        if showTimestamp {
+            Text(line.time ?? "—")
+                .typeStyle(DesignTokens.Typography.micro.monospaced)
+                .foregroundStyle(DesignTokens.textTertiary)
+                .frame(width: 94, alignment: .leading)
+        }
+        if let sourceName, let sourceColor {
+            Text(sourceName)
+                .typeStyle(DesignTokens.Typography.micro.monospaced.weighted(.semibold))
+                .foregroundStyle(sourceColor)
+                .frame(width: sourceWidth, alignment: .leading)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(sourceName)
+        }
+        Text(Self.levelLabel(level))
+            .typeStyle(DesignTokens.Typography.micro.monospaced.weighted(.semibold))
+            .foregroundStyle(Self.levelColor(level))
+            .frame(width: 42, alignment: .leading)
+    }
+
+    /// `message  key=value  key2=value2`: message in the log style, tail in
+    /// micro monospace with tertiary keys and secondary values.
+    private func humanised(_ json: JSONLogView, level: LogLine.Level) -> AttributedString {
+        var text = highlighted(json.message, base: Self.messageColor(level))
+        let tailFont = AppFont.font(
+            mono: true, weight: DesignTokens.Typography.micro.weight, size: tailFontSize)
+        for (n, field) in json.tail.enumerated() {
+            var key = AttributedString((n == 0 ? " " : "  ") + field.key)
+            key.foregroundColor = DesignTokens.textTertiary
+            var equals = AttributedString("=")
+            equals.foregroundColor = DesignTokens.textLog
+            let value = highlighted(field.value, base: DesignTokens.textSecondary)
+            var item = key + equals + value
+            item.font = tailFont
+            text += item
+        }
+        return text
+    }
+
+    /// `text` in `base` with every query occurrence tinted; the active match
+    /// gets the solid warn treatment from the design (its own foreground).
+    private func highlighted(_ text: String, base: Color) -> AttributedString {
+        var attributed = AttributedString(text)
+        attributed.foregroundColor = base
         guard let searchQuery, !searchQuery.isEmpty else { return attributed }
         var searchStart = attributed.startIndex
         while let range = attributed[searchStart...].range(
@@ -202,8 +291,8 @@ struct LogLineRow: View {
         return attributed
     }
 
-    private var levelLabel: String {
-        switch line.level {
+    private static func levelLabel(_ level: LogLine.Level) -> String {
+        switch level {
         case .debug: "DEBUG"
         case .info: "INFO"
         case .warn: "WARN"
@@ -211,8 +300,8 @@ struct LogLineRow: View {
         }
     }
 
-    private var levelColor: Color {
-        switch line.level {
+    private static func levelColor(_ level: LogLine.Level) -> Color {
+        switch level {
         case .debug: DesignTokens.textTertiary
         case .info: DesignTokens.textLog
         case .warn: DesignTokens.statusWarn
@@ -220,16 +309,16 @@ struct LogLineRow: View {
         }
     }
 
-    private var messageColor: Color {
-        switch line.level {
+    private static func messageColor(_ level: LogLine.Level) -> Color {
+        switch level {
         case .warn: DesignTokens.statusWarn
         case .error: DesignTokens.statusErr
         default: DesignTokens.textLog
         }
     }
 
-    private var rowTint: Color {
-        switch line.level {
+    private static func rowTint(_ level: LogLine.Level) -> Color {
+        switch level {
         case .error: DesignTokens.statusErr.opacity(0.07)
         case .warn: DesignTokens.statusWarn.opacity(0.045)
         default: .clear

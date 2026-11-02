@@ -69,6 +69,7 @@ struct AggregatedLogsView: View {
                 .frame(width: 140)
                 .accessibilityLabel("Filter log messages")
                 .accessibilityIdentifier("aggregatedlogs.text-filter")
+            jsonViewButton
             followButton
             Button("Clear") { store.clear() }
                 .controlSize(.small)
@@ -109,6 +110,29 @@ struct AggregatedLogsView: View {
         .background(
             RoundedRectangle(cornerRadius: DesignTokens.radiusMd)
                 .strokeBorder(DesignTokens.borderDefault, lineWidth: 1))
+    }
+
+    /// Humanises JSON log lines (#477), with its own remembered preference.
+    private var jsonViewButton: some View {
+        Button {
+            store.jsonView.toggle()
+        } label: {
+            Image(systemName: "curlybraces")
+                .scaledFont(size: 11, weight: store.jsonView ? .semibold : .regular)
+                .foregroundStyle(
+                    store.jsonView ? DesignTokens.accentDefault : DesignTokens.textSecondary)
+                .frame(width: 26, height: 22)
+                .background(
+                    store.jsonView ? DesignTokens.surfaceRaised : .clear,
+                    in: RoundedRectangle(cornerRadius: DesignTokens.radiusSm))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("JSON view")
+        .accessibilityLabel("JSON view")
+        .accessibilityValue(store.jsonView ? "On" : "Off")
+        .accessibilityAddTraits(store.jsonView ? .isSelected : [])
+        .accessibilityIdentifier("aggregatedlogs.json-view")
     }
 
     private var followButton: some View {
@@ -171,45 +195,14 @@ struct AggregatedLogsView: View {
         }
     }
 
+    /// The log panel's row, with the pod name in a wide source column
+    /// (desktop #461).
     private func logRow(_ entry: AggregatedLogLine) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(verbatim: entry.line.time ?? "—")
-                .scaledFont(size: 10, design: .monospaced, relativeTo: .caption)
-                .foregroundStyle(DesignTokens.textTertiary)
-                .frame(width: 88, alignment: .leading)
-            Text(verbatim: levelLabel(entry.line.level))
-                .scaledFont(size: 9.5, weight: .semibold, design: .monospaced, relativeTo: .caption)
-                .foregroundStyle(levelColor(entry.line.level))
-                .frame(width: 36, alignment: .leading)
-            Text(entry.pod)
-                .scaledFont(size: 10.5, design: .monospaced)
-                .foregroundStyle(DesignTokens.textSecondary)
-                .lineLimit(1)
-            Text(entry.line.message)
-                .scaledFont(size: 11, design: .monospaced)
-                .foregroundStyle(DesignTokens.textLog)
-                .textSelection(.enabled)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 1)
-        .accessibilityElement(children: .combine)
-    }
-
-    private func levelLabel(_ level: LogLine.Level) -> String {
-        switch level {
-        case .debug: "DBG"
-        case .info: "INFO"
-        case .warn: "WARN"
-        case .error: "ERR"
-        }
-    }
-
-    private func levelColor(_ level: LogLine.Level) -> Color {
-        switch level {
-        case .debug: DesignTokens.textTertiary
-        case .info: DesignTokens.statusInfo
-        case .warn: DesignTokens.statusWarn
-        case .error: DesignTokens.statusErr
-        }
+        LogLineRow(
+            line: entry.line, showTimestamp: true, wrap: true,
+            sourceName: entry.pod, sourceColor: DesignTokens.textSecondary, sourceWidth: 140,
+            jsonView: store.jsonView,
+            isExpanded: store.expandedLineIDs.contains(entry.id),
+            onToggleExpanded: { store.toggleExpanded(entry.id) })
     }
 }
