@@ -134,102 +134,104 @@ final class KubeconfigAutoDiscoveryTests: XCTestCase {
         XCTAssertEqual(config.currentContext, "minikube")
     }
 
-    // MARK: - discoverKubeconfigFiles via resolveKubeconfigPaths behavior
+    // MARK: - discoverKubeconfigFiles
+
+    private func discover() -> [String] {
+        KubeconfigService.discoverKubeconfigFiles(
+            in: tempDir, excluding: tempDir.appendingPathComponent("config")
+        ).map(\.lastPathComponent)
+    }
 
     func testDiscoverKubeconfigFiles_skipsDirectories() throws {
         _ = try writeFile("config", contents: minimalKubeconfig(
             context: "main", server: "https://main.example"
         ))
-        // Create a subdirectory that should be skipped
         let subDir = tempDir.appendingPathComponent("cache")
         try fm.createDirectory(at: subDir, withIntermediateDirectories: true)
-        try "not a kubeconfig".write(
-            to: subDir.appendingPathComponent("somefile"),
-            atomically: true, encoding: .utf8
+        try minimalKubeconfig(context: "nested", server: "https://nested.example").write(
+            to: subDir.appendingPathComponent("nested"), atomically: true, encoding: .utf8
         )
 
-        // Verify the directory's contents don't include subdirectory entries
-        let entries = try fm.contentsOfDirectory(
-            at: tempDir,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
-        let nonDirs = entries.filter {
-            let isDir = (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-            return !isDir
-        }
-        XCTAssertEqual(nonDirs.count, 1)
-        XCTAssertEqual(nonDirs.first?.lastPathComponent, "config")
+        XCTAssertEqual(discover(), [])
     }
 
     func testDiscoverKubeconfigFiles_skipsNonKubeconfigs() throws {
         _ = try writeFile("config", contents: minimalKubeconfig(
             context: "main", server: "https://main.example"
         ))
-        // Write a file that is NOT a kubeconfig
         _ = try writeFile("notes.txt", contents: "this is not a kubeconfig")
-        // Write a file that looks like YAML but isn't kubeconfig
         _ = try writeFile("other.yaml", contents: """
             apiVersion: v1
             kind: Pod
             metadata:
               name: test
             """)
+        _ = try writeFile("blob.json", contents: #"{"name":"not a kubeconfig"}"#)
 
-        // Load only from the config file — the other files should not parse as kubeconfigs
-        let config = try fm.contentsOfDirectory(
-            at: tempDir,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ).filter { url in
-            guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
-            defer { handle.closeFile() }
-            guard let header = try? handle.read(upToCount: 512),
-                let text = String(data: header, encoding: .utf8)
-            else { return false }
-            return text.contains("kind: Config")
-        }
-
-        XCTAssertEqual(config.count, 1)
-        XCTAssertEqual(config.first?.lastPathComponent, "config")
+        XCTAssertEqual(discover(), [])
     }
 
-    func testDiscoverKubeconfigFiles_findsExtraKubeconfigs() throws {
+    func testDiscoverKubeconfigFiles_findsExtraKubeconfigsSortedExcludingDefault() throws {
         _ = try writeFile("config", contents: minimalKubeconfig(
             context: "main", server: "https://main.example"
-        ))
-        _ = try writeFile("kub3-dev", contents: minimalKubeconfig(
-            context: "kub3-dev", server: "https://kub3.example"
         ))
         _ = try writeFile("staging-cluster", contents: minimalKubeconfig(
             context: "staging", server: "https://staging.example"
         ))
+        _ = try writeFile("kub3-dev", contents: minimalKubeconfig(
+            context: "kub3-dev", server: "https://kub3.example"
+        ))
         _ = try writeFile("notes.txt", contents: "not a kubeconfig at all")
 
-        // Simulate the discovery logic
-        let excluded = tempDir.appendingPathComponent("config")
-        let entries = try fm.contentsOfDirectory(
-            at: tempDir,
-            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        )
-        let discovered = entries
-            .filter { url in
-                guard url.standardizedFileURL != excluded.standardizedFileURL else { return false }
-                let isDir =
-                    (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-                guard !isDir else { return false }
-                guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
-                defer { handle.closeFile() }
-                guard let header = try? handle.read(upToCount: 512),
-                    let text = String(data: header, encoding: .utf8)
-                else { return false }
-                return text.contains("kind: Config") || text.contains("kind: \"Config\"")
-            }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        XCTAssertEqual(discover(), ["kub3-dev", "staging-cluster"])
+    }
 
-        XCTAssertEqual(discovered.count, 2)
-        XCTAssertEqual(discovered[0].lastPathComponent, "kub3-dev")
-        XCTAssertEqual(discovered[1].lastPathComponent, "staging-cluster")
+    /// kubectl sorts keys, so with inline CA data `kind: Config` sits far past
+    /// the 512-byte header the old heuristic read (#473).
+    func testDiscoverKubeconfigFiles_findsKubectlOrderedFileWithLongCertificateData() throws {
+        let caData = String(repeating: "QUJD", count: 2_000)
+        _ = try writeFile("kubectl-generated", contents: """
+            apiVersion: v1
+            clusters:
+            - cluster:
+                certificate-authority-data: \(caData)
+                server: https://prod.example:6443
+              name: prod
+            contexts:
+            - context:
+                cluster: prod
+                user: prod-admin
+              name: prod
+            current-context: prod
+            kind: Config
+            preferences: {}
+            users:
+            - name: prod-admin
+              user:
+                token: test-token
+            """)
+
+        XCTAssertEqual(discover(), ["kubectl-generated"])
+    }
+
+    func testDiscoverKubeconfigFiles_followsSymlinksToFilesOnly() throws {
+        let target = fm.temporaryDirectory.appendingPathComponent(
+            "cubelite-link-target-\(UUID().uuidString)"
+        )
+        try fm.createDirectory(at: target, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: target) }
+        let real = target.appendingPathComponent("real")
+        try minimalKubeconfig(context: "linked", server: "https://linked.example").write(
+            to: real, atomically: true, encoding: .utf8
+        )
+        try fm.createSymbolicLink(
+            at: tempDir.appendingPathComponent("linked"), withDestinationURL: real)
+        try fm.createSymbolicLink(
+            at: tempDir.appendingPathComponent("dir-link"), withDestinationURL: target)
+        try fm.createSymbolicLink(
+            at: tempDir.appendingPathComponent("dangling"),
+            withDestinationURL: target.appendingPathComponent("absent"))
+
+        XCTAssertEqual(discover(), ["linked"])
     }
 }

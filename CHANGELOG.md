@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opened `index.html?logWindow=…`, which the SvelteKit dev server does not
   route; it now opens `/?logWindow=…`, valid in dev and in the static build.
 
+- **`~/.kube` discovery missed kubectl-written files** (macOS, #473): the
+  native app only read the first 512 bytes of each file, and kubectl writes
+  `kind: Config` after the inline certificates, so most generated
+  kubeconfigs were skipped. Discovery now uses the same whole-file check as
+  Add File… and as the desktop app. That check also follows symlinks now, so
+  a symlinked kubeconfig is discovered and can be added again.
+
 - **Add File… rejects non-kubeconfig files** (macOS, #450): same rule as
   the desktop fix for #448. A file picked in Preferences must parse as a
   kubeconfig with `kind: Config` (YAML or JSON, checked on the whole file);

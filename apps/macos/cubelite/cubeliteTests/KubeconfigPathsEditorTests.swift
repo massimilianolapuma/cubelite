@@ -91,6 +91,20 @@ final class KubeconfigPathsEditorTests: XCTestCase {
             KubeconfigService.isKubeconfigFile(at: tempDir.appendingPathComponent("absent")))
     }
 
+    func testIsKubeconfigFile_followsSymlinkToKubeconfig() throws {
+        let real = try write("real.yaml", "apiVersion: v1\nkind: Config\n")
+        let link = tempDir.appendingPathComponent("link.yaml")
+        try fm.createSymbolicLink(at: link, withDestinationURL: real)
+        XCTAssertTrue(KubeconfigService.isKubeconfigFile(at: link))
+    }
+
+    func testIsKubeconfigFile_rejectsDanglingSymlink() throws {
+        let link = tempDir.appendingPathComponent("dangling.yaml")
+        try fm.createSymbolicLink(
+            at: link, withDestinationURL: tempDir.appendingPathComponent("absent.yaml"))
+        XCTAssertFalse(KubeconfigService.isKubeconfigFile(at: link))
+    }
+
     // MARK: - KubeconfigPathsEditor.adding
 
     private let defaults = ["/home/u/.kube/config", "/home/u/.kube/lab"]
