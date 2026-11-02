@@ -9,7 +9,6 @@
 
 use std::collections::HashMap;
 use std::env;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::error::KubeconfigError;
@@ -403,7 +402,9 @@ fn resolve_kubeconfig_paths() -> Result<Vec<PathBuf>, KubeconfigError> {
     Ok(paths)
 }
 
-/// Kubeconfig files to merge in addition to the default one: regular, non-hidden files directly inside `dir` (so nothing under `cache/`), other than `excluding`, whose first 512 bytes carry a `kind: Config` marker (cheap prefilter) and which then parse as a kubeconfig document with `kind` exactly `Config`. Sorted by path; empty when `dir` cannot be read.
+/// Kubeconfig files to merge in addition to the default one: regular, non-hidden files directly inside `dir` (so nothing under `cache/`), other than `excluding`, that [`is_kubeconfig_file`] accepts. Sorted by path; empty when `dir` cannot be read.
+///
+/// The whole document is parsed: kubectl writes keys in sorted order, so with inline certificate data `kind: Config` sits thousands of bytes in (#479).
 pub fn discover_kubeconfig_files(dir: &Path, excluding: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -419,7 +420,6 @@ pub fn discover_kubeconfig_files(dir: &Path, excluding: &Path) -> Vec<PathBuf> {
         })
         // `metadata` follows symlinks, so a symlink to a directory is skipped too.
         .filter(|path| std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false))
-        .filter(|path| looks_like_kubeconfig(path))
         .filter(|path| is_kubeconfig_file(path))
         .collect();
     found.sort();
@@ -432,14 +432,24 @@ struct KindProbe {
     kind: Option<String>,
 }
 
-/// True when the file is a kubeconfig document: `kind` is exactly `Config`
-/// and the whole document deserialises as `KubeConfigFile`.
+/// Files larger than this are never read as kubeconfigs (same cap as the
+/// native app); real kubeconfigs are a few KiB to a few hundred KiB.
+pub const MAX_KUBECONFIG_FILE_SIZE: u64 = 16 * 1024 * 1024;
+
+/// True when the file is a kubeconfig document: at most
+/// [`MAX_KUBECONFIG_FILE_SIZE`] bytes, `kind` is exactly `Config` and the
+/// whole document deserialises as `KubeConfigFile`.
 ///
 /// Every field of a kubeconfig is optional, so a bare parse accepts any YAML
 /// or JSON mapping as an empty config; the `kind` check is what tells a
 /// kubeconfig apart from an unrelated file. Used by `~/.kube` discovery and
 /// by the desktop app to validate files the user adds explicitly.
 pub fn is_kubeconfig_file(path: &Path) -> bool {
+    // `metadata` follows symlinks, so the cap applies to the target.
+    let fits = std::fs::metadata(path).is_ok_and(|m| m.len() <= MAX_KUBECONFIG_FILE_SIZE);
+    if !fits {
+        return false;
+    }
     let Ok(content) = std::fs::read_to_string(path) else {
         return false;
     };
@@ -448,17 +458,6 @@ pub fn is_kubeconfig_file(path: &Path) -> bool {
         .and_then(|probe| probe.kind)
         .is_some_and(|kind| kind == "Config");
     is_config_kind && serde_yaml::from_str::<KubeConfigFile>(&content).is_ok()
-}
-
-/// True when the first 512 bytes of `path` carry the kubeconfig `kind` marker.
-pub(crate) fn looks_like_kubeconfig(path: &Path) -> bool {
-    let Ok(mut file) = std::fs::File::open(path) else {
-        return false;
-    };
-    let mut head = [0u8; 512];
-    let read = file.read(&mut head).unwrap_or(0);
-    let text = String::from_utf8_lossy(&head[..read]);
-    text.contains("kind: Config") || text.contains("kind: \"Config\"")
 }
 
 // ---------------------------------------------------------------------------
@@ -1026,11 +1025,32 @@ contexts:
     }
 
     #[test]
-    fn discover_only_reads_the_first_512_bytes() {
-        let late_marker = format!("{}kind: Config\n", "# ".repeat(300));
-        let dir = kube_dir_with(&[("late.yaml", &late_marker), ("early.yaml", MARKED)]);
+    fn discover_finds_kubectl_ordered_file_with_long_certificate_data() {
+        // kubectl sorts keys: with inline CA data `kind: Config` sits far
+        // past the 512-byte header the old prefilter read (#479).
+        let kubectl = format!(
+            "apiVersion: v1\nclusters:\n- cluster:\n    certificate-authority-data: {}\n    server: https://prod.example:6443\n  name: prod\ncontexts:\n- context:\n    cluster: prod\n    user: admin\n  name: prod\ncurrent-context: prod\nkind: Config\npreferences: {{}}\nusers:\n- name: admin\n  user:\n    token: t\n",
+            "QUJD".repeat(2_000)
+        );
+        let dir = kube_dir_with(&[("kubectl-generated", &kubectl), ("early.yaml", MARKED)]);
         let found = discover_kubeconfig_files(dir.path(), &dir.path().join("config"));
-        assert_eq!(found, vec![dir.path().join("early.yaml")]);
+        assert_eq!(
+            found,
+            vec![
+                dir.path().join("early.yaml"),
+                dir.path().join("kubectl-generated")
+            ]
+        );
+    }
+
+    #[test]
+    fn is_kubeconfig_file_skips_files_over_the_size_cap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("huge");
+        let file = std::fs::File::create(&path).expect("create");
+        std::io::Write::write_all(&mut &file, MARKED.as_bytes()).expect("write");
+        file.set_len(MAX_KUBECONFIG_FILE_SIZE + 1).expect("set_len");
+        assert!(!is_kubeconfig_file(&path));
     }
 
     #[test]
