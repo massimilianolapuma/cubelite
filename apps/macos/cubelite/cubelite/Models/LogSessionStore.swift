@@ -32,6 +32,14 @@ final class LogSession {
     /// Search state scoped to this session; the query survives container
     /// switches and stream restarts (matches recompute against the new buffer).
     let search = LogSearchModel()
+    /// Lines expanded into a JSON tree by the JSON view (#477). Cleared with
+    /// the buffer; ids evicted by the ring simply never render again.
+    private(set) var expandedLineIDs: Set<Int> = []
+
+    /// Expands or collapses the JSON tree of line `id`.
+    func toggleExpanded(_ id: Int) {
+        if expandedLineIDs.remove(id) == nil { expandedLineIDs.insert(id) }
+    }
 
     /// Lines appended since the user paused (drives the "new lines" pill).
     var newLinesSincePause: Int {
@@ -153,12 +161,14 @@ final class LogSession {
 
     func clear() {
         buffer.removeAll()
+        expandedLineIDs.removeAll()
         hasCleared = true
     }
 
     private func restart() {
         stop()
         buffer.removeAll()
+        expandedLineIDs.removeAll()
         hasCleared = false
         streamError = nil
         search.recompute(over: [])
@@ -266,6 +276,10 @@ final class LogSessionStore {
     var wrapLines: Bool {
         didSet { defaults.set(wrapLines, forKey: "logPanel.wrapLines") }
     }
+    /// Humanises JSON log lines (#477); off by default.
+    var jsonView: Bool {
+        didSet { defaults.set(jsonView, forKey: "logPanel.jsonView") }
+    }
 
     /// Transient confirmation message (export result); auto-clears after 3s.
     private(set) var toast: String?
@@ -285,6 +299,7 @@ final class LogSessionStore {
         self.showTimestamps =
             defaults.object(forKey: "logPanel.showTimestamps") as? Bool ?? true
         self.wrapLines = defaults.bool(forKey: "logPanel.wrapLines")
+        self.jsonView = defaults.bool(forKey: "logPanel.jsonView")
         let storedHeight = defaults.double(forKey: "logPanel.height")
         self.panelHeight = storedHeight == 0 ? 280 : min(560, max(160, storedHeight))
     }

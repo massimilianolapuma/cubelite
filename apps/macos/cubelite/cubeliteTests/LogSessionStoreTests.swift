@@ -683,4 +683,32 @@ final class LogSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.activeSessionID, second)
         XCTAssertEqual(store.sessions.count, 2, "open must not duplicate the session")
     }
+
+    // MARK: - JSON view (#477)
+
+    func testJSONView_offByDefaultAndPersisted() {
+        XCTAssertFalse(store.jsonView)
+        store.jsonView = true
+        XCTAssertTrue(defaults.bool(forKey: "logPanel.jsonView"))
+        let reopened = LogSessionStore(streamer: streamer, defaults: defaults)
+        XCTAssertTrue(reopened.jsonView)
+    }
+
+    func testToggleExpanded_flipsAndClearEmpties() async throws {
+        streamer.containers = [makeContainer("worker")]
+        streamer.liveLines = [#"2026-07-15T10:00:00Z {"msg":"one"}"#]
+        store.open(pod: makePod(), context: nil)
+        try await waitUntil { self.store.activeSession?.buffer.lines.count == 1 }
+        let session = try XCTUnwrap(store.activeSession)
+        let id = try XCTUnwrap(session.buffer.lines.first?.id)
+
+        session.toggleExpanded(id)
+        XCTAssertEqual(session.expandedLineIDs, [id])
+        session.toggleExpanded(id)
+        XCTAssertEqual(session.expandedLineIDs, [])
+
+        session.toggleExpanded(id)
+        session.clear()
+        XCTAssertEqual(session.expandedLineIDs, [])
+    }
 }
