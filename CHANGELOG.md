@@ -39,7 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   package reaches the tree only through dev tooling (`eslint`,
   `@eslint/config-array`, `@typescript-eslint/typescript-estree`), which
   still declare `^10` while their own bumps are in flight; the override goes
-  once they ship minimatch 11.
+  once they ship minimatch 11. On the Rust side `tauri-plugin-updater` moves
+  to 2.14.1, which extracts bundles with `zip` 9: this closes
+  RUSTSEC-2026-0429 and lets the zip 4 allow-list from #445 go from
+  `.cargo/audit.toml`.
 
 ## [0.6.0] - 2026-10-21
 
