@@ -3,10 +3,12 @@
 	import FileText from '@lucide/svelte/icons/file-text';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
+	import SquareTerminal from '@lucide/svelte/icons/square-terminal';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { formatAge } from '#lib/age.ts';
 	import Drawer from '#lib/components/ui/Drawer.svelte';
 	import YamlModal from '#lib/components/YamlModal.svelte';
+	import ShellModal from '#lib/components/pods/ShellModal.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
 	import StatusPill from '#lib/components/ui/StatusPill.svelte';
 	import { podStatusLabel, podTone } from '#lib/status.ts';
@@ -26,6 +28,7 @@
 
 	const restarting = $derived(mutations.isDeleting(pod.namespace, pod.name));
 	let yamlOpen = $state(false);
+	let shellOpen = $state(false);
 
 	// Port-forward inputs. Empty local mirrors remote; "auto"/"0" lets the
 	// OS assign a free port.
@@ -217,6 +220,15 @@
 		</button>
 		<button
 			type="button"
+			aria-label="Shell"
+			title="Open a shell in this pod"
+			class="focus-ring type-body flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110"
+			onclick={() => (shellOpen = true)}
+		>
+			<SquareTerminal class="h-3 w-3" />
+		</button>
+		<button
+			type="button"
 			aria-label="YAML"
 			title="View YAML"
 			class="focus-ring type-body flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110"
@@ -256,4 +268,8 @@
 		name={pod.name}
 		onClose={() => (yamlOpen = false)}
 	/>
+{/if}
+
+{#if shellOpen}
+	<ShellModal namespace={pod.namespace} pod={pod.name} onClose={() => (shellOpen = false)} />
 {/if}

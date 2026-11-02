@@ -48,6 +48,28 @@ test("pods view lists fixtures and opens the detail drawer, Esc closes", async (
   await expect(page.getByRole("dialog", { name: "api-0" })).not.toBeVisible();
 });
 
+test("pod shell runs a line and shows its output (#488)", async ({ page }) => {
+  await boot(page);
+  await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
+  await page.getByText("api-0").click();
+  await page.getByRole("button", { name: "Shell" }).click();
+  const modal = page.getByRole("dialog", { name: "api-0 — shell" });
+  await expect(modal.getByText("connected — line-based shell (/bin/sh, no TTY)")).toBeVisible();
+
+  const sessionId = await page.evaluate(() => window.__lastExec?.sessionId as string);
+  expect(await page.evaluate(() => window.__lastExec?.pod)).toBe("api-0");
+  await modal.getByRole("textbox", { name: "Shell command" }).fill("echo hi");
+  await page.keyboard.press("Enter");
+  await expect(modal.getByText("$ echo hi")).toBeVisible();
+  expect(await page.evaluate(() => window.__execSent)).toEqual(["echo hi\n"]);
+
+  await page.evaluate(
+    (id) => window.__emitTauriEvent?.(`exec-output:${id}`, { channel: "stdout", text: "hi" }),
+    sessionId,
+  );
+  await expect(modal.getByText("hi", { exact: true })).toBeVisible();
+});
+
 test("command palette navigates views", async ({ page }) => {
   await boot(page);
   await page.getByText("Search & switch…").click();
