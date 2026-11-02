@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Desktop skipped kubectl-written kubeconfigs in ~/.kube** (#479): discovery
+  read only the first 512 bytes, where kubectl's sorted keys rarely put
+  `kind: Config`; it now parses the whole file (16 MiB cap), like macOS (#473).
+
 - **JSON view rounded large integers** (desktop, #455): ids and nanosecond
   timestamps beyond 2^53 are now kept exact in the row tail, the tree and
   Copy JSON (engines without `JSON.parse` source access keep the old
