@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Overview stat cards open their view** (desktop, #463): Nodes, Pods
   running, Deploys healthy and Warnings are now buttons with an arrow that
   jump to Nodes, Pods, Deployments and Events.
+- **JSON view for structured logs** (macOS, #477): native parity of the
+  desktop JSON view in the log panel (`{}` toggle, remembered) and in the
+  aggregated Logs view (own toggle; rows now share the panel's row and show
+  the full pod name). Key order and large integers are kept exact.
 - **Overview stat cards open their view** (macOS, #464): same as the desktop;
   the four tiles are buttons that raise on hover and select Nodes, Pods,
   Deployments and Events.
