@@ -10,11 +10,12 @@ struct OverviewView: View {
 
     @Environment(ClusterState.self) private var clusterState
 
-    /// Opens the Events view ("All events →").
-    let onShowEvents: () -> Void
+    /// Selects a resource view: the stat tiles open the view holding their
+    /// evidence (#464), the warnings card opens Events ("All events →").
+    let onNavigate: (ResourceType) -> Void
 
-    init(onShowEvents: @escaping () -> Void) {
-        self.onShowEvents = onShowEvents
+    init(onNavigate: @escaping (ResourceType) -> Void) {
+        self.onNavigate = onNavigate
     }
 
     // Card tints: the desktop sidebar section palette.
@@ -48,44 +49,29 @@ struct OverviewView: View {
             spacing: 12
         ) {
             statCard(
-                "Nodes", value: summary.nodes.map { "\($0)" } ?? "—", icon: "server.rack",
+                .nodes, value: summary.nodes.map { "\($0)" } ?? "—",
                 tint: DesignTokens.accentAltTeal)
             statCard(
-                "Pods running", value: "\(summary.pods.running)/\(summary.pods.total)",
-                icon: "cube.box", tint: DesignTokens.clusterBlue)
+                .pods, value: "\(summary.pods.running)/\(summary.pods.total)",
+                tint: DesignTokens.clusterBlue)
             statCard(
-                "Deploys healthy",
+                .deployments,
                 value: "\(summary.deployments.healthy)/\(summary.deployments.total)",
-                icon: "square.stack.3d.up", tint: DesignTokens.clusterViolet)
+                tint: DesignTokens.clusterViolet)
             statCard(
-                "Warnings", value: "\(warnings)", icon: "exclamationmark.triangle",
+                .warnings, value: "\(warnings)",
                 tint: warnings > 0 ? DesignTokens.statusWarn : DesignTokens.textTertiary,
                 valueColor: warnings > 0 ? DesignTokens.statusWarn : DesignTokens.statusOk)
         }
     }
 
     private func statCard(
-        _ title: String, value: String, icon: String, tint: Color,
+        _ tile: OverviewStatTile, value: String, tint: Color,
         valueColor: Color = DesignTokens.textDataBright
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .iconSize(DesignTokens.iconMd, weight: .semibold)
-                    .foregroundStyle(tint)
-                    .accessibilityHidden(true)
-                Text(title)
-                    .typeStyle(DesignTokens.Typography.colhead, color: DesignTokens.textTertiary)
-                    .lineLimit(1)
-            }
-            Text(value)
-                .typeStyle(DesignTokens.Typography.stat, color: valueColor)
+        OverviewStatCard(tile: tile, value: value, tint: tint, valueColor: valueColor) {
+            onNavigate(tile.target)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dashboardSurface()
-        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Capacity
@@ -119,7 +105,7 @@ struct OverviewView: View {
                 Text("Recent warnings")
                     .typeStyle(DesignTokens.Typography.colhead, color: DesignTokens.textTertiary)
                 Spacer()
-                Button(action: onShowEvents) {
+                Button(action: showEvents) {
                     HStack(spacing: 4) {
                         Text("All events")
                         Image(systemName: "arrow.right")
@@ -138,7 +124,7 @@ struct OverviewView: View {
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(clusterState.warningEvents.prefix(5)) { event in
-                        Button(action: onShowEvents) { warningRow(event) }
+                        Button(action: showEvents) { warningRow(event) }
                             .buttonStyle(.plain)
                     }
                 }
@@ -147,6 +133,10 @@ struct OverviewView: View {
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .dashboardSurface()
+    }
+
+    private func showEvents() {
+        onNavigate(.events)
     }
 
     private func warningRow(_ event: EventInfo) -> some View {
@@ -277,14 +267,67 @@ struct OverviewView: View {
     }
 }
 
+// MARK: - Stat Card
+
+/// A stat tile that opens the view holding its evidence (#464): plain button
+/// on the dashboard surface, raised on hover, trailing arrow as on the
+/// desktop `StatCard`.
+private struct OverviewStatCard: View {
+
+    let tile: OverviewStatTile
+    let value: String
+    let tint: Color
+    let valueColor: Color
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: tile.icon)
+                        .iconSize(DesignTokens.iconMd, weight: .semibold)
+                        .foregroundStyle(tint)
+                        .accessibilityHidden(true)
+                    Text(tile.title)
+                        .typeStyle(
+                            DesignTokens.Typography.colhead, color: DesignTokens.textTertiary
+                        )
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.right")
+                        .iconSize(DesignTokens.iconSm)
+                        .foregroundStyle(DesignTokens.textTertiary)
+                        .accessibilityHidden(true)
+                }
+                Text(value)
+                    .typeStyle(DesignTokens.Typography.stat, color: valueColor)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .dashboardSurface(
+                fill: isHovered ? DesignTokens.surfaceRaised : DesignTokens.surfaceSurface)
+            .contentShape(RoundedRectangle(cornerRadius: DesignTokens.radiusXl))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(tile.accessibilityHint)
+        .accessibilityIdentifier("overview.stat-\(tile.id)")
+    }
+}
+
 // MARK: - Surface
 
 extension View {
     /// Dashboard card surface: `surface` fill, default border, xl radius
     /// (desktop `rounded-xl border border-border-default bg-surface-surface`).
-    func dashboardSurface() -> some View {
+    /// `fill` lets interactive cards raise on hover.
+    func dashboardSurface(fill: Color = DesignTokens.surfaceSurface) -> some View {
         background(
-            DesignTokens.surfaceSurface,
+            fill,
             in: RoundedRectangle(cornerRadius: DesignTokens.radiusXl)
         )
         .overlay(
@@ -369,7 +412,7 @@ struct DashboardMetric: View {
         NamespaceInfo(name: "kube-system", phase: "Active"),
     ]
     state.clusterReachable = true
-    return OverviewView(onShowEvents: { /* Preview: no navigation. */ })
+    return OverviewView(onNavigate: { _ in /* Preview: no navigation. */ })
         .environment(state)
         .frame(width: 600, height: 500)
 }
