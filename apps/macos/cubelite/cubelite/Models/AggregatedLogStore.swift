@@ -25,6 +25,7 @@ final class AggregatedLogStore {
     static let tailLines = 50
 
     private let streamer: any PodLogStreaming
+    private let defaults: UserDefaults
     private let backoffBase: Double
     private var tasks: [Task<Void, Never>] = []
     private var nextID = 0
@@ -46,6 +47,23 @@ final class AggregatedLogStore {
     /// `totalAppended` at the moment of pausing; nil while following.
     private(set) var pausedAtCount: Int?
 
+    /// Humanises JSON log lines (#477); its own preference, off by default.
+    var jsonView: Bool {
+        didSet { defaults.set(jsonView, forKey: "logs.jsonView") }
+    }
+    /// Lines expanded into a JSON tree; cleared with the buffer, ids evicted
+    /// by the ring are dropped on the next toggle.
+    private(set) var expandedLineIDs: Set<Int> = []
+
+    /// Expands or collapses the JSON tree of line `id`, dropping ids the
+    /// ring has evicted (line ids only grow).
+    func toggleExpanded(_ id: Int) {
+        if expandedLineIDs.remove(id) == nil { expandedLineIDs.insert(id) }
+        if let oldest = buffer.first?.id {
+            expandedLineIDs = expandedLineIDs.filter { $0 >= oldest }
+        }
+    }
+
     /// Lines arrived since the user paused.
     var newSincePause: Int {
         guard let pausedAtCount else { return 0 }
@@ -65,9 +83,14 @@ final class AggregatedLogStore {
         }
     }
 
-    init(streamer: any PodLogStreaming, backoffBase: Double = 2) {
+    init(
+        streamer: any PodLogStreaming, defaults: UserDefaults = .standard,
+        backoffBase: Double = 2
+    ) {
         self.streamer = streamer
+        self.defaults = defaults
         self.backoffBase = backoffBase
+        self.jsonView = defaults.bool(forKey: "logs.jsonView")
     }
 
     /// Restarts streaming for the given pod set (first ``maxPods`` pods).
@@ -94,6 +117,7 @@ final class AggregatedLogStore {
 
     func clear() {
         buffer = []
+        expandedLineIDs.removeAll()
         totalAppended = 0
         pausedAtCount = isFollowing ? nil : 0
     }

@@ -120,4 +120,36 @@ final class AggregatedLogStoreTests: XCTestCase {
 
         XCTAssertFalse(store.isStreaming)
     }
+
+    // MARK: - JSON view (#477)
+
+    func testJSONView_ownPreferenceOffByDefaultAndPersisted() throws {
+        let suite = "AggregatedLogStoreTests.jsonView"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "logPanel.jsonView")  // the panel's key is not shared
+
+        let first = AggregatedLogStore(streamer: streamer, defaults: defaults)
+        XCTAssertFalse(first.jsonView)
+        first.jsonView = true
+        XCTAssertTrue(defaults.bool(forKey: "logs.jsonView"))
+        XCTAssertTrue(AggregatedLogStore(streamer: streamer, defaults: defaults).jsonView)
+    }
+
+    func testToggleExpanded_flipsAndClearEmpties() async throws {
+        streamer.liveLines = [#"2026-07-18T10:00:00Z {"msg":"one"}"#]
+        store.start(pods: [makePod("api-1")], context: nil)
+        try await waitUntil { self.store.buffer.count == 1 }
+        let id = try XCTUnwrap(store.buffer.first?.id)
+
+        store.toggleExpanded(id)
+        XCTAssertEqual(store.expandedLineIDs, [id])
+        store.toggleExpanded(id)
+        XCTAssertEqual(store.expandedLineIDs, [])
+
+        store.toggleExpanded(id)
+        store.clear()
+        XCTAssertEqual(store.expandedLineIDs, [])
+    }
 }
