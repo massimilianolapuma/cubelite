@@ -158,8 +158,14 @@ struct MainView: View {
 
     /// Show the Events view for the active cluster (status bar warnings).
     func showEvents() {
+        showResource(.events)
+    }
+
+    /// Leaves All Clusters and selects `type` in the browse pane (Overview
+    /// stat tiles and warnings card, #464).
+    func showResource(_ type: ResourceType) {
         showAllClusters = false
-        selectedResourceType = .events
+        selectedResourceType = type
     }
 
     /// Refresh everything relevant to the current mode (⌘R and the palette).
