@@ -143,8 +143,14 @@ async fn pump<R: AsyncRead + Unpin>(
     }
 }
 
+/// Longest line kept before it is cut: output without newlines (a binary
+/// file, `yes | tr -d '\\n'`) is emitted in pieces of this size instead of
+/// growing the buffer without bound.
+pub(crate) const MAX_LINE_BYTES: usize = 64 * 1024;
+
 /// Splits a byte stream into lines across chunk boundaries (a UTF-8
-/// sequence cut between chunks is decoded once complete).
+/// sequence cut between chunks is decoded once complete). Lines longer than
+/// [`MAX_LINE_BYTES`] are emitted in pieces.
 #[derive(Debug, Default)]
 pub(crate) struct LineAssembler {
     pending: Vec<u8>,
@@ -154,26 +160,31 @@ impl LineAssembler {
     /// Appends `bytes` and returns every line completed by them, without
     /// the `\n` (and a `\r` before it).
     pub(crate) fn push(&mut self, bytes: &[u8]) -> Vec<String> {
-        self.pending.extend_from_slice(bytes);
         let mut lines = Vec::new();
-        while let Some(end) = self.pending.iter().position(|&b| b == b'\n') {
-            let mut line: Vec<u8> = self.pending.drain(..=end).collect();
-            line.pop();
-            if line.last() == Some(&b'\r') {
-                line.pop();
+        for &byte in bytes {
+            if byte == b'\n' {
+                if self.pending.last() == Some(&b'\r') {
+                    self.pending.pop();
+                }
+                lines.push(self.take());
+            } else {
+                self.pending.push(byte);
+                if self.pending.len() >= MAX_LINE_BYTES {
+                    lines.push(self.take());
+                }
             }
-            lines.push(String::from_utf8_lossy(&line).into_owned());
         }
         lines
     }
 
     /// The trailing partial line, if any (the stream ended without `\n`).
     pub(crate) fn finish(&mut self) -> Option<String> {
-        if self.pending.is_empty() {
-            return None;
-        }
-        let rest = std::mem::take(&mut self.pending);
-        Some(String::from_utf8_lossy(&rest).into_owned())
+        (!self.pending.is_empty()).then(|| self.take())
+    }
+
+    fn take(&mut self) -> String {
+        let line = std::mem::take(&mut self.pending);
+        String::from_utf8_lossy(&line).into_owned()
     }
 }
 
@@ -211,6 +222,16 @@ mod tests {
         let bytes = "café\n".as_bytes();
         assert!(lines.push(&bytes[..4]).is_empty());
         assert_eq!(lines.push(&bytes[4..]), vec!["café"]);
+    }
+
+    #[test]
+    fn line_assembler_cuts_lines_at_the_cap() {
+        let mut lines = LineAssembler::default();
+        let long = vec![b'x'; MAX_LINE_BYTES * 2 + 10];
+        let out = lines.push(&long);
+        assert_eq!(out.len(), 2);
+        assert!(out.iter().all(|l| l.len() == MAX_LINE_BYTES));
+        assert_eq!(lines.push(b"\n"), vec!["x".repeat(10)]);
     }
 
     #[test]
