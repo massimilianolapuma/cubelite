@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Edit & apply manifests** (desktop, #487): the YAML modal gets an Edit
+  mode; Apply replaces the resource (`kubectl replace` semantics, like the
+  native app), with conflicts and validation errors shown inline.
+
 - **JSON view for structured logs** (desktop, #454): a `{}` toggle in the log
   toolbar (off by default, remembered) renders JSON log lines as
   `LEVEL  message  key=value …`, taking the level from the line itself, and a
