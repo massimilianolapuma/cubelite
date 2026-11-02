@@ -89,6 +89,31 @@ actor KubeconfigService {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
+    /// Largest file `isKubeconfigFile(at:)` will read. Real kubeconfigs are a
+    /// few tens of KB even with inline certificates; the cap keeps a large
+    /// file picked by mistake from stalling the UI while it is parsed.
+    static let maxKubeconfigFileSize = 16 * 1024 * 1024
+
+    /// Returns `true` when `url` is a kubeconfig document: a regular file that
+    /// parses as a kubeconfig and declares `kind: Config` (YAML or JSON).
+    ///
+    /// Every kubeconfig field is optional, so a bare parse accepts any YAML or
+    /// JSON mapping as an empty config; the `kind` check is what tells a
+    /// kubeconfig apart from an unrelated file. The whole file is parsed
+    /// because `kubectl` writes keys in alphabetical order, which puts `kind`
+    /// after the inline certificates. Same rule as the desktop app (#448);
+    /// used to validate files added from Preferences (#450).
+    static func isKubeconfigFile(at url: URL) -> Bool {
+        guard
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+            values.isRegularFile == true,
+            (values.fileSize ?? 0) <= maxKubeconfigFileSize,
+            let data = try? Data(contentsOf: url),
+            let raw = try? YAMLDecoder().decode(RawKubeConfig.self, from: data)
+        else { return false }
+        return raw.kind == "Config"
+    }
+
     /// Returns the user's real home directory, bypassing sandbox container redirection.
     ///
     /// `FileManager.default.homeDirectoryForCurrentUser` returns the sandboxed container

@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opened `index.html?logWindow=…`, which the SvelteKit dev server does not
   route; it now opens `/?logWindow=…`, valid in dev and in the static build.
 
+- **Add File… rejects non-kubeconfig files** (macOS, #450): same rule as
+  the desktop fix for #448. A file picked in Preferences must parse as a
+  kubeconfig with `kind: Config` (YAML or JSON, checked on the whole file);
+  otherwise an alert names it and the list is unchanged. Valid files picked
+  together with a rejected one are still added.
+
 - **Dependency audit** (#470): `minimatch` is pinned to `>=11.0.1` through a
   root `pnpm.overrides` entry so `pnpm audit` passes GHSA-g3hv-75wg-m249. The
   package reaches the tree only through dev tooling (`eslint`,
