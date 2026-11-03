@@ -75,20 +75,61 @@ private struct ForbiddenCluster: IntegrationClusterAccess {
     }
 }
 
-/// A service in a listing: labels, ports and owner references as JSON.
+/// Services and owner resources by path; `forbidden` paths answer 403.
+/// Records every path asked for.
+private final class RecordingCluster: IntegrationClusterAccess, @unchecked Sendable {
+    private let lock = NSLock()
+    private let objects: [String: String]
+    private let forbidden: Set<String>
+    private var recorded: [String] = []
+
+    init(_ objects: [String: String], forbidden: Set<String> = []) {
+        self.objects = objects
+        self.forbidden = forbidden
+    }
+
+    var paths: [String] { lock.withLock { recorded } }
+
+    func getIfPresent(path: String, inContext contextName: String?) async throws -> Data? {
+        lock.withLock { recorded.append(path) }
+        if forbidden.contains(path) { throw CubeliteError.forbidden(resource: path, reason: "forbidden") }
+        return objects[path].map { Data($0.utf8) }
+    }
+
+    func portForwardWebSocket(
+        namespace: String, pod: String, remotePort: Int, inContext contextName: String?
+    ) async throws -> URLSessionWebSocketTask {
+        throw ElasticError.connect("no port-forward in tests")
+    }
+
+    func rawGet(path: String, inContext contextName: String?) async throws -> (status: Int, body: Data) {
+        (404, Data())
+    }
+}
+
+/// A service in a listing: labels, ports, selector and owner references as JSON.
 private struct Row {
     let namespace: String
     let name: String
     var labels = "{}"
     var ports = #"[{"name":"http","port":80}]"#
     var owners = "[]"
+    var selector = "{}"
 
     var json: String {
-        #"{"metadata":{"namespace":"\#(namespace)","name":"\#(name)","labels":\#(labels),"ownerReferences":\#(owners)},"spec":{"ports":\#(ports)}}"#
+        #"{"metadata":{"namespace":"\#(namespace)","name":"\#(name)","labels":\#(labels),"ownerReferences":\#(owners)},"spec":{"ports":\#(ports),"selector":\#(selector)}}"#
     }
 
-    static func owner(_ kind: String, _ apiVersion: String) -> String {
-        #"[{"apiVersion":"\#(apiVersion)","kind":"\#(kind)","name":"x","uid":"1"}]"#
+    static func owner(_ kind: String, _ apiVersion: String, name: String = "x", uid: String = "1") -> String {
+        #"[{"apiVersion":"\#(apiVersion)","kind":"\#(kind)","name":"\#(name)","uid":"\#(uid)"}]"#
+    }
+
+    static func esOwner(_ name: String = "quickstart", uid: String = "es-uid") -> String {
+        owner("Elasticsearch", "elasticsearch.k8s.elastic.co/v1", name: name, uid: uid)
+    }
+
+    static func promOwner(_ name: String = "kps-kube-prometheus-stack-prometheus", uid: String = "prom-uid") -> String {
+        owner("Prometheus", "monitoring.coreos.com/v1", name: name, uid: uid)
     }
 }
 
@@ -102,61 +143,75 @@ final class IntegrationSuggestionsTests: XCTestCase {
     private static let eckLabels =
         #"{"common.k8s.elastic.co/type":"elasticsearch","elasticsearch.k8s.elastic.co/cluster-name":"evil"}"#
     private static let https9200 = #"[{"name":"https","port":9200}]"#
+    private static let web9090 = #"[{"name":"http-web","port":9090}]"#
+    private static let esCR = "/apis/elasticsearch.k8s.elastic.co/v1/namespaces/logging/elasticsearches/quickstart"
+    private static let promCR =
+        "/apis/monitoring.coreos.com/v1/namespaces/monitoring/prometheuses/kps-kube-prometheus-stack-prometheus"
 
-    /// ECK (owned by its Elasticsearch), kube-prometheus-stack, a second
-    /// Elasticsearch chart, a second Grafana and unrelated services (same
-    /// list as the core test).
-    private static let mixed: [Row] = [
+    /// ECK and kube-prometheus-stack as on minikube: the ECK service owned
+    /// by its Elasticsearch, `prometheus-operated` by its Prometheus, and
+    /// the chart's Prometheus service selecting the same instance.
+    private static let stack: [Row] = [
         Row(namespace: "default", name: "kubernetes", ports: #"[{"name":"https","port":443}]"#),
-        Row(namespace: "a-search", name: "elasticsearch-master", labels: #"{"app":"elasticsearch-master"}"#,
-            ports: #"[{"name":"http","port":9200}]"#),
         Row(namespace: "logging", name: "quickstart-es-transport", labels: eckES,
             ports: #"[{"name":"tls-transport","port":9300}]"#),
         Row(namespace: "logging", name: "quickstart-es-default", labels: eckES, ports: https9200),
-        Row(namespace: "logging", name: "quickstart-es-http", labels: eckES, ports: https9200,
-            owners: Row.owner("Elasticsearch", "elasticsearch.k8s.elastic.co/v1")),
-        Row(namespace: "a-search", name: "kibana", labels: #"{"app.kubernetes.io/name":"kibana"}"#,
-            ports: #"[{"name":"http","port":5601}]"#),
+        Row(namespace: "logging", name: "quickstart-es-http", labels: eckES, ports: https9200, owners: Row.esOwner(),
+            selector: #"{"elasticsearch.k8s.elastic.co/cluster-name":"quickstart"}"#),
         Row(namespace: "logging", name: "quickstart-kb-http", labels: #"{"common.k8s.elastic.co/type":"kibana"}"#,
             ports: #"[{"name":"https","port":5601}]"#),
-        Row(namespace: "a-metrics", name: "prometheus-server", labels: #"{"app":"prometheus"}"#),
-        Row(namespace: "monitoring", name: "kps-kube-prometheus-stack-prometheus",
-            ports: #"[{"name":"http-web","port":9090}]"#),
+        Row(namespace: "monitoring", name: "kps-kube-prometheus-stack-prometheus", ports: web9090,
+            selector: #"{"app.kubernetes.io/name":"prometheus","operator.prometheus.io/name":"kps-kube-prometheus-stack-prometheus"}"#),
         Row(namespace: "monitoring", name: "prometheus-operated", labels: #"{"operated-prometheus":"true"}"#,
-            ports: #"[{"name":"http-web","port":9090}]"#),
+            ports: web9090, owners: Row.promOwner(), selector: #"{"app.kubernetes.io/name":"prometheus"}"#),
         Row(namespace: "monitoring", name: "kps-kube-prometheus-stack-alertmanager",
             ports: #"[{"name":"http-web","port":9093}]"#),
-        Row(namespace: "a-metrics", name: "grafana", labels: #"{"app.kubernetes.io/name":"grafana"}"#,
-            ports: #"[{"name":"service","port":80}]"#),
         Row(namespace: "monitoring", name: "kps-grafana", labels: #"{"app.kubernetes.io/name":"grafana"}"#,
             ports: #"[{"name":"http-web","port":80}]"#),
     ]
+
+    /// The stack plus a second Elasticsearch chart, Prometheus and Grafana.
+    private static let mixed: [Row] = stack + [
+        Row(namespace: "a-search", name: "elasticsearch-master", labels: #"{"app":"elasticsearch-master"}"#,
+            ports: #"[{"name":"http","port":9200}]"#),
+        Row(namespace: "a-search", name: "kibana", labels: #"{"app.kubernetes.io/name":"kibana"}"#,
+            ports: #"[{"name":"http","port":5601}]"#),
+        Row(namespace: "a-metrics", name: "prometheus-server", labels: #"{"app":"prometheus"}"#),
+        Row(namespace: "a-metrics", name: "grafana", labels: #"{"app.kubernetes.io/name":"grafana"}"#,
+            ports: #"[{"name":"service","port":80}]"#),
+    ]
+
+    private static let verifiedStack: Set<String> = ["logging/quickstart-es-http", "monitoring/prometheus-operated"]
 
     private static func listJSON(_ rows: [Row]) -> String {
         #"{"items":[\#(rows.map(\.json).joined(separator: ","))]}"#
     }
 
-    private static func pick(_ rows: [Row]) throws -> DetectedIntegrations {
+    private static func pick(_ rows: [Row], verified: Set<String> = []) throws -> DetectedIntegrations {
         let list = try JSONDecoder().decode(
             IntegrationK8s.List<IntegrationK8s.Service>.self, from: Data(listJSON(rows).utf8))
-        return DetectedIntegrations.pick(services: list.items)
+        return DetectedIntegrations.pick(services: list.items, verified: verified)
     }
 
-    private static func cluster(_ rows: [Row] = mixed) -> StubCluster {
-        StubCluster(objects: ["/api/v1/services": listJSON(rows)])
+    /// The services, plus the stack's owner resources with their uids.
+    private static func cluster(
+        _ rows: [Row] = stack, owners: [String: String] = [esCR: "es-uid", promCR: "prom-uid"],
+        forbidden: Set<String> = []
+    ) -> RecordingCluster {
+        var objects = ["/api/v1/services": listJSON(rows)]
+        for (path, uid) in owners { objects[path] = #"{"metadata":{"uid":"\#(uid)"}}"# }
+        return RecordingCluster(objects, forbidden: forbidden)
     }
 
-    // MARK: - Detection
+    // MARK: - Ranking (pure)
 
-    func testPickRanksOperatorOwnedThenWellKnownNamespaces() throws {
-        let found = try Self.pick(Self.mixed)
+    func testPickRanksVerifiedThenWellKnownNamespaces() throws {
+        let found = try Self.pick(Self.mixed, verified: Self.verifiedStack)
         XCTAssertEqual(found.elasticsearch?.id, "elasticsearch:logging/quickstart-es-http:9200")
         XCTAssertEqual(found.elasticsearch?.https, true)
         XCTAssertEqual(found.kibana?.id, "kibana:logging/quickstart-kb-http:5601")
         XCTAssertEqual(found.prometheus?.id, "prometheus:monitoring/prometheus-operated:9090")
         XCTAssertEqual(found.grafana?.id, "grafana:monitoring/kps-grafana:80")
-        XCTAssertTrue(found.elasticsearchOneClick)
-        XCTAssertTrue(found.prometheusOneClick)
         XCTAssertEqual(
             found.elasticServices.map(\.name),
             ["quickstart-es-http", "elasticsearch-master", "quickstart-kb-http", "kibana"])
@@ -164,64 +219,111 @@ final class IntegrationSuggestionsTests: XCTestCase {
             found.prometheusServices.map(\.name),
             ["prometheus-operated", "kps-kube-prometheus-stack-prometheus", "prometheus-server", "kps-grafana",
              "grafana"])
+        XCTAssertFalse(found.elasticsearchOneClick, "a second Elasticsearch elsewhere")
+        XCTAssertFalse(found.prometheusOneClick, "a second Prometheus elsewhere")
         XCTAssertEqual(found.found, [.elasticsearch, .prometheus])
     }
 
-    func testUnmanagedServicesFallBackToWellKnownNamespacesWithoutOneClick() throws {
-        let rows = Self.mixed.filter { !$0.name.hasPrefix("quickstart") && $0.name != "prometheus-operated" }
-        let found = try Self.pick(rows)
-        XCTAssertEqual(found.elasticsearch?.name, "elasticsearch-master")
-        XCTAssertEqual(found.kibana?.namespace, "a-search")
-        XCTAssertEqual(found.prometheus?.name, "kps-kube-prometheus-stack-prometheus", "monitoring first")
-        XCTAssertEqual(found.grafana?.name, "kps-grafana", "same namespace as Prometheus")
-        XCTAssertFalse(found.elasticsearchOneClick)
-        XCTAssertFalse(found.prometheusOneClick)
+    func testAVerifiedInstanceAndItsAliasesAreOneClick() throws {
+        let found = try Self.pick(Self.stack, verified: Self.verifiedStack)
+        XCTAssertTrue(found.elasticsearchOneClick)
+        XCTAssertTrue(found.prometheusOneClick, "the chart's service selects the same Prometheus")
+        XCTAssertEqual(found.prometheusServices.filter { $0.kind == .prometheus }.count, 2, "alias still listed")
+        let unverified = try Self.pick(Self.stack)
+        XCTAssertFalse(unverified.elasticsearchOneClick || unverified.prometheusOneClick, "owners not verified")
+        XCTAssertEqual(unverified.prometheus?.name, "prometheus-operated", "conventional name ranks first")
+    }
+
+    func testVerifiedRanksAboveAnUnverifiedWellKnownNamespace() throws {
+        let rows = [
+            Row(namespace: "monitoring", name: "prom-a", labels: #"{"app":"prometheus"}"#, ports: Self.web9090),
+            Row(namespace: "team-x", name: "prom-b", labels: #"{"app":"prometheus"}"#, ports: Self.web9090,
+                owners: Row.promOwner("b")),
+        ]
+        let found = try Self.pick(rows, verified: ["team-x/prom-b"])
+        XCTAssertEqual(found.prometheus?.name, "prom-b")
+        XCTAssertFalse(found.prometheusOneClick, "prom-a is another Prometheus")
+        XCTAssertEqual(try Self.pick(rows).prometheus?.name, "prom-a")
         XCTAssertEqual(try Self.pick([]), DetectedIntegrations())
     }
 
-    func testWebUIComesOnlyFromTheMainServicesNamespace() throws {
+    func testWebUIComesOnlyFromTheBestServicesNamespace() throws {
         let found = try Self.pick([
-            Row(namespace: "logging", name: "quickstart-es-http", labels: Self.eckLabels, ports: Self.https9200),
+            Row(namespace: "logging", name: "quickstart-es-http", ports: Self.https9200, owners: Row.esOwner()),
             Row(namespace: "a-search", name: "kibana", labels: #"{"app.kubernetes.io/name":"kibana"}"#),
-        ])
+        ], verified: ["logging/quickstart-es-http"])
         XCTAssertNotNil(found.elasticsearch)
         XCTAssertNil(found.kibana, "no companion from another namespace")
-        XCTAssertTrue(found.elasticsearchOneClick, "type and cluster-name labels are trusted")
+        XCTAssertTrue(found.elasticsearchOneClick)
     }
 
-    func testLookAlikesAndForeignOwnersAreNotOneClick() throws {
-        let lookAlikes = Self.mixed + [
-            Row(namespace: "team-a", name: "prometheus-operated", labels: #"{"operated-prometheus":"true"}"#,
-                ports: #"[{"name":"http-web","port":9090}]"#),
-            Row(namespace: "team-a", name: "evil-es-http", labels: Self.eckLabels, ports: Self.https9200),
-        ]
-        let several = try Self.pick(lookAlikes)
-        XCTAssertEqual(several.elasticsearch?.namespace, "logging", "the well-known namespace still wins")
-        XCTAssertEqual(several.prometheus?.namespace, "monitoring")
-        XCTAssertFalse(several.elasticsearchOneClick, "two trusted Elasticsearch services")
-        XCTAssertFalse(several.prometheusOneClick, "two trusted Prometheus services")
+    // MARK: - Verification (Kubernetes API only)
 
-        let lone = try Self.pick([Row(namespace: "team-a", name: "foo-es-http", ports: Self.https9200)])
-        XCTAssertEqual(lone.elasticsearch?.name, "foo-es-http")
-        XCTAssertFalse(lone.elasticsearchOneClick, "not operator-managed")
+    func testDetectVerifiesOnlyTheClaimedOwners() async throws {
+        let cluster = Self.cluster(Self.mixed)
+        let found = try await DetectedIntegrations.detect(context: "prod", cluster: cluster)
+        XCTAssertEqual(found.elasticsearch?.name, "quickstart-es-http")
+        XCTAssertEqual(found.prometheus?.name, "prometheus-operated")
+        XCTAssertEqual(cluster.paths, ["/api/v1/services", Self.esCR, Self.promCR], "no other request")
 
-        let foreign = try Self.pick([
-            Row(namespace: "logging", name: "quickstart-es-http", ports: Self.https9200,
-                owners: Row.owner("Elasticsearch", "elasticsearch.k8s.evil.example/v1"))
-        ])
+        let stack = Self.cluster()
+        let one = try await DetectedIntegrations.detect(context: "prod", cluster: stack)
+        XCTAssertTrue(one.elasticsearchOneClick && one.prometheusOneClick)
+    }
+
+    func testAtMostThreeOwnersAreVerifiedPerIntegration() async throws {
+        let rows: [Row] = (1...4).map { (i: Int) -> Row in
+            Row(namespace: "ns\(i)", name: "es\(i)-es-http", ports: Self.https9200, owners: Row.esOwner("es\(i)"))
+        }
+        let cluster = Self.cluster(rows, owners: [:])
+        _ = try await DetectedIntegrations.detect(context: "prod", cluster: cluster)
+        let expected: [String] = (1...3).map { (i: Int) -> String in
+            "/apis/elasticsearch.k8s.elastic.co/v1/namespaces/ns\(i)/elasticsearches/es\(i)"
+        }
+        XCTAssertEqual(Array(cluster.paths.dropFirst()), expected)
+    }
+
+    func testLabelsAndUnverifiableOwnersAreNeverTrusted() async throws {
+        let lone = { (owners: String) in
+            [Row(namespace: "logging", name: "quickstart-es-http", labels: Self.eckLabels, ports: Self.https9200,
+                 owners: owners)]
+        }
+        let labelsOnly = Self.cluster(lone("[]"))
+        let found = try await DetectedIntegrations.detect(context: "prod", cluster: labelsOnly)
+        XCTAssertNotNil(found.elasticsearch)
+        XCTAssertFalse(found.elasticsearchOneClick, "ECK labels alone")
+        XCTAssertEqual(labelsOnly.paths, ["/api/v1/services"], "nothing claimed, nothing fetched")
+
+        let missing = try await DetectedIntegrations.detect(
+            context: "prod", cluster: Self.cluster(lone(Row.esOwner()), owners: [:]))
+        XCTAssertFalse(missing.elasticsearchOneClick, "owner resource not found (404)")
+        let otherUID = try await DetectedIntegrations.detect(
+            context: "prod", cluster: Self.cluster(lone(Row.esOwner()), owners: [Self.esCR: "someone-else"]))
+        XCTAssertFalse(otherUID.elasticsearchOneClick, "uid mismatch")
+        let forbidden = try await DetectedIntegrations.detect(
+            context: "prod", cluster: Self.cluster(lone(Row.esOwner()), forbidden: [Self.esCR]))
+        XCTAssertFalse(forbidden.elasticsearchOneClick, "owner resource forbidden (403)")
+        let foreign = try await DetectedIntegrations.detect(
+            context: "prod",
+            cluster: Self.cluster(lone(Row.owner("Elasticsearch", "elasticsearch.k8s.evil.example/v1",
+                                                 name: "quickstart", uid: "es-uid"))))
         XCTAssertFalse(foreign.elasticsearchOneClick, "owner from another API group")
-        let promOwned = try Self.pick([
-            Row(namespace: "monitoring", name: "kps-prometheus", ports: #"[{"name":"http-web","port":9090}]"#,
-                owners: Row.owner("Prometheus", "monitoring.coreos.com/v1"))
-        ])
-        XCTAssertTrue(promOwned.prometheusOneClick, "owned by a Prometheus resource")
+        let verified = try await DetectedIntegrations.detect(
+            context: "prod", cluster: Self.cluster(lone(Row.esOwner())))
+        XCTAssertTrue(verified.elasticsearchOneClick, "verified owner, lone candidate")
+    }
+
+    func testAVerifiedOwnerWithASecondCandidateIsReviewOnly() async throws {
+        let rows = Self.stack + [Row(namespace: "team-a", name: "foo-es-http", ports: Self.https9200)]
+        let found = try await DetectedIntegrations.detect(context: "prod", cluster: Self.cluster(rows))
+        XCTAssertEqual(found.elasticsearch?.name, "quickstart-es-http")
+        XCTAssertFalse(found.elasticsearchOneClick)
+        XCTAssertTrue(found.prometheusOneClick)
     }
 
     func testDetectGivesUpSilentlyWhenForbidden() async throws {
         let found = try await DetectedIntegrations.detect(context: "prod", cluster: ForbiddenCluster())
         XCTAssertEqual(found, DetectedIntegrations())
-        let all = try await DetectedIntegrations.detect(context: "prod", cluster: Self.cluster())
-        XCTAssertEqual(all.found, [.elasticsearch, .prometheus])
     }
 
     // MARK: - Store
@@ -277,8 +379,8 @@ final class IntegrationSuggestionsTests: XCTestCase {
         XCTAssertNil(h.store.message(for: "staging"), "per context")
     }
 
-    func testSeveralCandidatesOfferReviewOnly() async {
-        let h = harness(Self.cluster(Self.mixed + [
+    func testLookAlikesOfferReviewOnly() async {
+        let h = harness(Self.cluster(Self.stack + [
             Row(namespace: "team-a", name: "evil-es-http", labels: Self.eckLabels, ports: Self.https9200)
         ]))
         await h.store.detectIfNeeded(context: "prod")
@@ -368,11 +470,10 @@ final class IntegrationSuggestionsTests: XCTestCase {
         XCTAssertEqual(h.store.offered(for: "prod"), [.elasticsearch], "Review stays offered")
         XCTAssertFalse(h.store.canEnable(for: "prod"), "no Enable next to a failure")
 
-        // An operator-owned Elasticsearch outside ECK's naming: no ECK user.
-        let plain = harness(Self.cluster([
-            Row(namespace: "logging", name: "elasticsearch", ports: #"[{"name":"http","port":9200}]"#,
-                owners: Row.owner("Elasticsearch", "elasticsearch.k8s.elastic.co/v1"))
-        ]))
+        // A verified Elasticsearch outside ECK's service naming: no ECK user.
+        let plain = harness(Self.cluster(
+            [Row(namespace: "logging", name: "elasticsearch", ports: #"[{"name":"http","port":9200}]"#,
+                 owners: Row.esOwner())]))
         await plain.elastic.setFailTest(true)
         await plain.store.detectIfNeeded(context: "prod")
         await plain.store.enable(context: "prod")
@@ -390,7 +491,7 @@ final class IntegrationSuggestionsTests: XCTestCase {
     }
 
     func testPrometheusWithoutCadvisorIsSavedWithAWarning() async {
-        let h = harness(Self.cluster(Self.mixed.filter { $0.namespace == "monitoring" }))
+        let h = harness(Self.cluster(Self.stack.filter { $0.namespace == "monitoring" }))
         await h.prometheus.setCadvisor(false)
         await h.store.detectIfNeeded(context: "prod")
         XCTAssertEqual(h.store.offered(for: "prod"), [.prometheus])
@@ -402,8 +503,9 @@ final class IntegrationSuggestionsTests: XCTestCase {
     }
 
     func testReviewPrefillsTheFormsWithEveryCandidateWithoutSaving() async {
-        let h = harness()
+        let h = harness(Self.cluster(Self.mixed))
         await h.store.detectIfNeeded(context: "prod")
+        XCTAssertFalse(h.store.canEnable(for: "prod"))
         XCTAssertEqual(h.store.review(context: "prod"), .elasticsearch)
         XCTAssertNil(h.settings.takeSuggestion(for: "staging"), "kept for its context")
         let found = h.settings.takeSuggestion(for: "prod")
@@ -439,6 +541,21 @@ final class IntegrationSuggestionsTests: XCTestCase {
         await prom.load(context: "prod")
         if let p = found?.prometheus { prom.suggest(p, grafana: found?.grafana) }
         XCTAssertEqual(prom.target.mode, .external, "a saved endpoint is never replaced")
+    }
+
+    func testAPendingReviewIsDroppedOnConnectOrWhenSettingsCloses() async {
+        let h = harness()
+        await h.store.detectIfNeeded(context: "prod")
+        _ = h.store.review(context: "prod")
+        XCTAssertNotNil(h.settings.pendingSuggestion)
+        h.store.connected("staging")
+        XCTAssertNil(h.settings.pendingSuggestion, "a context switch drops it")
+        XCTAssertNil(h.settings.takeSuggestion(for: "prod"))
+
+        await h.store.detectIfNeeded(context: "prod")
+        _ = h.store.review(context: "prod")
+        h.settings.clearPendingSuggestion()  // Settings closed without showing it
+        XCTAssertNil(h.settings.takeSuggestion(for: "prod"))
     }
 
     func testTurningAnIntegrationOffInSettingsDismissesItsSuggestion() async {

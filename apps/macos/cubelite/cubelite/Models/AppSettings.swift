@@ -183,6 +183,12 @@ final class AppSettings {
         pendingSuggestion = PendingSuggestion(context: context, found: found)
     }
 
+    /// Drops a suggestion Settings never showed (context switched, Settings
+    /// closed).
+    func clearPendingSuggestion() {
+        pendingSuggestion = nil
+    }
+
     /// The pending suggestion for `context`, consumed.
     func takeSuggestion(for context: String?) -> DetectedIntegrations? {
         guard let pending = pendingSuggestion, pending.context == context else { return nil }

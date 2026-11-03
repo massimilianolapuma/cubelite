@@ -70,6 +70,8 @@ enum IntegrationK8s {
     struct OwnerReference: Decodable, Sendable {
         var apiVersion: String
         var kind: String
+        var name: String?
+        var uid: String?
     }
 
     enum IntOrString: Decodable, Sendable, Equatable {

@@ -48,7 +48,7 @@ struct IntegrationsPreferencesTab: View {
                     .help("Offer setting up Elasticsearch and Prometheus where their data would appear")
                     .accessibilityIdentifier("preferences.integration-hints")
                 Spacer()
-                if let context, settings.integrationDismissals[context] != nil {
+                if let context, settings.integrationDismissals[context]?.isEmpty == false {
                     Button("Suggest detected integrations again") { settings.clearDismissals(context: context) }
                         .buttonStyle(.link)
                         .typeStyle(DesignTokens.Typography.caption)
@@ -76,6 +76,8 @@ struct IntegrationsPreferencesTab: View {
         }
         .onChange(of: settings.pendingSuggestion) { _, _ in applySuggestion() }
         .onAppear { adoptRequestedContext() }
+        // A Review never shown must not pre-fill a later visit.
+        .onDisappear { settings.clearPendingSuggestion() }
         .onChange(of: settings.integrationContext) { _, _ in adoptRequestedContext() }
         .task(id: clusterState.contexts) {
             // Contexts may load after Settings opened.

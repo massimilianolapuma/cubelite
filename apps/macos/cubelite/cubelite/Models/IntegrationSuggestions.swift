@@ -10,6 +10,57 @@ extension DetectedService {
     var isECK: Bool { name.hasSuffix("-es-http") }
 }
 
+/// How one integration's services are trusted: an owner reference to the
+/// operator's custom resource, verified through the Kubernetes API.
+struct OperatorRule: Sendable {
+    /// Main kind from the classifier (`elasticsearch`, `prometheus`).
+    let main: String
+    /// Owner kind and API group of the custom resource.
+    let ownerKind: String
+    let group: String
+    /// Plural resource name in the API path.
+    let resource: String
+    /// Selector label naming the instance (same-instance aliases).
+    let instanceLabel: String
+    /// Whether the classifier finds a main-kind service.
+    let isMain: @Sendable (IntegrationK8s.Service) -> Bool
+    /// Conventional name (ranking only).
+    let conventional: @Sendable (String) -> Bool
+
+    static let elasticsearch = OperatorRule(
+        main: "elasticsearch", ownerKind: "Elasticsearch", group: "elasticsearch.k8s.elastic.co",
+        resource: "elasticsearches", instanceLabel: "elasticsearch.k8s.elastic.co/cluster-name",
+        isMain: { Elastic.classify($0)?.kind == .elasticsearch },
+        conventional: { $0.hasSuffix("-es-http") || $0.hasSuffix("-kb-http") })
+
+    static let prometheus = OperatorRule(
+        main: "prometheus", ownerKind: "Prometheus", group: "monitoring.coreos.com",
+        resource: "prometheuses", instanceLabel: "operator.prometheus.io/name",
+        isMain: { Prometheus.classify($0)?.kind == .prometheus },
+        conventional: { $0 == "prometheus-operated" })
+
+    /// The owner reference `service` claims (kind and API group match).
+    func owner(of service: IntegrationK8s.Service) -> IntegrationK8s.OwnerReference? {
+        (service.metadata.ownerReferences ?? []).first { owner in
+            owner.kind == ownerKind && owner.apiVersion.split(separator: "/").first.map(String.init) == group
+        }
+    }
+
+    /// The custom resource an owner reference names, in the service's namespace.
+    func path(namespace: String, name: String) -> String {
+        "/apis/\(group)/v1/namespaces/\(namespace)/\(resource)/\(name)"
+    }
+
+    /// Ranking before verification: well-known namespace, conventional
+    /// name, namespace, name.
+    func unverifiedKey(namespace: String, name: String) -> (Int, Int, String, String) {
+        (
+            DetectedIntegrations.wellKnownNamespaces.contains(namespace) ? 0 : 1, conventional(name) ? 0 : 1,
+            namespace, name
+        )
+    }
+}
+
 /// The services the integrations would use, from one listing of the
 /// cluster's services, ranked like core `pick_services`.
 struct DetectedIntegrations: Equatable, Sendable {
@@ -21,10 +72,10 @@ struct DetectedIntegrations: Equatable, Sendable {
     var prometheus: DetectedPrometheus?
     /// Grafana in the Prometheus's namespace.
     var grafana: DetectedPrometheus?
-    /// `elasticsearch` is the only ECK-managed Elasticsearch: Enable may
-    /// save it without a review.
+    /// `elasticsearch` is owned by a verified ECK resource and no other
+    /// Elasticsearch is in the cluster: Enable may save it without a review.
     var elasticsearchOneClick = false
-    /// `prometheus` is the only operator-managed Prometheus.
+    /// Same for `prometheus` and the Prometheus operator.
     var prometheusOneClick = false
     /// Every Elasticsearch and Kibana found, best first (for Review).
     var elasticServices: [DetectedService] = []
@@ -32,49 +83,27 @@ struct DetectedIntegrations: Equatable, Sendable {
     var prometheusServices: [DetectedPrometheus] = []
 
     /// Namespaces where observability stacks usually live, preferred after
-    /// operator ownership.
+    /// verified ownership.
     static let wellKnownNamespaces = ["logging", "elastic-system", "monitoring", "observability"]
 
+    /// Owner resources verified per integration, at most.
+    static let maxVerified = 3
+
     /// Picks the integrations' services with the Elasticsearch and
-    /// Prometheus classifiers, ranked by operator ownership, well-known
-    /// namespace, conventional name (`-es-http`, `prometheus-operated`),
-    /// namespace and name. Kibana and Grafana come only from the namespace
-    /// of the service they go with.
-    static func pick(services: [IntegrationK8s.Service]) -> DetectedIntegrations {
+    /// Prometheus classifiers. `verified` holds the `namespace/name` of
+    /// services whose operator owner was checked ([`detect`]); labels and
+    /// names only rank.
+    static func pick(services: [IntegrationK8s.Service], verified: Set<String>) -> DetectedIntegrations {
         let es = rank(
-            services.compactMap { s in Elastic.classify(s).map { ($0, esTrusted(s)) } }, main: "elasticsearch"
-        ) { $0.name.hasSuffix("-es-http") || $0.name.hasSuffix("-kb-http") }
+            services.compactMap { s in Elastic.classify(s).map { ($0, s) } }, rule: .elasticsearch,
+            verified: verified)
         let prom = rank(
-            services.compactMap { s in Prometheus.classify(s).map { ($0, promTrusted(s)) } }, main: "prometheus"
-        ) { $0.name == "prometheus-operated" }
+            services.compactMap { s in Prometheus.classify(s).map { ($0, s) } }, rule: .prometheus,
+            verified: verified)
         return DetectedIntegrations(
             elasticsearch: es.main, kibana: es.webUI, prometheus: prom.main, grafana: prom.webUI,
             elasticsearchOneClick: es.oneClick, prometheusOneClick: prom.oneClick,
             elasticServices: es.all, prometheusServices: prom.all)
-    }
-
-    /// An Elasticsearch service managed by ECK: owned by an `Elasticsearch`
-    /// resource, or carrying ECK's type and cluster-name labels.
-    static func esTrusted(_ service: IntegrationK8s.Service) -> Bool {
-        let labels = service.metadata.labels ?? [:]
-        return ownedBy(service, kind: "Elasticsearch", group: "elasticsearch.k8s.elastic.co")
-            || (labels["common.k8s.elastic.co/type"] == "elasticsearch"
-                && labels["elasticsearch.k8s.elastic.co/cluster-name"] != nil)
-    }
-
-    /// A Prometheus service managed by the Prometheus operator: owned by a
-    /// `Prometheus` resource, or its governing `prometheus-operated` service.
-    static func promTrusted(_ service: IntegrationK8s.Service) -> Bool {
-        ownedBy(service, kind: "Prometheus", group: "monitoring.coreos.com")
-            || (service.metadata.name == "prometheus-operated"
-                && service.metadata.labels?["operated-prometheus"] == "true")
-    }
-
-    /// Owned by a custom resource of `kind` in API group `group`.
-    private static func ownedBy(_ service: IntegrationK8s.Service, kind: String, group: String) -> Bool {
-        (service.metadata.ownerReferences ?? []).contains { owner in
-            owner.kind == kind && owner.apiVersion.split(separator: "/").first.map(String.init) == group
-        }
     }
 
     private struct Ranked<T> {
@@ -84,43 +113,96 @@ struct DetectedIntegrations: Equatable, Sendable {
         var all: [T]
     }
 
-    /// Ranks (service, trusted): the `main` kind first, then trusted,
-    /// well-known namespace, `conventional` name, namespace and name. The
-    /// web UI comes only from the main service's namespace; one-click needs
-    /// exactly one trusted main service.
+    /// Ranks: the main kind first, then verified, well-known namespace,
+    /// conventional name, namespace and name. The web UI comes only from
+    /// the best service's namespace. One-click needs a verified best and
+    /// every other main-kind service an alias of the same instance.
     private static func rank<T: RankedService>(
-        _ found: [(T, Bool)], main: String, conventional: (T) -> Bool
+        _ found: [(T, IntegrationK8s.Service)], rule: OperatorRule, verified: Set<String>
     ) -> Ranked<T> {
-        func key(_ entry: (T, Bool)) -> (Int, Int, Int, Int, String, String) {
-            let (d, trusted) = entry
-            return (
-                d.kindName == main ? 0 : 1, trusted ? 0 : 1, wellKnownNamespaces.contains(d.namespace) ? 0 : 1,
-                conventional(d) ? 0 : 1, d.namespace, d.name
-            )
+        func isVerified(_ d: T) -> Bool { d.kindName == rule.main && verified.contains("\(d.namespace)/\(d.name)") }
+        func key(_ d: T) -> (Int, Int, Int, Int, String, String) {
+            let (wellKnown, conventional, namespace, name) = rule.unverifiedKey(namespace: d.namespace, name: d.name)
+            return (d.kindName == rule.main ? 0 : 1, isVerified(d) ? 0 : 1, wellKnown, conventional, namespace, name)
         }
-        let sorted = found.sorted { key($0) < key($1) }
-        let best = sorted.first { $0.0.kindName == main }
-        let webUI = best.flatMap { m in
-            sorted.first { $0.0.kindName != main && $0.0.namespace == m.0.namespace }?.0
+        let sorted = found.sorted { key($0.0) < key($1.0) }
+        let all = sorted.map(\.0)
+        guard let best = sorted.first(where: { $0.0.kindName == rule.main }) else {
+            return Ranked(main: nil, webUI: nil, oneClick: false, all: all)
         }
-        let trusted = sorted.filter { $0.1 && $0.0.kindName == main }.count
-        return Ranked(
-            main: best?.0, webUI: webUI, oneClick: trusted == 1 && best?.1 == true, all: sorted.map(\.0))
+        let webUI = sorted.first { $0.0.kindName != rule.main && $0.0.namespace == best.0.namespace }?.0
+        let instance = rule.owner(of: best.1)?.name
+        let others = sorted.filter {
+            $0.0.kindName == rule.main && ($0.0.namespace, $0.0.name) != (best.0.namespace, best.0.name)
+        }
+        let aliasesOnly = others.allSatisfy { other in
+            instance != nil && other.0.namespace == best.0.namespace
+                && other.1.spec?.selector?[rule.instanceLabel] == instance
+        }
+        return Ranked(main: best.0, webUI: webUI, oneClick: isVerified(best.0) && aliasesOnly, all: all)
     }
 
-    /// Lists the services of every namespace once: only the Kubernetes API
-    /// is contacted, no Elasticsearch or Prometheus and no secrets. A user
-    /// who may not list services across namespaces (403) gets nothing.
+    /// Lists the services of every namespace once and verifies the owners
+    /// of up to three claimed services per integration: only the
+    /// Kubernetes API is contacted, never Elasticsearch or Prometheus, and
+    /// no secrets. A user who may not list services across namespaces
+    /// (403) gets nothing.
     static func detect(
         context: String, cluster: any IntegrationClusterAccess
     ) async throws -> DetectedIntegrations {
+        let list: IntegrationK8s.List<IntegrationK8s.Service>
         do {
-            let list: IntegrationK8s.List<IntegrationK8s.Service> = try await Integration.get(
-                "/api/v1/services", context: context, from: cluster)
-            return pick(services: list.items)
+            list = try await Integration.get("/api/v1/services", context: context, from: cluster)
         } catch CubeliteError.forbidden {
             return DetectedIntegrations()
         }
+        var verified = Set<String>()
+        for rule in [OperatorRule.elasticsearch, .prometheus] {
+            for (service, owner) in claims(list.items, rule: rule) {
+                let namespace = service.metadata.namespace ?? ""
+                if await isVerified(owner, namespace: namespace, rule: rule, context: context, cluster: cluster) {
+                    verified.insert("\(namespace)/\(service.metadata.name ?? "")")
+                }
+            }
+        }
+        return pick(services: list.items, verified: verified)
+    }
+
+    /// Main-kind services with a matching owner reference, in unverified
+    /// ranking order, at most `maxVerified`.
+    static func claims(
+        _ services: [IntegrationK8s.Service], rule: OperatorRule
+    ) -> [(IntegrationK8s.Service, IntegrationK8s.OwnerReference)] {
+        let claimed = services.compactMap { s in rule.isMain(s) ? rule.owner(of: s).map { (s, $0) } : nil }
+        let sorted = claimed.sorted { a, b in
+            rule.unverifiedKey(namespace: a.0.metadata.namespace ?? "", name: a.0.metadata.name ?? "")
+                < rule.unverifiedKey(namespace: b.0.metadata.namespace ?? "", name: b.0.metadata.name ?? "")
+        }
+        return Array(sorted.prefix(maxVerified))
+    }
+
+    /// The owner resource exists in the service's namespace with the
+    /// referenced uid; any error means not verified.
+    private static func isVerified(
+        _ owner: IntegrationK8s.OwnerReference, namespace: String, rule: OperatorRule, context: String,
+        cluster: any IntegrationClusterAccess
+    ) async -> Bool {
+        guard let name = owner.name, let uid = owner.uid, Integration.isDNSLabel(namespace),
+            Integration.isDNSLabel(name)
+        else { return false }
+        let data: Data?
+        do {
+            data = try await cluster.getIfPresent(path: rule.path(namespace: namespace, name: name), inContext: context)
+        } catch {
+            return false
+        }
+        guard let data, let object = try? JSONDecoder().decode(OwnerObject.self, from: data) else { return false }
+        return object.metadata.uid == uid
+    }
+
+    private struct OwnerObject: Decodable {
+        struct Meta: Decodable { var uid: String? }
+        var metadata: Meta
     }
 
     /// Integrations with a service, in banner order.
@@ -221,11 +303,13 @@ final class IntegrationsSuggestionStore {
 
     // MARK: Detection
 
-    /// The context (re)connected: it is detected again after its first load.
+    /// The context (re)connected: it is detected again after its first load,
+    /// and a Review not yet shown in Settings is dropped.
     func connected(_ context: String) {
         attempted.remove(context)
         detected[context] = nil
         status[context] = nil
+        settings.clearPendingSuggestion()
     }
 
     /// Lists the services once per connect; failures stay silent.
