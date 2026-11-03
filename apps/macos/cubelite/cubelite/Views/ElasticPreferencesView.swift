@@ -55,18 +55,9 @@ struct ElasticPreferencesForm: View {
                 .accessibilityIdentifier("preferences.elastic-kibana")
             ProblemText(problem: model.kibanaProblem)
             if model.target.mode == .inCluster, let kibana = model.kibanaService {
-                HStack {
-                    Text(
-                        "Kibana in the cluster: \(kibana.namespace)/\(kibana.service):\(kibana.port)"
-                            + (model.kibanaURL.trimmed.isEmpty
-                                ? " — opened through a port-forward" : " (the URL above wins)")
-                    )
-                    .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
-                    Spacer()
-                    Button("Clear") { model.kibanaService = nil }
-                        .buttonStyle(.borderless)
-                        .accessibilityIdentifier("preferences.elastic-kibana-clear")
-                }
+                InClusterUIRow(
+                    name: "Kibana", service: kibana, urlSet: !model.kibanaURL.trimmed.isEmpty,
+                    identifier: "preferences.elastic-kibana-clear", onClear: { model.kibanaService = nil })
             }
         }
     }

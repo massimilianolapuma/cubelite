@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Open an in-cluster Grafana** (desktop and macOS, #525): Detect in the
+  Prometheus preferences now lists Grafana services too (kube-prometheus-stack's
+  `monitoring/<release>-grafana`) and can pick one; without a Grafana URL,
+  Open in Grafana port-forwards to it (one forward per context and service,
+  reused while its pod is ready, closed when the context's Prometheus is
+  disconnected or its settings are saved) and opens Explore on 127.0.0.1.
+  Kibana and Grafana share the forward code on both apps.
 - **Open an in-cluster Kibana on macOS** (#519): Detect in Settings →
   Integrations → Elasticsearch can pick the cluster's Kibana service;
   without a Kibana URL, Open in Kibana forwards to it (one loopback forward

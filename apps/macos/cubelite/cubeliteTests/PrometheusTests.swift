@@ -193,6 +193,48 @@ final class PrometheusModelsTests: XCTestCase {
         XCTAssertEqual(
             Prometheus.proxyBase(namespace: "monitoring", service: "prometheus-operated", port: 9090, https: false),
             "/api/v1/namespaces/monitoring/services/http:prometheus-operated:9090/proxy")
+        XCTAssertEqual(operated.kind, .prometheus)
+    }
+
+    func testClassifyFindsGrafanaToo() throws {
+        func service(_ text: String) throws -> IntegrationK8s.Service {
+            try JSONDecoder().decode(IntegrationK8s.Service.self, from: Data(text.utf8))
+        }
+        // kube-prometheus-stack's Grafana (#525).
+        let kps = try XCTUnwrap(Prometheus.classify(try service(
+            #"{"metadata":{"name":"kps-grafana","namespace":"monitoring","labels":{"app.kubernetes.io/name":"grafana"}},"spec":{"ports":[{"name":"http-web","port":80,"targetPort":"grafana"}]}}"#
+        )))
+        XCTAssertEqual(kps.kind, .grafana)
+        XCTAssertEqual(kps.port, 80)
+        XCTAssertFalse(kps.https)
+        XCTAssertEqual(
+            kps.serviceRef, GrafanaService(namespace: "monitoring", service: "kps-grafana", port: 80, https: false))
+        // By name, on Grafana's own port among others.
+        let named = try XCTUnwrap(Prometheus.classify(try service(
+            #"{"metadata":{"name":"grafana","namespace":"observability"},"spec":{"ports":[{"name":"metrics","port":9100},{"name":"http","port":3000}]}}"#
+        )))
+        XCTAssertEqual(named.kind, .grafana)
+        XCTAssertEqual(named.port, 3000)
+        let https = try XCTUnwrap(Prometheus.classify(try service(
+            #"{"metadata":{"name":"team-grafana"},"spec":{"ports":[{"name":"https","port":443}]}}"#)))
+        XCTAssertTrue(https.https)
+        for other in ["grafana-image-renderer", "grafana-headless", "grafana-operator"] {
+            XCTAssertNil(Prometheus.classify(try service(
+                #"{"metadata":{"name":"\#(other)","labels":{"app.kubernetes.io/name":"grafana"}},"spec":{"ports":[{"port":3000}]}}"#)), other)
+        }
+    }
+
+    func testEndpointsKeepTheirInClusterGrafana() throws {
+        let old = try JSONDecoder().decode(
+            PromEndpoint.self, from: Data(#"{"target":{"kind":"external","url":"https://p.example"}}"#.utf8))
+        XCTAssertNil(old.grafanaService, "endpoints saved before #525")
+        let json = #"{"target":{"kind":"in-cluster","namespace":"monitoring","service":"prometheus-operated","port":9090,"https":false},"grafanaService":{"namespace":"monitoring","service":"kps-grafana","port":80,"https":false}}"#
+        let endpoint = try JSONDecoder().decode(PromEndpoint.self, from: Data(json.utf8))
+        let grafana = GrafanaService(namespace: "monitoring", service: "kps-grafana", port: 80, https: false)
+        XCTAssertEqual(endpoint.grafanaService, grafana)
+        let again = try JSONDecoder().decode(PromEndpoint.self, from: try JSONEncoder().encode(endpoint))
+        XCTAssertEqual(again, endpoint)
+        XCTAssertEqual(grafana.loopbackBase(port: 43000), "http://127.0.0.1:43000")
     }
 }
 
@@ -410,6 +452,33 @@ final class PrometheusServiceTests: XCTestCase {
         }
         let info = try await service().test(context: "prod", endpoint: external, auth: PromAuth.none)
         XCTAssertEqual(info, PromInfo(version: "2.54.1", cadvisor: true, kubeStateMetrics: false, clusters: ["aks-prod"]))
+    }
+}
+
+final class PrometheusGrafanaForwardTests: XCTestCase {
+
+    func testGrafanaForwardIsReusedWhileItsPodIsReady() async throws {
+        let grafana = GrafanaService(namespace: "monitoring", service: "kps-grafana", port: 80, https: false)
+        let cluster = ForwardScenario.cluster(grafana)
+        let service = PrometheusService(cluster: cluster, secrets: MemorySecrets())
+        try await ForwardScenario.run(
+            cluster: cluster, service: grafana,
+            forward: { try await service.grafanaForward(context: "prod", service: grafana) },
+            pod: { await service.grafanaPod(context: "prod", service: grafana) },
+            disconnect: { await service.disconnect(context: "prod") })
+        await service.disconnectAll()
+        let closed = await service.grafanaPod(context: "prod", service: grafana)
+        XCTAssertNil(closed)
+    }
+
+    func testDetectListsPrometheusFirstThenGrafana() async throws {
+        let services = #"{"items":[{"metadata":{"name":"kps-grafana","namespace":"monitoring","labels":{"app.kubernetes.io/name":"grafana"}},"spec":{"ports":[{"name":"http-web","port":80}]}},{"metadata":{"name":"kps-kube-prometheus-stack-prometheus","namespace":"monitoring"},"spec":{"ports":[{"name":"http-web","port":9090}]}},{"metadata":{"name":"prometheus-operated","namespace":"monitoring","labels":{"operated-prometheus":"true"}},"spec":{"ports":[{"name":"http-web","port":9090}]}}]}"#
+        let service = PrometheusService(
+            cluster: StubCluster(objects: ["/api/v1/services": services]), secrets: MemorySecrets())
+        let found = try await service.detect(context: "prod")
+        XCTAssertEqual(
+            found.map(\.name), ["prometheus-operated", "kps-kube-prometheus-stack-prometheus", "kps-grafana"])
+        XCTAssertEqual(found.map(\.kind), [.prometheus, .prometheus, .grafana])
     }
 }
 

@@ -4,6 +4,7 @@
 	import LineChart from '#lib/components/metrics/LineChart.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import { errorMessage } from '#lib/errors.ts';
+	import { webUiBase } from '#lib/integration.ts';
 	import {
 		METRICS_RANGES,
 		chartData,
@@ -18,6 +19,7 @@
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import {
+		grafanaPortForward,
 		openGrafanaExplore,
 		prometheusMetrics,
 		type Chart,
@@ -161,21 +163,31 @@
 		return `↓ ${fmt(rx)} ↑ ${fmt(tx)}`;
 	});
 
-	function grafana(...charts: Chart[]) {
+	// A configured URL wins; else an in-cluster Grafana through a port-forward (#525).
+	const canOpenGrafana = $derived(
+		!!endpoint?.grafanaUrl?.trim() || (endpoint?.target.kind === 'in-cluster' && !!endpoint.grafanaService)
+	);
+
+	async function grafana(...charts: Chart[]) {
 		const ep = endpoint;
-		if (!ep?.grafanaUrl || !result) return;
-		const queries = charts
-			.map((c) => chartData(result!.charts, c)?.query)
-			.filter((q): q is string => !!q);
-		openGrafanaExplore({
-			grafanaUrl: ep.grafanaUrl,
-			datasource: ep.grafanaDatasource,
-			queries,
-			range: resultRange
-		}).catch((e) => toasts.push(errorMessage(e), 'err'));
+		const context = app.activeCluster;
+		const data = result;
+		if (!ep || !context || !data) return;
+		const queries = charts.map((c) => chartData(data.charts, c)?.query).filter((q): q is string => !!q);
+		const range = resultRange;
+		try {
+			const service = ep.target.kind === 'in-cluster' ? ep.grafanaService : null;
+			const grafanaUrl = await webUiBase(ep.grafanaUrl, service, (s) =>
+				grafanaPortForward(app.kubeconfigPath, context, s)
+			);
+			if (!grafanaUrl) return;
+			await openGrafanaExplore({ grafanaUrl, datasource: ep.grafanaDatasource, queries, range });
+		} catch (e) {
+			toasts.push(errorMessage(e), 'err');
+		}
 	}
 
-	const onGrafana = (...charts: Chart[]) => (endpoint?.grafanaUrl && result ? () => grafana(...charts) : undefined);
+	const onGrafana = (...charts: Chart[]) => (canOpenGrafana && result ? () => void grafana(...charts) : undefined);
 	const ALL: Chart[] = [
 		'cpu',
 		'cpu-request',
@@ -214,11 +226,11 @@
 				bind:value={split}
 				label="Per container or total"
 			/>
-			{#if endpoint.grafanaUrl && result}
+			{#if canOpenGrafana && result}
 				<button
 					type="button"
 					class="focus-ring type-caption flex items-center gap-1 rounded-sm text-text-tertiary hover:text-text-secondary"
-					onclick={() => grafana(...ALL)}
+					onclick={() => void grafana(...ALL)}
 				>
 					<ExternalLink class="h-3 w-3" /> Grafana
 				</button>

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import AuthFields from '#lib/components/integrations/AuthFields.svelte';
+	import DetectedServices from '#lib/components/integrations/DetectedServices.svelte';
 	import FormActions from '#lib/components/integrations/FormActions.svelte';
+	import InClusterUi from '#lib/components/integrations/InClusterUi.svelte';
 	import TargetFields from '#lib/components/integrations/TargetFields.svelte';
 	import { errorMessage } from '#lib/errors.ts';
 	import {
@@ -9,6 +11,7 @@
 		TargetForm,
 		describeTarget,
 		saveCredentials,
+		serviceRef,
 		urlProblem,
 		type FormResult
 	} from '#lib/integration-form.svelte.ts';
@@ -18,9 +21,11 @@
 	import {
 		prometheusAuthMethod,
 		prometheusDetect,
+		prometheusDisconnect,
 		prometheusSaveAuth,
 		prometheusTest,
 		type DetectedPrometheus,
+		type GrafanaService,
 		type PromAuth,
 		type PromAuthMethod,
 		type PromEndpoint
@@ -39,6 +44,8 @@
 	let cluster = $state('');
 	let grafanaUrl = $state('');
 	let grafanaDatasource = $state('');
+	/** In-cluster Grafana picked from Detect (#525). */
+	let grafanaService = $state<GrafanaService | null>(null);
 
 	let detected = $state<DetectedPrometheus[] | null>(null);
 	let busy = $state<'detect' | 'test' | 'save' | null>(null);
@@ -56,12 +63,14 @@
 			cluster = '';
 			grafanaUrl = '';
 			grafanaDatasource = '';
+			grafanaService = null;
 			return;
 		}
 		form.load(e.target, e.skipTlsVerify);
 		cluster = e.cluster ?? '';
 		grafanaUrl = e.grafanaUrl ?? '';
 		grafanaDatasource = e.grafanaDatasource ?? '';
+		grafanaService = e.grafanaService ?? null;
 		void refreshStoredMethod(e);
 	});
 
@@ -101,6 +110,7 @@
 			cluster: cluster.trim() || null,
 			grafanaUrl: grafanaUrl.trim() || null,
 			grafanaDatasource: grafanaDatasource.trim() || null,
+			grafanaService: form.mode === 'in-cluster' ? grafanaService : null,
 			skipTlsVerify: form.skipTlsVerify
 		};
 	}
@@ -176,6 +186,8 @@
 			}
 			auth.clearSecrets();
 			prometheus.setEndpoint(ctx, endpoint);
+			// A changed endpoint or Grafana service must not keep old forwards.
+			await prometheusDisconnect(ctx);
 			if (endpoint) await refreshStoredMethod(endpoint);
 			toasts.push(endpoint ? `Prometheus saved for ${ctx}` : `Prometheus off for ${ctx}`, 'ok');
 		});
@@ -205,7 +217,7 @@
 				urlLabel="Prometheus URL"
 				urlPlaceholder="https://<workspace>.<region>.prometheus.monitor.azure.com"
 				httpsLabel="HTTPS"
-				detectHint="Finds Prometheus servers in the cluster."
+				detectHint="Finds Prometheus servers and Grafana in the cluster."
 				detecting={busy === 'detect'}
 				disabled={busy !== null}
 				onDetect={detect}
@@ -227,6 +239,15 @@
 					<input class={INPUT_CLASS} aria-label="Grafana datasource" placeholder="datasource UID" bind:value={grafanaDatasource} />
 				</div>
 				{#if grafanaError}<p class="type-caption text-status-err">{grafanaError}</p>{/if}
+				{#if form.mode === 'in-cluster' && grafanaService}
+					<InClusterUi
+						name="Grafana"
+						service={grafanaService}
+						urlSet={grafanaUrl.trim() !== ''}
+						testid="grafana-service"
+						onClear={() => (grafanaService = null)}
+					/>
+				{/if}
 
 				{#if form.mode === 'in-cluster'}
 					<p class="type-caption text-text-tertiary">Reached through the API server with your cluster credentials.</p>
@@ -258,20 +279,9 @@
 </section>
 
 {#snippet detectedList()}
-	{#if detected}
-		{#if detected.length === 0}
-			<p class="type-caption text-text-tertiary">No Prometheus service found.</p>
-		{:else}
-			<ul class="flex flex-col gap-0.5" aria-label="Detected services">
-				{#each detected as svc (svc.namespace + '/' + svc.name)}
-					<li class="flex items-center gap-2">
-						<span class="type-data-sm flex-1 truncate text-text-secondary">
-							{svc.namespace}/{svc.name}:{svc.port}{svc.https ? ' (https)' : ''}
-						</span>
-						<button type="button" class="focus-ring type-caption rounded-sm text-accent hover:brightness-110" onclick={() => form.pick(svc)}>Use</button>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	{/if}
+	<DetectedServices
+		services={detected}
+		empty="No Prometheus service found."
+		onUse={(svc) => (svc.kind === 'grafana' ? (grafanaService = serviceRef(svc)) : form.pick(svc))}
+	/>
 {/snippet}

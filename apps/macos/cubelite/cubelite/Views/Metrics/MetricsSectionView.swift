@@ -22,6 +22,8 @@ struct MetricsSectionView: View {
     let workload: Workload
 
     @State private var model = MetricsSectionModel()
+    /// Why the last Open in Grafana failed (forward refused, no ready pod).
+    @State private var grafanaError: String?
 
     /// What the charts depend on: any change reloads them.
     private struct LoadKey: Hashable {
@@ -42,6 +44,11 @@ struct MetricsSectionView: View {
         if let context, let store, let endpoint = store.endpoint(for: context), let querying = store.querying {
             VStack(alignment: .leading, spacing: 8) {
                 header(endpoint)
+                if let grafanaError {
+                    Text("Grafana: \(grafanaError)")
+                        .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.statusErr)
+                        .textSelection(.enabled)
+                }
                 content(endpoint)
             }
             .padding(.top, 16)
@@ -79,7 +86,7 @@ struct MetricsSectionView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-            if endpoint.grafanaURL != nil, model.result != nil {
+            if store?.canOpenGrafana(endpoint) == true, model.result != nil {
                 Button {
                     openGrafana(endpoint, Chart.allCases)
                 } label: {
@@ -98,7 +105,9 @@ struct MetricsSectionView: View {
                 .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.statusErr)
                 .textSelection(.enabled)
         } else if let result = model.result {
-            let grafana = endpoint.grafanaURL == nil ? nil : { (charts: [Chart]) in openGrafana(endpoint, charts) }
+            let grafana =
+                store?.canOpenGrafana(endpoint) == true
+                ? { (charts: [Chart]) in openGrafana(endpoint, charts) } : nil
             MetricChartView(
                 title: "CPU", unit: .cores, summary: usageSummary(.cpu, .cpuRequest, .cpuLimit, .cores),
                 lines: usageLines(.cpu, .cpuRequest, .cpuLimit), result: result, range: model.resultRange,
@@ -183,16 +192,24 @@ struct MetricsSectionView: View {
         return "↓ \(latest(.networkRx)) ↑ \(latest(.networkTx))"
     }
 
+    /// Opens Explore, forwarding to an in-cluster Grafana when needed (#525).
     private func openGrafana(_ endpoint: PromEndpoint, _ charts: [Chart]) {
-        guard let base = endpoint.grafanaURL else { return }
-        let text = Prometheus.grafanaExploreURL(
-            grafanaBase: base, datasource: endpoint.grafanaDatasource,
-            queries: charts.compactMap { model.result?.data($0)?.query },
-            from: model.resultRange.grafanaFrom, to: "now")
-        guard let url = URL(string: text), ["http", "https"].contains(url.scheme?.lowercased()) else {
-            return
+        guard let store, let context else { return }
+        let queries = charts.compactMap { model.result?.data($0)?.query }
+        let range = model.resultRange
+        Task {
+            do {
+                grafanaError = nil
+                if let url = try await store.grafanaExploreURL(
+                    context: context, endpoint: endpoint, queries: queries, range: range)
+                {
+                    NSWorkspace.shared.open(url)
+                }
+            } catch is CancellationError {
+            } catch {
+                grafanaError = error.localizedDescription
+            }
         }
-        NSWorkspace.shared.open(url)
     }
 }
 

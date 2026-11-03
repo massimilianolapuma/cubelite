@@ -43,7 +43,8 @@ struct CubeliteApp: App {
         let prometheus = PrometheusService(cluster: api)
         self.prometheusService = prometheus
         self._prometheusStore = State(
-            initialValue: PrometheusStore(endpoints: PrometheusEndpointStore(), querying: prometheus))
+            initialValue: PrometheusStore(
+                endpoints: PrometheusEndpointStore(), querying: prometheus, grafana: prometheus))
         self._logSessionStore = State(
             initialValue: LogSessionStore(
                 streamer: api,

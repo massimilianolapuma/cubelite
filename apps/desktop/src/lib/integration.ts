@@ -2,7 +2,7 @@
  * Pure helpers of the integration preferences (Elasticsearch #501,
  * Prometheus #510): URL checks, credential binding, saving rules.
  */
-import type { IntegrationTarget } from "#lib/tauri.ts";
+import type { IntegrationTarget, ServiceRef } from "#lib/tauri.ts";
 
 export type TargetMode = "off" | "in-cluster" | "external";
 
@@ -89,4 +89,26 @@ export async function saveCredentials<E extends { target: IntegrationTarget; ski
     };
   }
   return null;
+}
+
+/** A detected service as stored on an endpoint (`kibanaService`, `grafanaService`). */
+export function serviceRef(found: { namespace: string; name: string; port: number; https: boolean }): ServiceRef {
+  return { namespace: found.namespace, service: found.name, port: found.port, https: found.https };
+}
+
+/**
+ * Base URL of a web UI (Kibana #505, Grafana #525): the configured URL, else
+ * the in-cluster service through the backend's port-forward, which listens
+ * on IPv4 loopback only; null when there is neither.
+ */
+export async function webUiBase(
+  url: string | null | undefined,
+  service: ServiceRef | null | undefined,
+  forward: (service: ServiceRef) => Promise<number>,
+): Promise<string | null> {
+  const configured = url?.trim();
+  if (configured) return configured;
+  if (!service) return null;
+  const port = await forward(service);
+  return `${service.https ? "https" : "http"}://127.0.0.1:${port}`;
 }

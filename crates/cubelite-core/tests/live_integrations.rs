@@ -1,5 +1,6 @@
-//! Live checks of the Elasticsearch, Kibana and Prometheus integrations
-//! against a real cluster (the spec's manual checklist, #483 #484 #505).
+//! Live checks of the Elasticsearch, Kibana, Prometheus and Grafana
+//! integrations against a real cluster (the spec's manual checklist, #483
+//! #484 #505 #525).
 //!
 //! Ignored by default. Run against a cluster with ECK (`logging/quickstart`),
 //! kube-prometheus-stack (`monitoring`) and pods in `shop`:
@@ -171,7 +172,10 @@ async fn prometheus_charts_through_the_service_proxy() {
     let Some(client) = client().await else { return };
     let found = prom::detect(client.clone()).await.expect("detect");
     println!("detected: {found:?}");
-    let svc = found.first().expect("Prometheus service");
+    let svc = found
+        .iter()
+        .find(|s| s.kind == "prometheus")
+        .expect("Prometheus service");
     let endpoint = PromEndpoint {
         target: PromTarget::InCluster {
             namespace: svc.namespace.clone(),
@@ -182,6 +186,7 @@ async fn prometheus_charts_through_the_service_proxy() {
         cluster: None,
         grafana_url: None,
         grafana_datasource: None,
+        grafana_service: None,
         skip_tls_verify: false,
     };
     let conn = prom::connect(Some(client.clone()), &endpoint, &PromAuth::None)
@@ -231,4 +236,33 @@ async fn prometheus_charts_through_the_service_proxy() {
         .await
         .expect("sparklines");
     assert!(sparklines.cpu.keys().any(|k| k.starts_with("shop/api-")));
+}
+
+#[tokio::test]
+#[ignore = "needs a live cluster (CUBELITE_LIVE_CONTEXT)"]
+async fn grafana_answers_through_a_service_tunnel() {
+    let Some(client) = client().await else { return };
+    let found = prom::detect(client.clone()).await.expect("detect");
+    let gf = found
+        .iter()
+        .find(|s| s.kind == "grafana")
+        .expect("Grafana service");
+    assert!(!gf.https, "kube-prometheus-stack's Grafana speaks http");
+    let tunnel = integration::open_service_tunnel(&client, &gf.namespace, &gf.name, gf.port)
+        .await
+        .expect("tunnel");
+    assert!(integration::pod_ready(&client, &gf.namespace, &tunnel.pod).await);
+    // What Open in Grafana opens: http on the IPv4 loopback forward.
+    let response = integration::http_builder(false)
+        .no_proxy()
+        .build()
+        .expect("http")
+        .get(format!("http://127.0.0.1:{}/api/health", tunnel.local_port))
+        .send()
+        .await
+        .expect("grafana");
+    println!("grafana /api/health: {}", response.status());
+    assert_eq!(response.status().as_u16(), 200);
+    let health: serde_json::Value = response.json().await.expect("health json");
+    assert_eq!(health["database"], "ok");
 }

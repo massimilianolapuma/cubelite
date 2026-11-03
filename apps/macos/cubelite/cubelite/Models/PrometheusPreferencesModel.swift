@@ -8,6 +8,8 @@ protocol PrometheusPreferencesBackend: Sendable {
     func test(context: String, endpoint: PromEndpoint, auth: PromAuth?) async throws -> PromInfo
     func saveAuth(context: String, endpoint: PromEndpoint, auth: PromAuth) async throws
     func authMethod(context: String, endpoint: PromEndpoint) async throws -> String
+    /// Closes the context's connections and Grafana forwards (endpoint changed).
+    func disconnect(context: String) async
 }
 
 extension PrometheusService: PrometheusPreferencesBackend {}
@@ -43,12 +45,17 @@ final class PrometheusPreferencesModel {
     var cluster = ""
     var grafanaURL = ""
     var grafanaDatasource = ""
+    /// In-cluster Grafana picked from Detect, opened through a port-forward
+    /// when there is no Grafana URL (#525).
+    var grafanaService: GrafanaService?
     /// Kept while In cluster is shown, so a stored Azure CLI choice survives
     /// switching modes back and forth.
     var authMethod = AuthMethod.none
     private(set) var storedMethod: AuthMethod?
 
     private(set) var detected: [DetectedPrometheus]?
+    /// Grafana services found by the last Detect.
+    private(set) var detectedGrafana: [DetectedPrometheus] = []
     private(set) var busy: Busy?
     private(set) var outcome: FormOutcome?
 
@@ -67,6 +74,7 @@ final class PrometheusPreferencesModel {
         self.context = context
         outcome = nil
         detected = nil
+        detectedGrafana = []
         input.reset()
         authMethod = .none
         storedMethod = nil
@@ -75,12 +83,14 @@ final class PrometheusPreferencesModel {
             cluster = ""
             grafanaURL = ""
             grafanaDatasource = ""
+            grafanaService = nil
             return
         }
         target.load(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify)
         cluster = endpoint.cluster ?? ""
         grafanaURL = endpoint.grafanaURL ?? ""
         grafanaDatasource = endpoint.grafanaDatasource ?? ""
+        grafanaService = endpoint.grafanaService
         await refreshStoredMethod(endpoint)
     }
 
@@ -106,6 +116,7 @@ final class PrometheusPreferencesModel {
         return PromEndpoint(
             target: target, cluster: cluster.trimmed.nilIfBlank, grafanaURL: grafanaURL.trimmed.nilIfBlank,
             grafanaDatasource: grafanaDatasource.trimmed.nilIfBlank,
+            grafanaService: self.target.mode == .inCluster ? grafanaService : nil,
             skipTLSVerify: self.target.skipTLSVerify)
     }
 
@@ -127,14 +138,20 @@ final class PrometheusPreferencesModel {
         target.pick(namespace: found.namespace, name: found.name, port: found.port, https: found.https)
     }
 
+    /// Uses a detected Grafana service for Open in Grafana.
+    func pickGrafana(_ found: DetectedPrometheus) {
+        grafanaService = found.serviceRef
+    }
+
     // MARK: Actions
 
     func detect() async {
         await run(.detect) { context in
             let found = try await self.backend.detect(context: context)
             guard context == self.context else { return }
-            self.detected = found
-            if found.isEmpty {
+            self.detected = found.filter { $0.kind == .prometheus }
+            self.detectedGrafana = found.filter { $0.kind == .grafana }
+            if self.detected?.isEmpty ?? true {
                 self.outcome = FormOutcome(ok: false, text: "No Prometheus service found in this cluster.")
             }
         }
@@ -175,6 +192,8 @@ final class PrometheusPreferencesModel {
             }
             // Stored even if the form moved to another context meanwhile.
             self.endpoints.setEndpoint(endpoint, for: context)
+            // A changed endpoint or Grafana service must not keep old forwards.
+            await self.backend.disconnect(context: context)
             guard context == self.context else { return }
             if let endpoint {
                 await self.refreshStoredMethod(endpoint)

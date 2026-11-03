@@ -79,10 +79,12 @@ pub struct PromInfo {
     pub clusters: Vec<String>,
 }
 
-/// A Prometheus service found in the cluster.
+/// A Prometheus or Grafana service found in the cluster.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DetectedPrometheus {
+    /// `prometheus` or `grafana` (#525).
+    pub kind: String,
     /// Namespace.
     pub namespace: String,
     /// Service name.
@@ -486,7 +488,7 @@ impl PromConnection {
 }
 
 /// Classifies a service as a Prometheus server (not Alertmanager, node
-/// exporter, operator or Pushgateway).
+/// exporter, operator or Pushgateway) or a Grafana (#525).
 pub fn classify(service: &Service) -> Option<DetectedPrometheus> {
     let meta = &service.metadata;
     let name = meta.name.clone()?;
@@ -498,31 +500,43 @@ pub fn classify(service: &Service) -> Option<DetectedPrometheus> {
         "operator",
         "pushgateway",
         "kube-state-metrics",
+        "headless",
+        "image-renderer",
     ];
     if excluded.iter().any(|x| name.contains(x)) {
         return None;
     }
-    let labelled = label("app.kubernetes.io/name") == Some("prometheus")
+    let grafana = label("app.kubernetes.io/name") == Some("grafana")
+        || label("app") == Some("grafana")
+        || name.ends_with("-grafana")
+        || name == "grafana";
+    let prometheus = label("app.kubernetes.io/name") == Some("prometheus")
         || label("operated-prometheus") == Some("true")
-        || label("app") == Some("prometheus");
-    let named = name == "prometheus-operated"
+        || label("app") == Some("prometheus")
+        || name == "prometheus-operated"
         || name == "prometheus-server"
         || name.ends_with("-prometheus")
         || name == "prometheus";
-    if !(labelled || named) {
-        return None;
-    }
+    let (kind, wanted): (&str, &[i32]) = match (grafana, prometheus) {
+        (true, _) => ("grafana", &[80, 3000]),
+        (false, true) => ("prometheus", &[9090]),
+        (false, false) => return None,
+    };
     let ports = service.spec.as_ref()?.ports.clone().unwrap_or_default();
     let port = ports
         .iter()
-        .find(|p| p.port == 9090)
+        .find(|p| wanted.contains(&p.port))
         .or_else(|| {
-            ports
-                .iter()
-                .find(|p| matches!(p.name.as_deref(), Some("web" | "http" | "http-web")))
+            ports.iter().find(|p| {
+                matches!(
+                    p.name.as_deref(),
+                    Some("web" | "http" | "http-web" | "service")
+                )
+            })
         })
         .or_else(|| ports.first())?;
     Some(DetectedPrometheus {
+        kind: kind.to_string(),
         namespace: meta.namespace.clone().unwrap_or_default(),
         name,
         port: u16::try_from(port.port).ok()?,
@@ -530,8 +544,9 @@ pub fn classify(service: &Service) -> Option<DetectedPrometheus> {
     })
 }
 
-/// Prometheus services in every namespace the user can list,
-/// `prometheus-operated` (kube-prometheus-stack) first.
+/// Prometheus and Grafana services in every namespace the user can list:
+/// Prometheus first (`prometheus-operated`, kube-prometheus-stack's, at the
+/// top), then Grafana.
 pub async fn detect(client: Client) -> Result<Vec<DetectedPrometheus>, PromError> {
     let services: Api<Service> = Api::all(client);
     let list = services
@@ -541,6 +556,7 @@ pub async fn detect(client: Client) -> Result<Vec<DetectedPrometheus>, PromError
     let mut found: Vec<_> = list.items.iter().filter_map(classify).collect();
     found.sort_by_key(|d| {
         (
+            d.kind != "prometheus",
             d.name != "prometheus-operated",
             d.namespace.clone(),
             d.name.clone(),

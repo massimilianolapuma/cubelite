@@ -64,9 +64,9 @@ final class LogSession {
     /// Kibana service the app can forward to.
     var canOpenKibana: Bool {
         guard let endpoint = historyEndpoint else { return false }
-        if let url = endpoint.kibanaURL, !url.trimmingCharacters(in: .whitespaces).isEmpty { return true }
-        guard case .inCluster = endpoint.target else { return false }
-        return endpoint.kibanaService != nil && elastic?.kibana != nil
+        return Integration.canOpenUI(
+            url: endpoint.kibanaURL, target: endpoint.target, service: endpoint.kibanaService,
+            canForward: elastic?.kibana != nil)
     }
 
     /// Kibana Discover for this pod: the configured URL, else the
@@ -74,12 +74,13 @@ final class LogSession {
     func kibanaDiscoverURL() async throws -> URL? {
         guard let history, let endpoint = historyEndpoint, let context else { return nil }
         if let url = history.kibanaURL(shown: showsHistory) { return url }
-        guard case .inCluster = endpoint.target, let service = endpoint.kibanaService,
+        guard
+            let service = Integration.forwardedUI(
+                url: endpoint.kibanaURL, target: endpoint.target, service: endpoint.kibanaService),
             let kibana = elastic?.kibana
         else { return nil }
         let port = try await kibana.kibanaForward(context: context, service: service)
-        return history.kibanaURL(
-            shown: showsHistory, base: "\(service.https ? "https" : "http")://127.0.0.1:\(port)")
+        return history.kibanaURL(shown: showsHistory, base: service.loopbackBase(port: port))
     }
 
     /// History is shown (and still possible: the endpoint may have been removed).

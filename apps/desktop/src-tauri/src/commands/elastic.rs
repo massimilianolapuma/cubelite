@@ -10,7 +10,6 @@ use cubelite_core::elastic::{
     kibana_discover_url as discover_url, ElasticError, EsAuth, EsEndpoint, EsTarget, FieldPreset,
     HistoryPage, HistoryQuery, KibanaService,
 };
-use std::collections::HashMap;
 
 use cubelite_core::integration;
 use cubelite_core::KubeClient;
@@ -18,19 +17,16 @@ use cubelite_core::KubeClient;
 use super::vault;
 use tauri::State;
 
-use super::cache::{ConnCache, ConnKey};
+use super::cache::{ConnCache, ConnKey, ServiceForwards};
 
 const KEYCHAIN_SERVICE: &str = "cubelite.elastic";
-
-/// Kibana forwards per (kubeconfig, context, service); stopped on drop.
-type KibanaForwards = HashMap<(String, String, KibanaService), integration::ServiceTunnel>;
 
 /// Open connections per (kubeconfig, context), and the port-forwards to
 /// in-cluster Kibanas (#505).
 #[derive(Default)]
 pub struct ElasticState {
     connections: ConnCache<EsEndpoint, EsConnection>,
-    kibana: tokio::sync::Mutex<KibanaForwards>,
+    kibana: ServiceForwards,
 }
 
 impl ElasticState {
@@ -38,7 +34,7 @@ impl ElasticState {
     /// saved, credentials changed, disconnect).
     async fn forget(&self, context: &str) {
         self.connections.forget(context).await;
-        self.kibana.lock().await.retain(|(_, c, _), _| c != context);
+        self.kibana.forget(context).await;
     }
 }
 
@@ -236,39 +232,7 @@ pub async fn kibana_port_forward(
     context: String,
     service: KibanaService,
 ) -> Result<u16, String> {
-    integration::check_target(&EsTarget::InCluster {
-        namespace: service.namespace.clone(),
-        service: service.service.clone(),
-        port: service.port,
-        https: service.https,
-    })?;
-    let client = kube(&kubeconfig_path, &context).await?.client();
-    // Held while connecting: a double click or a second window waits for
-    // the first forward instead of starting another one.
-    let mut forwards = state.kibana.lock().await;
-    let key = (kubeconfig_path, context, service.clone());
-    if let Some(tunnel) = forwards.get(&key) {
-        if tunnel.is_running()
-            && integration::pod_ready(&client, &service.namespace, &tunnel.pod).await
-        {
-            return Ok(tunnel.local_port);
-        }
-        // The pod was replaced (rollout, eviction): forward to a new one.
-        forwards.remove(&key);
-    }
-    let tunnel = integration::open_service_tunnel(
-        &client,
-        &service.namespace,
-        &service.service,
-        service.port,
-    )
-    .await
-    .map_err(|e| match e {
-        integration::TunnelError::Config(t) | integration::TunnelError::Connect(t) => t,
-    })?;
-    let port = tunnel.local_port;
-    forwards.insert(key, tunnel);
-    Ok(port)
+    state.kibana.port(kubeconfig_path, context, service).await
 }
 
 /// Kibana Discover URL for a pod's logs.

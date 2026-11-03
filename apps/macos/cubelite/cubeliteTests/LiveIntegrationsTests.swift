@@ -3,7 +3,7 @@ import XCTest
 @testable import cubelite
 
 /// Live checks of the Swift Elasticsearch and Prometheus services against a
-/// real cluster (the spec's manual checklist, #502 #511). Skipped unless
+/// real cluster (the spec's manual checklist, #502 #511 #519 #525). Skipped unless
 /// `CUBELITE_LIVE_CONTEXT` names a kube context with ECK (`logging/quickstart`),
 /// kube-prometheus-stack and pods in `shop`:
 ///
@@ -82,7 +82,7 @@ final class LiveIntegrationsTests: XCTestCase {
         let api = api()
         let service = PrometheusService(cluster: api, secrets: MemorySecrets())
         let found = try await service.detect(context: context)
-        let prom = try XCTUnwrap(found.first)
+        let prom = try XCTUnwrap(found.first { $0.kind == .prometheus })
         let endpoint = PromEndpoint(
             target: .inCluster(namespace: prom.namespace, service: prom.name, port: prom.port, https: prom.https))
         let info = try await service.test(context: context, endpoint: endpoint, auth: PromAuth.none)
@@ -102,6 +102,20 @@ final class LiveIntegrationsTests: XCTestCase {
         }
         let sparklines = try await service.sparklines(context: context, endpoint: endpoint, namespace: "shop")
         XCTAssertTrue(sparklines.cpu.keys.contains { $0.hasPrefix("shop/api-") })
+
+        // In-cluster Grafana through the service's forward (#525): what Open
+        // in Grafana opens, plain http on the IPv4 loopback.
+        let gf = try XCTUnwrap(found.first { $0.kind == .grafana })
+        XCTAssertFalse(gf.https)
+        let port = try await service.grafanaForward(context: context, service: gf.serviceRef)
+        let again = try await service.grafanaForward(context: context, service: gf.serviceRef)
+        XCTAssertEqual(port, again)
+        let health = try XCTUnwrap(URL(string: gf.serviceRef.loopbackBase(port: port) + "/api/health"))
+        let session = URLSession(configuration: .ephemeral)
+        let (body, response) = try await session.data(from: health)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains(#""database""#))
+        session.invalidateAndCancel()
         await service.disconnectAll()
     }
 }

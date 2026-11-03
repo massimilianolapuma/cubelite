@@ -17,22 +17,26 @@ struct PromEndpoint: Hashable, Sendable, Codable {
     var grafanaURL: String?
     /// Grafana datasource UID or name; nil uses Grafana's default.
     var grafanaDatasource: String?
+    /// In-cluster Grafana opened through a port-forward when there is no URL (#525).
+    var grafanaService: GrafanaService?
     var skipTLSVerify = false
 
     private enum CodingKeys: String, CodingKey {
-        case target, cluster, grafanaDatasource
+        case target, cluster, grafanaDatasource, grafanaService
         case grafanaURL = "grafanaUrl"
         case skipTLSVerify = "skipTlsVerify"
     }
 
     init(
         target: IntegrationTarget, cluster: String? = nil, grafanaURL: String? = nil,
-        grafanaDatasource: String? = nil, skipTLSVerify: Bool = false
+        grafanaDatasource: String? = nil, grafanaService: GrafanaService? = nil,
+        skipTLSVerify: Bool = false
     ) {
         self.target = target
         self.cluster = cluster
         self.grafanaURL = grafanaURL
         self.grafanaDatasource = grafanaDatasource
+        self.grafanaService = grafanaService
         self.skipTLSVerify = skipTLSVerify
     }
 
@@ -42,9 +46,14 @@ struct PromEndpoint: Hashable, Sendable, Codable {
         cluster = try c.decodeIfPresent(String.self, forKey: .cluster)
         grafanaURL = try c.decodeIfPresent(String.self, forKey: .grafanaURL)
         grafanaDatasource = try c.decodeIfPresent(String.self, forKey: .grafanaDatasource)
+        grafanaService = try c.decodeIfPresent(GrafanaService.self, forKey: .grafanaService)
         skipTLSVerify = try c.decodeIfPresent(Bool.self, forKey: .skipTLSVerify) ?? false
     }
 }
+
+/// A Grafana service in the cluster (from Detect; kube-prometheus-stack's
+/// is `monitoring/<release>-grafana:80`, plain HTTP); same JSON as the desktop.
+typealias GrafanaService = ServiceRef
 
 /// Credentials for an endpoint. Never printed: `description`,
 /// `debugDescription` and the mirror name only the method.
@@ -249,14 +258,20 @@ struct PromInfo: Equatable, Sendable {
     let clusters: [String]
 }
 
-/// A Prometheus service found in the cluster.
+/// A Prometheus or Grafana (#525) service found in the cluster.
 struct DetectedPrometheus: Hashable, Sendable, Identifiable {
+    enum Kind: String, Sendable { case prometheus, grafana }
+
+    var kind = Kind.prometheus
     let namespace: String
     let name: String
     let port: Int
     let https: Bool
 
-    var id: String { "\(namespace)/\(name):\(port)" }
+    var id: String { "\(kind.rawValue):\(namespace)/\(name):\(port)" }
+
+    /// The service as stored on an endpoint (`grafanaService`).
+    var serviceRef: ServiceRef { ServiceRef(namespace: namespace, service: name, port: port, https: https) }
 }
 
 // MARK: - Pure functions
@@ -486,28 +501,35 @@ enum Prometheus {
     }
 
     /// Classifies a service as a Prometheus server (not Alertmanager, node
-    /// exporter, operator, Pushgateway or kube-state-metrics).
+    /// exporter, operator, Pushgateway or kube-state-metrics) or a Grafana
+    /// (#525), like the core.
     static func classify(_ service: IntegrationK8s.Service) -> DetectedPrometheus? {
         guard let name = service.metadata.name else { return nil }
-        let excluded = ["alertmanager", "node-exporter", "operator", "pushgateway", "kube-state-metrics"]
+        let excluded = [
+            "alertmanager", "node-exporter", "operator", "pushgateway", "kube-state-metrics", "headless",
+            "image-renderer",
+        ]
         if excluded.contains(where: name.contains) { return nil }
         let labels = service.metadata.labels ?? [:]
-        let labelled =
+        let grafana =
+            labels["app.kubernetes.io/name"] == "grafana" || labels["app"] == "grafana"
+            || name == "grafana" || name.hasSuffix("-grafana")
+        let prometheus =
             labels["app.kubernetes.io/name"] == "prometheus"
             || labels["operated-prometheus"] == "true" || labels["app"] == "prometheus"
-        let named =
-            ["prometheus-operated", "prometheus-server", "prometheus"].contains(name)
+            || ["prometheus-operated", "prometheus-server", "prometheus"].contains(name)
             || name.hasSuffix("-prometheus")
-        guard labelled || named else { return nil }
+        guard grafana || prometheus else { return nil }
+        let wanted = grafana ? [80, 3000] : [9090]
         let ports = service.spec?.ports ?? []
         guard
-            let port = ports.first(where: { $0.port == 9090 })
-                ?? ports.first(where: { ["web", "http", "http-web"].contains($0.name ?? "") })
+            let port = ports.first(where: { wanted.contains($0.port) })
+                ?? ports.first(where: { ["web", "http", "http-web", "service"].contains($0.name ?? "") })
                 ?? ports.first
         else { return nil }
         return DetectedPrometheus(
-            namespace: service.metadata.namespace ?? "", name: name, port: port.port,
-            https: port.name?.contains("https") ?? false)
+            kind: grafana ? .grafana : .prometheus, namespace: service.metadata.namespace ?? "",
+            name: name, port: port.port, https: port.name?.contains("https") ?? false)
     }
 
     // MARK: Azure CLI

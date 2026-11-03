@@ -102,3 +102,85 @@ struct StubCluster: IntegrationClusterAccess {
     }
 }
 
+
+/// A cluster whose objects can change during a test (pod replaced).
+final class MutableCluster: IntegrationClusterAccess, @unchecked Sendable {
+    private let lock = NSLock()
+    private var objects: [String: String]
+
+    init(_ objects: [String: String]) { self.objects = objects }
+
+    func set(_ path: String, _ json: String?) { lock.withLock { objects[path] = json } }
+
+    func getIfPresent(path: String, inContext contextName: String?) async throws -> Data? {
+        lock.withLock { objects[path] }.map { Data($0.utf8) }
+    }
+
+    func portForwardWebSocket(
+        namespace: String, pod: String, remotePort: Int, inContext contextName: String?
+    ) async throws -> URLSessionWebSocketTask {
+        throw ElasticError.connect("no port-forward in tests")
+    }
+
+    func rawGet(path: String, inContext contextName: String?) async throws -> (status: Int, body: Data) {
+        (404, Data())
+    }
+}
+
+/// The in-cluster web UI forward checks shared by Kibana (#519) and
+/// Grafana (#525): one forward per context and service, shared by
+/// concurrent opens, reused while its pod is ready, moved to the new pod
+/// after a rollout, closed by a disconnect.
+enum ForwardScenario {
+
+    static func pod(_ name: String) -> String {
+        #"{"metadata":{"name":"\#(name)"},"status":{"phase":"Running","conditions":[{"type":"Ready","status":"True"}]}}"#
+    }
+
+    /// `service` selecting `app=ui`, with one ready pod `<service>-1`.
+    static func cluster(_ service: ServiceRef) -> MutableCluster {
+        let base = "/api/v1/namespaces/\(service.namespace)"
+        let scheme = service.https ? "https" : "http"
+        return MutableCluster([
+            "\(base)/services/\(service.service)":
+                #"{"metadata":{"name":"\#(service.service)"},"spec":{"selector":{"app":"ui"},"ports":[{"name":"\#(scheme)","port":\#(service.port)}]}}"#,
+            "\(base)/pods?labelSelector=app%3Dui": #"{"items":[\#(pod("\(service.service)-1"))]}"#,
+            "\(base)/pods/\(service.service)-1": pod("\(service.service)-1"),
+        ])
+    }
+
+    static func run(
+        cluster: MutableCluster, service: ServiceRef,
+        forward: @escaping @Sendable () async throws -> UInt16,
+        pod current: @Sendable () async -> String?,
+        disconnect: @Sendable () async -> Void,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async throws {
+        async let a = forward()
+        async let b = forward()
+        let (first, second) = try await (a, b)
+        XCTAssertGreaterThan(first, 0, file: file, line: line)
+        XCTAssertEqual(first, second, "a double click shares one forward", file: file, line: line)
+        let reused = try await forward()
+        XCTAssertEqual(reused, first, "reused while the pod is ready", file: file, line: line)
+
+        // A rollout replaced the pod: the next open forwards to the new one.
+        let base = "/api/v1/namespaces/\(service.namespace)"
+        let old = "\(service.service)-1"
+        let new = "\(service.service)-2"
+        cluster.set("\(base)/pods/\(old)", nil)
+        cluster.set("\(base)/pods?labelSelector=app%3Dui", #"{"items":[\#(pod(new))]}"#)
+        cluster.set("\(base)/pods/\(new)", pod(new))
+        let before = await current()
+        XCTAssertEqual(before, old, file: file, line: line)
+        _ = try await forward()
+        let after = await current()
+        XCTAssertEqual(after, new, "forwards to the new pod", file: file, line: line)
+        await disconnect()
+        let closed = await current()
+        XCTAssertNil(closed, "disconnect closes the forward", file: file, line: line)
+        _ = try await forward()
+        let reopened = await current()
+        XCTAssertEqual(reopened, new, file: file, line: line)
+    }
+}

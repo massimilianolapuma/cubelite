@@ -13,10 +13,17 @@ struct PrometheusPreferencesForm: View {
                 identifier: "preferences.prometheus")
             TargetLocationSection(
                 target: model.target,
-                detected: model.detected?.map { found in
-                    DetectedChoice(
-                        id: found.id, label: "\(found.namespace)/\(found.name):\(found.port)",
-                        pick: { model.pick(found) })
+                detected: model.detected.map { prometheus in
+                    prometheus.map { found in
+                        DetectedChoice(
+                            id: found.id, label: "Prometheus \(found.namespace)/\(found.name):\(found.port)",
+                            pick: { model.pick(found) })
+                    }
+                        + model.detectedGrafana.map { found in
+                            DetectedChoice(
+                                id: found.id, label: "Grafana \(found.namespace)/\(found.name):\(found.port)",
+                                pick: { model.pickGrafana(found) })
+                        }
                 },
                 canDetect: model.busy == nil && model.context != nil,
                 urlPrompt: "https://<workspace>.<region>.prometheus.monitor.azure.com",
@@ -44,6 +51,11 @@ struct PrometheusPreferencesForm: View {
                 .accessibilityIdentifier("preferences.prometheus-grafana")
             TextField("Grafana datasource:", text: $model.grafanaDatasource, prompt: Text("UID, optional"))
             ProblemText(problem: model.grafanaProblem)
+            if model.target.mode == .inCluster, let grafana = model.grafanaService {
+                InClusterUIRow(
+                    name: "Grafana", service: grafana, urlSet: !model.grafanaURL.trimmed.isEmpty,
+                    identifier: "preferences.prometheus-grafana-clear", onClear: { model.grafanaService = nil })
+            }
         }
     }
 

@@ -739,7 +739,10 @@ export type EsEndpoint = {
   skipTlsVerify: boolean;
 };
 
-export type KibanaService = { namespace: string; service: string; port: number; https: boolean };
+/** A web UI service in the cluster picked from Detect (Kibana #505, Grafana #525). */
+export type ServiceRef = { namespace: string; service: string; port: number; https: boolean };
+
+export type KibanaService = ServiceRef;
 
 export type EsAuth =
   | { method: "none" }
@@ -882,8 +885,12 @@ export type PromEndpoint = {
   grafanaUrl: string | null;
   /** Grafana datasource UID or name; null uses Grafana's default. */
   grafanaDatasource: string | null;
+  /** In-cluster Grafana opened through a port-forward when there is no URL (#525). */
+  grafanaService?: GrafanaService | null;
   skipTlsVerify: boolean;
 };
+
+export type GrafanaService = ServiceRef;
 
 export type PromAuth =
   | { method: "none" }
@@ -940,7 +947,13 @@ export type PromInfo = {
   clusters: string[];
 };
 
-export type DetectedPrometheus = { namespace: string; name: string; port: number; https: boolean };
+export type DetectedPrometheus = {
+  kind: "prometheus" | "grafana";
+  namespace: string;
+  name: string;
+  port: number;
+  https: boolean;
+};
 
 export function prometheusDetect(kubeconfigPath: string, context: string): Promise<DetectedPrometheus[]> {
   return invoke<DetectedPrometheus[]>("prometheus_detect", { kubeconfigPath, context });
@@ -987,6 +1000,15 @@ export function prometheusAuthMethod(context: string, endpoint: PromEndpoint): P
 
 export function prometheusDisconnect(context: string): Promise<void> {
   return invoke("prometheus_disconnect", { context });
+}
+
+/**
+ * Local port of a port-forward to an in-cluster Grafana (#525). The backend
+ * keeps one per (kubeconfig, context, service), reused while its pod is
+ * ready, and closes it when the context's Prometheus is disconnected.
+ */
+export function grafanaPortForward(kubeconfigPath: string, context: string, service: GrafanaService): Promise<number> {
+  return invoke<number>("grafana_port_forward", { kubeconfigPath, context, service });
 }
 
 /** Opens Grafana Explore with `queries` (built in Rust, http(s) only). */

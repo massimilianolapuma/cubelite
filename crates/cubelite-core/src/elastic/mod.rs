@@ -85,19 +85,9 @@ pub struct EsEndpoint {
     pub skip_tls_verify: bool,
 }
 
-/// A Kibana service in the cluster (from Detect).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct KibanaService {
-    /// Namespace.
-    pub namespace: String,
-    /// Service name.
-    pub service: String,
-    /// Service port (5601).
-    pub port: u16,
-    /// Whether it speaks HTTPS (ECK default).
-    pub https: bool,
-}
+/// A Kibana service in the cluster (from Detect; port 5601, HTTPS by
+/// default with ECK).
+pub type KibanaService = crate::integration::ServiceRef;
 
 /// Credentials for an endpoint.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

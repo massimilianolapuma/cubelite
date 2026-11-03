@@ -554,3 +554,115 @@ actor ConnectionPool<Endpoint: Equatable & Sendable> {
         disconnect(context: context)
     }
 }
+
+// MARK: - In-cluster web UIs
+
+/// Loopback port-forwards to in-cluster web UIs (Kibana #519, Grafana #525),
+/// one per context and service, reused while the forward runs and its pod is
+/// ready; a rollout or eviction forwards to the new pod. Concurrent calls
+/// share the forward being opened, and a close meanwhile discards it.
+actor ServiceForwards {
+    private struct Key: Hashable {
+        let context: String
+        let service: ServiceRef
+    }
+    private typealias Opened = (tunnel: IntegrationTunnel, port: UInt16, pod: String)
+
+    private let cluster: any IntegrationClusterAccess
+    private var forwards: [Key: Opened] = [:]
+    private var pending: [Key: (generation: Int, task: Task<UInt16, Error>)] = [:]
+    private var generations: [Key: Int] = [:]
+
+    init(cluster: any IntegrationClusterAccess) {
+        self.cluster = cluster
+    }
+
+    /// Local port of the forward to `service`. Throws `IntegrationFailure`
+    /// when it cannot be opened, `CancellationError` when closed meanwhile.
+    func port(context: String, service: ServiceRef) async throws -> UInt16 {
+        let key = Key(context: context, service: service)
+        while true {
+            if let open = pending[key] { return try await open.task.value }
+            guard let open = forwards[key] else { break }
+            var ready = open.tunnel.isRunning
+            if ready {
+                ready = await Integration.podReady(
+                    cluster: cluster, context: context, namespace: service.namespace, pod: open.pod)
+            }
+            // The entry may have changed during the check: decide again.
+            guard forwards[key]?.tunnel === open.tunnel else { continue }
+            if ready { return open.port }
+            forwards.removeValue(forKey: key)?.tunnel.close()
+        }
+        generations[key, default: 0] += 1
+        let generation = generations[key, default: 0]
+        let cluster = self.cluster
+        let task = Task { () throws -> UInt16 in
+            let opened = try await Integration.openServiceTunnel(
+                cluster: cluster, context: context, namespace: service.namespace,
+                service: service.service, port: service.port)
+            return try self.store(key, opened, generation: generation)
+        }
+        pending[key] = (generation, task)
+        defer {
+            if pending[key]?.generation == generation { pending[key] = nil }
+        }
+        return try await task.value
+    }
+
+    /// Closes the context's forwards (disconnect, settings saved).
+    func close(context: String) {
+        close { $0.context == context }
+    }
+
+    /// Closes every forward (app quit, kubeconfig reload).
+    func closeAll() {
+        close { _ in true }
+    }
+
+    /// The pod a context's forward goes to (tests).
+    func pod(context: String, service: ServiceRef) -> String? {
+        forwards[Key(context: context, service: service)]?.pod
+    }
+
+    /// Keeps a forward that finished opening, unless a close (a newer
+    /// generation) happened meanwhile.
+    private func store(_ key: Key, _ opened: Opened, generation: Int) throws -> UInt16 {
+        guard generations[key] == generation else {
+            opened.tunnel.close()
+            throw CancellationError()
+        }
+        forwards[key]?.tunnel.close()
+        forwards[key] = opened
+        return opened.port
+    }
+
+    private func close(where matches: (Key) -> Bool) {
+        for key in Set(forwards.keys).union(pending.keys) where matches(key) {
+            generations[key, default: 0] += 1
+            pending[key] = nil
+            forwards.removeValue(forKey: key)?.tunnel.close()
+        }
+    }
+}
+
+extension Integration {
+
+    /// The in-cluster web UI to forward to: only without a configured URL
+    /// and for in-cluster endpoints (#519, #525).
+    static func forwardedUI(url: String?, target: IntegrationTarget, service: ServiceRef?) -> ServiceRef? {
+        guard (url ?? "").trimmingCharacters(in: .whitespaces).isEmpty, case .inCluster = target else {
+            return nil
+        }
+        return service
+    }
+
+    /// Whether a web UI can be opened: a configured URL, or an in-cluster
+    /// service and something to forward to it.
+    static func canOpenUI(url: String?, target: IntegrationTarget, service: ServiceRef?, canForward: Bool)
+        -> Bool
+    {
+        if !(url ?? "").trimmingCharacters(in: .whitespaces).isEmpty { return true }
+        return canForward && forwardedUI(url: url, target: target, service: service) != nil
+    }
+}
