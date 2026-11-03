@@ -684,14 +684,21 @@ final class LogSessionStoreTests: XCTestCase {
         XCTAssertEqual(store.sessions.count, 2, "open must not duplicate the session")
     }
 
-    // MARK: - JSON view (#477)
+    // MARK: - View mode (#477, #493)
 
-    func testJSONView_offByDefaultAndPersisted() {
-        XCTAssertFalse(store.jsonView)
-        store.jsonView = true
-        XCTAssertTrue(defaults.bool(forKey: "logPanel.jsonView"))
+    func testViewMode_rawByDefaultAndPersisted() {
+        XCTAssertEqual(store.viewMode, .raw)
+        store.viewMode = .ecs
+        XCTAssertEqual(defaults.string(forKey: "logPanel.viewMode"), "ecs")
         let reopened = LogSessionStore(streamer: streamer, defaults: defaults)
-        XCTAssertTrue(reopened.jsonView)
+        XCTAssertEqual(reopened.viewMode, .ecs)
+    }
+
+    func testViewMode_seededFromTheOldJSONToggle() {
+        defaults.set(true, forKey: "logPanel.jsonView")
+        XCTAssertEqual(LogSessionStore(streamer: streamer, defaults: defaults).viewMode, .json)
+        defaults.set("raw", forKey: "logPanel.viewMode")
+        XCTAssertEqual(LogSessionStore(streamer: streamer, defaults: defaults).viewMode, .raw)
     }
 
     func testToggleExpanded_flipsAndClearEmpties() async throws {

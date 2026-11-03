@@ -280,9 +280,9 @@ final class LogSessionStore {
     var wrapLines: Bool {
         didSet { defaults.set(wrapLines, forKey: "logPanel.wrapLines") }
     }
-    /// Humanises JSON log lines (#477); off by default.
-    var jsonView: Bool {
-        didSet { defaults.set(jsonView, forKey: "logPanel.jsonView") }
+    /// Raw, JSON (#477) or ECS (#493) rendering; seeded from the old JSON toggle.
+    var viewMode: LogViewMode {
+        didSet { defaults.set(viewMode.rawValue, forKey: "logPanel.viewMode") }
     }
 
     /// Transient confirmation message (export result); auto-clears after 3s.
@@ -303,7 +303,7 @@ final class LogSessionStore {
         self.showTimestamps =
             defaults.object(forKey: "logPanel.showTimestamps") as? Bool ?? true
         self.wrapLines = defaults.bool(forKey: "logPanel.wrapLines")
-        self.jsonView = defaults.bool(forKey: "logPanel.jsonView")
+        self.viewMode = LogViewMode.stored(in: defaults, key: "logPanel.viewMode", legacyKey: "logPanel.jsonView")
         let storedHeight = defaults.double(forKey: "logPanel.height")
         self.panelHeight = storedHeight == 0 ? 280 : min(560, max(160, storedHeight))
     }

@@ -69,7 +69,7 @@ struct AggregatedLogsView: View {
                 .frame(width: 140)
                 .accessibilityLabel("Filter log messages")
                 .accessibilityIdentifier("aggregatedlogs.text-filter")
-            jsonViewButton
+            viewModePicker
             followButton
             Button("Clear") { store.clear() }
                 .controlSize(.small)
@@ -112,27 +112,9 @@ struct AggregatedLogsView: View {
                 .strokeBorder(DesignTokens.borderDefault, lineWidth: 1))
     }
 
-    /// Humanises JSON log lines (#477), with its own remembered preference.
-    private var jsonViewButton: some View {
-        Button {
-            store.jsonView.toggle()
-        } label: {
-            Image(systemName: "curlybraces")
-                .scaledFont(size: 11, weight: store.jsonView ? .semibold : .regular)
-                .foregroundStyle(
-                    store.jsonView ? DesignTokens.accentDefault : DesignTokens.textSecondary)
-                .frame(width: 26, height: 22)
-                .background(
-                    store.jsonView ? DesignTokens.surfaceRaised : .clear,
-                    in: RoundedRectangle(cornerRadius: DesignTokens.radiusSm))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("JSON view")
-        .accessibilityLabel("JSON view")
-        .accessibilityValue(store.jsonView ? "On" : "Off")
-        .accessibilityAddTraits(store.jsonView ? .isSelected : [])
-        .accessibilityIdentifier("aggregatedlogs.json-view")
+    /// Raw / JSON (#477) / ECS (#493) rendering, with its own remembered preference.
+    private var viewModePicker: some View {
+        LogViewModePicker(mode: Bindable(store).viewMode, identifier: "aggregatedlogs.view-mode")
     }
 
     private var followButton: some View {
@@ -201,7 +183,8 @@ struct AggregatedLogsView: View {
         LogLineRow(
             line: entry.line, showTimestamp: true, wrap: true,
             sourceName: entry.pod, sourceColor: DesignTokens.textSecondary, sourceWidth: 140,
-            jsonView: store.jsonView,
+            mode: store.viewMode,
+            ecsMetadata: ECSDocument.Metadata(namespace: entry.namespace, pod: entry.pod),
             isExpanded: store.expandedLineIDs.contains(entry.id),
             onToggleExpanded: { store.toggleExpanded(entry.id) })
     }

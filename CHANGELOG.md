@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **ECS log view** (macOS, #493): the `{}` JSON toggle in the log panel and
+  the aggregated Logs view becomes a Raw · JSON · ECS segmented control
+  (an enabled JSON toggle carries over). ECS mode shows every line as its
+  Elastic Common Schema document, with the same rules as the desktop app:
+  aliases renamed, Kubernetes metadata added, a `service.name` chip, a sorted
+  field table with Copy ECS, and NDJSON export. Log lines now keep the full
+  kubelet timestamp for `@timestamp`.
 - **Pod shell** (desktop, #488): a Shell button in the pod drawer opens a
   line-based `/bin/sh` session (no TTY) in the pod's first container, like
   the native app; stdout, stderr and exit status stream into a scrollback.

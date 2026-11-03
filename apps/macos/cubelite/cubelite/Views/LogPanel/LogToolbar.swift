@@ -21,7 +21,7 @@ struct LogToolbar: View {
             Spacer()
             tailMenu
             followButton
-            jsonViewButton
+            viewModePicker
             if !isDetachedContext {
                 detachButton
             }
@@ -316,29 +316,10 @@ struct LogToolbar: View {
         .accessibilityIdentifier("logpanel.follow")
     }
 
-    /// Humanises JSON log lines (#477); shared by every session and the
-    /// pop-out windows, remembered across launches.
-    private var jsonViewButton: some View {
-        Button {
-            store.jsonView.toggle()
-        } label: {
-            Image(systemName: "curlybraces")
-                .scaledFont(size: 11, weight: store.jsonView ? .semibold : .regular)
-                .foregroundStyle(
-                    store.jsonView ? DesignTokens.accentDefault : DesignTokens.textSecondary)
-                .frame(width: 26)
-                .frame(minHeight: 28)
-                .background(
-                    store.jsonView ? DesignTokens.surfaceRaised : .clear,
-                    in: RoundedRectangle(cornerRadius: DesignTokens.radiusSm))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("JSON view")
-        .accessibilityLabel("JSON view")
-        .accessibilityValue(store.jsonView ? "On" : "Off")
-        .accessibilityAddTraits(store.jsonView ? .isSelected : [])
-        .accessibilityIdentifier("logpanel.json-view")
+    /// Raw / JSON (#477) / ECS (#493) rendering; shared by every session and
+    /// the pop-out windows, remembered across launches.
+    private var viewModePicker: some View {
+        LogViewModePicker(mode: Bindable(store).viewMode, identifier: "logpanel.view-mode")
     }
 
     /// Pops the session out into its own OS window (#298). Hidden inside
@@ -388,6 +369,13 @@ struct LogToolbar: View {
         .accessibilityIdentifier("logpanel.overflow")
     }
 
+    /// Kubernetes metadata of this session's lines for the ECS conversion.
+    private var ecsMetadata: ECSDocument.Metadata {
+        ECSDocument.Metadata(
+            namespace: session.pod.namespace, pod: session.pod.name,
+            container: session.isMerged ? nil : session.selectedContainer)
+    }
+
     /// Writes the visible (filtered) or full buffer to ~/Downloads and
     /// confirms via toast.
     private func export(full: Bool) {
@@ -407,7 +395,8 @@ struct LogToolbar: View {
             let url = try LogExporter.write(
                 lines, pod: session.pod.name,
                 container: session.isMerged ? "all" : session.selectedContainer,
-                full: full, directory: downloads)
+                full: full, directory: downloads,
+                ecs: store.viewMode == .ecs ? { _ in ecsMetadata } : nil)
             store.showToast("saved \(url.lastPathComponent) to Downloads")
         } catch {
             store.showToast("export failed: \(error.localizedDescription)")

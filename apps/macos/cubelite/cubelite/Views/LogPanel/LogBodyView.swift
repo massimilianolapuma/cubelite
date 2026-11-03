@@ -77,7 +77,10 @@ struct LogBodyView: View {
                             sourceColor: (session.isMerged ? line.container : nil).map {
                                 ContainerIdentity.color(for: $0, in: session.containers)
                             },
-                            jsonView: store.jsonView,
+                            mode: store.viewMode,
+                            ecsMetadata: ECSDocument.Metadata(
+                                namespace: session.pod.namespace, pod: session.pod.name,
+                                container: session.isMerged ? nil : session.selectedContainer),
                             isExpanded: session.expandedLineIDs.contains(line.id),
                             onToggleExpanded: { session.toggleExpanded(line.id) }
                         )
@@ -145,9 +148,10 @@ struct LogBodyView: View {
     }
 }
 
-/// One rendered log line. With `jsonView` on, a line whose message is a
-/// JSON object renders humanised (`message  key=value …`) and toggles a
-/// JSON tree below it (#477); every other line renders raw.
+/// One rendered log line. In JSON mode a line whose message is a JSON
+/// object renders humanised (`message  key=value …`) and toggles a JSON tree
+/// below it (#477); in ECS mode every line renders as its ECS document and
+/// toggles a field table (#493); otherwise lines render raw.
 struct LogLineRow: View {
     let line: LogLine
     let showTimestamp: Bool
@@ -159,7 +163,9 @@ struct LogLineRow: View {
     /// Source column width: container names in the panel, wider for pod
     /// names in the aggregated Logs view.
     var sourceWidth: CGFloat = 52
-    var jsonView = false
+    var mode: LogViewMode = .raw
+    /// Kubernetes metadata for the ECS conversion.
+    var ecsMetadata: ECSDocument.Metadata?
     var isExpanded = false
     var onToggleExpanded: (() -> Void)?
 
@@ -168,7 +174,12 @@ struct LogLineRow: View {
     private var tailFontSize = DesignTokens.Typography.micro.size
 
     var body: some View {
-        if jsonView, let json = JSONLogView.parse(line.message) {
+        if mode == .ecs {
+            ecsRow(
+                ECSDocument.make(
+                    line: line,
+                    metadata: ecsMetadata ?? ECSDocument.Metadata(namespace: "", pod: "")))
+        } else if mode == .json, let json = JSONLogView.parse(line.message) {
             jsonRow(json)
         } else {
             rawRow
@@ -203,7 +214,7 @@ struct LogLineRow: View {
                             .rotationEffect(.degrees(isExpanded ? 90 : 0))
                             .foregroundStyle(DesignTokens.textTertiary)
                             .accessibilityHidden(true)
-                        Text(humanised(json, level: level))
+                        Text(humanised(message: json.message, tail: json.tail, level: level))
                             .typeStyle(DesignTokens.Typography.log)
                             .lineLimit(wrap ? nil : 1)
                             .multilineTextAlignment(.leading)
@@ -219,6 +230,58 @@ struct LogLineRow: View {
             .padding(.vertical, 1)
             if isExpanded {
                 JSONTreeView(value: json.object, raw: line.message)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(DesignTokens.surfaceRaised)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Self.rowTint(level))
+    }
+
+    private func ecsRow(_ document: ECSDocument) -> some View {
+        let level = document.level
+        let row = document.row
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                gutter(level)
+                Button {
+                    onToggleExpanded?()
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Image(systemName: "chevron.right")
+                            .iconSize(DesignTokens.iconXs, weight: .semibold)
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .foregroundStyle(DesignTokens.textTertiary)
+                            .accessibilityHidden(true)
+                        if let service = row.service {
+                            Text(verbatim: service)
+                                .typeStyle(
+                                    DesignTokens.Typography.micro.monospaced,
+                                    color: DesignTokens.textSecondary)
+                                .padding(.horizontal, 4)
+                                .background(
+                                    DesignTokens.surfaceRaised,
+                                    in: RoundedRectangle(cornerRadius: DesignTokens.radiusSm))
+                                .accessibilityIdentifier("logpanel.ecs-service")
+                        }
+                        Text(humanised(message: row.message, tail: row.tail, level: level))
+                            .typeStyle(DesignTokens.Typography.log)
+                            .lineLimit(wrap ? nil : 1)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                .accessibilityHint("Shows all ECS fields")
+                .accessibilityIdentifier("logpanel.ecs-row")
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 1)
+            if isExpanded {
+                ECSFieldTableView(document: document, raw: line.message)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -254,11 +317,13 @@ struct LogLineRow: View {
 
     /// `message  key=value  key2=value2`: message in the log style, tail in
     /// micro monospace with tertiary keys and secondary values.
-    private func humanised(_ json: JSONLogView, level: LogLine.Level) -> AttributedString {
-        var text = highlighted(json.message, base: Self.messageColor(level))
+    private func humanised(
+        message: String, tail: [JSONLogView.TailField], level: LogLine.Level
+    ) -> AttributedString {
+        var text = highlighted(message, base: Self.messageColor(level))
         let tailFont = AppFont.font(
             mono: true, weight: DesignTokens.Typography.micro.weight, size: tailFontSize)
-        for (n, field) in json.tail.enumerated() {
+        for (n, field) in tail.enumerated() {
             var key = AttributedString((n == 0 ? " " : "  ") + field.key)
             key.foregroundColor = DesignTokens.textTertiary
             var equals = AttributedString("=")

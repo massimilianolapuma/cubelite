@@ -9,6 +9,9 @@ struct LogLine: Identifiable, Equatable, Sendable {
     let message: String
     /// Source container, set in merged "all containers" mode; nil otherwise.
     let container: String?
+    /// Full kubelet RFC 3339 timestamp (`time` keeps only the time of day),
+    /// used as the ECS `@timestamp` (#493).
+    var timestamp: String? = nil
 
     enum Level: Equatable, Sendable {
         case debug, info, warn, error
@@ -17,12 +20,14 @@ struct LogLine: Identifiable, Equatable, Sendable {
     /// Splits the kubelet RFC 3339 prefix and detects the severity.
     static func parse(_ raw: String, id: Int, container: String? = nil) -> LogLine {
         var time: String?
+        var timestamp: String?
         var message = raw
         if let space = raw.firstIndex(of: " "),
             raw[raw.startIndex..<space].contains("T"),
             raw.hasPrefix("2")
         {
-            time = String(raw[raw.startIndex..<space]).components(separatedBy: "T").last
+            timestamp = String(raw[raw.startIndex..<space])
+            time = timestamp?.components(separatedBy: "T").last
             message = String(raw[raw.index(after: space)...])
         }
         let upper = message.uppercased()
@@ -32,7 +37,9 @@ struct LogLine: Identifiable, Equatable, Sendable {
             : upper.contains("WARN")
                 ? .warn
                 : upper.contains("DEBUG") || upper.contains("TRACE") ? .debug : .info
-        return LogLine(id: id, time: time, level: level, message: message, container: container)
+        return LogLine(
+            id: id, time: time, level: level, message: message, container: container,
+            timestamp: timestamp)
     }
 }
 
