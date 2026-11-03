@@ -429,7 +429,11 @@ describe("Elasticsearch bindings (#500)", () => {
     await elasticSearch("/k", "prod", endpoint, query);
     expect(mockedInvoke).toHaveBeenCalledWith("elastic_search", { kubeconfigPath: "/k", context: "prod", endpoint, query });
     mockedInvoke.mockResolvedValueOnce(undefined);
-    await elasticSaveAuth("prod", { method: "api-key", key: "k" });
-    expect(mockedInvoke).toHaveBeenCalledWith("elastic_save_auth", { context: "prod", auth: { method: "api-key", key: "k" } });
+    await elasticSaveAuth("prod", endpoint, { method: "api-key", key: "k" });
+    expect(mockedInvoke).toHaveBeenCalledWith("elastic_save_auth", {
+      context: "prod",
+      endpoint,
+      auth: { method: "api-key", key: "k" },
+    });
   });
 });

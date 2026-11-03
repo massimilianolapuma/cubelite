@@ -20,6 +20,7 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-dialog = "2"
 notify = "8"
+url = "2"
 # Elasticsearch credentials in the OS keychain (#500): macOS Keychain,
 # Windows Credential Manager, Secret Service on Linux.
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service"] }

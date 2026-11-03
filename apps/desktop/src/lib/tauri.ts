@@ -804,22 +804,23 @@ export function elasticSearch(
   return invoke<HistoryPage>("elastic_search", { kubeconfigPath, context, endpoint, query });
 }
 
-export function elasticSaveAuth(context: string, auth: EsAuth): Promise<void> {
-  return invoke("elastic_save_auth", { context, auth });
+/** Stores `auth` in the OS keychain, bound to `endpoint`'s origin and TLS setting. */
+export function elasticSaveAuth(context: string, endpoint: EsEndpoint, auth: EsAuth): Promise<void> {
+  return invoke("elastic_save_auth", { context, endpoint, auth });
 }
 
-export function elasticAuthMethod(context: string): Promise<EsAuthMethod> {
-  return invoke<EsAuthMethod>("elastic_auth_method", { context });
+/** Stored method for this endpoint; `none` when the stored credentials belong to another one. */
+export function elasticAuthMethod(context: string, endpoint: EsEndpoint): Promise<EsAuthMethod> {
+  return invoke<EsAuthMethod>("elastic_auth_method", { context, endpoint });
 }
 
-/** Stores ECK's `elastic` user for `context`; returns the stored method. */
+/** Stores ECK's `elastic` user for this in-cluster endpoint; returns the stored method. */
 export function elasticUseEckCredentials(
   kubeconfigPath: string,
   context: string,
-  namespace: string,
-  service: string,
+  endpoint: EsEndpoint,
 ): Promise<EsAuthMethod> {
-  return invoke<EsAuthMethod>("elastic_use_eck_credentials", { kubeconfigPath, context, namespace, service });
+  return invoke<EsAuthMethod>("elastic_use_eck_credentials", { kubeconfigPath, context, endpoint });
 }
 
 export function elasticDisconnect(context: string): Promise<void> {

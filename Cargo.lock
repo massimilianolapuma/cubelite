@@ -653,6 +653,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tempfile",
  "tokio",
+ "url",
 ]
 
 [[package]]

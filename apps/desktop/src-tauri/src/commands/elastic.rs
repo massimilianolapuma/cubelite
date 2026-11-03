@@ -2,17 +2,19 @@
 //!
 //! Endpoints (no secrets) live in the frontend's settings; credentials live
 //! in the OS keychain under service `cubelite.elastic`, account = kube
-//! context, and never travel back to the frontend.
+//! context, bound to the endpoint they were saved for, and never travel
+//! back to the frontend.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use cubelite_core::elastic::transport::{self, DetectedService, EsConnection, EsInfo};
 use cubelite_core::elastic::{
-    kibana_discover_url as discover_url, ElasticError, EsAuth, EsEndpoint, FieldPreset,
+    kibana_discover_url as discover_url, ElasticError, EsAuth, EsEndpoint, EsTarget, FieldPreset,
     HistoryPage, HistoryQuery,
 };
 use cubelite_core::KubeClient;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 use tokio::sync::Mutex;
 
@@ -29,17 +31,67 @@ fn entry(context: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(KEYCHAIN_SERVICE, context).map_err(|e| format!("Keychain unavailable: {e}"))
 }
 
-/// Stored credentials for `context`; `EsAuth::None` when nothing is stored.
-fn load_auth(context: &str) -> Result<EsAuth, String> {
+/// What stored credentials are bound to: the endpoint's origin (external
+/// scheme + host + port, or the in-cluster service) and whether TLS
+/// verification was off. Stored secrets are only sent to the same binding,
+/// so a request naming another endpoint (e.g. from a compromised webview)
+/// cannot exfiltrate them.
+fn binding(endpoint: &EsEndpoint) -> Result<String, String> {
+    let origin = match &endpoint.target {
+        EsTarget::External { url } => url::Url::parse(url.trim())
+            .map_err(|e| format!("Invalid URL \"{url}\": {e}"))?
+            .origin()
+            .ascii_serialization(),
+        EsTarget::InCluster {
+            namespace,
+            service,
+            port,
+            https,
+        } => format!(
+            "in-cluster:{namespace}/{service}:{port}:{}",
+            if *https { "https" } else { "http" }
+        ),
+    };
+    Ok(if endpoint.skip_tls_verify {
+        format!("{origin}|insecure")
+    } else {
+        origin
+    })
+}
+
+/// Keychain record: the secret and the endpoint binding it was saved for.
+#[derive(Serialize, Deserialize)]
+struct StoredAuth {
+    binding: String,
+    auth: EsAuth,
+}
+
+fn read_record(context: &str) -> Result<Option<StoredAuth>, String> {
     match entry(context)?.get_password() {
         Ok(json) => serde_json::from_str(&json)
+            .map(Some)
             .map_err(|_| "Stored credentials are unreadable; save them again".to_string()),
-        Err(keyring::Error::NoEntry) => Ok(EsAuth::None),
+        Err(keyring::Error::NoEntry) => Ok(None),
         Err(e) => Err(format!("Keychain error: {e}")),
     }
 }
 
-fn store_auth(context: &str, auth: &EsAuth) -> Result<(), String> {
+/// Credentials stored for `context`, usable only with `endpoint`;
+/// `EsAuth::None` when nothing is stored.
+fn load_auth(context: &str, endpoint: &EsEndpoint) -> Result<EsAuth, String> {
+    let Some(stored) = read_record(context)? else {
+        return Ok(EsAuth::None);
+    };
+    if stored.binding != binding(endpoint)? {
+        return Err(
+            "The saved credentials belong to another endpoint or TLS setting; save them again for this one"
+                .to_string(),
+        );
+    }
+    Ok(stored.auth)
+}
+
+fn store_auth(context: &str, endpoint: &EsEndpoint, auth: &EsAuth) -> Result<(), String> {
     let entry = entry(context)?;
     if *auth == EsAuth::None {
         return match entry.delete_credential() {
@@ -47,7 +99,11 @@ fn store_auth(context: &str, auth: &EsAuth) -> Result<(), String> {
             Err(e) => Err(format!("Keychain error: {e}")),
         };
     }
-    let json = serde_json::to_string(auth).map_err(|e| e.to_string())?;
+    let record = StoredAuth {
+        binding: binding(endpoint)?,
+        auth: auth.clone(),
+    };
+    let json = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     entry
         .set_password(&json)
         .map_err(|e| format!("Keychain error: {e}"))
@@ -79,10 +135,8 @@ async fn open(
     auth: &EsAuth,
 ) -> Result<EsConnection, String> {
     let client = match endpoint.target {
-        cubelite_core::elastic::EsTarget::InCluster { .. } => {
-            Some(kube(kubeconfig_path, context).await?.client())
-        }
-        cubelite_core::elastic::EsTarget::External { .. } => None,
+        EsTarget::InCluster { .. } => Some(kube(kubeconfig_path, context).await?.client()),
+        EsTarget::External { .. } => None,
     };
     transport::connect(client, endpoint, auth)
         .await
@@ -101,7 +155,8 @@ pub async fn elastic_detect(
 }
 
 /// Connects once and reports version, health and matching indices.
-/// `auth` tests credentials before saving them; `None` uses the stored ones.
+/// `auth` tests credentials before saving them; `None` uses the stored ones
+/// (only when they were saved for this endpoint).
 #[tauri::command]
 pub async fn elastic_test(
     kubeconfig_path: String,
@@ -111,7 +166,7 @@ pub async fn elastic_test(
 ) -> Result<EsInfo, String> {
     let auth = match auth {
         Some(a) => a,
-        None => load_auth(&context)?,
+        None => load_auth(&context, &endpoint)?,
     };
     let conn = open(&kubeconfig_path, &context, &endpoint, &auth).await?;
     conn.info(&endpoint).await.map_err(text)
@@ -131,7 +186,7 @@ pub async fn elastic_search(
         match connections.get(&context) {
             Some((cached, conn)) if *cached == endpoint => conn.clone(),
             _ => {
-                let auth = load_auth(&context)?;
+                let auth = load_auth(&context, &endpoint)?;
                 let conn = Arc::new(open(&kubeconfig_path, &context, &endpoint, &auth).await?);
                 connections.insert(context.clone(), (endpoint.clone(), conn.clone()));
                 conn
@@ -146,42 +201,56 @@ pub async fn elastic_search(
     result.map_err(text)
 }
 
-/// Saves `auth` for `context` in the keychain (`none` deletes it) and
-/// drops the cached connection.
+/// Saves `auth` for `context` in the keychain, bound to `endpoint`
+/// (`none` deletes it), and drops the cached connection.
 #[tauri::command]
 pub async fn elastic_save_auth(
     state: State<'_, ElasticState>,
     context: String,
+    endpoint: EsEndpoint,
     auth: EsAuth,
 ) -> Result<(), String> {
-    store_auth(&context, &auth)?;
+    store_auth(&context, &endpoint, &auth)?;
     state.connections.lock().await.remove(&context);
     Ok(())
 }
 
-/// The stored auth method (`none`, `basic`, `api-key`, `bearer`), never the secret.
+/// The auth method stored for `endpoint` (`none`, `basic`, `api-key`,
+/// `bearer`), never the secret; `none` when the stored one belongs to
+/// another endpoint.
 #[tauri::command]
-pub async fn elastic_auth_method(context: String) -> Result<String, String> {
-    Ok(method(&load_auth(&context)?).to_string())
+pub async fn elastic_auth_method(context: String, endpoint: EsEndpoint) -> Result<String, String> {
+    let current = binding(&endpoint)?;
+    Ok(match read_record(&context)? {
+        Some(stored) if stored.binding == current => method(&stored.auth),
+        _ => "none",
+    }
+    .to_string())
 }
 
-/// Reads ECK's `elastic` user from the cluster and stores it in the keychain.
+/// Reads ECK's `elastic` user from the cluster and stores it in the
+/// keychain for this in-cluster endpoint.
 #[tauri::command]
 pub async fn elastic_use_eck_credentials(
     state: State<'_, ElasticState>,
     kubeconfig_path: String,
     context: String,
-    namespace: String,
-    service: String,
+    endpoint: EsEndpoint,
 ) -> Result<String, String> {
+    let EsTarget::InCluster {
+        namespace, service, ..
+    } = &endpoint.target
+    else {
+        return Err("ECK credentials apply to in-cluster endpoints only".to_string());
+    };
     let auth = transport::eck_credentials(
         kube(&kubeconfig_path, &context).await?.client(),
-        &namespace,
-        &service,
+        namespace,
+        service,
     )
     .await
     .map_err(text)?;
-    store_auth(&context, &auth)?;
+    store_auth(&context, &endpoint, &auth)?;
     state.connections.lock().await.remove(&context);
     Ok(method(&auth).to_string())
 }
@@ -222,6 +291,43 @@ pub fn kibana_discover_url(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn endpoint(target: EsTarget) -> EsEndpoint {
+        EsEndpoint {
+            target,
+            index_pattern: "logs-*".into(),
+            preset: FieldPreset::Ecs,
+            kibana_url: None,
+            skip_tls_verify: false,
+        }
+    }
+
+    #[test]
+    fn binding_is_the_origin_and_tls_setting() {
+        let ext = |u: &str| endpoint(EsTarget::External { url: u.into() });
+        let a = binding(&ext("https://es.example:9243/")).expect("a");
+        assert_eq!(a, "https://es.example:9243");
+        assert_eq!(
+            binding(&ext("https://es.example:9243/some/path")).expect("same origin"),
+            a
+        );
+        assert_ne!(binding(&ext("https://evil.example:9243")).expect("host"), a);
+        assert_ne!(binding(&ext("http://es.example:9243")).expect("scheme"), a);
+        let mut insecure = ext("https://es.example:9243");
+        insecure.skip_tls_verify = true;
+        assert_ne!(binding(&insecure).expect("insecure"), a);
+        let in_cluster = endpoint(EsTarget::InCluster {
+            namespace: "logging".into(),
+            service: "quickstart-es-http".into(),
+            port: 9200,
+            https: true,
+        });
+        assert_eq!(
+            binding(&in_cluster).expect("in-cluster"),
+            "in-cluster:logging/quickstart-es-http:9200:https"
+        );
+        assert!(binding(&ext("not a url")).is_err());
+    }
 
     #[test]
     fn method_names_match_the_auth_tags() {
