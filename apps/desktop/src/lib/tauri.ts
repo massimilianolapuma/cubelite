@@ -739,7 +739,9 @@ export type EsAuth =
   | { method: "none" }
   | { method: "basic"; username: string; password: string }
   | { method: "api-key"; key: string }
-  | { method: "bearer"; token: string };
+  | { method: "bearer"; token: string }
+  /** ECK's `elastic` user, read from the cluster at each connection (never stored). */
+  | { method: "eck-user" };
 
 export type EsAuthMethod = EsAuth["method"];
 

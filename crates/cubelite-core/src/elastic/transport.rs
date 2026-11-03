@@ -138,13 +138,21 @@ fn selector_string(service: &Service) -> Option<String> {
 }
 
 /// ECK publishes the HTTP CA in `{service}-certs-public` (`ca.crt`).
-async fn eck_ca(client: &Client, namespace: &str, service: &str) -> Option<Vec<u8>> {
+/// `Ok(None)` when the secret does not exist (not ECK: platform roots
+/// apply); an error when it cannot be read, so a TLS failure names its cause.
+async fn eck_ca(
+    client: &Client,
+    namespace: &str,
+    service: &str,
+) -> Result<Option<Vec<u8>>, ElasticError> {
+    let name = format!("{service}-certs-public");
     let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
-    let secret = secrets
-        .get_opt(&format!("{service}-certs-public"))
-        .await
-        .ok()??;
-    secret.data?.get("ca.crt").map(|b| b.0.clone())
+    let secret = secrets.get_opt(&name).await.map_err(|e| {
+        ElasticError::Connect(format!("cannot read the CA secret {namespace}/{name}: {e}"))
+    })?;
+    Ok(secret
+        .and_then(|s| s.data)
+        .and_then(|d| d.get("ca.crt").map(|b| b.0.clone())))
 }
 
 /// ECK's built-in `elastic` user from `{cluster}-es-elastic-user`, for a
@@ -177,7 +185,44 @@ pub async fn eck_credentials(
     })
 }
 
+/// Checks an external URL: http(s), no credentials in it, and credentials
+/// only over https (or plain http to loopback, which never leaves the host).
+pub fn check_external_url(url: &str, auth: &EsAuth) -> Result<reqwest::Url, ElasticError> {
+    let parsed = reqwest::Url::parse(url.trim())
+        .map_err(|e| ElasticError::Config(format!("Invalid URL: {e}")))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(ElasticError::Config(
+            "Invalid URL: use http:// or https://".to_string(),
+        ));
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(ElasticError::Config(
+            "Put credentials in the authentication fields, not in the URL".to_string(),
+        ));
+    }
+    if *auth == EsAuth::EckUser {
+        return Err(ElasticError::Config(
+            "ECK credentials apply to in-cluster endpoints only".to_string(),
+        ));
+    }
+    let loopback = match parsed.host() {
+        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    };
+    if parsed.scheme() == "http" && *auth != EsAuth::None && !loopback {
+        return Err(ElasticError::Config(
+            "Credentials are only sent over https://".to_string(),
+        ));
+    }
+    Ok(parsed)
+}
+
 /// Opens a connection to `endpoint`. In-cluster endpoints need `kube`.
+///
+/// Credentials go only over HTTPS or the in-cluster tunnel; `EckUser` is
+/// read from the cluster here, never stored.
 pub async fn connect(
     kube: Option<Client>,
     endpoint: &EsEndpoint,
@@ -190,15 +235,10 @@ pub async fn connect(
         .timeout(REQUEST_TIMEOUT)
         .connect_timeout(Duration::from_secs(10))
         .danger_accept_invalid_certs(endpoint.skip_tls_verify);
+    let mut resolved: Option<EsAuth> = None;
     let (base, forward) = match &endpoint.target {
         EsTarget::External { url } => {
-            let parsed = reqwest::Url::parse(url.trim())
-                .map_err(|e| ElasticError::Config(format!("Invalid URL \"{url}\": {e}")))?;
-            if !matches!(parsed.scheme(), "http" | "https") {
-                return Err(ElasticError::Config(format!(
-                    "Invalid URL \"{url}\": use http(s)://"
-                )));
-            }
+            let parsed = check_external_url(url, auth)?;
             (parsed.as_str().trim_end_matches('/').to_string(), None)
         }
         EsTarget::InCluster {
@@ -226,27 +266,34 @@ pub async fn connect(
             let remote = target_port(&svc, *port, pod).ok_or_else(|| {
                 ElasticError::Config(format!("Service {namespace}/{service} has no port {port}"))
             })?;
+            if *https && !endpoint.skip_tls_verify {
+                if let Some(pem) = eck_ca(&client, namespace, service).await? {
+                    let cert = reqwest::Certificate::from_pem(&pem).map_err(connect_error)?;
+                    builder = builder.add_root_certificate(cert);
+                }
+            }
+            if *auth == EsAuth::EckUser {
+                resolved = Some(eck_credentials(client.clone(), namespace, service).await?);
+            }
             let (local, handle) =
                 forward_pod_port(client.clone(), namespace.clone(), pod_name, 0, remote)
                     .await
                     .map_err(connect_error)?;
             let host = service_host(namespace, service);
-            builder = builder.resolve(&host, SocketAddr::from(([127, 0, 0, 1], local)));
-            if *https && !endpoint.skip_tls_verify {
-                if let Some(pem) = eck_ca(&client, namespace, service).await {
-                    let cert = reqwest::Certificate::from_pem(&pem).map_err(connect_error)?;
-                    builder = builder.add_root_certificate(cert);
-                }
-            }
+            // The tunnel is local: never route it through HTTP(S)_PROXY.
+            builder = builder
+                .no_proxy()
+                .resolve(&host, SocketAddr::from(([127, 0, 0, 1], local)));
             let scheme = if *https { "https" } else { "http" };
             (format!("{scheme}://{host}:{local}"), Some(handle))
         }
     };
     let http = builder.build().map_err(connect_error)?;
+    let header = resolved.as_ref().unwrap_or(auth).header();
     Ok(EsConnection {
         http,
         base,
-        auth: auth.header(),
+        auth: header,
         forward,
     })
 }
@@ -254,7 +301,14 @@ pub async fn connect(
 impl EsConnection {
     async fn send(&self, request: reqwest::RequestBuilder) -> Result<Value, ElasticError> {
         let request = match &self.auth {
-            Some(h) => request.header(reqwest::header::AUTHORIZATION, h),
+            Some(h) => {
+                let mut value = reqwest::header::HeaderValue::from_str(h).map_err(|_| {
+                    ElasticError::Config("Credentials contain invalid characters".to_string())
+                })?;
+                // Keeps it out of HTTP/2 compression tables and debug output.
+                value.set_sensitive(true);
+                request.header(reqwest::header::AUTHORIZATION, value)
+            }
             None => request,
         };
         let response = request.send().await.map_err(|e| {
@@ -349,10 +403,8 @@ pub fn classify(service: &Service) -> Option<DetectedService> {
     let name = meta.name.clone()?;
     let labels = meta.labels.clone().unwrap_or_default();
     let label = |k: &str| labels.get(k).map(String::as_str);
-    let kind = match (
-        label("common.k8s.elastic.co/type"),
-        label("app.kubernetes.io/name"),
-    ) {
+    let eck = label("common.k8s.elastic.co/type");
+    let kind = match (eck, label("app.kubernetes.io/name")) {
         (Some("elasticsearch"), _) | (_, Some("elasticsearch")) => "elasticsearch",
         (Some("kibana"), _) | (_, Some("kibana")) => "kibana",
         _ if name.ends_with("-es-http") || name.starts_with("elasticsearch") => "elasticsearch",
@@ -365,14 +417,19 @@ pub fn classify(service: &Service) -> Option<DetectedService> {
     {
         return None;
     }
+    // ECK also labels per-nodeSet services; only `-es-http` / `-kb-http`
+    // match the certificate names and the ECK credential naming.
+    if eck.is_some() && !(name.ends_with("-es-http") || name.ends_with("-kb-http")) {
+        return None;
+    }
     let wanted = if kind == "elasticsearch" { 9200 } else { 5601 };
     let ports = service.spec.as_ref()?.ports.clone().unwrap_or_default();
     let port = ports
         .iter()
         .find(|p| p.port == wanted)
         .or_else(|| ports.first())?;
-    let https = port.name.as_deref().is_some_and(|n| n.contains("https"))
-        || label("common.k8s.elastic.co/type").is_some();
+    // ECK and most charts name the port after its scheme.
+    let https = port.name.as_deref().is_some_and(|n| n.contains("https"));
     Some(DetectedService {
         kind: kind.to_string(),
         namespace: meta.namespace.clone().unwrap_or_default(),

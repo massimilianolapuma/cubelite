@@ -132,6 +132,14 @@ port-forward feature and open `http(s)://localhost:<port>/app/discover…`.
 
 ## 6. Auth (v1)
 
+Security rules (from the security review, 2026-11-03): stored credentials
+are bound to the endpoint origin (external scheme + host + port, or the
+in-cluster service) and its TLS setting, and are never sent anywhere else;
+credentials are refused in the URL and over plain `http://` (except
+loopback); the in-cluster tunnel bypasses `HTTP(S)_PROXY`; ECK's `elastic`
+user is stored only as a choice and read from the cluster at each
+connection.
+
 API key (`Authorization: ApiKey …`, the recommended path for Elastic Cloud
 and Elastic on Azure), basic (user/password), bearer token, none (in-cluster
 without security). Entra ID / OIDC and AWS SigV4 (OpenSearch on AWS) are

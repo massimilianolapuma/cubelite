@@ -124,6 +124,9 @@ pub enum EsAuth {
         /// Token.
         token: String,
     },
+    /// ECK's built-in `elastic` user, read from the cluster at connect time
+    /// (never stored, so rotations are picked up).
+    EckUser,
 }
 
 impl std::fmt::Debug for EsAuth {
@@ -134,17 +137,19 @@ impl std::fmt::Debug for EsAuth {
             EsAuth::Basic { .. } => "basic",
             EsAuth::ApiKey { .. } => "api-key",
             EsAuth::Bearer { .. } => "bearer",
+            EsAuth::EckUser => "eck-user",
         };
         write!(f, "EsAuth({method})")
     }
 }
 
 impl EsAuth {
-    /// `Authorization` header value, if any.
+    /// `Authorization` header value, if any (`EckUser` is resolved to
+    /// `Basic` before a connection is made).
     pub fn header(&self) -> Option<String> {
         use base64::Engine;
         match self {
-            EsAuth::None => None,
+            EsAuth::None | EsAuth::EckUser => None,
             EsAuth::Basic { username, password } => Some(format!(
                 "Basic {}",
                 base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"))
@@ -184,7 +189,9 @@ pub fn validate_index_pattern(pattern: &str) -> Result<(), ElasticError> {
         && pattern
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || "._-*,:+".contains(c))
-        && !pattern.starts_with(['_', '-', '+']);
+        && !pattern.starts_with(['_', '-', '+'])
+        // `.`/`..` segments would be normalised away and escape the base path.
+        && pattern.split(',').all(|seg| !matches!(seg.split(':').next_back(), Some("." | "..")));
     if ok {
         Ok(())
     } else {
@@ -257,8 +264,15 @@ pub fn search_body(query: &HistoryQuery, preset: FieldPreset) -> Value {
         "size": size,
         "track_total_hits": 10_000,
         "query": { "bool": { "filter": filter, "must": must } },
-        // `_doc` breaks ties so `search_after` never skips equal timestamps.
-        "sort": [{ "@timestamp": { "order": "desc" } }, { "_doc": "asc" }],
+        // `_index` + `_doc` break most ties for `search_after`; without a
+        // point-in-time, hits with equal timestamps on different shards of one
+        // index can still share sort values (rare; accepted in v1).
+        // `unmapped_type` keeps indices without `@timestamp` from failing the search.
+        "sort": [
+            { "@timestamp": { "order": "desc", "unmapped_type": "date" } },
+            { "_index": "asc" },
+            { "_doc": "asc" }
+        ],
     });
     if let Some(after) = &query.search_after {
         body["search_after"] = Value::Array(after.clone());

@@ -20,11 +20,24 @@ use tokio::sync::Mutex;
 
 const KEYCHAIN_SERVICE: &str = "cubelite.elastic";
 
-/// Open connections per context, reused while the endpoint is unchanged
-/// (an in-cluster connection holds a port-forward).
+/// Cache key: the same context name can exist in two kubeconfig files.
+type ConnKey = (String, String);
+
+/// Open connections per (kubeconfig, context), reused while the endpoint is
+/// unchanged (an in-cluster connection holds a port-forward).
 #[derive(Default)]
 pub struct ElasticState {
-    connections: Mutex<HashMap<String, (EsEndpoint, Arc<EsConnection>)>>,
+    connections: Mutex<HashMap<ConnKey, (EsEndpoint, Arc<EsConnection>)>>,
+}
+
+impl ElasticState {
+    /// Drops every cached connection of `context` (any kubeconfig).
+    async fn forget(&self, context: &str) {
+        self.connections
+            .lock()
+            .await
+            .retain(|(_, c), _| c != context);
+    }
 }
 
 fn entry(context: &str) -> Result<keyring::Entry, String> {
@@ -115,7 +128,18 @@ fn method(auth: &EsAuth) -> &'static str {
         EsAuth::Basic { .. } => "basic",
         EsAuth::ApiKey { .. } => "api-key",
         EsAuth::Bearer { .. } => "bearer",
+        EsAuth::EckUser => "eck-user",
     }
+}
+
+/// Runs a keychain call on the blocking pool: it can block on a system
+/// prompt (macOS keychain ACL) and must not stall the async runtime.
+async fn keychain<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("Keychain task failed: {e}"))?
 }
 
 fn text(e: ElasticError) -> String {
@@ -166,13 +190,19 @@ pub async fn elastic_test(
 ) -> Result<EsInfo, String> {
     let auth = match auth {
         Some(a) => a,
-        None => load_auth(&context, &endpoint)?,
+        None => {
+            let (c, e) = (context.clone(), endpoint.clone());
+            keychain(move || load_auth(&c, &e)).await?
+        }
     };
     let conn = open(&kubeconfig_path, &context, &endpoint, &auth).await?;
     conn.info(&endpoint).await.map_err(text)
 }
 
 /// One page of a pod's history, through a cached connection.
+///
+/// The cache lock is never held while connecting (port-forward, kube API
+/// calls, keychain), so one slow cluster cannot block other contexts.
 #[tauri::command]
 pub async fn elastic_search(
     state: State<'_, ElasticState>,
@@ -181,28 +211,48 @@ pub async fn elastic_search(
     endpoint: EsEndpoint,
     query: HistoryQuery,
 ) -> Result<HistoryPage, String> {
-    let conn = {
-        let mut connections = state.connections.lock().await;
-        match connections.get(&context) {
-            Some((cached, conn)) if *cached == endpoint => conn.clone(),
-            _ => {
-                let auth = load_auth(&context, &endpoint)?;
-                let conn = Arc::new(open(&kubeconfig_path, &context, &endpoint, &auth).await?);
-                connections.insert(context.clone(), (endpoint.clone(), conn.clone()));
-                conn
+    let key: ConnKey = (kubeconfig_path.clone(), context.clone());
+    let cached = state
+        .connections
+        .lock()
+        .await
+        .get(&key)
+        .filter(|(e, _)| *e == endpoint)
+        .map(|(_, c)| c.clone());
+    let conn = match cached {
+        Some(conn) => conn,
+        None => {
+            let (c, e) = (context.clone(), endpoint.clone());
+            let auth = keychain(move || load_auth(&c, &e)).await?;
+            let fresh = Arc::new(open(&kubeconfig_path, &context, &endpoint, &auth).await?);
+            let mut connections = state.connections.lock().await;
+            // Another call may have connected meanwhile: keep the first one.
+            match connections.get(&key) {
+                Some((e, existing)) if *e == endpoint => existing.clone(),
+                _ => {
+                    connections.insert(key.clone(), (endpoint.clone(), fresh.clone()));
+                    fresh
+                }
             }
         }
     };
     let result = conn.search(&endpoint, &query).await;
     if let Err(ElasticError::Connect(_)) = &result {
-        // A dead port-forward or network change: reconnect on the next page.
-        state.connections.lock().await.remove(&context);
+        // A dead port-forward or network change: reconnect on the next page,
+        // unless another call already replaced this connection.
+        let mut connections = state.connections.lock().await;
+        if connections
+            .get(&key)
+            .is_some_and(|(_, c)| Arc::ptr_eq(c, &conn))
+        {
+            connections.remove(&key);
+        }
     }
     result.map_err(text)
 }
 
 /// Saves `auth` for `context` in the keychain, bound to `endpoint`
-/// (`none` deletes it), and drops the cached connection.
+/// (`none` deletes it), and drops the cached connections.
 #[tauri::command]
 pub async fn elastic_save_auth(
     state: State<'_, ElasticState>,
@@ -210,26 +260,29 @@ pub async fn elastic_save_auth(
     endpoint: EsEndpoint,
     auth: EsAuth,
 ) -> Result<(), String> {
-    store_auth(&context, &endpoint, &auth)?;
-    state.connections.lock().await.remove(&context);
+    let c = context.clone();
+    keychain(move || store_auth(&c, &endpoint, &auth)).await?;
+    state.forget(&context).await;
     Ok(())
 }
 
 /// The auth method stored for `endpoint` (`none`, `basic`, `api-key`,
-/// `bearer`), never the secret; `none` when the stored one belongs to
-/// another endpoint.
+/// `bearer`, `eck-user`), never the secret; `none` when the stored one
+/// belongs to another endpoint.
 #[tauri::command]
 pub async fn elastic_auth_method(context: String, endpoint: EsEndpoint) -> Result<String, String> {
     let current = binding(&endpoint)?;
-    Ok(match read_record(&context)? {
+    let stored = keychain(move || read_record(&context)).await?;
+    Ok(match stored {
         Some(stored) if stored.binding == current => method(&stored.auth),
         _ => "none",
     }
     .to_string())
 }
 
-/// Reads ECK's `elastic` user from the cluster and stores it in the
-/// keychain for this in-cluster endpoint.
+/// Uses ECK's `elastic` user for this in-cluster endpoint: checks it can be
+/// read now, then stores only the choice (`eck-user`). The password is read
+/// from the cluster at each connection, never stored, so rotations work.
 #[tauri::command]
 pub async fn elastic_use_eck_credentials(
     state: State<'_, ElasticState>,
@@ -243,25 +296,26 @@ pub async fn elastic_use_eck_credentials(
     else {
         return Err("ECK credentials apply to in-cluster endpoints only".to_string());
     };
-    let auth = transport::eck_credentials(
+    transport::eck_credentials(
         kube(&kubeconfig_path, &context).await?.client(),
         namespace,
         service,
     )
     .await
     .map_err(text)?;
-    store_auth(&context, &endpoint, &auth)?;
-    state.connections.lock().await.remove(&context);
-    Ok(method(&auth).to_string())
+    let c = context.clone();
+    keychain(move || store_auth(&c, &endpoint, &EsAuth::EckUser)).await?;
+    state.forget(&context).await;
+    Ok(method(&EsAuth::EckUser).to_string())
 }
 
-/// Closes the cached connection of `context` (its port-forward too).
+/// Closes the cached connections of `context` (their port-forwards too).
 #[tauri::command]
 pub async fn elastic_disconnect(
     state: State<'_, ElasticState>,
     context: String,
 ) -> Result<(), String> {
-    state.connections.lock().await.remove(&context);
+    state.forget(&context).await;
     Ok(())
 }
 
@@ -339,6 +393,7 @@ mod tests {
             },
             EsAuth::ApiKey { key: "k".into() },
             EsAuth::Bearer { token: "t".into() },
+            EsAuth::EckUser,
         ] {
             let tag = serde_json::to_value(&auth).expect("json")["method"]
                 .as_str()

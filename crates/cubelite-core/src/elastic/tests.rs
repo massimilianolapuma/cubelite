@@ -1,4 +1,6 @@
-use super::transport::{classify, connect, ready_pod, service_host, target_port};
+use super::transport::{
+    check_external_url, classify, connect, ready_pod, service_host, target_port,
+};
 use super::*;
 use k8s_openapi::api::core::v1::{Pod, Service};
 use serde_json::json;
@@ -30,7 +32,7 @@ fn search_body_filters_pod_namespace_and_time_newest_first() {
     );
     assert_eq!(
         body["sort"][0],
-        json!({ "@timestamp": { "order": "desc" } })
+        json!({ "@timestamp": { "order": "desc", "unmapped_type": "date" } })
     );
     assert!(body.get("search_after").is_none());
     assert_eq!(body["query"]["bool"]["must"], json!([]));
@@ -161,7 +163,19 @@ fn auth_serialises_with_a_method_tag() {
 fn index_patterns_are_path_safe() {
     assert!(validate_index_pattern(DEFAULT_INDEX_PATTERN).is_ok());
     assert!(validate_index_pattern("remote:logs-*").is_ok());
-    for bad in ["", "logs/x", "logs x", "_all", "a?b", "../x", "-x"] {
+    for bad in [
+        "",
+        "logs/x",
+        "logs x",
+        "_all",
+        "a?b",
+        "../x",
+        "-x",
+        "..",
+        ".",
+        "logs-*,..",
+        "remote:..",
+    ] {
         assert!(validate_index_pattern(bad).is_err(), "{bad}");
     }
 }
@@ -416,4 +430,47 @@ async fn connect_rejects_bad_urls_and_in_cluster_without_a_client() {
         connect(None, &endpoint, &EsAuth::None).await,
         Err(ElasticError::Config(_))
     ));
+}
+
+#[test]
+fn external_urls_refuse_embedded_or_cleartext_credentials() {
+    let key = EsAuth::ApiKey { key: "k".into() };
+    assert!(check_external_url("https://es.example:9243", &key).is_ok());
+    assert!(check_external_url("http://es.example:9200", &EsAuth::None).is_ok());
+    // Loopback (a user's own `kubectl port-forward`) never leaves the machine.
+    assert!(check_external_url("http://127.0.0.1:9200", &key).is_ok());
+    assert!(check_external_url("http://localhost:9200", &key).is_ok());
+    for (url, auth) in [
+        ("http://es.example:9200", &key),
+        ("https://elastic:pw@es.example", &EsAuth::None),
+        ("https://es.example", &EsAuth::EckUser),
+        ("ftp://es.example", &EsAuth::None),
+    ] {
+        let err = check_external_url(url, auth).expect_err(url);
+        assert!(!err.to_string().contains("pw"), "no secret echoed: {err}");
+    }
+}
+
+#[test]
+fn eck_detection_skips_node_set_services_and_follows_the_port_scheme() {
+    let node_set = service(json!({
+        "metadata": { "name": "quickstart-es-default", "labels": { "common.k8s.elastic.co/type": "elasticsearch" } },
+        "spec": { "ports": [{ "name": "https", "port": 9200 }] }
+    }));
+    assert!(classify(&node_set).is_none());
+    let plain = service(json!({
+        "metadata": { "name": "quickstart-es-http", "labels": { "common.k8s.elastic.co/type": "elasticsearch" } },
+        "spec": { "ports": [{ "name": "http", "port": 9200 }] }
+    }));
+    assert!(!classify(&plain).expect("plain").https);
+}
+
+#[test]
+fn eck_user_is_not_a_stored_secret() {
+    assert_eq!(EsAuth::EckUser.header(), None);
+    assert_eq!(format!("{:?}", EsAuth::EckUser), "EsAuth(eck-user)");
+    assert_eq!(
+        serde_json::to_value(EsAuth::EckUser).expect("json"),
+        json!({ "method": "eck-user" })
+    );
 }
