@@ -21,10 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ECS fields, the Kibana and Grafana next to them); a failed test saves
   nothing and the banner says why, and a Prometheus without cAdvisor series
   is saved with a warning. Enable is offered only when the service is the
-  only candidate and its owner, an ECK `Elasticsearch` or a `Prometheus`
-  resource, was verified through the Kubernetes API (it exists with the
-  referenced uid); labels and names only rank candidates, so a look-alike
-  Service cannot be enabled in one click. Otherwise Review opens
+  only candidate, selects its instance, and is controlled by an ECK
+  `Elasticsearch` or a `Prometheus` resource verified through the
+  Kubernetes API (it exists with the referenced uid); labels and names only
+  rank candidates, so a look-alike Service cannot be enabled in one click.
+  kube-prometheus-stack's `prometheus-operated` is not controlled by its
+  Prometheus, so it gets Review. Otherwise Review opens
   Preferences pre-filled with the best guess and every candidate, not
   saved. ✕, or turning the
   integration off in Preferences, hides the banner for that context until

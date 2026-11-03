@@ -273,12 +273,15 @@ async fn detect_all_finds_the_four_services_on_connect() {
     let Some(client) = client().await else { return };
     let found = integration::detect_all(client).await.expect("detect_all");
     println!("detected: {found:?}");
-    // ECK's and the operator's services are the only managed ones: one click.
-    assert!(found.elasticsearch_one_click, "ECK owns quickstart-es-http");
+    // ECK controls quickstart-es-http, which selects its cluster: one click.
     assert!(
-        found.prometheus_one_click,
-        "the operator manages prometheus-operated"
+        found.elasticsearch_one_click,
+        "ECK controls quickstart-es-http"
     );
+    // prometheus-operated is the operator's governing Service: its owner
+    // reference is not a controller one and it selects every Prometheus of
+    // the namespace, and the chart's Service has no owner. Review only.
+    assert!(!found.prometheus_one_click);
     let name = |namespace: &str, name: &str| (namespace.to_string(), name.to_string());
     let es = found.elasticsearch.expect("Elasticsearch");
     assert_eq!(
