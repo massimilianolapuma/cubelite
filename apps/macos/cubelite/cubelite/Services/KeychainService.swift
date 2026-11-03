@@ -18,6 +18,8 @@ actor KeychainService {
         case bearerToken       = "it.lapuma.cubelite.bearer-token"
         case clientCertificate = "it.lapuma.cubelite.client-certificate"
         case clientKey         = "it.lapuma.cubelite.client-key"
+        /// Elasticsearch credentials bound to an endpoint (#502).
+        case elasticAuth       = "it.lapuma.cubelite.elastic"
     }
 
     // MARK: - Store

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Elasticsearch service on macOS** (#502, part of #483): the native app
+  can detect Elasticsearch/Kibana services, test a connection and search a
+  pod's log history (in-cluster through a loopback port-forward with ECK's
+  CA pinned to the service name, or an external HTTPS endpoint), with
+  credentials in the keychain bound to their endpoint. The UI comes in #503.
 - **Log history from Elasticsearch** (desktop, #501, part of #483): with an
   Elasticsearch endpoint set for the cluster (Preferences → Elasticsearch:
   detect in-cluster services or enter an external URL, credentials kept in

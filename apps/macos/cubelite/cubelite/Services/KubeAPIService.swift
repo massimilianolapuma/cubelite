@@ -254,6 +254,16 @@ actor KubeAPIService {
         return response.items.map { $0.toDeploymentInfo() }
     }
 
+    /// Raw GET against the cluster API for callers with their own decoding
+    /// (Elasticsearch discovery, #502); nil when the object does not exist.
+    func getIfPresent(path: String, inContext contextName: String? = nil) async throws -> Data? {
+        do {
+            return try await send(path: path, method: "GET", contextName: contextName)
+        } catch CubeliteError.clientError(let reason) where reason.hasPrefix("HTTP 404") {
+            return nil
+        }
+    }
+
     // MARK: - Internal Networking
 
     /// Fetches and decodes a JSON response from the Kubernetes API.
