@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Log history from Elasticsearch on macOS** (#503, closes #483): Settings →
+  Integrations sets a cluster's Elasticsearch endpoint (detect in-cluster
+  services or enter an external URL, credentials in the keychain, Test
+  connection); the log panel then gets a Live · History switch with time
+  range, query, load older and Raw · JSON · ECS rendering of the stored
+  documents, and "Open in Kibana" in the overflow menu.
 - **Elasticsearch service on macOS** (#502, part of #483): the native app
   can detect Elasticsearch/Kibana services, test a connection and search a
   pod's log history (in-cluster through a loopback port-forward with ECK's

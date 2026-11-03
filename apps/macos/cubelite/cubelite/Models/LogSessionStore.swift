@@ -41,7 +41,42 @@ final class LogSession {
     func toggleExpanded(_ id: Int) {
         if expandedLineIDs.remove(id) == nil { expandedLineIDs.insert(id) }
         if let oldest = buffer.lines.first?.id {
-            expandedLineIDs = expandedLineIDs.filter { $0 >= oldest }
+            expandedLineIDs = expandedLineIDs.filter { $0 >= oldest || $0 >= LogHistory.idBase }
+        }
+    }
+
+    /// Where the panel reads from: the live stream, or Elasticsearch history
+    /// (#503). The live stream keeps running in History, so switching back
+    /// finds its buffer intact.
+    enum Source: Sendable { case live, history }
+
+    private(set) var source: Source = .live
+    /// Elasticsearch history; nil without a context or an Elasticsearch service.
+    private(set) var history: LogHistory?
+
+    /// The context's Elasticsearch endpoint; nil hides the Live · History switch.
+    var historyEndpoint: EsEndpoint? {
+        guard history != nil, let context else { return nil }
+        return elastic?.endpoints.endpoint(for: context)
+    }
+
+    /// History is shown (and still possible: the endpoint may have been removed).
+    var showsHistory: Bool { source == .history && historyEndpoint != nil }
+
+    /// Lines the panel shows, searches and exports.
+    var displayedLines: [LogLine] {
+        showsHistory ? (history?.lines ?? []) : buffer.lines
+    }
+
+    /// Container the history filters on (every container when merged).
+    var historyContainer: String? { isMerged ? nil : selectedContainer }
+
+    func setSource(_ new: Source) {
+        guard new != source else { return }
+        source = new
+        search.recompute(over: displayedLines)
+        if new == .history, let history, !history.started {
+            Task { await history.reload() }
         }
     }
 
@@ -70,6 +105,7 @@ final class LogSession {
 
     private let streamer: any PodLogStreaming
     private let defaults: UserDefaults
+    private let elastic: LogHistoryAccess?
     /// Base of the exponential reconnect backoff (2s·2ⁿ, capped at 30s);
     /// injectable so tests don't wait real seconds.
     private let backoffBase: Double
@@ -84,13 +120,28 @@ final class LogSession {
 
     init(
         pod: PodInfo, context: String?, streamer: any PodLogStreaming,
-        defaults: UserDefaults, backoffBase: Double = 2
+        defaults: UserDefaults, backoffBase: Double = 2, elastic: LogHistoryAccess? = nil
     ) {
         self.pod = pod
         self.context = context
         self.streamer = streamer
         self.defaults = defaults
         self.backoffBase = backoffBase
+        self.elastic = elastic
+        if let elastic, let context {
+            let endpoints = elastic.endpoints
+            history = LogHistory(
+                context: context, namespace: pod.namespace, pod: pod.name,
+                endpoint: { endpoints.endpoint(for: context) },
+                container: { [weak self] in self?.historyContainer },
+                searcher: elastic.searcher,
+                onReplace: { [weak self] in self?.dropHistoryExpansions() })
+        }
+    }
+
+    /// History lines are replaced on reload: forget their expansions.
+    private func dropHistoryExpansions() {
+        expandedLineIDs = expandedLineIDs.filter { $0 < LogHistory.idBase }
     }
 
     func start() {
@@ -141,6 +192,9 @@ final class LogSession {
         defaults.set(name, forKey: containerMemoryKey)
         showingPrevious = false
         restart()
+        if showsHistory, let history {
+            Task { await history.reload() }
+        }
     }
 
     func setPrevious(_ previous: Bool) {
@@ -165,17 +219,21 @@ final class LogSession {
 
     func clear() {
         buffer.removeAll()
-        expandedLineIDs.removeAll()
+        dropLiveExpansions()
         hasCleared = true
+    }
+
+    private func dropLiveExpansions() {
+        expandedLineIDs = expandedLineIDs.filter { $0 >= LogHistory.idBase }
     }
 
     private func restart() {
         stop()
         buffer.removeAll()
-        expandedLineIDs.removeAll()
+        dropLiveExpansions()
         hasCleared = false
         streamError = nil
-        search.recompute(over: [])
+        search.recompute(over: displayedLines)
         streamTask = Task { [weak self] in
             await self?.stream(container: self?.selectedContainer)
         }
@@ -235,6 +293,12 @@ final class LogSession {
     }
 }
 
+/// What a session needs to read Elasticsearch history.
+struct LogHistoryAccess {
+    let searcher: any LogHistorySearching
+    let endpoints: ElasticEndpointStore
+}
+
 /// Shell-level owner of the log panel: the open sessions (one tab each),
 /// the active tab, and panel chrome state.
 @Observable @MainActor
@@ -291,15 +355,17 @@ final class LogSessionStore {
     private let streamer: any PodLogStreaming
     private let defaults: UserDefaults
     private let backoffBase: Double
+    private let elastic: LogHistoryAccess?
     private var toastTask: Task<Void, Never>?
 
     init(
         streamer: any PodLogStreaming, defaults: UserDefaults = .standard,
-        backoffBase: Double = 2
+        backoffBase: Double = 2, elastic: LogHistoryAccess? = nil
     ) {
         self.streamer = streamer
         self.defaults = defaults
         self.backoffBase = backoffBase
+        self.elastic = elastic
         self.showTimestamps =
             defaults.object(forKey: "logPanel.showTimestamps") as? Bool ?? true
         self.wrapLines = defaults.bool(forKey: "logPanel.wrapLines")
@@ -320,7 +386,7 @@ final class LogSessionStore {
         isCollapsed = false
         let new = LogSession(
             pod: pod, context: context, streamer: streamer, defaults: defaults,
-            backoffBase: backoffBase)
+            backoffBase: backoffBase, elastic: elastic)
         sessions.append(new)
         activeSessionID = new.pod.id
         new.start()

@@ -178,9 +178,9 @@ struct ECSDocument: Equatable, Sendable {
     /// when absent.
     static func make(line: LogLine, metadata: Metadata) -> ECSDocument {
         var own: [(key: String, value: JSONValue)]
-        if JSONLogView.parse(line.message) != nil,
+        if JSONLogView.parse(line.structuredText) != nil,
             case .object(let members)? = JSONValue.parse(
-                line.message.trimmingCharacters(in: CharacterSet(charactersIn: "\u{FEFF}"))
+                line.structuredText.trimmingCharacters(in: CharacterSet(charactersIn: "\u{FEFF}"))
                     .trimmingCharacters(in: .whitespacesAndNewlines))
         {
             own = flatten(members)

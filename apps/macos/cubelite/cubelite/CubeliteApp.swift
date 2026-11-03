@@ -10,6 +10,8 @@ struct CubeliteApp: App {
     @State private var loginItemController: LoginItemController
     private let kubeconfigService: KubeconfigService
     private let kubeAPIService: KubeAPIService
+    private let elasticService: ElasticService
+    @State private var elasticEndpoints: ElasticEndpointStore
 
     /// Persists whether the user has completed the first-launch onboarding flow.
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
@@ -32,7 +34,14 @@ struct CubeliteApp: App {
         let api = KubeAPIService(kubeconfigService: ks)
         self.kubeAPIService = api
         self._portForwardService = State(initialValue: PortForwardService(kubeAPIService: api))
-        self._logSessionStore = State(initialValue: LogSessionStore(streamer: api))
+        let elastic = ElasticService(cluster: api)
+        let endpoints = ElasticEndpointStore()
+        self.elasticService = elastic
+        self._elasticEndpoints = State(initialValue: endpoints)
+        self._logSessionStore = State(
+            initialValue: LogSessionStore(
+                streamer: api,
+                elastic: LogHistoryAccess(searcher: elastic, endpoints: endpoints)))
         // Default-initialised; the real `onError` closure is bound in `.task`
         // once `logStore` and `appSettings` are available in scope.
         self._loginItemController = State(initialValue: LoginItemController())
@@ -52,6 +61,7 @@ struct CubeliteApp: App {
                     .environment(logStore)
                     .environment(logSessionStore)
                     .environment(loginItemController)
+                    .environment(elasticEndpoints)
                     .preferredColorScheme(appSettings.colorScheme)
                     .onChange(of: appSettings.appearanceMode) { _, newMode in
                         applyNSAppearance(newMode)
@@ -113,7 +123,9 @@ struct CubeliteApp: App {
         }
 
         Settings {
-            PreferencesView(kubeAPIService: kubeAPIService)
+            PreferencesView(kubeAPIService: kubeAPIService, elasticService: elasticService)
+                .environment(clusterState)
+                .environment(elasticEndpoints)
                 .environment(appSettings)
                 .environment(resourcePreferences)
                 .environment(loginItemController)

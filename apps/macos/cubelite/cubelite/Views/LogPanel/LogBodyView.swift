@@ -13,14 +13,16 @@ struct LogBodyView: View {
     @State private var scrollMonitor: Any?
 
     private var visibleLines: [LogLine] {
-        session.search.visibleLines(from: session.buffer.lines)
+        session.search.visibleLines(from: session.displayedLines)
     }
 
     var body: some View {
         Group {
-            if let error = session.streamError {
+            if session.showsHistory, let history = session.history, history.lines.isEmpty {
+                HistoryEmptyState(history: history)
+            } else if !session.showsHistory, let error = session.streamError {
                 UnifiedErrorState(title: "Log stream failed", message: error)
-            } else if session.buffer.lines.isEmpty {
+            } else if session.displayedLines.isEmpty {
                 emptyState
             } else if visibleLines.isEmpty {
                 noMatchesState
@@ -56,7 +58,7 @@ struct LogBodyView: View {
             Text("no matches for “\(session.search.query)”")
                 .scaledFont(size: 12, weight: .medium, design: .monospaced)
                 .foregroundStyle(DesignTokens.textSecondary)
-            Text("esc clears search · filter off shows all \(session.buffer.lines.count) lines")
+            Text("esc clears search · filter off shows all \(session.displayedLines.count) lines")
                 .scaledFont(size: 11)
                 .foregroundStyle(DesignTokens.textTertiary)
         }
@@ -91,13 +93,26 @@ struct LogBodyView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .onChange(of: session.buffer.totalAppended) {
-                session.search.recomputeDebounced(over: session.buffer.lines)
+                guard !session.showsHistory else { return }
+                session.search.recomputeDebounced(over: session.displayedLines)
                 if session.isFollowing, let last = session.buffer.lines.last {
                     proxy.scrollTo(last.id, anchor: .bottom)
                 }
             }
+            .onChange(of: session.history?.lines.count) {
+                guard session.showsHistory else { return }
+                session.search.recomputeDebounced(over: session.displayedLines)
+            }
+            // A (re)load or a switch of source lands on the newest line;
+            // "Load older" keeps the reading position.
+            .onChange(of: session.history?.loads) { scrollToNewest(proxy) }
+            .onChange(of: session.showsHistory) {
+                session.search.recompute(over: session.displayedLines)
+                scrollToNewest(proxy)
+            }
+            .onAppear { scrollToNewest(proxy) }
             .onChange(of: session.search.query) {
-                session.search.recomputeDebounced(over: session.buffer.lines)
+                session.search.recomputeDebounced(over: session.displayedLines)
             }
             .onChange(of: session.search.activeLineID) {
                 if let id = session.search.activeLineID {
@@ -105,7 +120,7 @@ struct LogBodyView: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if !session.isFollowing, session.newLinesSincePause > 0 {
+                if !session.showsHistory, !session.isFollowing, session.newLinesSincePause > 0 {
                     Button {
                         session.isFollowing = true
                         if let last = session.buffer.lines.last {
@@ -130,10 +145,17 @@ struct LogBodyView: View {
         }
     }
 
+    private func scrollToNewest(_ proxy: ScrollViewProxy) {
+        guard session.showsHistory || session.isFollowing,
+            let last = session.displayedLines.last
+        else { return }
+        proxy.scrollTo(last.id, anchor: .bottom)
+    }
+
     /// Scrolling up over the panel while following pauses the follow.
     private func installScrollMonitor() {
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-            if isHovering, session.isFollowing, event.scrollingDeltaY > 0 {
+            if isHovering, !session.showsHistory, session.isFollowing, event.scrollingDeltaY > 0 {
                 session.isFollowing = false
             }
             return event
@@ -179,7 +201,7 @@ struct LogLineRow: View {
                 ECSDocument.make(
                     line: line,
                     metadata: ecsMetadata ?? ECSDocument.Metadata(namespace: "", pod: "")))
-        } else if mode == .json, let json = JSONLogView.parse(line.message) {
+        } else if mode == .json, let json = JSONLogView.parse(line.structuredText) {
             jsonRow(json)
         } else {
             rawRow
@@ -229,7 +251,7 @@ struct LogLineRow: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 1)
             if isExpanded {
-                JSONTreeView(value: json.object, raw: line.message)
+                JSONTreeView(value: json.object, raw: line.structuredText)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 4)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -387,6 +409,30 @@ struct LogLineRow: View {
         case .error: DesignTokens.statusErr.opacity(0.07)
         case .warn: DesignTokens.statusWarn.opacity(0.045)
         default: .clear
+        }
+    }
+}
+
+/// Empty History body: searching, the search error, or nothing found.
+private struct HistoryEmptyState: View {
+    let history: LogHistory
+
+    var body: some View {
+        if let error = history.error {
+            UnifiedErrorState(title: "History search failed", message: error)
+        } else {
+            VStack(spacing: 4) {
+                Text(history.isLoading || !history.started ? "searching Elasticsearch…" : "no logs found")
+                    .scaledFont(size: 12, weight: .medium, design: .monospaced)
+                    .foregroundStyle(DesignTokens.textSecondary)
+                if !history.isLoading, history.started {
+                    Text("nothing in Elasticsearch for \(history.pod) in the last \(history.range.label)")
+                        .scaledFont(size: 11)
+                        .foregroundStyle(DesignTokens.textTertiary)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("logpanel.history-empty")
         }
     }
 }

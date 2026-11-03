@@ -14,13 +14,21 @@ struct LogToolbar: View {
     var body: some View {
         HStack(spacing: 8) {
             containerPicker
-            if selectedContainerInfo?.restarts ?? 0 > 0 && !session.isMerged {
+            if !session.showsHistory, selectedContainerInfo?.restarts ?? 0 > 0, !session.isMerged {
                 previousChip
+            }
+            if session.historyEndpoint != nil {
+                sourcePicker
+            }
+            if session.showsHistory, let history = session.history {
+                HistoryQueryControls(history: history)
             }
             searchField
             Spacer()
-            tailMenu
-            followButton
+            if !session.showsHistory {
+                tailMenu
+                followButton
+            }
             viewModePicker
             if !isDetachedContext {
                 detachButton
@@ -255,6 +263,24 @@ struct LogToolbar: View {
         .accessibilityIdentifier("logpanel.previous")
     }
 
+    /// Live stream or Elasticsearch history (#503); shown only when the
+    /// context has an Elasticsearch endpoint.
+    private var sourcePicker: some View {
+        Picker(
+            "Log source",
+            selection: Binding(get: { session.source }, set: { session.setSource($0) })
+        ) {
+            Text("Live").tag(LogSession.Source.live)
+            Text("History").tag(LogSession.Source.history)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .fixedSize()
+        .help("Live stream, or this pod's past logs from Elasticsearch")
+        .accessibilityIdentifier("logpanel.source")
+    }
+
     private var tailMenu: some View {
         Menu {
             ForEach([100, 500, 1000, 5000], id: \.self) { size in
@@ -348,6 +374,11 @@ struct LogToolbar: View {
                 .accessibilityIdentifier("logpanel.timestamps")
             Toggle("Wrap lines", isOn: Bindable(store).wrapLines)
                 .accessibilityIdentifier("logpanel.wrap")
+            if let kibana = session.history?.kibanaURL {
+                Divider()
+                Button("Open in Kibana") { NSWorkspace.shared.open(kibana) }
+                    .accessibilityIdentifier("logpanel.open-kibana")
+            }
             Divider()
             Button("Export visible…") { export(full: false) }
                 .accessibilityIdentifier("logpanel.export-visible")
@@ -355,6 +386,7 @@ struct LogToolbar: View {
                 .accessibilityIdentifier("logpanel.export-full")
             Divider()
             Button("Clear buffer") { session.clear() }
+                .disabled(session.showsHistory)
                 .accessibilityIdentifier("logpanel.clear")
         } label: {
             Image(systemName: "ellipsis")
@@ -381,8 +413,8 @@ struct LogToolbar: View {
     private func export(full: Bool) {
         let lines =
             full
-            ? session.buffer.lines
-            : session.search.visibleLines(from: session.buffer.lines)
+            ? session.displayedLines
+            : session.search.visibleLines(from: session.displayedLines)
         guard
             let downloads = FileManager.default.urls(
                 for: .downloadsDirectory, in: .userDomainMask
@@ -400,6 +432,52 @@ struct LogToolbar: View {
             store.showToast("saved \(url.lastPathComponent) to Downloads")
         } catch {
             store.showToast("export failed: \(error.localizedDescription)")
+        }
+    }
+}
+
+/// History range and Elasticsearch query (#503): Return or a new range
+/// runs the search again.
+private struct HistoryQueryControls: View {
+
+    let history: LogHistory
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Menu {
+                ForEach(HistoryRange.allCases, id: \.self) { range in
+                    Button {
+                        history.range = range
+                        Task { await history.reload() }
+                    } label: {
+                        if history.range == range {
+                            Label("last \(range.label)", systemImage: "checkmark")
+                        } else {
+                            Text("last \(range.label)")
+                        }
+                    }
+                }
+            } label: {
+                Text(history.range.label)
+                    .typeStyle(DesignTokens.Typography.caption.monospaced.weighted(.medium))
+                    .foregroundStyle(DesignTokens.textDataBright)
+                    .padding(.horizontal, 6)
+                    .frame(minHeight: 26)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel("History time range")
+            .accessibilityValue("last \(history.range.label)")
+            .accessibilityIdentifier("logpanel.history-range")
+
+            TextField("query", text: Bindable(history).text)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .frame(width: 140)
+                .onSubmit { Task { await history.reload() } }
+                .help("Elasticsearch query on the message (simple query string); Return searches")
+                .accessibilityLabel("Elasticsearch query")
+                .accessibilityIdentifier("logpanel.history-query")
         }
     }
 }

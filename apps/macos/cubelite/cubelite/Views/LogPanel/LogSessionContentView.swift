@@ -15,7 +15,9 @@ struct LogSessionContentView: View {
         VStack(spacing: 0) {
             LogToolbar(session: session)
             Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)
-            if session.isReconnecting {
+            if session.showsHistory, let history = session.history {
+                HistoryStripView(history: history)
+            } else if session.isReconnecting {
                 reconnectBanner(session)
             }
             if let bodyHeight {
