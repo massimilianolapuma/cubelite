@@ -17,6 +17,11 @@ use commands::kubernetes::{
     stream_logs, stream_pod_log, unwatch_resources, watch_resources, ExecState, LogState,
     PortForwardState, WatchState,
 };
+use commands::prometheus::{
+    open_grafana_explore, prometheus_auth_method, prometheus_detect, prometheus_disconnect,
+    prometheus_metrics, prometheus_save_auth, prometheus_sparklines, prometheus_test,
+    PrometheusState,
+};
 
 /// Entry point for the Tauri application.
 pub fn run() {
@@ -35,8 +40,17 @@ pub fn run() {
         .manage(PortForwardState::default())
         .manage(ExecState::default())
         .manage(ElasticState::default())
+        .manage(PrometheusState::default())
         .invoke_handler(tauri::generate_handler![
             elastic_detect,
+            prometheus_detect,
+            prometheus_test,
+            prometheus_metrics,
+            prometheus_sparklines,
+            prometheus_save_auth,
+            prometheus_auth_method,
+            prometheus_disconnect,
+            open_grafana_explore,
             elastic_test,
             elastic_search,
             elastic_save_auth,

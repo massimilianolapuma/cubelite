@@ -12,27 +12,8 @@ use serde_json::{json, Map, Value};
 
 use crate::logs::{detect_level, LogLevel};
 
-/// Where the Elasticsearch HTTP API lives.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum EsTarget {
-    /// A service in the cluster, reached through a port-forward.
-    InCluster {
-        /// Service namespace.
-        namespace: String,
-        /// Service name (`quickstart-es-http` for ECK).
-        service: String,
-        /// Service port (9200).
-        port: u16,
-        /// Whether the service speaks HTTPS (ECK default).
-        https: bool,
-    },
-    /// An external deployment (`https://…:9243`).
-    External {
-        /// Base URL, without a trailing path.
-        url: String,
-    },
-}
+/// Where the Elasticsearch HTTP API lives (shared with the other integrations).
+pub use crate::integration::Target as EsTarget;
 
 /// Which log shipper wrote the documents, i.e. which field names to filter on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

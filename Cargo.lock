@@ -754,6 +754,7 @@ dependencies = [
  "http",
  "k8s-openapi",
  "kube",
+ "regex",
  "reqwest",
  "rustls",
  "serde",

@@ -3,24 +3,19 @@
 //! `Authorization`, kubernetes/kubernetes#38775), HTTPS for external ones.
 
 use std::net::SocketAddr;
-use std::time::Duration;
 
-use k8s_openapi::api::core::v1::{Pod, Secret, Service};
-use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
+use k8s_openapi::api::core::v1::{Secret, Service};
 use kube::api::ListParams;
 use kube::{Api, Client};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::task::JoinHandle;
 
 use super::{
     error_reason, map_response, search_body, validate_index_pattern, ElasticError, EsAuth,
     EsEndpoint, EsTarget, HistoryPage, HistoryQuery, DEFAULT_PAGE, MAX_PAGE,
 };
-use crate::portforward::forward_pod_port;
-
-/// Per-request timeout.
-pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+use crate::integration::{self, open_service_tunnel, ServiceTunnel, TunnelError};
+pub use crate::integration::{ready_pod, service_host, target_port, REQUEST_TIMEOUT};
 
 /// An open connection: HTTP client, base URL and, for in-cluster endpoints,
 /// the port-forward that carries it (stopped on drop).
@@ -28,15 +23,8 @@ pub struct EsConnection {
     http: reqwest::Client,
     base: String,
     auth: Option<String>,
-    forward: Option<JoinHandle<()>>,
-}
-
-impl Drop for EsConnection {
-    fn drop(&mut self) {
-        if let Some(handle) = self.forward.take() {
-            handle.abort();
-        }
-    }
+    /// Carries in-cluster requests; closed with the connection.
+    _tunnel: Option<ServiceTunnel>,
 }
 
 impl std::fmt::Debug for EsConnection {
@@ -79,62 +67,6 @@ pub struct DetectedService {
 
 fn connect_error(e: impl std::fmt::Display) -> ElasticError {
     ElasticError::Connect(e.to_string())
-}
-
-/// `{service}.{namespace}.svc`: the name ECK puts in the HTTP certificate.
-pub fn service_host(namespace: &str, service: &str) -> String {
-    format!("{service}.{namespace}.svc")
-}
-
-/// The container port a service port targets on `pod`: a numeric
-/// `targetPort`, a named one looked up in the pod's containers, or the
-/// service port itself.
-pub fn target_port(service: &Service, port: u16, pod: &Pod) -> Option<u16> {
-    let spec_port = service
-        .spec
-        .as_ref()?
-        .ports
-        .as_ref()?
-        .iter()
-        .find(|p| p.port == i32::from(port))?;
-    match &spec_port.target_port {
-        None => Some(port),
-        Some(IntOrString::Int(n)) => u16::try_from(*n).ok(),
-        Some(IntOrString::String(name)) => pod
-            .spec
-            .as_ref()?
-            .containers
-            .iter()
-            .flat_map(|c| c.ports.iter().flatten())
-            .find(|p| p.name.as_deref() == Some(name.as_str()))
-            .and_then(|p| u16::try_from(p.container_port).ok()),
-    }
-}
-
-/// First running pod whose Ready condition is true.
-pub fn ready_pod(pods: &[Pod]) -> Option<&Pod> {
-    pods.iter().find(|p| {
-        let status = p.status.as_ref();
-        status.and_then(|s| s.phase.as_deref()) == Some("Running")
-            && status
-                .and_then(|s| s.conditions.as_ref())
-                .is_some_and(|cs| cs.iter().any(|c| c.type_ == "Ready" && c.status == "True"))
-    })
-}
-
-/// `k=v,k2=v2` label selector from a service selector.
-fn selector_string(service: &Service) -> Option<String> {
-    let selector = service.spec.as_ref()?.selector.as_ref()?;
-    if selector.is_empty() {
-        return None;
-    }
-    Some(
-        selector
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join(","),
-    )
 }
 
 /// ECK publishes the HTTP CA in `{service}-certs-public` (`ca.crt`).
@@ -188,35 +120,12 @@ pub async fn eck_credentials(
 /// Checks an external URL: http(s), no credentials in it, and credentials
 /// only over https (or plain http to loopback, which never leaves the host).
 pub fn check_external_url(url: &str, auth: &EsAuth) -> Result<reqwest::Url, ElasticError> {
-    let parsed = reqwest::Url::parse(url.trim())
-        .map_err(|e| ElasticError::Config(format!("Invalid URL: {e}")))?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(ElasticError::Config(
-            "Invalid URL: use http:// or https://".to_string(),
-        ));
-    }
-    if !parsed.username().is_empty() || parsed.password().is_some() {
-        return Err(ElasticError::Config(
-            "Put credentials in the authentication fields, not in the URL".to_string(),
-        ));
-    }
     if *auth == EsAuth::EckUser {
         return Err(ElasticError::Config(
             "ECK credentials apply to in-cluster endpoints only".to_string(),
         ));
     }
-    let loopback = match parsed.host() {
-        Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
-        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
-        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
-        None => false,
-    };
-    if parsed.scheme() == "http" && *auth != EsAuth::None && !loopback {
-        return Err(ElasticError::Config(
-            "Credentials are only sent over https://".to_string(),
-        ));
-    }
-    Ok(parsed)
+    integration::check_external_url(url, *auth != EsAuth::None).map_err(ElasticError::Config)
 }
 
 /// Opens a connection to `endpoint`. In-cluster endpoints need `kube`.
@@ -228,15 +137,9 @@ pub async fn connect(
     endpoint: &EsEndpoint,
     auth: &EsAuth,
 ) -> Result<EsConnection, ElasticError> {
-    // reqwest is built without a crypto provider and would panic without a
-    // process default; installing ring is a no-op once one is set.
-    let _ = rustls::crypto::ring::default_provider().install_default();
-    let mut builder = reqwest::Client::builder()
-        .timeout(REQUEST_TIMEOUT)
-        .connect_timeout(Duration::from_secs(10))
-        .danger_accept_invalid_certs(endpoint.skip_tls_verify);
+    let mut builder = integration::http_builder(endpoint.skip_tls_verify);
     let mut resolved: Option<EsAuth> = None;
-    let (base, forward) = match &endpoint.target {
+    let (base, tunnel) = match &endpoint.target {
         EsTarget::External { url } => {
             let parsed = check_external_url(url, auth)?;
             (parsed.as_str().trim_end_matches('/').to_string(), None)
@@ -249,23 +152,12 @@ pub async fn connect(
         } => {
             let client =
                 kube.ok_or_else(|| ElasticError::Config("No cluster connection".to_string()))?;
-            let services: Api<Service> = Api::namespaced(client.clone(), namespace);
-            let svc = services.get(service).await.map_err(connect_error)?;
-            let selector = selector_string(&svc).ok_or_else(|| {
-                ElasticError::Config(format!("Service {namespace}/{service} has no pod selector"))
-            })?;
-            let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
-            let list = pods
-                .list(&ListParams::default().labels(&selector))
+            let tunnel = open_service_tunnel(&client, namespace, service, *port)
                 .await
-                .map_err(connect_error)?;
-            let pod = ready_pod(&list.items).ok_or_else(|| {
-                ElasticError::Connect(format!("no ready pod behind {namespace}/{service}"))
-            })?;
-            let pod_name = pod.metadata.name.clone().unwrap_or_default();
-            let remote = target_port(&svc, *port, pod).ok_or_else(|| {
-                ElasticError::Config(format!("Service {namespace}/{service} has no port {port}"))
-            })?;
+                .map_err(|e| match e {
+                    TunnelError::Config(t) => ElasticError::Config(t),
+                    TunnelError::Connect(t) => ElasticError::Connect(t),
+                })?;
             if *https && !endpoint.skip_tls_verify {
                 if let Some(pem) = eck_ca(&client, namespace, service).await? {
                     let cert = reqwest::Certificate::from_pem(&pem).map_err(connect_error)?;
@@ -275,17 +167,16 @@ pub async fn connect(
             if *auth == EsAuth::EckUser {
                 resolved = Some(eck_credentials(client.clone(), namespace, service).await?);
             }
-            let (local, handle) =
-                forward_pod_port(client.clone(), namespace.clone(), pod_name, 0, remote)
-                    .await
-                    .map_err(connect_error)?;
             let host = service_host(namespace, service);
             // The tunnel is local: never route it through HTTP(S)_PROXY.
             builder = builder
                 .no_proxy()
-                .resolve(&host, SocketAddr::from(([127, 0, 0, 1], local)));
+                .resolve(&host, SocketAddr::from(([127, 0, 0, 1], tunnel.local_port)));
             let scheme = if *https { "https" } else { "http" };
-            (format!("{scheme}://{host}:{local}"), Some(handle))
+            (
+                format!("{scheme}://{host}:{}", tunnel.local_port),
+                Some(tunnel),
+            )
         }
     };
     let http = builder.build().map_err(connect_error)?;
@@ -294,46 +185,28 @@ pub async fn connect(
         http,
         base,
         auth: header,
-        forward,
+        _tunnel: tunnel,
     })
 }
 
 impl EsConnection {
     async fn send(&self, request: reqwest::RequestBuilder) -> Result<Value, ElasticError> {
-        let request = match &self.auth {
-            Some(h) => {
-                let mut value = reqwest::header::HeaderValue::from_str(h).map_err(|_| {
-                    ElasticError::Config("Credentials contain invalid characters".to_string())
-                })?;
-                // Keeps it out of HTTP/2 compression tables and debug output.
-                value.set_sensitive(true);
-                request.header(reqwest::header::AUTHORIZATION, value)
-            }
-            None => request,
-        };
-        let response = request.send().await.map_err(|e| {
-            if e.is_timeout() {
-                ElasticError::Connect("timed out after 15 s".to_string())
-            } else {
-                // Chain the source: reqwest's top-level text hides TLS/DNS details.
-                let mut text = e.to_string();
-                let mut source = std::error::Error::source(&e);
-                while let Some(s) = source {
-                    text = format!("{text}: {s}");
-                    source = s.source();
+        let response = integration::send(request, self.auth.as_deref())
+            .await
+            .map_err(|e| {
+                if e.starts_with("Credentials contain") {
+                    ElasticError::Config(e)
+                } else {
+                    ElasticError::Connect(e)
                 }
-                ElasticError::Connect(text)
-            }
-        })?;
-        let status = response.status().as_u16();
-        let body = response.text().await.map_err(connect_error)?;
-        if !(200..300).contains(&status) {
+            })?;
+        if !(200..300).contains(&response.status) {
             return Err(ElasticError::Http {
-                status,
-                reason: error_reason(&body, status),
+                status: response.status,
+                reason: error_reason(&response.body, response.status),
             });
         }
-        serde_json::from_str(&body).map_err(|e| ElasticError::Response(e.to_string()))
+        serde_json::from_str(&response.body).map_err(|e| ElasticError::Response(e.to_string()))
     }
 
     fn url(&self, path: &str) -> String {
