@@ -91,7 +91,56 @@ describe("ElasticPreferences (#501)", () => {
     await fireEvent.change(screen.getByLabelText("Authentication"), { target: { value: "eck-user" } });
     await fireEvent.click(screen.getByRole("button", { name: "Use ECK credentials" }));
     await waitFor(() => expect(elasticUseEckCredentials).toHaveBeenCalled());
-    expect(elastic.endpointFor("prod")?.target).toMatchObject({ kind: "in-cluster", service: "quickstart-es-http" });
+    expect(elastic.endpointFor("prod")).toBeNull();
+    expect(await screen.findByRole("status")).toHaveTextContent("Save to use this endpoint");
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(elastic.endpointFor("prod")?.target).toMatchObject({ kind: "in-cluster", service: "quickstart-es-http" }),
+    );
+  });
+
+  it("asks for the credentials again when the endpoint changes", async () => {
+    elastic.setEndpoint("prod", {
+      target: { kind: "external", url: "https://es.example" },
+      indexPattern: "logs-*",
+      preset: "ecs",
+      kibanaUrl: null,
+      skipTlsVerify: false,
+    });
+    vi.mocked(elasticAuthMethod).mockResolvedValue("basic");
+    render(ElasticPreferences);
+    expect(await screen.findByText("saved in the keychain: basic")).toBeInTheDocument();
+    await fireEvent.input(screen.getByLabelText("Elasticsearch URL"), { target: { value: "https://other.example" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("enter the credentials again");
+    expect(elastic.endpointFor("prod")?.target).toEqual({ kind: "external", url: "https://es.example" });
+    expect(elasticSaveAuth).not.toHaveBeenCalled();
+  });
+
+  it("refuses credentials inside the URLs", async () => {
+    render(ElasticPreferences);
+    await fireEvent.click(screen.getByRole("radio", { name: "External" }));
+    await fireEvent.input(screen.getByLabelText("Elasticsearch URL"), { target: { value: "https://elastic:pw@es.example" } });
+    expect(screen.getByText(/Remove the credentials from the URL/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Test connection" })).toBeDisabled();
+  });
+
+  it("does not carry one context's form into another", async () => {
+    elastic.setEndpoint("prod", {
+      target: { kind: "in-cluster", namespace: "logging", service: "es-http", port: 9200, https: true },
+      indexPattern: "logs-*",
+      preset: "ecs",
+      kibanaUrl: "https://kb.prod",
+      skipTlsVerify: false,
+    });
+    render(ElasticPreferences);
+    expect(await screen.findByDisplayValue("es-http")).toBeInTheDocument();
+    app.activeCluster = "staging";
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Off" })).toHaveAttribute("aria-checked", "true"));
+    await fireEvent.click(screen.getByRole("radio", { name: "In cluster" }));
+    expect(screen.getByLabelText("Service")).toHaveValue("");
+    expect(screen.getByLabelText("Kibana URL")).toHaveValue("");
   });
 
   it("turning it off removes the endpoint", async () => {
@@ -107,5 +156,6 @@ describe("ElasticPreferences (#501)", () => {
     await fireEvent.click(screen.getByRole("radio", { name: "Off" }));
     await fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(elastic.endpointFor("prod")).toBeNull());
+    expect(elasticSaveAuth).toHaveBeenCalledWith("prod", expect.objectContaining({ indexPattern: "logs-*" }), { method: "none" });
   });
 });

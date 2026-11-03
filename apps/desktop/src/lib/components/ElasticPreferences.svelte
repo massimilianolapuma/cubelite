@@ -57,7 +57,20 @@
 		password = '';
 		secret = '';
 		if (!e) {
+			// Nothing from the previous context may leak into this one.
 			mode = 'off';
+			namespace = '';
+			service = '';
+			port = 9200;
+			https = true;
+			url = '';
+			indexPattern = DEFAULT_INDEX_PATTERN;
+			preset = 'ecs';
+			kibanaUrl = '';
+			skipTlsVerify = false;
+			authMethod = 'none';
+			username = '';
+			storedMethod = null;
 			return;
 		}
 		mode = e.target.kind;
@@ -74,13 +87,50 @@
 	});
 
 	async function refreshStoredMethod(e: EsEndpoint) {
-		if (!context) return;
+		const ctx = context;
+		if (!ctx) return;
 		try {
-			storedMethod = await elasticAuthMethod(context, e);
-			authMethod = storedMethod;
+			const method = await elasticAuthMethod(ctx, e);
+			// A late answer for another context must not land here.
+			if (ctx !== app.activeCluster) return;
+			storedMethod = method;
+			authMethod = method;
 		} catch {
-			storedMethod = null;
+			if (ctx === app.activeCluster) storedMethod = null;
 		}
+	}
+
+	/** Credentials embedded in a URL would bypass the keychain. */
+	function urlProblem(value: string): string | null {
+		const v = value.trim();
+		if (!v) return null;
+		try {
+			const u = new URL(v);
+			if (!['http:', 'https:'].includes(u.protocol)) return 'Use an http:// or https:// URL.';
+			if (u.username || u.password) return 'Remove the credentials from the URL; use the authentication fields.';
+			return null;
+		} catch {
+			return 'Not a valid URL.';
+		}
+	}
+
+	const urlError = $derived(mode === 'external' ? urlProblem(url) : null);
+	const kibanaError = $derived(mode !== 'off' ? urlProblem(kibanaUrl) : null);
+
+	/** What stored credentials are bound to (mirrors the backend's binding). */
+	function bindingOf(e: EsEndpoint): string {
+		const t = e.target;
+		let origin: string;
+		if (t.kind === 'external') {
+			try {
+				origin = new URL(t.url).origin;
+			} catch {
+				origin = t.url;
+			}
+		} else {
+			origin = `in-cluster:${t.namespace}/${t.service}:${t.port}:${t.https}`;
+		}
+		return `${origin}|${e.skipTlsVerify}`;
 	}
 
 	const modeSegments: { value: Mode; label: string }[] = [
@@ -105,6 +155,7 @@
 	}
 
 	const incomplete = $derived.by(() => {
+		if (urlError || kibanaError) return true;
 		if (mode === 'in-cluster') return !namespace.trim() || !service.trim() || !port;
 		if (mode === 'external') return !url.trim();
 		return false;
@@ -167,12 +218,28 @@
 		if (!context) return;
 		const endpoint = draft();
 		busy = 'save';
+		result = null;
 		try {
 			if (endpoint) {
 				const auth = typedAuth();
-				if (auth) await elasticSaveAuth(context, endpoint, auth);
+				const moved = saved !== null && bindingOf(saved) !== bindingOf(endpoint);
+				if (authMethod === 'eck-user' && (storedMethod !== 'eck-user' || moved)) {
+					storedMethod = await elasticUseEckCredentials(app.kubeconfigPath, context, endpoint);
+				} else if (auth) {
+					await elasticSaveAuth(context, endpoint, auth);
+				} else if (moved && storedMethod && storedMethod !== 'none') {
+					// Stored secrets only work with the endpoint they were saved for.
+					result = {
+						ok: false,
+						text: 'The endpoint or TLS setting changed: enter the credentials again (or choose No authentication).'
+					};
+					return;
+				}
 				password = '';
 				secret = '';
+			} else if (saved) {
+				// Turning it off also removes the stored secret and open connection.
+				await elasticSaveAuth(context, saved, { method: 'none' });
 			}
 			elastic.setEndpoint(context, endpoint);
 			if (endpoint) await refreshStoredMethod(endpoint);
@@ -191,8 +258,10 @@
 		try {
 			storedMethod = await elasticUseEckCredentials(app.kubeconfigPath, context, endpoint);
 			authMethod = storedMethod;
-			elastic.setEndpoint(context, endpoint);
-			result = { ok: true, text: 'Using the ECK elastic user (read from the cluster on each connection).' };
+			result = {
+				ok: true,
+				text: 'ECK elastic user found (read from the cluster on each connection). Save to use this endpoint.'
+			};
 		} catch (e) {
 			result = { ok: false, text: errorMessage(e) };
 		} finally {
@@ -259,6 +328,7 @@
 				</label>
 			{:else if mode === 'external'}
 				<input class={input} aria-label="Elasticsearch URL" placeholder="https://my-deployment.es.example.com:9243" bind:value={url} />
+				{#if urlError}<p class="type-caption text-status-err">{urlError}</p>{/if}
 			{/if}
 
 			{#if mode !== 'off'}
@@ -270,6 +340,7 @@
 					</select>
 				</div>
 				<input class={input} aria-label="Kibana URL" placeholder="Kibana URL (optional), e.g. https://kibana.example.com" bind:value={kibanaUrl} />
+				{#if kibanaError}<p class="type-caption text-status-err">{kibanaError}</p>{/if}
 
 				<div class="flex items-center gap-2">
 					<select class="{input} w-40" aria-label="Authentication" bind:value={authMethod}>

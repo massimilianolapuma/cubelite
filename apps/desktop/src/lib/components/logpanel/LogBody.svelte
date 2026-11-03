@@ -71,9 +71,19 @@
 	// as above — scrollToIndex() must not be re-triggered by its own scroll.
 	$effect(() => {
 		void lines.length;
-		if (session.following && scrollEl) {
+		// History is browsed, not followed: Load older prepends and must keep
+		// the user's place (#501).
+		if (session.source === 'live' && session.following && scrollEl) {
 			get(virtualizer).scrollToIndex(lines.length - 1, { align: 'end' });
 		}
+	});
+
+	// History: show the newest lines after each (re)load, once.
+	$effect(() => {
+		void session.history.loads;
+		if (session.source !== 'history' || !scrollEl) return;
+		const n = untrack(() => lines.length);
+		if (n > 0) get(virtualizer).scrollToIndex(n - 1, { align: 'end' });
 	});
 
 	// Expanding or collapsing a row while following re-measures it; once it
@@ -106,7 +116,7 @@
 	});
 
 	function onWheel(event: WheelEvent) {
-		if (event.deltaY < 0 && session.following) {
+		if (session.source === 'live' && event.deltaY < 0 && session.following) {
 			session.toggleFollow();
 		}
 	}

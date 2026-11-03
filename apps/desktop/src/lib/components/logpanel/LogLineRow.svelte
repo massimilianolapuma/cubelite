@@ -140,7 +140,7 @@
 		</div>
 		{#if expanded}
 			<div class="bg-surface-raised px-2.5 py-1">
-				<EcsFieldTable doc={ecs} raw={line.message} />
+				<EcsFieldTable doc={ecs} raw={structured} />
 			</div>
 		{/if}
 	</div>
@@ -170,7 +170,7 @@
 		</div>
 		{#if expanded}
 			<div class="bg-surface-raised px-2.5 py-1">
-				<JsonTree value={view.object} raw={line.message} />
+				<JsonTree value={view.object} raw={structured} />
 			</div>
 		{/if}
 	</div>

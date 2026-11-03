@@ -14,7 +14,7 @@ import { LogRing } from "./logRing.svelte";
 import { FLUSH_MS } from "./logs.svelte";
 import { ContainerStream, type StreamParams, type StreamStatus } from "./containerStream.svelte";
 import type { KeyedLogLine } from "./logs.svelte";
-import { LogHistory } from "./logHistory.svelte";
+import { HISTORY_ID_BASE, LogHistory } from "./logHistory.svelte";
 
 export const RING_CAP = 5000;
 export const DEFAULT_TAIL = 500;
@@ -117,8 +117,14 @@ export class LogSession {
     this.pod = pod;
     this.key = `${namespace}/${pod}`;
     this.container = initialContainer;
-    this.history = new LogHistory(namespace, pod, () =>
-      this.container === ALL_CONTAINERS ? null : this.container,
+    this.history = new LogHistory(
+      namespace,
+      pod,
+      () => (this.container === ALL_CONTAINERS ? null : this.container),
+      // A reload replaces every history line: drop their expansions.
+      () => {
+        for (const id of this.expanded) if (id >= HISTORY_ID_BASE) this.expanded.delete(id);
+      },
     );
     if (seed) {
       this.previous = seed.previous;

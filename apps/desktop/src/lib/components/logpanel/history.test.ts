@@ -101,6 +101,30 @@ describe("LogHistory (#501)", () => {
     expect(s.history.error).toContain("Preferences");
   });
 
+  it("Load older keeps the submitted query and container even if the inputs changed", async () => {
+    vi.mocked(elasticSearch)
+      .mockResolvedValueOnce(page([hit("b", "t2")], [2, 0]))
+      .mockResolvedValueOnce(page([hit("a", "t1")]));
+    const s = session();
+    s.history.text = "first";
+    await s.history.reload();
+    s.history.text = "typed but not submitted";
+    s.history.range = "now-7d";
+    s.container = "other";
+    await s.history.loadOlder();
+    expect(vi.mocked(elasticSearch).mock.calls[1]![3]).toMatchObject({ text: "first", from: "now-1h", container: "web" });
+  });
+
+  it("drops expansions of replaced history lines", async () => {
+    vi.mocked(elasticSearch).mockResolvedValue(page([hit("x", "t1")]));
+    const s = session();
+    await s.history.reload();
+    s.toggleExpanded(s.history.lines[0]!.id);
+    s.expanded.add(5); // a live line stays expanded
+    await s.history.reload();
+    expect([...s.expanded]).toEqual([5]);
+  });
+
   it("ignores a superseded reload", async () => {
     let first!: (p: HistoryPage) => void;
     vi.mocked(elasticSearch)

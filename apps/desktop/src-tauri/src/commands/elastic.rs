@@ -343,8 +343,10 @@ pub fn kibana_discover_url(
 }
 
 /// Opens Kibana Discover for a pod's logs in the default browser. The URL
-/// is built here and must be http(s), so the webview cannot open arbitrary
-/// schemes through this command.
+/// is built here and must be http(s), so the webview cannot open other
+/// schemes through this command. Accepted risk: the Kibana base comes from
+/// the frontend's settings, so a compromised webview could open any http(s)
+/// page in the browser; it could already show any page inside the app.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn open_kibana_discover(

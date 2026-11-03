@@ -269,6 +269,7 @@ export function ecsTable(doc: EcsDocument): EcsField[] {
 }
 
 /** NDJSON export: one compact nested ECS document per line, newline-terminated. */
-export function ecsNdjson(lines: Parameters<typeof toEcs>[0][], container?: string | null): string {
-  return lines.map((l) => `${ecsJson(toEcs(l, container))}\n`).join("");
+export function ecsNdjson(lines: (Parameters<typeof toEcs>[0] & { document?: string })[], container?: string | null): string {
+  // History lines carry the stored Elasticsearch document (#501): export that.
+  return lines.map((l) => `${ecsJson(toEcs({ ...l, message: l.document ?? l.message }, container))}\n`).join("");
 }

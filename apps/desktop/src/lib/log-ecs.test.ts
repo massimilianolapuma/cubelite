@@ -209,6 +209,11 @@ describe("nested output", () => {
     expect(ecsJson(toEcs(line('{"msg":"m","id":12345678901234567890}')))).toContain('"id":12345678901234567890');
   });
 
+  it("exports the stored document of history lines", () => {
+    const out = ecsNdjson([{ ...line("plain"), document: '{"message":"stored","service":{"name":"api"}}' }]);
+    expect(JSON.parse(out)).toMatchObject({ message: "stored", service: { name: "api" } });
+  });
+
   it("writes newline-terminated NDJSON", () => {
     const out = ecsNdjson([line("a"), line("b")]);
     expect(out.split("\n")).toHaveLength(3);

@@ -34,9 +34,11 @@
 	function pick(name: string) {
 		pickerOpen = false;
 		logPanel.rememberContainer(session.key, name);
-		void session.switchContainer(name).then(() => {
-			// History follows the container picker (#501).
-			if (session.history.started) void session.history.reload();
+		const changed = session.container !== name;
+		void session.switchContainer(name).finally(() => {
+			// History follows the container picker (#501), even if the live
+			// stream fails to restart.
+			if (changed && session.history.started) void session.history.reload();
 		});
 	}
 
@@ -74,6 +76,8 @@
 	// call is wrapped `untrack`ed — otherwise this effect would also fire on
 	// every keystroke/cursor move, defeating `setQuery`'s own debounce.
 	$effect(() => {
+		// Identity too: a history reload can return as many lines with new ids.
+		void session.lines;
 		void session.lines.length;
 		untrack(() => logPanel.search.recompute(session.lines));
 	});
