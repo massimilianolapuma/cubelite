@@ -7,10 +7,23 @@ private final class StubSearcher: LogHistorySearching, @unchecked Sendable {
     private let lock = NSLock()
     private var pages: [Result<HistoryPage, Error>]
     private var recorded: [HistoryQuery] = []
+    private var closedCursors: [HistoryCursor] = []
 
     init(_ pages: [Result<HistoryPage, Error>]) { self.pages = pages }
 
     var queries: [HistoryQuery] { lock.withLock { recorded } }
+    var closed: [HistoryCursor] { lock.withLock { closedCursors } }
+
+    func closeCursor(context: String, endpoint: EsEndpoint, cursor: HistoryCursor) async {
+        lock.withLock { closedCursors.append(cursor) }
+    }
+
+    /// Waits for `count` released cursors (releases run in their own task).
+    func waitForClosed(_ count: Int) async {
+        for _ in 0..<200 where closed.count < count {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
 
     func search(context: String, endpoint: EsEndpoint, query: HistoryQuery) async throws
         -> HistoryPage
@@ -23,8 +36,10 @@ private final class StubSearcher: LogHistorySearching, @unchecked Sendable {
     }
 }
 
-/// Newest-first page of `messages`, with a cursor when `more`.
-private func page(_ messages: [String], total: Int? = nil, more: Bool = false) -> HistoryPage {
+/// Newest-first page of `messages`, with a cursor (on point in time `pit`) when `more`.
+private func page(
+    _ messages: [String], total: Int? = nil, more: Bool = false, pit: String? = nil
+) -> HistoryPage {
     HistoryPage(
         lines: messages.enumerated().map { n, text in
             HistoryLine(
@@ -32,7 +47,7 @@ private func page(_ messages: [String], total: Int? = nil, more: Bool = false) -
                 document: #"{"message":"\#(text)"}"#)
         },
         total: total ?? messages.count, totalIsLowerBound: false,
-        next: more ? [.number("1"), .number("2")] : nil)
+        next: more ? HistoryCursor(pitID: pit, sort: [.number("1"), .number("2")]) : nil)
 }
 
 @MainActor
@@ -81,7 +96,9 @@ final class LogHistoryTests: XCTestCase {
         XCTAssertEqual(h.lines.map(\.message), ["x", "y", "a", "b"])
         XCTAssertNil(h.next)
         XCTAssertFalse(h.canLoadOlder)
-        XCTAssertEqual(searcher.queries.last?.searchAfter, [.number("1"), .number("2")])
+        XCTAssertEqual(
+            searcher.queries.last?.searchAfter,
+            HistoryCursor(pitID: nil, sort: [.number("1"), .number("2")]))
         XCTAssertEqual(searcher.queries.last?.from, "now-1h")
         XCTAssertEqual(Set(h.lines.map(\.id)).count, 4, "ids stay unique")
     }
@@ -128,6 +145,37 @@ final class LogHistoryTests: XCTestCase {
         XCTAssertFalse(h.started)
         XCTAssertTrue(h.lines.isEmpty)
         XCTAssertNil(h.error)
+    }
+
+    func testPagingKeepsThePointInTimeAndReplacingOrClosingReleasesIt() async {
+        let searcher = StubSearcher([
+            .success(page(["b"], more: true, pit: "pit-a")),
+            .success(page(["a"], more: true, pit: "pit-b")),
+            .success(page(["z"], more: true, pit: "pit-c")),
+        ])
+        let h = history(searcher)
+        await h.reload()
+        await h.loadOlder()
+        XCTAssertEqual(searcher.queries.last?.searchAfter?.pitID, "pit-a", "cursor passed untouched")
+        XCTAssertEqual(h.next?.pitID, "pit-b", "the latest PIT id")
+        XCTAssertTrue(searcher.closed.isEmpty, "paging keeps the PIT open")
+        h.text = "timeout"
+        await h.reload()
+        await searcher.waitForClosed(1)
+        XCTAssertEqual(searcher.closed.map(\.pitID), ["pit-b"], "a new query releases the old PIT")
+        h.close()
+        await searcher.waitForClosed(2)
+        XCTAssertEqual(searcher.closed.last?.pitID, "pit-c")
+        XCTAssertNil(h.next)
+    }
+
+    func testCursorsWithoutAPointInTimeNeedNoRelease() async {
+        let searcher = StubSearcher([.success(page(["b"], more: true))])
+        let h = history(searcher)
+        await h.reload()
+        h.reset()
+        try? await Task.sleep(for: .milliseconds(20))
+        XCTAssertTrue(searcher.closed.isEmpty)
     }
 
     func testEndpointStorePersistsPerContext() {

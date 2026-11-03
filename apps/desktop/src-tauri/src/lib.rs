@@ -2,9 +2,9 @@ pub mod commands;
 pub mod env;
 
 use commands::elastic::{
-    elastic_auth_method, elastic_detect, elastic_disconnect, elastic_save_auth, elastic_search,
-    elastic_test, elastic_use_eck_credentials, kibana_discover_url, kibana_port_forward,
-    open_kibana_discover, ElasticState,
+    elastic_auth_method, elastic_close_cursor, elastic_detect, elastic_disconnect,
+    elastic_save_auth, elastic_search, elastic_test, elastic_use_eck_credentials,
+    kibana_discover_url, kibana_port_forward, open_kibana_discover, ElasticState,
 };
 use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
 use commands::kubernetes::{
@@ -55,6 +55,7 @@ pub fn run() {
             open_grafana_explore,
             elastic_test,
             elastic_search,
+            elastic_close_cursor,
             elastic_save_auth,
             elastic_auth_method,
             elastic_use_eck_credentials,

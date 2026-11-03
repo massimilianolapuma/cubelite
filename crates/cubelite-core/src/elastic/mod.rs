@@ -208,13 +208,30 @@ pub struct HistoryQuery {
     /// Free text, as a `simple_query_string` on the message field.
     #[serde(default)]
     pub text: Option<String>,
-    /// `sort` values of the last hit of the previous page.
+    /// Where the previous page ended (its `next`); `None` for the first page.
     #[serde(default)]
-    pub search_after: Option<Vec<Value>>,
+    pub search_after: Option<HistoryCursor>,
     /// Page size (default 500, capped at 1000).
     #[serde(default)]
     pub size: Option<u32>,
 }
+
+/// Opaque paging cursor (#531): the `sort` values of the last hit and, when
+/// the search runs on a point in time, its id. The frontends pass it back
+/// untouched for the next (older) page.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryCursor {
+    /// Point-in-time id; `None` when the server has no PIT (fallback to
+    /// plain `search_after`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pit_id: Option<String>,
+    /// `sort` values of the last hit.
+    pub sort: Vec<Value>,
+}
+
+/// How long Elasticsearch keeps a history point in time between pages.
+pub const PIT_KEEP_ALIVE: &str = "2m";
 
 /// Default and maximum page size.
 pub const DEFAULT_PAGE: u32 = 500;
@@ -223,7 +240,13 @@ pub const MAX_PAGE: u32 = 1000;
 
 /// The `_search` body for a history page: filter on namespace, pod,
 /// optional container and time range; newest first; `search_after` paging.
-pub fn search_body(query: &HistoryQuery, preset: FieldPreset) -> Value {
+///
+/// With a point in time (`pit`), the search names no index and `_shard_doc`
+/// breaks every tie, so pages neither skip nor repeat hits with equal
+/// timestamps (#531). Without one (servers without PIT), `_index` + `_doc`
+/// break most ties; hits with equal timestamps on different shards of one
+/// index can still share sort values (rare).
+pub fn search_body(query: &HistoryQuery, preset: FieldPreset, pit: Option<&str>) -> Value {
     let f = preset.fields();
     let mut filter = vec![
         json!({ "term": { f.namespace: query.namespace } }),
@@ -249,22 +272,23 @@ pub fn search_body(query: &HistoryQuery, preset: FieldPreset) -> Value {
         }));
     }
     let size = query.size.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
+    // `unmapped_type` keeps indices without `@timestamp` from failing the search.
+    let timestamp = json!({ "@timestamp": { "order": "desc", "unmapped_type": "date" } });
+    let sort = match pit {
+        Some(_) => json!([timestamp, { "_shard_doc": "desc" }]),
+        None => json!([timestamp, { "_index": "asc" }, { "_doc": "asc" }]),
+    };
     let mut body = json!({
         "size": size,
         "track_total_hits": 10_000,
         "query": { "bool": { "filter": filter, "must": must } },
-        // `_index` + `_doc` break most ties for `search_after`; without a
-        // point-in-time, hits with equal timestamps on different shards of one
-        // index can still share sort values (rare; accepted in v1).
-        // `unmapped_type` keeps indices without `@timestamp` from failing the search.
-        "sort": [
-            { "@timestamp": { "order": "desc", "unmapped_type": "date" } },
-            { "_index": "asc" },
-            { "_doc": "asc" }
-        ],
+        "sort": sort,
     });
+    if let Some(id) = pit {
+        body["pit"] = json!({ "id": id, "keep_alive": PIT_KEEP_ALIVE });
+    }
     if let Some(after) = &query.search_after {
-        body["search_after"] = Value::Array(after.clone());
+        body["search_after"] = Value::Array(after.sort.clone());
     }
     body
 }
@@ -295,8 +319,8 @@ pub struct HistoryPage {
     pub total: Option<u64>,
     /// `total` is a lower bound (more than 10 000 hits).
     pub total_is_lower_bound: bool,
-    /// `search_after` for the next (older) page; `None` at the end.
-    pub next: Option<Vec<Value>>,
+    /// Cursor of the next (older) page; `None` at the end.
+    pub next: Option<HistoryCursor>,
 }
 
 /// Reads a dotted path from a document that may be nested
@@ -333,7 +357,8 @@ fn map_level(raw: &str) -> Option<LogLevel> {
     }
 }
 
-/// Maps a `_search` response to a history page.
+/// Maps a `_search` response to a history page. The cursor carries the
+/// response's `pit_id` (Elasticsearch may update it between pages).
 pub fn map_response(
     response: &Value,
     preset: FieldPreset,
@@ -381,7 +406,13 @@ pub fn map_response(
         hits.last()
             .and_then(|h| h.get("sort"))
             .and_then(Value::as_array)
-            .cloned()
+            .map(|sort| HistoryCursor {
+                pit_id: response
+                    .get("pit_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                sort: sort.clone(),
+            })
     } else {
         None
     };

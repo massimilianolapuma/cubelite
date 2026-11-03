@@ -762,9 +762,17 @@ export type HistoryQuery = {
   from: string;
   to: string;
   text: string | null;
-  searchAfter: unknown[] | null;
+  /** The previous page's `next`, passed back untouched; null for the first page. */
+  searchAfter: HistoryCursor | null;
   size: number | null;
 };
+
+/**
+ * Opaque paging cursor from the backend (#531): the last hit's sort values
+ * and, on servers with point-in-time support, the PIT id. Never inspected
+ * here; pass it back as `searchAfter`, or to `elasticCloseCursor`.
+ */
+export type HistoryCursor = object;
 
 export type HistoryLine = {
   time: string | null;
@@ -779,7 +787,8 @@ export type HistoryPage = {
   lines: HistoryLine[];
   total: number | null;
   totalIsLowerBound: boolean;
-  next: unknown[] | null;
+  /** Cursor of the next (older) page; null at the end. */
+  next: HistoryCursor | null;
 };
 
 export type EsInfo = { version: string; clusterName: string; health: string | null; indices: number | null };
@@ -813,6 +822,16 @@ export function elasticSearch(
   query: HistoryQuery,
 ): Promise<HistoryPage> {
   return invoke<HistoryPage>("elastic_search", { kubeconfigPath, context, endpoint, query });
+}
+
+/** Releases the point in time behind a cursor whose search was replaced or closed (best effort). */
+export function elasticCloseCursor(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: EsEndpoint,
+  cursor: HistoryCursor,
+): Promise<void> {
+  return invoke("elastic_close_cursor", { kubeconfigPath, context, endpoint, cursor });
 }
 
 /** Stores `auth` in the OS keychain, bound to `endpoint`'s origin and TLS setting. */

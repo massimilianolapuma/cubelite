@@ -8,7 +8,7 @@
 use cubelite_core::elastic::transport::{self, DetectedService, EsConnection, EsInfo};
 use cubelite_core::elastic::{
     kibana_discover_url as discover_url, ElasticError, EsAuth, EsEndpoint, EsTarget, FieldPreset,
-    HistoryPage, HistoryQuery, KibanaService,
+    HistoryCursor, HistoryPage, HistoryQuery, KibanaService,
 };
 
 use cubelite_core::integration;
@@ -154,6 +154,31 @@ pub async fn elastic_search(
         state.connections.invalidate(&key, &conn).await;
     }
     result.map_err(text)
+}
+
+/// Closes the point in time of a history cursor (#531) when its search is
+/// replaced or closed. Best effort and never an error: only a cached
+/// connection is used (none means the PIT's tunnel is gone, and the PIT
+/// expires on its own).
+#[tauri::command]
+pub async fn elastic_close_cursor(
+    state: State<'_, ElasticState>,
+    kubeconfig_path: String,
+    context: String,
+    endpoint: EsEndpoint,
+    cursor: HistoryCursor,
+) -> Result<(), String> {
+    let key: ConnKey = (kubeconfig_path, context);
+    let cached = state
+        .connections
+        .get_or_connect(&key, &endpoint, || async {
+            Err("not connected".to_string())
+        })
+        .await;
+    if let Ok(conn) = cached {
+        conn.close_cursor(&cursor).await;
+    }
+    Ok(())
 }
 
 /// Saves `auth` for `context` in the keychain, bound to `endpoint`

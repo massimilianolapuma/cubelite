@@ -33,8 +33,21 @@ final class ElasticModelsTests: XCTestCase {
         XCTAssertEqual(
             array(body["sort"]).first,
             json(#"{"@timestamp":{"order":"desc","unmapped_type":"date"}}"#))
+        XCTAssertEqual(array(body["sort"]).dropFirst().first, json(#"{"_index":"asc"}"#))
         XCTAssertNil(body["search_after"])
+        XCTAssertNil(body["pit"])
         XCTAssertEqual(body["query"]?["bool"]?["must"], .array([]))
+    }
+
+    func testSearchBodyOnAPointInTimeBreaksTiesWithShardDoc() {
+        var q = query()
+        q.searchAfter = HistoryCursor(pitID: "pit-1", sort: [.number("1730000000000"), .number("7")])
+        let body = Elastic.searchBody(q, preset: .ecs, pit: "pit-2")
+        XCTAssertEqual(body["pit"], json(#"{"id":"pit-2","keep_alive":"2m"}"#))
+        XCTAssertEqual(
+            body["sort"],
+            json(#"[{"@timestamp":{"order":"desc","unmapped_type":"date"}},{"_shard_doc":"desc"}]"#))
+        XCTAssertEqual(body["search_after"], json("[1730000000000,7]"))
     }
 
     func testSearchBodyAddsContainerTextPagingAndCapsSize() {
@@ -42,7 +55,8 @@ final class ElasticModelsTests: XCTestCase {
         q.container = "worker"
         q.text = "  timeout \"db\"  "
         // Beyond 2^53: must stay exact in the body.
-        q.searchAfter = [.number("1730000000000123456"), .number("42")]
+        q.searchAfter = HistoryCursor(
+            pitID: nil, sort: [.number("1730000000000123456"), .number("42")])
         q.size = 5000
         let body = Elastic.searchBody(q, preset: .fluentBit)
         let filter = array(body["query"]?["bool"]?["filter"])
@@ -69,7 +83,7 @@ final class ElasticModelsTests: XCTestCase {
         let page = try Elastic.mapResponse(response, preset: .ecs, pageSize: 3)
         XCTAssertEqual(page.total, 10000)
         XCTAssertTrue(page.totalIsLowerBound)
-        XCTAssertEqual(page.next, [.number("1"), .number("3")])
+        XCTAssertEqual(page.next, HistoryCursor(pitID: nil, sort: [.number("1"), .number("3")]))
         XCTAssertEqual(page.lines.count, 3)
         let (a, b, c) = (page.lines[0], page.lines[1], page.lines[2])
         XCTAssertEqual(a.message, "disk almost full")

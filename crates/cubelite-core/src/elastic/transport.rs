@@ -3,16 +3,18 @@
 //! `Authorization`, kubernetes/kubernetes#38775), HTTPS for external ones.
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use k8s_openapi::api::core::v1::{Secret, Service};
 use kube::api::ListParams;
 use kube::{Api, Client};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use super::{
     error_reason, map_response, search_body, validate_index_pattern, ElasticError, EsAuth,
-    EsEndpoint, EsTarget, HistoryPage, HistoryQuery, DEFAULT_PAGE, MAX_PAGE,
+    EsEndpoint, EsTarget, HistoryCursor, HistoryPage, HistoryQuery, DEFAULT_PAGE, MAX_PAGE,
+    PIT_KEEP_ALIVE,
 };
 use crate::integration::{self, open_service_tunnel, ServiceTunnel, TunnelError};
 pub use crate::integration::{ready_pod, service_host, target_port, REQUEST_TIMEOUT};
@@ -23,9 +25,17 @@ pub struct EsConnection {
     http: reqwest::Client,
     base: String,
     auth: Option<String>,
+    /// Opening a point in time failed with 400/403/404/405 (no privilege,
+    /// or a server without PIT): page with plain `search_after` from now on.
+    no_pit: AtomicBool,
     /// Carries in-cluster requests; closed with the connection.
     _tunnel: Option<ServiceTunnel>,
 }
+
+/// Statuses of a PIT open that mean "no PIT here" rather than a failure:
+/// no `manage`/`read` privilege for PIT, or an older Elasticsearch /
+/// OpenSearch without `/{index}/_pit`.
+const NO_PIT_STATUSES: [u16; 4] = [400, 403, 404, 405];
 
 impl std::fmt::Debug for EsConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -185,6 +195,7 @@ pub async fn connect(
         http,
         base,
         auth: header,
+        no_pit: AtomicBool::new(false),
         _tunnel: tunnel,
     })
 }
@@ -214,20 +225,125 @@ impl EsConnection {
     }
 
     /// One page of a pod's history.
+    ///
+    /// The first page opens a point in time over the index pattern and the
+    /// cursor carries it to the next pages (#531), so hits with equal
+    /// timestamps are neither skipped nor repeated between pages. The PIT is
+    /// closed after the last page or a failed first page; the frontends close
+    /// it earlier with [`Self::close_cursor`] when the search is replaced.
+    /// Servers without PIT (or users without the privilege) fall back to
+    /// plain `search_after`, remembered for this connection.
     pub async fn search(
         &self,
         endpoint: &EsEndpoint,
         query: &HistoryQuery,
     ) -> Result<HistoryPage, ElasticError> {
         validate_index_pattern(&endpoint.index_pattern)?;
-        let body = search_body(query, endpoint.preset);
+        let size = query.size.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
+        let first = query.search_after.is_none();
+        let pit = match &query.search_after {
+            Some(cursor) => cursor.pit_id.clone(),
+            None => self.open_pit(endpoint).await?,
+        };
+        let Some(mut pit) = pit else {
+            let body = search_body(query, endpoint.preset, None);
+            let url = self.url(&format!(
+                "{}/_search?ignore_unavailable=true&allow_no_indices=true",
+                endpoint.index_pattern
+            ));
+            let response = self.send(self.http.post(url).json(&body)).await?;
+            return map_response(&response, endpoint.preset, size);
+        };
+        let mut opened_here = first;
+        let mut result = self.search_pit(endpoint, query, &pit, size).await;
+        if !first && matches!(result, Err(ElasticError::Http { status: 404, .. })) {
+            // The PIT expired (idle longer than its keep-alive): continue
+            // from the same sort values on a new one.
+            if let Ok(Some(fresh)) = self.open_pit(endpoint).await {
+                result = self.search_pit(endpoint, query, &fresh, size).await;
+                pit = fresh;
+                opened_here = true;
+            }
+        }
+        match result {
+            Ok((page, latest)) => {
+                if page.next.is_none() {
+                    self.close_pit(&latest).await;
+                }
+                Ok(page)
+            }
+            Err(e) => {
+                if opened_here {
+                    self.close_pit(&pit).await;
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// Closes the point in time a cursor carries, best effort (the search
+    /// was replaced or closed before its last page). Errors are ignored:
+    /// the PIT expires on its own after its keep-alive.
+    pub async fn close_cursor(&self, cursor: &HistoryCursor) {
+        if let Some(id) = &cursor.pit_id {
+            self.close_pit(id).await;
+        }
+    }
+
+    /// Opens a point in time over the index pattern; `Ok(None)` when the
+    /// server has no PIT for us (see [`NO_PIT_STATUSES`]).
+    async fn open_pit(&self, endpoint: &EsEndpoint) -> Result<Option<String>, ElasticError> {
+        if self.no_pit.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
         let url = self.url(&format!(
-            "{}/_search?ignore_unavailable=true&allow_no_indices=true",
+            "{}/_pit?keep_alive={PIT_KEEP_ALIVE}&ignore_unavailable=true",
             endpoint.index_pattern
         ));
-        let response = self.send(self.http.post(url).json(&body)).await?;
-        let size = query.size.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
-        map_response(&response, endpoint.preset, size)
+        let id = match self.send(self.http.post(url)).await {
+            Ok(body) => body.get("id").and_then(Value::as_str).map(str::to_owned),
+            Err(ElasticError::Http { status, .. }) if NO_PIT_STATUSES.contains(&status) => None,
+            Err(e) => return Err(e),
+        };
+        if id.is_none() {
+            self.no_pit.store(true, Ordering::Relaxed);
+        }
+        Ok(id)
+    }
+
+    /// One page on point in time `pit`, and the PIT id to use next (the
+    /// response's `pit_id`, which Elasticsearch may update).
+    async fn search_pit(
+        &self,
+        endpoint: &EsEndpoint,
+        query: &HistoryQuery,
+        pit: &str,
+        size: u32,
+    ) -> Result<(HistoryPage, String), ElasticError> {
+        let body = search_body(query, endpoint.preset, Some(pit));
+        // A PIT search names no index (the PIT holds them).
+        let response = self
+            .send(self.http.post(self.url("_search")).json(&body))
+            .await?;
+        let latest = response
+            .get("pit_id")
+            .and_then(Value::as_str)
+            .unwrap_or(pit)
+            .to_string();
+        let mut page = map_response(&response, endpoint.preset, size)?;
+        if let Some(next) = &mut page.next {
+            next.pit_id = Some(latest.clone());
+        }
+        Ok((page, latest))
+    }
+
+    /// `DELETE /_pit`, best effort.
+    async fn close_pit(&self, id: &str) {
+        let request = self
+            .http
+            .delete(self.url("_pit"))
+            .json(&json!({ "id": id }));
+        let _ = self.send(request).await;
     }
 
     /// Version and cluster name (required), health and matching index count (best effort).

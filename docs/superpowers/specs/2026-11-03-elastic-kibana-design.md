@@ -88,7 +88,11 @@ Per **kube context** (a cluster's logs live in one place; namespaces share it):
   for a workload), optional container, `range @timestamp [from, to]`; the
   text box becomes a `simple_query_string` on the message field
   (`message` / `log`); `sort @timestamp desc`, `size 500`, `search_after`
-  for "Load older", `_source` only (no aggregations).
+  for "Load older", `_source` only (no aggregations). Since #531 the first
+  page opens a point in time (`keep_alive` 2m) and pages search it
+  (`POST /_search`, `_shard_doc` tiebreaker), so equal timestamps across
+  shards are neither repeated nor skipped; servers without PIT fall back to
+  plain `search_after`.
 - Results map to the existing `LogLine` (time = `@timestamp`, level from
   `log.level` / detection, message = `message` or the raw `_source` JSON when
   the line was structured) so the panel's search, Raw · JSON · ECS modes,

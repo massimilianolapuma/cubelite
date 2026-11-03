@@ -42,7 +42,8 @@ final class LiveIntegrationsTests: XCTestCase {
             query: HistoryQuery(namespace: "shop", pod: pod.name, from: "now-1h", to: "now", size: 50))
         print("\(pod.name): \(page.total ?? 0) hits")
         XCTAssertFalse(page.lines.isEmpty)
-        XCTAssertNotNil(page.next)
+        // #531: the first page opened a point in time (ECK's `elastic` user may).
+        XCTAssertNotNil(page.next?.pitID, "paging on a point in time")
         let older = try await service.search(
             context: context, endpoint: endpoint,
             query: HistoryQuery(
@@ -50,6 +51,12 @@ final class LiveIntegrationsTests: XCTestCase {
                 size: 50))
         XCTAssertFalse(older.lines.isEmpty, "load older")
         XCTAssertLessThanOrEqual(older.lines.first?.time ?? "", page.lines.last?.time ?? "")
+        let shown = Set(page.lines.map(\.document))
+        XCTAssertFalse(older.lines.contains { shown.contains($0.document) }, "no hit repeated")
+        if let next = older.next {
+            XCTAssertNotNil(next.pitID)
+            await service.closeCursor(context: context, endpoint: endpoint, cursor: next)
+        }
 
         // In-cluster Kibana through the service's forward (#519).
         let kb = try XCTUnwrap(found.first { $0.kind == .kibana })

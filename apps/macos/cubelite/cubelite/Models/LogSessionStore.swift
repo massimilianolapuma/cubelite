@@ -439,6 +439,7 @@ final class LogSessionStore {
     func close(sessionID: String) {
         guard let index = sessions.firstIndex(where: { $0.pod.id == sessionID }) else { return }
         sessions[index].stop()
+        sessions[index].history?.close()
         let wasActive = activeSessionID == sessionID
         let attachedBefore = attachedSessions
         sessions.remove(at: index)
@@ -453,7 +454,10 @@ final class LogSessionStore {
     }
 
     func closeAll() {
-        sessions.forEach { $0.stop() }
+        sessions.forEach {
+            $0.stop()
+            $0.history?.close()
+        }
         sessions = []
         detachedSessionIDs = []
         activeSessionID = nil
