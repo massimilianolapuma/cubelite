@@ -51,8 +51,11 @@
 	}
 
 	const segments = $derived(segmentsOf(line.message));
-	const view = $derived(mode === 'json' ? parseJsonLine(line.message) : null);
-	const ecs = $derived(mode === 'ecs' ? toEcs(line, container) : null);
+	// History lines carry the stored Elasticsearch document: JSON and ECS
+	// modes render it rather than the plain message (#501).
+	const structured = $derived(line.document ?? line.message);
+	const view = $derived(mode === 'json' ? parseJsonLine(structured) : null);
+	const ecs = $derived(mode === 'ecs' ? toEcs({ ...line, message: structured }, container) : null);
 	const ecsSummary = $derived(ecs ? ecsRow(ecs) : null);
 	const shownLevel = $derived(ecs?.level ?? view?.level ?? line.level);
 

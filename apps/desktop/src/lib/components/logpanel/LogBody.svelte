@@ -3,6 +3,7 @@
 	import { untrack } from 'svelte';
 	import { createVirtualizer, type SvelteVirtualizer } from '@tanstack/svelte-virtual';
 	import LogLineRow from './LogLineRow.svelte';
+	import HistoryStrip from './HistoryStrip.svelte';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import type { LogSession } from '#lib/stores/logSession.svelte.ts';
 	import { identityColorFor } from '#lib/stores/identityColor.ts';
@@ -30,8 +31,8 @@
 	// the raw ring buffer, so `scrollToIndex` stays in bounds either way.
 	const lines = $derived(
 		logPanel.search.filterMode
-			? session.ring.lines.filter((l) => logPanel.search.matchSet.has(l.id))
-			: session.ring.lines
+			? session.lines.filter((l) => logPanel.search.matchSet.has(l.id))
+			: session.lines
 	);
 
 	const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
@@ -125,8 +126,10 @@
 	}
 </script>
 
-<div class="relative min-h-0 flex-1 overflow-hidden bg-surface-sunken">
-	{#if session.status === 'reconnecting'}
+<div class="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-sunken">
+	{#if session.source === 'history'}
+		<HistoryStrip history={session.history} />
+	{:else if session.status === 'reconnecting'}
 		<div class="absolute inset-x-0 top-0 z-10 flex items-center justify-center gap-2 border-b border-border-default px-2.5 py-1"
 			style="background: var(--alpha-pill-warn);">
 			<span class="type-caption" style="color: var(--color-status-warn);">
@@ -139,7 +142,7 @@
 		</div>
 	{/if}
 
-	{#if !session.following && newLines > 0}
+	{#if session.source === 'live' && !session.following && newLines > 0}
 		<div class="pointer-events-auto absolute inset-x-0 bottom-2 z-10 flex justify-center">
 			<button
 				type="button"
@@ -152,8 +155,8 @@
 		</div>
 	{/if}
 
-	{#if session.status === 'error'}
-		<div class="flex h-full flex-col items-center justify-center gap-2">
+	{#if session.source === 'live' && session.status === 'error'}
+		<div class="flex flex-1 flex-col items-center justify-center gap-2">
 			<p class="type-caption text-text-secondary">{session.error}</p>
 			<button
 				type="button"
@@ -167,6 +170,8 @@
 		<p class="py-8 text-center text-xs text-text-disabled">
 			{#if logPanel.search.filterMode && logPanel.search.query}
 				No matches for "{logPanel.search.query}" — esc clears search
+			{:else if session.source === 'history'}
+				{session.history.loading ? 'Loading history…' : session.history.error ? '' : 'No lines in Elasticsearch for this pod and range.'}
 			{:else if session.ring.totalAppended > 0}
 				Buffer cleared — waiting for new lines…
 			{:else}
@@ -174,7 +179,7 @@
 			{/if}
 		</p>
 	{:else}
-		<div bind:this={scrollEl} onwheel={onWheel} class="h-full overflow-y-auto py-1">
+		<div bind:this={scrollEl} onwheel={onWheel} class="min-h-0 flex-1 overflow-y-auto py-1">
 			<div style="height: {$virtualizer.getTotalSize()}px; position: relative;">
 				{#each $virtualizer.getVirtualItems() as item (item.key)}
 					{@const line = lines[item.index]}

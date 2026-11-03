@@ -5,6 +5,10 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
 	import { ecsNdjson, type LogViewMode } from '#lib/log-ecs.ts';
+	import { HISTORY_RANGES, isHistoryRange } from '#lib/elastic.ts';
+	import { elastic } from '#lib/stores/elastic.svelte.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { openKibanaDiscover } from '#lib/tauri.ts';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
@@ -30,7 +34,38 @@
 	function pick(name: string) {
 		pickerOpen = false;
 		logPanel.rememberContainer(session.key, name);
-		void session.switchContainer(name);
+		void session.switchContainer(name).then(() => {
+			// History follows the container picker (#501).
+			if (session.history.started) void session.history.reload();
+		});
+	}
+
+	// Elasticsearch history is offered when the cluster has an endpoint (#501).
+	const endpoint = $derived(elastic.endpointFor(app.activeCluster));
+	const SOURCES: { value: 'live' | 'history'; label: string }[] = [
+		{ value: 'live', label: 'Live' },
+		{ value: 'history', label: 'History' }
+	];
+	$effect(() => {
+		if (!endpoint && session.source === 'history') session.setSource('live');
+	});
+
+	async function openKibana() {
+		overflowOpen = false;
+		if (!endpoint?.kibanaUrl) return;
+		try {
+			await openKibanaDiscover({
+				kibanaUrl: endpoint.kibanaUrl,
+				preset: endpoint.preset,
+				namespace: session.namespace,
+				pod: session.pod,
+				container: session.merged ? null : session.container,
+				from: session.source === 'history' ? session.history.range : 'now-1h',
+				to: 'now'
+			});
+		} catch (e) {
+			toasts.push(errorMessage(e), 'err');
+		}
 	}
 
 	// The panel keeps one `LogSearch` for its active session; re-run the
@@ -39,8 +74,8 @@
 	// call is wrapped `untrack`ed — otherwise this effect would also fire on
 	// every keystroke/cursor move, defeating `setQuery`'s own debounce.
 	$effect(() => {
-		void session.ring.lines.length;
-		untrack(() => logPanel.search.recompute(session.ring.lines));
+		void session.lines.length;
+		untrack(() => logPanel.search.recompute(session.lines));
 	});
 
 	$effect(() => {
@@ -74,13 +109,13 @@
 	// matches when filter mode is on.
 	function exportVisible() {
 		const lines = logPanel.search.filterMode
-			? session.ring.lines.filter((l) => logPanel.search.matchSet.has(l.id))
-			: session.ring.lines;
+			? session.lines.filter((l) => logPanel.search.matchSet.has(l.id))
+			: session.lines;
 		void doExport(lines, false);
 	}
 
 	function exportFull() {
-		void doExport(session.ring.lines, true);
+		void doExport(session.lines, true);
 	}
 
 	function onSearchKeydown(event: KeyboardEvent) {
@@ -160,7 +195,7 @@
 	</div>
 
 	<!-- previous-instance chip: only when not merged and the selected container has restarts -->
-	{#if !session.merged && (selected?.restarts ?? 0) > 0}
+	{#if session.source === 'live' && !session.merged && (selected?.restarts ?? 0) > 0}
 		<button
 			type="button"
 			class="focus-ring type-caption flex h-7 items-center gap-1 rounded-md px-2 {session.previous
@@ -171,6 +206,17 @@
 		>
 			<RotateCcw size={12} strokeWidth={1.5} /> prev
 		</button>
+	{/if}
+
+	<!-- live stream or Elasticsearch history (#501) -->
+	{#if endpoint}
+		<span data-testid="logpanel-source">
+			<SegmentedControl
+				segments={SOURCES}
+				value={session.source}
+				onChange={(v) => session.setSource(v)}
+			/>
+		</span>
 	{/if}
 
 	<span class="flex-1"></span>
@@ -204,6 +250,35 @@
 		{/if}
 	</div>
 
+	{#if session.source === 'history'}
+		<!-- history range and Elasticsearch query (#501) -->
+		<select
+			aria-label="History range"
+			class="focus-ring type-caption h-7 rounded-md border border-border-default bg-surface-window px-2 text-text-primary"
+			value={session.history.range}
+			onchange={(e) => {
+				const v = e.currentTarget.value;
+				if (isHistoryRange(v)) {
+					session.history.range = v;
+					void session.history.reload();
+				}
+			}}
+		>
+			{#each HISTORY_RANGES as r (r.value)}
+				<option value={r.value}>Last {r.label}</option>
+			{/each}
+		</select>
+		<input
+			type="text"
+			aria-label="Elasticsearch query"
+			placeholder="Query Elasticsearch… ⏎"
+			bind:value={session.history.text}
+			onkeydown={(e) => {
+				if (e.key === 'Enter') void session.history.reload();
+			}}
+			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
+		/>
+	{:else}
 	<!-- tail size -->
 	<div class="flex overflow-hidden rounded-md border border-border-default">
 		{#each TAIL_OPTIONS as n (n)}
@@ -238,6 +313,7 @@
 	>
 		{session.following ? '● Following' : '⏸ Paused'}
 	</button>
+	{/if}
 
 	<!-- view mode: raw / JSON / ECS (#492) -->
 	<span data-testid="logpanel-view-mode" title="Log view: raw text, humanised JSON or Elastic Common Schema">
@@ -296,6 +372,16 @@
 				>
 					<Check size={12} strokeWidth={2} class={logPanel.wrap ? '' : 'invisible'} />Wrap lines
 				</button>
+				{#if endpoint?.kibanaUrl}
+					<div class="my-1 border-t border-border-default"></div>
+					<button
+						type="button"
+						class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
+						onclick={() => void openKibana()}
+					>
+						Open in Kibana
+					</button>
+				{/if}
 				<div class="my-1 border-t border-border-default"></div>
 				<button
 					type="button"

@@ -134,3 +134,40 @@ test("ECS view converts lines and expands a Kibana-like field table (#492)", asy
   await expect(table.locator('[data-field="kubernetes.namespace"]')).toContainText("default");
   await expect(page.getByRole("button", { name: "Copy ECS" })).toBeVisible();
 });
+
+test("History reads a pod's logs from Elasticsearch and opens Kibana (#501)", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "cubelite.elastic.endpoints",
+      JSON.stringify({
+        "prod-aks": {
+          target: { kind: "in-cluster", namespace: "logging", service: "quickstart-es-http", port: 9200, https: true },
+          indexPattern: "logs-*",
+          preset: "ecs",
+          kibanaUrl: "https://kibana.example",
+          skipTlsVerify: false,
+        },
+      }),
+    );
+  });
+  await boot(page);
+  await openLogPanel(page, "api-0");
+
+  await page.getByTestId("logpanel-source").getByRole("radio", { name: "History" }).click();
+  await expect(page.getByText("e2e-history-newest")).toBeVisible();
+  await expect(page.getByTestId("history-strip")).toContainText("2 hits");
+  const query = await page.evaluate(() => window.__lastElasticSearch);
+  expect(query).toMatchObject({ context: "prod-aks", query: { namespace: "default", pod: "api-0", from: "now-1h" } });
+
+  await page.getByTestId("logpanel-view-mode").getByRole("radio", { name: "ECS" }).click();
+  await expect(page.getByTestId("ecs-service")).toHaveText("shop-api");
+
+  await page.getByLabel("More log options").click();
+  await page.getByRole("button", { name: "Open in Kibana" }).click();
+  const opened = await page.evaluate(() => window.__kibanaOpened);
+  expect(opened).toMatchObject({ kibanaUrl: "https://kibana.example", pod: "api-0", from: "now-1h", to: "now" });
+
+  await page.getByTestId("logpanel-source").getByRole("radio", { name: "Live" }).click();
+  await expect(page.getByText("● Following")).toBeVisible();
+});
+

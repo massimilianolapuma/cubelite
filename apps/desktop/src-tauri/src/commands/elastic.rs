@@ -342,6 +342,41 @@ pub fn kibana_discover_url(
     )
 }
 
+/// Opens Kibana Discover for a pod's logs in the default browser. The URL
+/// is built here and must be http(s), so the webview cannot open arbitrary
+/// schemes through this command.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn open_kibana_discover(
+    app: tauri::AppHandle,
+    kibana_url: String,
+    preset: FieldPreset,
+    namespace: String,
+    pod: String,
+    container: Option<String>,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let base =
+        url::Url::parse(kibana_url.trim()).map_err(|e| format!("Invalid Kibana URL: {e}"))?;
+    if !matches!(base.scheme(), "http" | "https") {
+        return Err("Kibana URL must start with http:// or https://".to_string());
+    }
+    let target = discover_url(
+        base.as_str(),
+        preset,
+        &namespace,
+        &pod,
+        container.as_deref(),
+        &from,
+        &to,
+    );
+    app.opener()
+        .open_url(target, None::<&str>)
+        .map_err(|e| format!("Cannot open the browser: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

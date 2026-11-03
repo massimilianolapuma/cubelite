@@ -123,8 +123,8 @@ class LogPanelStore {
     if (!session) return;
     this.activeKey = key;
     this.#focusOrder = [...this.#focusOrder.filter((k) => k !== key), key];
-    this.search.attach(() => session.ring.lines);
-    this.search.recompute(session.ring.lines);
+    this.search.attach(() => session.lines);
+    this.search.recompute(session.lines);
   }
 
   async openFor(pod: { namespace: string; name: string }): Promise<void> {
@@ -148,7 +148,7 @@ class LogPanelStore {
     this.activeKey = key;
     this.#focusOrder = [...this.#focusOrder.filter((k) => k !== key), key];
     this.search.clear();
-    this.search.attach(() => session.ring.lines);
+    this.search.attach(() => session.lines);
     await session.open();
   }
 
@@ -175,7 +175,7 @@ class LogPanelStore {
     this.activeKey = transfer.key;
     this.#focusOrder = [...this.#focusOrder.filter((k) => k !== transfer.key), transfer.key];
     this.search.clear();
-    this.search.attach(() => session.ring.lines);
+    this.search.attach(() => session.lines);
     await session.open();
   }
 

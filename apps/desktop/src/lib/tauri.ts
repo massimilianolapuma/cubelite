@@ -337,6 +337,8 @@ export type LogLine = {
   message: string;
   /** Frontend-only: source container, tagged by ContainerStream. Absent on aggregated-view lines. */
   container?: string;
+  /** Frontend-only: the stored Elasticsearch `_source` (history lines, #501); JSON/ECS modes render it. */
+  document?: string;
 };
 
 export type PodRef = {
@@ -839,4 +841,17 @@ export function kibanaDiscoverUrl(args: {
   to: string;
 }): Promise<string> {
   return invoke<string>("kibana_discover_url", args);
+}
+
+/** Opens Kibana Discover for a pod in the default browser (URL built and checked in Rust). */
+export function openKibanaDiscover(args: {
+  kibanaUrl: string;
+  preset: FieldPreset;
+  namespace: string;
+  pod: string;
+  container: string | null;
+  from: string;
+  to: string;
+}): Promise<void> {
+  return invoke("open_kibana_discover", args);
 }

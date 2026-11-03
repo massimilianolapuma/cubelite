@@ -24,8 +24,10 @@
 </script>
 
 {#if logPanel.open}
+	<!-- z-[35]: above the pod drawer (z-30) so the toolbar's upward menus stay
+	     clickable over it, below modals (z-40). -->
 	<section
-		class="flex shrink-0 flex-col border-t border-border-default bg-surface-window"
+		class="relative z-[35] flex shrink-0 flex-col border-t border-border-default bg-surface-window"
 		style="height: {logPanel.collapsed ? PANEL_COLLAPSED : logPanel.height}px;"
 		aria-label="Pod logs panel"
 	>
