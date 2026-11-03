@@ -831,13 +831,13 @@ export function elasticUseEckCredentials(
   return invoke<EsAuthMethod>("elastic_use_eck_credentials", { kubeconfigPath, context, endpoint });
 }
 
-/** Port-forwards to an in-cluster Kibana service; registered with the port-forward sessions. */
-export function kibanaPortForward(
-  kubeconfigPath: string,
-  context: string,
-  service: KibanaService,
-): Promise<ForwardStartResult> {
-  return invoke<ForwardStartResult>("kibana_port_forward", { kubeconfigPath, context, service });
+/**
+ * Local port of a port-forward to an in-cluster Kibana (#505). The backend
+ * keeps one per (kubeconfig, context, service), reused while its pod is
+ * ready, and closes it when the context's endpoint changes.
+ */
+export function kibanaPortForward(kubeconfigPath: string, context: string, service: KibanaService): Promise<number> {
+  return invoke<number>("kibana_port_forward", { kubeconfigPath, context, service });
 }
 
 export function elasticDisconnect(context: string): Promise<void> {

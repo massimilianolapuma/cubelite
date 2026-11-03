@@ -195,6 +195,7 @@ test("Open in Kibana forwards to an in-cluster Kibana without a URL (#505)", asy
     await page.getByRole("button", { name: "Open in Kibana" }).click();
   }
   const opened = await page.evaluate(() => window.__kibanaOpened);
-  expect(opened).toMatchObject({ kibanaUrl: "https://localhost:45601", pod: "api-0" });
-  expect(await page.evaluate(() => window.__kibanaForwards)).toBe(1);
+  expect(opened).toMatchObject({ kibanaUrl: "https://127.0.0.1:45601", pod: "api-0" });
+  // The backend owns the forward and reuses it; each open asks for its port.
+  expect(await page.evaluate(() => window.__kibanaForwards)).toBe(2);
 });

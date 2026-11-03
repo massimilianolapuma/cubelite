@@ -8,8 +8,7 @@
 	import { HISTORY_RANGES, isHistoryRange } from '#lib/elastic.ts';
 	import { elastic } from '#lib/stores/elastic.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
-	import { openKibanaDiscover } from '#lib/tauri.ts';
-	import { portforward } from '#lib/stores/portforward.svelte.ts';
+	import { kibanaPortForward, openKibanaDiscover, type EsEndpoint } from '#lib/tauri.ts';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
@@ -56,14 +55,23 @@
 	// A configured URL wins; else an in-cluster Kibana through a port-forward (#505).
 	const canOpenKibana = $derived(!!endpoint?.kibanaUrl || !!endpoint?.kibanaService);
 
+	/** The configured Kibana URL, else the in-cluster Kibana's forwarded port. */
+	async function kibanaBase(ep: EsEndpoint): Promise<string | null> {
+		if (ep.kibanaUrl) return ep.kibanaUrl;
+		const service = ep.kibanaService;
+		const context = app.activeCluster;
+		if (!service || !context) return null;
+		// The forward listens on IPv4 loopback only.
+		const port = await kibanaPortForward(app.kubeconfigPath, context, service);
+		return `${service.https ? 'https' : 'http'}://127.0.0.1:${port}`;
+	}
+
 	async function openKibana() {
 		overflowOpen = false;
 		if (!endpoint) return;
-		const kibanaUrl =
-			endpoint.kibanaUrl ??
-			(endpoint.kibanaService ? await portforward.kibanaBase(endpoint.kibanaService) : null);
-		if (!kibanaUrl) return;
 		try {
+			const kibanaUrl = await kibanaBase(endpoint);
+			if (!kibanaUrl) return;
 			await openKibanaDiscover({
 				kibanaUrl,
 				preset: endpoint.preset,

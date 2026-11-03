@@ -86,7 +86,7 @@ pub struct EsEndpoint {
 }
 
 /// A Kibana service in the cluster (from Detect).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KibanaService {
     /// Namespace.

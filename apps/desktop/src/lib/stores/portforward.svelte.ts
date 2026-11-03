@@ -3,7 +3,7 @@
  * store is the UI's source of truth for what is forwarding where.
  */
 
-import { kibanaPortForward, startPortForward, stopPortForward, type KibanaService } from "#lib/tauri.ts";
+import { startPortForward, stopPortForward } from "#lib/tauri.ts";
 import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
 import { toasts } from "./toasts.svelte";
@@ -44,32 +44,6 @@ class PortForwardStore {
       toasts.push(`Port forward failed: ${errorMessage(e)}`, "err");
       return false;
     }
-  }
-
-  /**
-   * Base URL of an in-cluster Kibana (#505): reuses this cluster's forward to
-   * the service or starts one (listed with the other sessions as
-   * `svc/<name>`). Null (with a toast) when it cannot be forwarded.
-   */
-  async kibanaBase(service: KibanaService): Promise<string | null> {
-    const kc = app.kubeconfigPath;
-    const cluster = app.activeCluster;
-    if (!kc || !cluster) return null;
-    const pod = `svc/${service.service}`;
-    let session = this.sessions.find(
-      (s) => s.namespace === service.namespace && s.pod === pod && s.remotePort === service.port,
-    );
-    if (!session) {
-      try {
-        const result = await kibanaPortForward(kc, cluster, service);
-        session = { id: result.id, namespace: service.namespace, pod, localPort: result.localPort, remotePort: service.port };
-        this.sessions = [...this.sessions, session];
-      } catch (e) {
-        toasts.push(`Kibana port forward failed: ${errorMessage(e)}`, "err");
-        return null;
-      }
-    }
-    return `${service.https ? "https" : "http"}://localhost:${session.localPort}`;
   }
 
   async stop(id: string): Promise<void> {

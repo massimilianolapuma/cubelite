@@ -255,7 +255,7 @@ export function tauriMockScript(): string {
       }
       case "kibana_port_forward": {
         window.__kibanaForwards = (window.__kibanaForwards ?? 0) + 1;
-        return { id: "kb-1", localPort: 45601 };
+        return 45601;
       }
       case "open_kibana_discover": {
         window.__kibanaOpened = args;

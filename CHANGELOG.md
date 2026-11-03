@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Open an in-cluster Kibana** (desktop, #505): Detect in Preferences →
   Elasticsearch can pick the cluster's Kibana service; without a Kibana URL,
-  Open in Kibana port-forwards to it (listed with the other port-forwards,
-  reused on the next open) and opens Discover on localhost.
+  Open in Kibana port-forwards to it (one forward per context, reused while
+  its pod is ready, closed when the endpoint changes) and opens Discover on
+  127.0.0.1.
 - **Metrics history from Prometheus on macOS** (#512, closes #484): Settings
   → Integrations gets a Prometheus pane next to Elasticsearch (in-cluster
   with Detect, or external with basic, bearer or the Azure CLI; cluster

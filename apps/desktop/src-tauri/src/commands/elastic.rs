@@ -10,6 +10,8 @@ use cubelite_core::elastic::{
     kibana_discover_url as discover_url, ElasticError, EsAuth, EsEndpoint, EsTarget, FieldPreset,
     HistoryPage, HistoryQuery, KibanaService,
 };
+use std::collections::HashMap;
+
 use cubelite_core::integration;
 use cubelite_core::KubeClient;
 
@@ -20,15 +22,23 @@ use super::cache::{ConnCache, ConnKey};
 
 const KEYCHAIN_SERVICE: &str = "cubelite.elastic";
 
-/// Open connections per (kubeconfig, context).
+/// Kibana forwards per (kubeconfig, context, service); stopped on drop.
+type KibanaForwards = HashMap<(String, String, KibanaService), integration::ServiceTunnel>;
+
+/// Open connections per (kubeconfig, context), and the port-forwards to
+/// in-cluster Kibanas (#505).
 #[derive(Default)]
 pub struct ElasticState {
     connections: ConnCache<EsEndpoint, EsConnection>,
+    kibana: tokio::sync::Mutex<KibanaForwards>,
 }
 
 impl ElasticState {
+    /// Closes the context's connections and Kibana forwards (endpoint
+    /// saved, credentials changed, disconnect).
     async fn forget(&self, context: &str) {
         self.connections.forget(context).await;
+        self.kibana.lock().await.retain(|(_, c, _), _| c != context);
     }
 }
 
@@ -218,25 +228,34 @@ pub async fn elastic_disconnect(
     Ok(())
 }
 
-/// Port-forwards to a ready pod behind an in-cluster Kibana service (#505)
-/// and registers it with the port-forward sessions; the frontend opens
-/// Discover on `localhost:<localPort>`.
+/// Port-forward to an in-cluster Kibana (#505), reused while its pod is ready.
 #[tauri::command]
 pub async fn kibana_port_forward(
-    app: tauri::AppHandle,
+    state: State<'_, ElasticState>,
     kubeconfig_path: String,
     context: String,
     service: KibanaService,
-) -> Result<super::kubernetes::ForwardStartResult, String> {
-    use tauri::Manager;
-    let target = EsTarget::InCluster {
+) -> Result<u16, String> {
+    integration::check_target(&EsTarget::InCluster {
         namespace: service.namespace.clone(),
         service: service.service.clone(),
         port: service.port,
         https: service.https,
-    };
-    integration::check_target(&target)?;
+    })?;
     let client = kube(&kubeconfig_path, &context).await?.client();
+    // Held while connecting: a double click or a second window waits for
+    // the first forward instead of starting another one.
+    let mut forwards = state.kibana.lock().await;
+    let key = (kubeconfig_path, context, service.clone());
+    if let Some(tunnel) = forwards.get(&key) {
+        if tunnel.is_running()
+            && integration::pod_ready(&client, &service.namespace, &tunnel.pod).await
+        {
+            return Ok(tunnel.local_port);
+        }
+        // The pod was replaced (rollout, eviction): forward to a new one.
+        forwards.remove(&key);
+    }
     let tunnel = integration::open_service_tunnel(
         &client,
         &service.namespace,
@@ -247,12 +266,9 @@ pub async fn kibana_port_forward(
     .map_err(|e| match e {
         integration::TunnelError::Config(t) | integration::TunnelError::Connect(t) => t,
     })?;
-    let (local_port, handle) = tunnel.detach();
-    let id = app
-        .state::<super::kubernetes::PortForwardState>()
-        .register(handle)
-        .await;
-    Ok(super::kubernetes::ForwardStartResult { id, local_port })
+    let port = tunnel.local_port;
+    forwards.insert(key, tunnel);
+    Ok(port)
 }
 
 /// Kibana Discover URL for a pod's logs.
