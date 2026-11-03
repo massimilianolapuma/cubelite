@@ -480,6 +480,41 @@ export function getResourceYaml(
   });
 }
 
+/** One line of shell output (#488); mirrors `cubelite_core::exec::ExecLine`. */
+export type ExecLine = { channel: "stdout" | "stderr" | "status"; text: string };
+
+/**
+ * Starts a line-based shell (`/bin/sh`, no TTY) in the pod's first container.
+ * `sessionId` is chosen by the caller so it can listen to
+ * `exec-output:{sessionId}` / `exec-end:{sessionId}` before starting.
+ */
+export function startExec(
+  kubeconfigPath: string,
+  sessionId: string,
+  namespace: string,
+  pod: string,
+  context?: string,
+): Promise<void> {
+  return invoke<void>("start_exec", {
+    kubeconfigPath,
+    sessionId,
+    namespace,
+    pod,
+    container: null,
+    context: context ?? null,
+  });
+}
+
+/** Writes `data` to the shell's stdin (include the trailing newline). */
+export function execSend(sessionId: string, data: string): Promise<void> {
+  return invoke<void>("exec_send", { sessionId, data });
+}
+
+/** Ends a shell session; resolves even when it already ended. */
+export function stopExec(sessionId: string): Promise<void> {
+  return invoke<void>("stop_exec", { sessionId });
+}
+
 /**
  * Replace a resource with an edited YAML manifest (PUT, `kubectl replace`).
  * Rejects with a message ready to show (invalid manifest, conflict, API error).

@@ -125,6 +125,126 @@ pub async fn stop_port_forward(app: AppHandle, id: String) -> Result<(), String>
     Ok(())
 }
 
+/// Tauri managed state holding the active pod shell sessions (#488):
+/// stdin sender and the tasks to abort on stop, keyed by the frontend's id.
+#[derive(Default)]
+pub struct ExecState {
+    sessions: Mutex<HashMap<String, ExecEntry>>,
+}
+
+/// One live shell session.
+struct ExecEntry {
+    input: tokio::sync::mpsc::Sender<String>,
+    /// Event-forwarding task.
+    forward: JoinHandle<()>,
+    /// The session task; aborting it drops the exec connection.
+    session: tokio::task::AbortHandle,
+}
+
+/// Starts a line-based shell (`/bin/sh`, no TTY) in the pod's first
+/// container, or `container` when set.
+///
+/// `session_id` is chosen by the frontend so it can listen before starting:
+/// output lines are emitted as `exec-output:{session_id}` (an `ExecLine`
+/// each) and `exec-end:{session_id}` fires once when the shell ends.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn start_exec(
+    app: AppHandle,
+    kubeconfig_path: String,
+    session_id: String,
+    namespace: String,
+    pod: String,
+    container: Option<String>,
+    context: Option<String>,
+) -> Result<(), String> {
+    let kube_client = KubeClient::new(&kubeconfig_path, context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    let session = cubelite_core::exec::start_exec(
+        kube_client.client(),
+        &namespace,
+        &pod,
+        container,
+        vec!["/bin/sh".to_string()],
+    )
+    .await
+    .map_err(|e| match e {
+        cubelite_core::KubeconfigError::ClientError { reason } => reason,
+        other => other.to_string(),
+    })?;
+
+    let cubelite_core::exec::ExecSession {
+        input,
+        mut output,
+        handle,
+    } = session;
+    let session_abort = handle.abort_handle();
+    // Hold the map lock until the entry is in, so a session that ends at
+    // once cannot remove itself before it was inserted.
+    let state = app.state::<ExecState>();
+    let mut sessions = state.sessions.lock().await;
+    let app_clone = app.clone();
+    let id = session_id.clone();
+    let forward = tokio::spawn(async move {
+        while let Some(line) = output.recv().await {
+            // Ignore emit errors — the window may have been closed.
+            let _ = app_clone.emit(&format!("exec-output:{id}"), line);
+        }
+        let _ = app_clone.emit(&format!("exec-end:{id}"), ());
+        handle.abort();
+        app_clone
+            .state::<ExecState>()
+            .sessions
+            .lock()
+            .await
+            .remove(&id);
+    });
+
+    sessions.insert(
+        session_id,
+        ExecEntry {
+            input,
+            forward,
+            session: session_abort,
+        },
+    );
+    Ok(())
+}
+
+/// Writes `data` to a shell session's stdin (send `"ls\n"` for a line).
+#[tauri::command]
+pub async fn exec_send(app: AppHandle, session_id: String, data: String) -> Result<(), String> {
+    let input = app
+        .state::<ExecState>()
+        .sessions
+        .lock()
+        .await
+        .get(&session_id)
+        .map(|entry| entry.input.clone())
+        .ok_or_else(|| "The shell session has ended.".to_string())?;
+    input
+        .send(data)
+        .await
+        .map_err(|_| "The shell session has ended.".to_string())
+}
+
+/// Ends a shell session. Silently succeeds when it already ended.
+#[tauri::command]
+pub async fn stop_exec(app: AppHandle, session_id: String) -> Result<(), String> {
+    if let Some(entry) = app
+        .state::<ExecState>()
+        .sessions
+        .lock()
+        .await
+        .remove(&session_id)
+    {
+        entry.session.abort();
+        entry.forward.abort();
+    }
+    Ok(())
+}
+
 /// Tauri managed state holding all active watch task handles.
 ///
 /// Keyed by the watch ID string returned from [`watch_resources`].
