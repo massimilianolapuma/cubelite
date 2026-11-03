@@ -426,7 +426,7 @@ pub fn discover_kubeconfig_files(dir: &Path, excluding: &Path) -> Vec<PathBuf> {
     found
 }
 
-/// Minimal view of a YAML document used to confirm `kind: Config`.
+/// Minimal view of a YAML document used to read its `kind`.
 #[derive(serde::Deserialize)]
 struct KindProbe {
     kind: Option<String>,
@@ -437,13 +437,16 @@ struct KindProbe {
 pub const MAX_KUBECONFIG_FILE_SIZE: u64 = 16 * 1024 * 1024;
 
 /// True when the file is a kubeconfig document: at most
-/// [`MAX_KUBECONFIG_FILE_SIZE`] bytes, `kind` is exactly `Config` and the
-/// whole document deserialises as `KubeConfigFile`.
+/// [`MAX_KUBECONFIG_FILE_SIZE`] bytes, the whole document deserialises as
+/// `KubeConfigFile`, and either `kind` is exactly `Config` or — `kind`
+/// absent, as kubectl tolerates (#481) — at least one of `clusters`,
+/// `contexts`, `users` has an entry.
 ///
 /// Every field of a kubeconfig is optional, so a bare parse accepts any YAML
-/// or JSON mapping as an empty config; the `kind` check is what tells a
-/// kubeconfig apart from an unrelated file. Used by `~/.kube` discovery and
-/// by the desktop app to validate files the user adds explicitly.
+/// or JSON mapping as an empty config; the `kind` / entries check is what
+/// tells a kubeconfig apart from an unrelated file. Used by `~/.kube`
+/// discovery and by the desktop app to validate files the user adds
+/// explicitly.
 pub fn is_kubeconfig_file(path: &Path) -> bool {
     // `metadata` follows symlinks, so the cap applies to the target.
     let fits = std::fs::metadata(path).is_ok_and(|m| m.len() <= MAX_KUBECONFIG_FILE_SIZE);
@@ -453,11 +456,18 @@ pub fn is_kubeconfig_file(path: &Path) -> bool {
     let Ok(content) = std::fs::read_to_string(path) else {
         return false;
     };
-    let is_config_kind = serde_yaml::from_str::<KindProbe>(&content)
-        .ok()
-        .and_then(|probe| probe.kind)
-        .is_some_and(|kind| kind == "Config");
-    is_config_kind && serde_yaml::from_str::<KubeConfigFile>(&content).is_ok()
+    let Ok(probe) = serde_yaml::from_str::<KindProbe>(&content) else {
+        return false;
+    };
+    let Ok(config) = serde_yaml::from_str::<KubeConfigFile>(&content) else {
+        return false;
+    };
+    match probe.kind.as_deref() {
+        Some(kind) => kind == "Config",
+        None => {
+            !(config.clusters.is_empty() && config.contexts.is_empty() && config.users.is_empty())
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -969,6 +979,8 @@ contexts:
     }
 
     const MARKED: &str = "apiVersion: v1\nkind: Config\ncontexts: []\n";
+    /// kubectl-compatible file without `apiVersion` / `kind` (#481).
+    const NO_KIND: &str = "clusters:\n- name: lab\n  cluster: {server: \"https://lab.example:6443\"}\ncontexts:\n- name: lab\n  context: {cluster: lab, user: admin}\ncurrent-context: lab\nusers:\n- name: admin\n  user: {token: t}\n";
 
     #[test]
     fn discover_picks_marked_regular_files_sorted_and_skips_the_rest() {
@@ -1003,12 +1015,19 @@ contexts:
     }
 
     #[test]
-    fn is_kubeconfig_file_requires_kind_config_and_a_full_parse() {
+    fn is_kubeconfig_file_requires_kind_config_or_entries_and_a_full_parse() {
         let dir = kube_dir_with(&[
             ("good.yaml", MARKED),
             ("quoted.yaml", "apiVersion: v1\nkind: \"Config\"\n"),
             ("blob.json", "{\"name\": \"x\", \"items\": [1, 2]}\n"),
             ("no-kind.yaml", "apiVersion: v1\ncontexts: []\n"),
+            ("no-kind-entries.yaml", NO_KIND),
+            ("no-kind-users-only.yaml", "users:\n- name: u\n  user: {}\n"),
+            (
+                "other-kind-entries.yaml",
+                "kind: Secret\ncontexts:\n- name: c\n  context: {cluster: c, user: u}\n",
+            ),
+            ("no-kind-mapping.yaml", "name: x\nitems: [1, 2]\n"),
             ("secret.yaml", "apiVersion: v1\nkind: Secret\ndata: {}\n"),
             ("broken.yaml", "kind: Config\ncontexts: [\n"),
             ("empty.yaml", ""),
@@ -1018,6 +1037,10 @@ contexts:
         assert!(is_kubeconfig_file(&at("quoted.yaml")));
         assert!(!is_kubeconfig_file(&at("blob.json")));
         assert!(!is_kubeconfig_file(&at("no-kind.yaml")));
+        assert!(is_kubeconfig_file(&at("no-kind-entries.yaml")));
+        assert!(is_kubeconfig_file(&at("no-kind-users-only.yaml")));
+        assert!(!is_kubeconfig_file(&at("other-kind-entries.yaml")));
+        assert!(!is_kubeconfig_file(&at("no-kind-mapping.yaml")));
         assert!(!is_kubeconfig_file(&at("secret.yaml")));
         assert!(!is_kubeconfig_file(&at("broken.yaml")));
         assert!(!is_kubeconfig_file(&at("empty.yaml")));

@@ -82,12 +82,13 @@ actor KubeconfigService {
     static let maxKubeconfigFileSize = 16 * 1024 * 1024
 
     /// Returns `true` when `url` is a kubeconfig document: a regular file (a
-    /// symlink is followed) that parses as a kubeconfig and declares
-    /// `kind: Config` (YAML or JSON).
+    /// symlink is followed) that parses as a kubeconfig (YAML or JSON) and
+    /// either declares `kind: Config` or — `kind` absent, as kubectl
+    /// tolerates (#481) — has at least one cluster, context or user.
     ///
     /// Every kubeconfig field is optional, so a bare parse accepts any YAML or
-    /// JSON mapping as an empty config; the `kind` check is what tells a
-    /// kubeconfig apart from an unrelated file. The whole file is parsed
+    /// JSON mapping as an empty config; the `kind` / entries check is what
+    /// tells a kubeconfig apart from an unrelated file. The whole file is parsed
     /// because `kubectl` writes keys in alphabetical order, which puts `kind`
     /// after the inline certificates. Same rule as the desktop app (#448);
     /// used to validate files added from Preferences (#450).
@@ -101,7 +102,11 @@ actor KubeconfigService {
             let data = try? Data(contentsOf: target),
             let raw = try? YAMLDecoder().decode(RawKubeConfig.self, from: data)
         else { return false }
-        return raw.kind == "Config"
+        guard let kind = raw.kind else {
+            return !(raw.clusters ?? []).isEmpty || !(raw.contexts ?? []).isEmpty
+                || !(raw.users ?? []).isEmpty
+        }
+        return kind == "Config"
     }
 
     /// Returns the user's real home directory, bypassing sandbox container redirection.
