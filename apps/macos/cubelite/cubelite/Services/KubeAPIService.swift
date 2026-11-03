@@ -294,6 +294,45 @@ actor KubeAPIService {
         contentType: String? = nil,
         contextName: String? = nil
     ) async throws -> Data {
+        let (httpResponse, data) = try await perform(
+            path: path, method: method, body: body, contentType: contentType,
+            contextName: contextName)
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            if httpResponse.statusCode == 403 {
+                let resource = Self.extractForbiddenResource(from: data) ?? path
+                throw CubeliteError.forbidden(
+                    resource: resource,
+                    reason: body
+                )
+            }
+            throw CubeliteError.clientError(
+                reason: "HTTP \(httpResponse.statusCode): \(body)"
+            )
+        }
+
+        return data
+    }
+
+    /// Raw GET with its status, for callers that read API server and
+    /// proxied errors themselves (Prometheus service proxy, #511).
+    func rawGet(path: String, inContext contextName: String? = nil) async throws -> (
+        status: Int, body: Data
+    ) {
+        let (response, data) = try await perform(path: path, method: "GET", contextName: contextName)
+        return (response.statusCode, data)
+    }
+
+    /// Performs an HTTP request against the cluster API server; any status
+    /// is returned.
+    private func perform(
+        path: String,
+        method: String,
+        body: Data? = nil,
+        contentType: String? = nil,
+        contextName: String? = nil
+    ) async throws -> (HTTPURLResponse, Data) {
         let conn = try await connection(contextName: contextName)
         guard let url = URL(string: conn.base + path) else {
             throw CubeliteError.clientError(reason: "Invalid URL: \(conn.base + path)")
@@ -328,22 +367,7 @@ actor KubeAPIService {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw CubeliteError.clientError(reason: "Invalid response from Kubernetes API")
         }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            if httpResponse.statusCode == 403 {
-                let resource = Self.extractForbiddenResource(from: data) ?? path
-                throw CubeliteError.forbidden(
-                    resource: resource,
-                    reason: body
-                )
-            }
-            throw CubeliteError.clientError(
-                reason: "HTTP \(httpResponse.statusCode): \(body)"
-            )
-        }
-
-        return data
+        return (httpResponse, data)
     }
 
     /// Lists batch jobs, optionally scoped to a namespace and/or context.

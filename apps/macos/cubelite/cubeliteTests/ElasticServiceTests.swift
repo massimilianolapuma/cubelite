@@ -2,89 +2,6 @@ import XCTest
 
 @testable import cubelite
 
-// MARK: - Stubs
-
-/// Canned HTTP responses for `ElasticService` sessions, recorded per test.
-private final class ElasticStubProtocol: URLProtocol, @unchecked Sendable {
-    struct Recorded: Sendable {
-        let method: String
-        let url: String
-        let authorization: String?
-        let body: String
-    }
-
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var responses: [String: (Int, String)] = [:]
-    nonisolated(unsafe) private static var recorded: [Recorded] = []
-
-    /// Responses keyed by URL path (query ignored).
-    static func reset(_ map: [String: (Int, String)]) {
-        lock.withLock {
-            responses = map
-            recorded = []
-        }
-    }
-
-    static var requests: [Recorded] { lock.withLock { recorded } }
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        var body = request.httpBody ?? Data()
-        if body.isEmpty, let stream = request.httpBodyStream {
-            stream.open()
-            var buffer = [UInt8](repeating: 0, count: 4096)
-            while stream.hasBytesAvailable {
-                let n = stream.read(&buffer, maxLength: buffer.count)
-                if n <= 0 { break }
-                body.append(buffer, count: n)
-            }
-            stream.close()
-        }
-        let url = request.url
-        let path = url?.path ?? ""
-        let (status, text) = Self.lock.withLock { () -> (Int, String) in
-            Self.recorded.append(
-                Recorded(
-                    method: request.httpMethod ?? "GET", url: url?.absoluteString ?? "",
-                    authorization: request.value(forHTTPHeaderField: "Authorization"),
-                    body: String(decoding: body, as: UTF8.self)))
-            return Self.responses[path] ?? (404, "")
-        }
-        guard let url, let response = HTTPURLResponse(
-            url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)
-        else { return }
-        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(text.utf8))
-        client?.urlProtocolDidFinishLoading(self)
-    }
-
-    override func stopLoading() {}
-}
-
-private actor MemorySecrets: ElasticSecretStore {
-    var items: [String: Data] = [:]
-
-    func read(account: String) async throws -> Data? { items[account] }
-    func write(_ data: Data, account: String) async throws { items[account] = data }
-    func delete(account: String) async throws { items[account] = nil }
-}
-
-private struct StubCluster: ElasticClusterAccess {
-    let objects: [String: String]
-
-    func getIfPresent(path: String, inContext contextName: String?) async throws -> Data? {
-        objects[path].map { Data($0.utf8) }
-    }
-
-    func portForwardWebSocket(
-        namespace: String, pod: String, remotePort: Int, inContext contextName: String?
-    ) async throws -> URLSessionWebSocketTask {
-        throw ElasticError.connect("no port-forward in tests")
-    }
-}
-
 // MARK: - Tests
 
 final class ElasticServiceTests: XCTestCase {
@@ -96,7 +13,7 @@ final class ElasticServiceTests: XCTestCase {
         -> ElasticService
     {
         let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [ElasticStubProtocol.self]
+        config.protocolClasses = [IntegrationStubProtocol.self]
         return ElasticService(
             cluster: StubCluster(objects: cluster), secrets: secrets, configuration: config)
     }
@@ -108,7 +25,7 @@ final class ElasticServiceTests: XCTestCase {
         """
 
     func testSearchSendsTheStoredCredentialsToTheirEndpoint() async throws {
-        ElasticStubProtocol.reset(["/logs-*,filebeat-*,logstash-*/_search": (200, searchResponse)])
+        IntegrationStubProtocol.reset(["/logs-*,filebeat-*,logstash-*/_search": (200, searchResponse)])
         let es = service()
         try await es.saveAuth(context: "prod", endpoint: endpoint, auth: .apiKey("abc=="))
         let page = try await es.search(
@@ -116,7 +33,7 @@ final class ElasticServiceTests: XCTestCase {
             query: HistoryQuery(namespace: "shop", pod: "api-0", from: "now-1h", to: "now"))
         XCTAssertEqual(page.lines.map(\.message), ["hello"])
         XCTAssertEqual(page.total, 1)
-        let request = try XCTUnwrap(ElasticStubProtocol.requests.last)
+        let request = try XCTUnwrap(IntegrationStubProtocol.requests.last)
         XCTAssertEqual(request.method, "POST")
         XCTAssertEqual(
             request.url,
@@ -127,7 +44,7 @@ final class ElasticServiceTests: XCTestCase {
     }
 
     func testCredentialsAreNotSentToAnotherEndpoint() async throws {
-        ElasticStubProtocol.reset(["/logs-*/_search": (200, searchResponse)])
+        IntegrationStubProtocol.reset(["/logs-*/_search": (200, searchResponse)])
         let es = service()
         try await es.saveAuth(context: "prod", endpoint: endpoint, auth: .apiKey("abc=="))
         let other = EsEndpoint(target: .external(url: "https://evil.example"), indexPattern: "logs-*")
@@ -139,7 +56,7 @@ final class ElasticServiceTests: XCTestCase {
         } catch ElasticError.config(let text) {
             XCTAssertTrue(text.contains("another endpoint"), text)
         }
-        XCTAssertTrue(ElasticStubProtocol.requests.isEmpty, "nothing reached the other host")
+        XCTAssertTrue(IntegrationStubProtocol.requests.isEmpty, "nothing reached the other host")
         let methodHere = try await es.authMethod(context: "prod", endpoint: endpoint)
         let methodThere = try await es.authMethod(context: "prod", endpoint: other)
         XCTAssertEqual(methodHere, "api-key")
@@ -172,7 +89,7 @@ final class ElasticServiceTests: XCTestCase {
     }
 
     func testHeadersWithControlCharactersAreRefused() async {
-        ElasticStubProtocol.reset(["/": (200, #"{"version":{"number":"8"}}"#)])
+        IntegrationStubProtocol.reset(["/": (200, #"{"version":{"number":"8"}}"#)])
         do {
             _ = try await service().test(
                 context: "prod", endpoint: endpoint, auth: .bearer("a\r\nX-Injected: 1"))
@@ -180,15 +97,15 @@ final class ElasticServiceTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? ElasticError, .config("Credentials contain invalid characters"))
         }
-        XCTAssertTrue(ElasticStubProtocol.requests.isEmpty)
+        XCTAssertTrue(IntegrationStubProtocol.requests.isEmpty)
         XCTAssertEqual(try Elastic.checkedHeader(.apiKey(" ok== ")), "ApiKey ok==")
         XCTAssertThrowsError(try Elastic.checkedHeader(.apiKey("clé")))
     }
 
     func testPathSegmentsRefuseDotNames() throws {
-        XCTAssertEqual(try ElasticService.pathSegment("a b/c"), "a%20b%2Fc")
+        XCTAssertEqual(try Integration.pathSegment("a b/c"), "a%20b%2Fc")
         for bad in ["", ".", ".."] {
-            XCTAssertThrowsError(try ElasticService.pathSegment(bad), bad)
+            XCTAssertThrowsError(try Integration.pathSegment(bad), bad)
         }
     }
 
@@ -204,7 +121,7 @@ final class ElasticServiceTests: XCTestCase {
     }
 
     func testErrorsCarryTheServerReason() async {
-        ElasticStubProtocol.reset([
+        IntegrationStubProtocol.reset([
             "/logs-*,filebeat-*,logstash-*/_search": (
                 404, #"{"error":{"root_cause":[{"reason":"no such index [logs-x]"}]},"status":404}"#
             )
@@ -217,12 +134,12 @@ final class ElasticServiceTests: XCTestCase {
             XCTFail("expected an HTTP error")
         } catch {
             XCTAssertEqual(error as? ElasticError, .http(status: 404, reason: "no such index [logs-x]"))
-            XCTAssertNil(ElasticStubProtocol.requests.last?.authorization)
+            XCTAssertNil(IntegrationStubProtocol.requests.last?.authorization)
         }
     }
 
     func testTestConnectionReportsVersionHealthAndIndices() async throws {
-        ElasticStubProtocol.reset([
+        IntegrationStubProtocol.reset([
             "/": (200, #"{"cluster_name":"prod-logs","version":{"number":"8.15.0"}}"#),
             "/_cluster/health": (200, #"{"status":"yellow"}"#),
             "/_resolve/index/logs-*,filebeat-*,logstash-*": (
@@ -235,11 +152,11 @@ final class ElasticServiceTests: XCTestCase {
         XCTAssertEqual(
             info, EsInfo(version: "8.15.0", clusterName: "prod-logs", health: "yellow", indices: 3))
         XCTAssertEqual(
-            Set(ElasticStubProtocol.requests.map(\.authorization)), ["Basic ZWxhc3RpYzpwdw=="])
+            Set(IntegrationStubProtocol.requests.map(\.authorization)), ["Basic ZWxhc3RpYzpwdw=="])
     }
 
     func testTestConnectionToleratesMissingHealthRights() async throws {
-        ElasticStubProtocol.reset([
+        IntegrationStubProtocol.reset([
             "/": (200, #"{"cluster_name":"c","version":{"number":"8.0.0"}}"#),
             "/_cluster/health": (403, #"{"error":{"reason":"forbidden"}}"#),
         ])
@@ -313,7 +230,7 @@ final class ElasticServiceTests: XCTestCase {
 final class ElasticTunnelTests: XCTestCase {
 
     func testTunnelListensOnALoopbackPortAndCloses() async throws {
-        let (tunnel, port) = try await ElasticTunnel.open {
+        let (tunnel, port) = try await IntegrationTunnel.open {
             throw ElasticError.connect("unused")
         }
         XCTAssertGreaterThan(port, 0)
@@ -325,7 +242,7 @@ final class ElasticTunnelTests: XCTestCase {
 final class ElasticTrustDelegateTests: XCTestCase {
 
     func testRedirectsAreNeverFollowed() throws {
-        let delegate = ElasticTrustDelegate(hostname: nil, anchor: nil, insecure: false)
+        let delegate = IntegrationTrustDelegate(hostname: nil, anchor: nil, insecure: false)
         let from = try XCTUnwrap(URL(string: "https://es.example/_search"))
         let to = try XCTUnwrap(URL(string: "https://evil.example/collect"))
         let response = try XCTUnwrap(
