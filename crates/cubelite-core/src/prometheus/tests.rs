@@ -25,7 +25,7 @@ fn selectors_match_pods_deployments_and_statefulsets_literally() {
             },
             Some(" aks-prod ")
         ),
-        r#"namespace="shop", pod=~"api\\.v2-[a-z0-9]{6,10}-[a-z0-9]{5}", cluster="aks-prod""#
+        r#"namespace="shop", pod=~"api\\.v2-[bcdfghjklmnpqrstvwxz2456789]{6,10}-[bcdfghjklmnpqrstvwxz2456789]{5}", cluster="aks-prod""#
     );
     assert_eq!(
         selector(
@@ -36,6 +36,27 @@ fn selectors_match_pods_deployments_and_statefulsets_literally() {
         r#"namespace="shop", pod=~"db-[0-9]+""#
     );
     assert_eq!(escape("a\"b\\c\nd"), r#""a\"b\\c\nd""#);
+}
+
+#[test]
+fn deployment_regex_matches_its_pods_only() {
+    let sel = |name: &str| selector("ns", &Workload::Deployment { name: name.into() }, None);
+    let regex_of = |s: String| {
+        let start = s.find("pod=~\"").expect("regex") + 6;
+        let end = s[start..].find('"').expect("end") + start;
+        s[start..end].replace("\\\\", "\\")
+    };
+    let matches = |name: &str, pod: &str| {
+        let re = regex::Regex::new(&format!("^(?:{})$", regex_of(sel(name)))).expect("regex");
+        re.is_match(pod)
+    };
+    assert!(matches("api", "api-7c9f8b6d54-x2kzq"));
+    assert!(!matches("api", "api-28345678-ab0cd"), "CronJob pod");
+    assert!(!matches("api", "api-gateway-7c9f8b6d54-x2kzq"));
+    let long = "a".repeat(50);
+    let truncated = format!("{}-7c9f8b6", long);
+    let pod = format!("{}{}", &truncated[..58], "x2kzq");
+    assert!(matches(&long, &pod), "generateName cut at 58 characters");
 }
 
 #[test]
@@ -51,7 +72,8 @@ fn chart_queries_group_by_container_or_sum() {
     );
     assert_eq!(
         chart_query(Chart::Restarts, sel, true, 360),
-        r#"sum by (container) (increase(kube_pod_container_status_restarts_total{namespace="shop", pod="api-0"}[360s]))"#
+        r#"sum by (container) (kube_pod_container_status_restarts_total{namespace="shop", pod="api-0"})"#,
+        "cumulative: summing windowed increases would count each restart several times"
     );
     assert_eq!(
         chart_query(Chart::NetworkTx, sel, true, 60),
@@ -188,7 +210,7 @@ fn grafana_explore_url_encodes_panes() {
         "now-6h",
         "now",
     );
-    assert!(url.starts_with("https://grafana.example/explore?schemaVersion=1&orgId=1&panes="));
+    assert!(url.starts_with("https://grafana.example/explore?schemaVersion=1&panes="));
     let encoded = url.split("panes=").nth(1).expect("panes");
     let decoded: String = url::form_urlencoded::parse(format!("p={encoded}").as_bytes())
         .next()
@@ -403,4 +425,79 @@ async fn info_reports_exporters_and_clusters() {
     assert!(!info.kube_state_metrics);
     assert_eq!(info.clusters, ["aks-prod", "aks-test"]);
     server.await.expect("server");
+}
+
+/// A kube client whose API server answers every request with `reply`.
+fn api_server(status: u16, reply: serde_json::Value) -> kube::Client {
+    use http::{Request, Response};
+    use kube::client::Body;
+    let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+    tokio::spawn(async move {
+        let mut handle = std::pin::pin!(handle);
+        while let Some((_request, send)) = handle.next_request().await {
+            let response = Response::builder()
+                .status(status)
+                .body(Body::from(reply.to_string().into_bytes()))
+                .expect("response");
+            send.send_response(response);
+        }
+    });
+    kube::Client::new(service, "default")
+}
+
+fn in_cluster() -> PromEndpoint {
+    let mut endpoint = external("http://unused");
+    endpoint.target = PromTarget::InCluster {
+        namespace: "monitoring".into(),
+        service: "prometheus-operated".into(),
+        port: 9090,
+        https: false,
+    };
+    endpoint
+}
+
+#[tokio::test]
+async fn proxy_tells_the_api_server_from_prometheus() {
+    // Prometheus itself answered (even with an error): use the proxy.
+    let prom = api_server(
+        200,
+        json!({ "status": "success", "data": { "version": "2.54.1" } }),
+    );
+    assert!(connect(Some(prom), &in_cluster(), &PromAuth::None)
+        .await
+        .is_ok());
+    // The API server says the service does not exist: a config error, not
+    // "check the URL".
+    let missing = api_server(
+        404,
+        json!({ "kind": "Status", "code": 404, "message": "services \"prometheus-operated\" not found" }),
+    );
+    let err = connect(Some(missing), &in_cluster(), &PromAuth::None)
+        .await
+        .expect_err("missing service");
+    assert!(
+        matches!(&err, PromError::Config(t) if t.contains("not found")),
+        "{err}"
+    );
+    // Forbidden proxy: falls back to a port-forward, which needs the
+    // service (forbidden too here) — the error is the tunnel's, not the proxy's.
+    let forbidden = api_server(
+        403,
+        json!({ "kind": "Status", "code": 403, "message": "services \"prometheus-operated\" is forbidden" }),
+    );
+    let err = connect(Some(forbidden), &in_cluster(), &PromAuth::None)
+        .await
+        .expect_err("no tunnel either");
+    assert!(matches!(err, PromError::Connect(_)), "{err}");
+    let mut bad = in_cluster();
+    bad.target = PromTarget::InCluster {
+        namespace: "../x".into(),
+        service: "s".into(),
+        port: 9090,
+        https: false,
+    };
+    assert!(matches!(
+        connect(Some(api_server(200, json!({}))), &bad, &PromAuth::None).await,
+        Err(PromError::Config(_))
+    ));
 }

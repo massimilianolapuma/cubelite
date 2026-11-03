@@ -152,6 +152,12 @@ pub async fn connect(
         } => {
             let client =
                 kube.ok_or_else(|| ElasticError::Config("No cluster connection".to_string()))?;
+            let tunnel = open_service_tunnel(&client, namespace, service, *port)
+                .await
+                .map_err(|e| match e {
+                    TunnelError::Config(t) => ElasticError::Config(t),
+                    TunnelError::Connect(t) => ElasticError::Connect(t),
+                })?;
             if *https && !endpoint.skip_tls_verify {
                 if let Some(pem) = eck_ca(&client, namespace, service).await? {
                     let cert = reqwest::Certificate::from_pem(&pem).map_err(connect_error)?;
@@ -161,12 +167,6 @@ pub async fn connect(
             if *auth == EsAuth::EckUser {
                 resolved = Some(eck_credentials(client.clone(), namespace, service).await?);
             }
-            let tunnel = open_service_tunnel(&client, namespace, service, *port)
-                .await
-                .map_err(|e| match e {
-                    TunnelError::Config(t) => ElasticError::Config(t),
-                    TunnelError::Connect(t) => ElasticError::Connect(t),
-                })?;
             let host = service_host(namespace, service);
             // The tunnel is local: never route it through HTTP(S)_PROXY.
             builder = builder

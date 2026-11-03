@@ -2,8 +2,9 @@
 //! the user is already logged in with (spec §6). Tokens stay in memory
 //! until five minutes before they expire and are never stored.
 
-use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use tokio::sync::Mutex;
 
 use serde_json::Value;
 
@@ -18,7 +19,18 @@ const MARGIN: Duration = Duration::from_secs(300);
 /// Lifetime assumed when the CLI reports no usable expiry.
 const FALLBACK_LIFETIME: Duration = Duration::from_secs(600);
 
-static CACHE: Mutex<Option<(String, SystemTime)>> = Mutex::new(None);
+/// How long `az` may take (it can wait on the network or a broken install).
+const CLI_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// One token for the account `az` is logged in with; held while fetching so
+/// concurrent connects run `az` once.
+static CACHE: Mutex<Option<(String, SystemTime)>> = Mutex::const_new(None);
+
+/// Forgets the cached token (Azure Monitor rejected it: expired, revoked,
+/// or `az` now points at another tenant).
+pub async fn forget() {
+    *CACHE.lock().await = None;
+}
 
 /// Whether `url` is an Azure Monitor query endpoint — the only place an
 /// Azure token may be sent.
@@ -67,15 +79,14 @@ pub fn cli_error(stderr: &str) -> PromError {
 
 /// A token for Azure Monitor managed Prometheus (cached until it nears expiry).
 pub async fn token() -> Result<String, PromError> {
+    let mut cache = CACHE.lock().await;
     let now = SystemTime::now();
-    if let Ok(cache) = CACHE.lock() {
-        if let Some((token, expires)) = cache.as_ref() {
-            if now + MARGIN < *expires {
-                return Ok(token.clone());
-            }
+    if let Some((token, expires)) = cache.as_ref() {
+        if now + MARGIN < *expires {
+            return Ok(token.clone());
         }
     }
-    let output = tokio::process::Command::new("az")
+    let run = tokio::process::Command::new("az")
         .args([
             "account",
             "get-access-token",
@@ -85,8 +96,10 @@ pub async fn token() -> Result<String, PromError> {
             "json",
         ])
         .kill_on_drop(true)
-        .output()
+        .output();
+    let output = tokio::time::timeout(CLI_TIMEOUT, run)
         .await
+        .map_err(|_| PromError::Config("The Azure CLI did not answer within 30 s".to_string()))?
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 PromError::Config(
@@ -100,8 +113,6 @@ pub async fn token() -> Result<String, PromError> {
         return Err(cli_error(&String::from_utf8_lossy(&output.stderr)));
     }
     let (token, expires) = parse_token(&String::from_utf8_lossy(&output.stdout), now)?;
-    if let Ok(mut cache) = CACHE.lock() {
-        *cache = Some((token.clone(), expires));
-    }
+    *cache = Some((token.clone(), expires));
     Ok(token)
 }

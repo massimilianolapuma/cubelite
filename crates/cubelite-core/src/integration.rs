@@ -44,6 +44,7 @@ pub enum Target {
 /// verification was off. Secrets are only sent to the same binding, so a
 /// request naming another endpoint cannot exfiltrate them.
 pub fn binding(target: &Target, skip_tls_verify: bool) -> Result<String, String> {
+    check_target(target)?;
     let origin = match target {
         Target::External { url } => url::Url::parse(url.trim())
             .map_err(|e| format!("Invalid URL \"{url}\": {e}"))?
@@ -66,10 +67,41 @@ pub fn binding(target: &Target, skip_tls_verify: bool) -> Result<String, String>
     })
 }
 
+/// A DNS-1123 label (namespace and service names): it also keeps names out
+/// of other API server paths (`/`, `..`).
+fn is_dns_label(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 63
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+}
+
+/// Checks an in-cluster target's names; external targets are checked when
+/// connecting ([`check_external_url`]).
+pub fn check_target(target: &Target) -> Result<(), String> {
+    if let Target::InCluster {
+        namespace, service, ..
+    } = target
+    {
+        for (what, name) in [("namespace", namespace), ("service", service)] {
+            if !is_dns_label(name) {
+                return Err(format!("Invalid {what} name \"{name}\""));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Checks an external URL: http(s), no credentials in it, and credentials
 /// only over https (or plain http to loopback, which never leaves the host).
+/// The query and fragment are dropped: paths are appended to the result.
 pub fn check_external_url(url: &str, sends_credentials: bool) -> Result<reqwest::Url, String> {
-    let parsed = reqwest::Url::parse(url.trim()).map_err(|e| format!("Invalid URL: {e}"))?;
+    let mut parsed = reqwest::Url::parse(url.trim()).map_err(|e| format!("Invalid URL: {e}"))?;
+    parsed.set_query(None);
+    parsed.set_fragment(None);
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("Invalid URL: use http:// or https://".to_string());
     }
@@ -242,6 +274,19 @@ pub async fn send(
         }
     })?;
     let status = response.status().as_u16();
+    if (300..400).contains(&status) {
+        // Redirects are refused (see `http_builder`): say where it pointed.
+        let location = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("elsewhere")
+            .to_string();
+        return Ok(RawResponse {
+            status,
+            body: format!("redirect to {location} not followed — use that URL as the endpoint"),
+        });
+    }
     let body = response.text().await.map_err(|e| e.to_string())?;
     Ok(RawResponse { status, body })
 }
@@ -295,6 +340,33 @@ mod tests {
             "in-cluster:logging/quickstart-es-http:9200:https"
         );
         assert!(binding(&ext("not a url"), false).is_err());
+    }
+
+    #[test]
+    fn in_cluster_names_must_be_dns_labels() {
+        let target = |ns: &str, svc: &str| Target::InCluster {
+            namespace: ns.into(),
+            service: svc.into(),
+            port: 9090,
+            https: false,
+        };
+        assert!(check_target(&target("monitoring", "prometheus-operated")).is_ok());
+        for (ns, svc) in [
+            ("a/b", "s"),
+            ("..", "s"),
+            ("ns", ""),
+            ("ns", "Svc"),
+            ("ns", "-s"),
+        ] {
+            assert!(check_target(&target(ns, svc)).is_err(), "{ns}/{svc}");
+            assert!(binding(&target(ns, svc), false).is_err());
+        }
+        assert_eq!(
+            check_external_url("https://p.example/api/prom?x=1#f", false)
+                .expect("url")
+                .as_str(),
+            "https://p.example/api/prom"
+        );
     }
 
     #[test]

@@ -50,6 +50,19 @@ fn store_auth(context: &str, endpoint: &PromEndpoint, auth: &PromAuth) -> Result
     vault::write(KEYCHAIN_SERVICE, context, record.as_ref())
 }
 
+/// A dead tunnel or network change, or rejected credentials (an expired
+/// Azure token): the next call connects again.
+fn must_reconnect<T>(result: &Result<T, PromError>) -> bool {
+    matches!(
+        result,
+        Err(PromError::Connect(_)
+            | PromError::Http {
+                status: 401 | 403,
+                ..
+            })
+    )
+}
+
 fn text(e: PromError) -> String {
     e.to_string()
 }
@@ -130,7 +143,7 @@ pub async fn prometheus_metrics(
     let key: ConnKey = (kubeconfig_path, context);
     let conn = connection(&state, &key, &endpoint).await?;
     let result = conn.metrics(&endpoint, &request).await;
-    if let Err(PromError::Connect(_)) = &result {
+    if must_reconnect(&result) {
         state.connections.invalidate(&key, &conn).await;
     }
     result.map_err(text)
@@ -148,7 +161,7 @@ pub async fn prometheus_sparklines(
     let key: ConnKey = (kubeconfig_path, context);
     let conn = connection(&state, &key, &endpoint).await?;
     let result = conn.sparklines(&endpoint, &namespace).await;
-    if let Err(PromError::Connect(_)) = &result {
+    if must_reconnect(&result) {
         state.connections.invalidate(&key, &conn).await;
     }
     result.map_err(text)
@@ -207,8 +220,10 @@ fn explore_url(
     queries: &[String],
     range: MetricsRange,
 ) -> Result<String, String> {
-    let base =
+    let mut base =
         url::Url::parse(grafana_url.trim()).map_err(|e| format!("Invalid Grafana URL: {e}"))?;
+    base.set_query(None);
+    base.set_fragment(None);
     if !matches!(base.scheme(), "http" | "https") {
         return Err("Grafana URL must start with http:// or https://".to_string());
     }

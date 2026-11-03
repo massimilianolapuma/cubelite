@@ -17,7 +17,18 @@ use super::{
     ChartData, MetricsRequest, MetricsResult, PromAuth, PromEndpoint, PromError, PromTarget,
     Sparklines, SPARKLINE_RANGE, SPARKLINE_STEP,
 };
-use crate::integration::{self, open_service_tunnel, service_host, ServiceTunnel, TunnelError};
+use crate::integration::{
+    self, open_service_tunnel, service_host, ServiceTunnel, TunnelError, REQUEST_TIMEOUT,
+};
+
+/// What goes in `Authorization`.
+enum Credential {
+    None,
+    Header(String),
+    /// Resolved on every request: the cached Azure token is refreshed
+    /// before it expires, so a long-lived connection keeps working.
+    Azure,
+}
 
 enum Route {
     /// `/api/v1/namespaces/{ns}/services/{scheme}:{svc}:{port}/proxy` on the API server.
@@ -26,9 +37,16 @@ enum Route {
     Http {
         http: reqwest::Client,
         base: String,
-        auth: Option<String>,
+        auth: Credential,
         _tunnel: Option<ServiceTunnel>,
     },
+}
+
+/// A response and whether the API server (not Prometheus) produced it.
+struct Answer {
+    status: u16,
+    body: String,
+    from_api_server: bool,
 }
 
 /// An open connection to a Prometheus endpoint.
@@ -102,7 +120,7 @@ pub async fn connect(
         PromTarget::External { url } => {
             let parsed = integration::check_external_url(url, *auth != PromAuth::None)
                 .map_err(PromError::Config)?;
-            let header = match auth {
+            let credential = match auth {
                 PromAuth::AzureCli => {
                     if !azure::is_azure_monitor_url(&parsed) {
                         return Err(PromError::Config(
@@ -110,9 +128,11 @@ pub async fn connect(
                                 .to_string(),
                         ));
                     }
-                    Some(format!("Bearer {}", azure::token().await?))
+                    // Fail early (az missing, logged out) rather than per chart.
+                    azure::token().await?;
+                    Credential::Azure
                 }
-                other => other.header(),
+                other => other.header().map_or(Credential::None, Credential::Header),
             };
             let http = integration::http_builder(endpoint.skip_tls_verify)
                 .build()
@@ -121,7 +141,7 @@ pub async fn connect(
                 route: Route::Http {
                     http,
                     base: parsed.as_str().trim_end_matches('/').to_string(),
-                    auth: header,
+                    auth: credential,
                     _tunnel: None,
                 },
             })
@@ -138,6 +158,7 @@ pub async fn connect(
                         .to_string(),
                 ));
             }
+            integration::check_target(&endpoint.target).map_err(PromError::Config)?;
             let client =
                 kube.ok_or_else(|| PromError::Config("No cluster connection".to_string()))?;
             let proxy = PromConnection {
@@ -146,16 +167,25 @@ pub async fn connect(
                     base: proxy_base(namespace, service, *port, *https),
                 },
             };
-            match proxy.get("/api/v1/status/buildinfo").await {
+            let probe = proxy.fetch("/api/v1/status/buildinfo").await?;
+            match (probe.from_api_server, probe.status) {
+                // Prometheus answered (an old one may lack build info).
+                (false, _) => return Ok(proxy),
+                (true, 404) => {
+                    return Err(PromError::Config(format!(
+                        "Service {namespace}/{service} not found: {}",
+                        error_reason(&probe.body, 404)
+                    )))
+                }
                 // Forbidden (no `services/proxy` RBAC) or unavailable (no
-                // endpoints, TLS to the pod): try a port-forward instead.
-                Err(PromError::Http {
-                    status: 403 | 502 | 503,
-                    ..
-                }) => {}
-                // Reachable — even an older Prometheus without build info.
-                Ok(_) | Err(PromError::Http { status: 404, .. }) => return Ok(proxy),
-                Err(other) => return Err(other),
+                // endpoints, error reaching the pod): try a port-forward.
+                (true, 403 | 500 | 502 | 503) => {}
+                (true, status) => {
+                    return Err(PromError::Http {
+                        status,
+                        reason: error_reason(&probe.body, status),
+                    })
+                }
             }
             let tunnel = open_service_tunnel(&client, namespace, service, *port)
                 .await
@@ -171,7 +201,7 @@ pub async fn connect(
                 route: Route::Http {
                     http,
                     base: format!("{scheme}://{host}:{}", tunnel.local_port),
-                    auth: None,
+                    auth: Credential::None,
                     _tunnel: Some(tunnel),
                 },
             })
@@ -195,24 +225,46 @@ fn encode(pairs: &[(&str, String)]) -> String {
 }
 
 impl PromConnection {
-    /// GET `path` (from `/api/v1/…`), parsed as JSON.
-    async fn get(&self, path: &str) -> Result<Value, PromError> {
-        let (status, body) = match &self.route {
+    /// GET `path` (from `/api/v1/…`) with a 15 s limit on every route.
+    async fn fetch(&self, path: &str) -> Result<Answer, PromError> {
+        match &self.route {
             Route::Proxy { client, base } => {
                 let request = http::Request::get(format!("{base}{path}"))
-                    .body(Vec::new())
+                    .body(kube::client::Body::from(Vec::new()))
                     .map_err(|e| PromError::Config(e.to_string()))?;
-                match client.request_text(request).await {
-                    Ok(text) => (200, text),
-                    Err(kube::Error::Api(status)) => (status.code, status.message.clone()),
-                    Err(e) => return Err(PromError::Connect(e.to_string())),
-                }
+                let exchange = async {
+                    let response = client.send(request).await?;
+                    let status = response.status().as_u16();
+                    let bytes = response.into_body().collect_bytes().await?;
+                    Ok::<_, kube::Error>((status, bytes))
+                };
+                let (status, bytes) = tokio::time::timeout(REQUEST_TIMEOUT, exchange)
+                    .await
+                    .map_err(|_| PromError::Connect("timed out after 15 s".to_string()))?
+                    .map_err(|e| PromError::Connect(e.to_string()))?;
+                let body = String::from_utf8_lossy(&bytes).into_owned();
+                // The API server's own errors are `Status` objects; Prometheus
+                // answers `{"status":"error",…}` or its data.
+                let from_api_server = !(200..300).contains(&status)
+                    && serde_json::from_str::<Value>(&body)
+                        .ok()
+                        .is_some_and(|v| v.get("kind").and_then(Value::as_str) == Some("Status"));
+                Ok(Answer {
+                    status,
+                    body,
+                    from_api_server,
+                })
             }
             Route::Http {
                 http, base, auth, ..
             } => {
+                let header = match auth {
+                    Credential::None => None,
+                    Credential::Header(h) => Some(h.clone()),
+                    Credential::Azure => Some(format!("Bearer {}", azure::token().await?)),
+                };
                 let response =
-                    integration::send(http.get(format!("{base}{path}")), auth.as_deref())
+                    integration::send(http.get(format!("{base}{path}")), header.as_deref())
                         .await
                         .map_err(|e| {
                             if e.starts_with("Credentials contain") {
@@ -221,16 +273,29 @@ impl PromConnection {
                                 PromError::Connect(e)
                             }
                         })?;
-                (response.status, response.body)
+                if response.status == 401 && matches!(auth, Credential::Azure) {
+                    // Expired, revoked or another tenant: fetch a new one next time.
+                    azure::forget().await;
+                }
+                Ok(Answer {
+                    status: response.status,
+                    body: response.body,
+                    from_api_server: false,
+                })
             }
-        };
-        if !(200..300).contains(&status) {
+        }
+    }
+
+    /// GET `path`, parsed as JSON.
+    async fn get(&self, path: &str) -> Result<Value, PromError> {
+        let answer = self.fetch(path).await?;
+        if !(200..300).contains(&answer.status) {
             return Err(PromError::Http {
-                status,
-                reason: error_reason(&body, status),
+                status: answer.status,
+                reason: error_reason(&answer.body, answer.status),
             });
         }
-        serde_json::from_str(&body).map_err(|e| PromError::Response(e.to_string()))
+        serde_json::from_str(&answer.body).map_err(|e| PromError::Response(e.to_string()))
     }
 
     /// `query_range` → `data`.
@@ -336,11 +401,18 @@ impl PromConnection {
                 .and_then(|data| parse_series(&data, label))
         }))
         .await;
-        // Unreachable is everyone's problem: report it once.
-        if results
-            .iter()
-            .all(|r| matches!(r, Err(PromError::Connect(_))))
-        {
+        // Unreachable or rejected credentials are everyone's problem:
+        // report them once (the caller then drops the connection).
+        if results.iter().all(|r| {
+            matches!(
+                r,
+                Err(PromError::Connect(_)
+                    | PromError::Http {
+                        status: 401 | 403,
+                        ..
+                    })
+            )
+        }) {
             if let Some(Err(e)) = results.into_iter().next() {
                 return Err(e);
             }

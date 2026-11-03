@@ -202,7 +202,8 @@ pub enum Chart {
     MemoryRequest,
     /// Memory limits (bytes).
     MemoryLimit,
-    /// Container restarts per step.
+    /// Cumulative restart counter; the range total is the sum of its
+    /// increases (a new pod starts again from 0).
     Restarts,
     /// Received bytes per second (pod level).
     NetworkRx,
@@ -252,18 +253,30 @@ fn regex_literal(name: &str) -> String {
         .collect()
 }
 
+/// Alphabet of ReplicaSet hashes and generated name suffixes (Kubernetes'
+/// `rand.SafeEncodeString`: no vowels, no 0/1/3), which also keeps CronJob
+/// pods (`name-<minutes>-xxxxx`) out of a deployment's match.
+const SAFE: &str = "[bcdfghjklmnpqrstvwxz2456789]";
+
+/// Generated names are cut to 58 characters before the 5-character suffix.
+const GENERATED_PREFIX_MAX: usize = 58;
+
+/// Regex for a deployment's pods: `name-<hash>-<suffix>`, or for long names
+/// the truncated `generateName` prefix followed by the suffix.
+fn deployment_pods(name: &str) -> String {
+    if name.len() + "-".len() + 10 + "-".len() <= GENERATED_PREFIX_MAX {
+        return format!("{}-{SAFE}{{6,10}}-{SAFE}{{5}}", regex_literal(name));
+    }
+    let kept: String = name.chars().take(GENERATED_PREFIX_MAX).collect();
+    format!("{}(-{SAFE}{{0,10}}-?)?{SAFE}{{5}}", regex_literal(&kept))
+}
+
 /// Label matchers for a workload: namespace, pod (exact or regex) and the
 /// optional `cluster` label.
 pub fn selector(namespace: &str, workload: &Workload, cluster: Option<&str>) -> String {
     let pod = match workload {
         Workload::Pod { name } => format!("pod={}", escape(name)),
-        Workload::Deployment { name } => format!(
-            "pod=~{}",
-            escape(&format!(
-                "{}-[a-z0-9]{{6,10}}-[a-z0-9]{{5}}",
-                regex_literal(name)
-            ))
-        ),
+        Workload::Deployment { name } => format!("pod=~{}", escape(&deployment_pods(name))),
         Workload::StatefulSet { name } => {
             format!(
                 "pod=~{}",
@@ -296,9 +309,7 @@ pub fn chart_query(chart: Chart, sel: &str, per_container: bool, window: u64) ->
             format!(r#"kube_pod_container_resource_{metric}{{{sel}, resource="{resource}"}}"#)
         }
         Chart::Memory => format!("container_memory_working_set_bytes{{{sel}, {containers}}}"),
-        Chart::Restarts => {
-            format!("increase(kube_pod_container_status_restarts_total{{{sel}}}[{window}s])")
-        }
+        Chart::Restarts => format!("kube_pod_container_status_restarts_total{{{sel}}}"),
         Chart::NetworkRx => {
             return format!("sum(rate(container_network_receive_bytes_total{{{sel}}}[{window}s]))")
         }
@@ -526,7 +537,7 @@ pub fn grafana_explore_url(
     let panes = serde_json::json!({ "a": pane }).to_string();
     let encoded: String = url::form_urlencoded::byte_serialize(panes.as_bytes()).collect();
     format!(
-        "{}/explore?schemaVersion=1&orgId=1&panes={encoded}",
+        "{}/explore?schemaVersion=1&panes={encoded}",
         grafana_base.trim().trim_end_matches('/')
     )
 }
