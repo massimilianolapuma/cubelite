@@ -129,5 +129,7 @@ final class LiveIntegrationsTests: XCTestCase {
         XCTAssertEqual(found.prometheus?.id, "prometheus:monitoring/prometheus-operated:9090")
         XCTAssertEqual(found.grafana?.namespace, "monitoring")
         XCTAssertEqual(found.grafana?.name, "kps-grafana")
+        XCTAssertTrue(found.elasticsearchOneClick, "ECK-owned and alone")
+        XCTAssertTrue(found.prometheusOneClick, "operator-managed and alone")
     }
 }

@@ -2,7 +2,8 @@ import SwiftUI
 
 /// One-line banner above the detail area offering the Elasticsearch and
 /// Prometheus found when the context connected (#527): Enable · Review · ✕.
-/// Same copy as the desktop's IntegrationsBanner.
+/// Enable appears only when every offered integration has a single
+/// operator-managed service. Same copy as the desktop's IntegrationsBanner.
 struct IntegrationsBannerView: View {
     let context: String
 
@@ -13,11 +14,11 @@ struct IntegrationsBannerView: View {
     var body: some View {
         if let store, let line = store.message(for: context) {
             HStack(spacing: DesignTokens.spacing2) {
-                Image(systemName: line.ok ? "sparkles" : "exclamationmark.circle")
-                    .foregroundStyle(line.ok ? DesignTokens.accentDefault : DesignTokens.statusErr)
+                Image(systemName: Self.icon(line.tone))
+                    .foregroundStyle(Self.color(line.tone, icon: true))
                     .accessibilityHidden(true)
                 Text(line.text)
-                    .typeStyle(DesignTokens.Typography.caption, color: line.ok ? DesignTokens.textSecondary : DesignTokens.statusErr)
+                    .typeStyle(DesignTokens.Typography.caption, color: Self.color(line.tone, icon: false))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .help(line.text)
@@ -34,11 +35,30 @@ struct IntegrationsBannerView: View {
         }
     }
 
+    private static func icon(_ tone: IntegrationsSuggestionStore.Status.Tone) -> String {
+        switch tone {
+        case .found: "sparkles"
+        case .saved: "checkmark.circle"
+        case .warning: "exclamationmark.triangle"
+        case .failed: "exclamationmark.circle"
+        }
+    }
+
+    private static func color(_ tone: IntegrationsSuggestionStore.Status.Tone, icon: Bool) -> Color {
+        switch tone {
+        case .found: icon ? DesignTokens.accentDefault : DesignTokens.textSecondary
+        case .saved: icon ? DesignTokens.statusOk : DesignTokens.textSecondary
+        case .warning: DesignTokens.statusWarn
+        case .failed: DesignTokens.statusErr
+        }
+    }
+
     @ViewBuilder
     private func actions(_ store: IntegrationsSuggestionStore) -> some View {
         let busy = store.enabling != nil
+        let enable = store.canEnable(for: context)
         if store.canAct(for: context) {
-            if store.message(for: context)?.ok ?? true {
+            if enable {
                 Button(busy ? "Enabling…" : "Enable") { Task { await store.enable(context: context) } }
                     .buttonStyle(.link)
                     .typeStyle(DesignTokens.Typography.caption)
@@ -52,6 +72,7 @@ struct IntegrationsBannerView: View {
             .buttonStyle(.link)
             .typeStyle(DesignTokens.Typography.caption)
             .disabled(busy)
+            .help(enable ? "Open Settings → Integrations, pre-filled" : IntegrationsSuggestionStore.reviewFirstHelp)
             .accessibilityIdentifier("integrations-banner.review")
         }
         Button {

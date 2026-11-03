@@ -60,10 +60,15 @@ struct IntegrationsPreferencesTab: View {
         }
         .task(id: context) {
             if elasticModel == nil, let elastic {
-                elasticModel = ElasticPreferencesModel(backend: elastic, endpoints: elasticEndpoints)
+                let model = ElasticPreferencesModel(backend: elastic, endpoints: elasticEndpoints)
+                // Turned off: the banner does not offer it again (#527).
+                model.onTurnedOff = { [settings] in settings.dismiss([.elasticsearch], context: $0) }
+                elasticModel = model
             }
             if prometheusModel == nil, let prometheus {
-                prometheusModel = PrometheusPreferencesModel(backend: prometheus, endpoints: prometheusEndpoints)
+                let model = PrometheusPreferencesModel(backend: prometheus, endpoints: prometheusEndpoints)
+                model.onTurnedOff = { [settings] in settings.dismiss([.prometheus], context: $0) }
+                prometheusModel = model
             }
             await elasticModel?.load(context: context)
             await prometheusModel?.load(context: context)
@@ -87,8 +92,12 @@ struct IntegrationsPreferencesTab: View {
         guard let elasticModel, let prometheusModel, elasticModel.context == context,
             prometheusModel.context == context, let found = settings.takeSuggestion(for: context)
         else { return }
-        if let es = found.elasticsearch { elasticModel.suggest(es, kibana: found.kibana) }
-        if let prom = found.prometheus { prometheusModel.suggest(prom, grafana: found.grafana) }
+        if let es = found.elasticsearch {
+            elasticModel.suggest(es, kibana: found.kibana, candidates: found.elasticServices)
+        }
+        if let prom = found.prometheus {
+            prometheusModel.suggest(prom, grafana: found.grafana, candidates: found.prometheusServices)
+        }
     }
 
     /// Edits the context of the panel that opened Settings (#526).
