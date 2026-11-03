@@ -65,6 +65,7 @@ final class LogSession {
     var canOpenKibana: Bool {
         guard let endpoint = historyEndpoint else { return false }
         if let url = endpoint.kibanaURL, !url.trimmingCharacters(in: .whitespaces).isEmpty { return true }
+        guard case .inCluster = endpoint.target else { return false }
         return endpoint.kibanaService != nil && elastic?.kibana != nil
     }
 
@@ -73,7 +74,9 @@ final class LogSession {
     func kibanaDiscoverURL() async throws -> URL? {
         guard let history, let endpoint = historyEndpoint, let context else { return nil }
         if let url = history.kibanaURL(shown: showsHistory) { return url }
-        guard let service = endpoint.kibanaService, let kibana = elastic?.kibana else { return nil }
+        guard case .inCluster = endpoint.target, let service = endpoint.kibanaService,
+            let kibana = elastic?.kibana
+        else { return nil }
         let port = try await kibana.kibanaForward(context: context, service: service)
         return history.kibanaURL(
             shown: showsHistory, base: "\(service.https ? "https" : "http")://127.0.0.1:\(port)")

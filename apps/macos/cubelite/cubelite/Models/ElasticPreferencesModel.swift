@@ -9,6 +9,8 @@ protocol ElasticPreferencesBackend: Sendable {
     func saveAuth(context: String, endpoint: EsEndpoint, auth: EsAuth) async throws
     func authMethod(context: String, endpoint: EsEndpoint) async throws -> String
     func useEckCredentials(context: String, endpoint: EsEndpoint) async throws
+    /// Closes the context's connections and Kibana forwards (endpoint changed).
+    func disconnect(context: String) async
 }
 
 extension ElasticService: ElasticPreferencesBackend {}
@@ -220,6 +222,8 @@ final class ElasticPreferencesModel {
             // Stored even if the form moved to another context meanwhile:
             // the keychain already matches this endpoint.
             endpoints.setEndpoint(endpoint, for: context)
+            // A changed endpoint or Kibana service must not keep old forwards.
+            await backend.disconnect(context: context)
             guard context == self.context else { return }
             if let endpoint {
                 await refreshStoredMethod(endpoint)

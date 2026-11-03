@@ -39,6 +39,12 @@ private actor StubBackend: ElasticPreferencesBackend {
         eck.append(endpoint)
         stored[try Elastic.binding(endpoint)] = "eck-user"
     }
+
+    var disconnects: [String] = []
+
+    func disconnect(context: String) async {
+        disconnects.append(context)
+    }
 }
 
 @MainActor
@@ -125,6 +131,8 @@ final class ElasticPreferencesModelTests: XCTestCase {
         XCTAssertEqual(
             endpoints.endpoint(for: "prod")?.kibanaService,
             KibanaService(namespace: "logging", service: "quickstart-kb-http", port: 5601, https: true))
+        let disconnects = await backend.disconnects
+        XCTAssertEqual(disconnects, ["prod"], "saving closes the old connections and forwards")
         model.target.mode = .external
         model.target.url = "https://es.example"
         XCTAssertNil(model.draft()?.kibanaService, "only in-cluster endpoints forward to Kibana")

@@ -16,6 +16,11 @@ final class IntegrationTunnel: @unchecked Sendable {
     private var relays: [UUID: PortForwardRelay] = [:]
     private var readiness: CheckedContinuation<UInt16, Error>?
     private var closed = false
+    /// The listener failed or was cancelled after it started.
+    private var stopped = false
+
+    /// Whether the forward still accepts connections.
+    var isRunning: Bool { lock.withLock { !closed && !stopped } }
 
     private init(listener: NWListener, openSocket: @escaping OpenSocket) {
         self.listener = listener
@@ -51,9 +56,11 @@ final class IntegrationTunnel: @unchecked Sendable {
                         self.resolveReadiness(.failure(IntegrationFailure.connect("no local port")))
                     }
                 case .waiting(let error), .failed(let error):
+                    self.lock.withLock { self.stopped = true }
                     self.resolveReadiness(
                         .failure(IntegrationFailure.connect("local port failed: \(error.localizedDescription)")))
                 case .cancelled:
+                    self.lock.withLock { self.stopped = true }
                     self.resolveReadiness(.failure(IntegrationFailure.connect("local port closed")))
                 default:
                     break

@@ -69,7 +69,8 @@ actor ElasticService {
         let service: KibanaService
     }
     private var kibanaForwards: [KibanaKey: (tunnel: IntegrationTunnel, port: UInt16, pod: String)] = [:]
-    private var kibanaPending: [KibanaKey: Task<UInt16, Error>] = [:]
+    private var kibanaPending: [KibanaKey: (generation: Int, task: Task<UInt16, Error>)] = [:]
+    private var kibanaGeneration: [KibanaKey: Int] = [:]
 
     /// - Parameter configuration: base session configuration (tests inject
     ///   `URLProtocol` stubs through it).
@@ -209,22 +210,26 @@ actor ElasticService {
     // MARK: Kibana
 
     /// Local port of a loopback forward to an in-cluster Kibana (#519),
-    /// reused while its pod is ready; a rollout or eviction forwards to the
-    /// new pod.
+    /// reused while it runs and its pod is ready; a rollout or eviction
+    /// forwards to the new pod. Concurrent calls share the forward being
+    /// opened, and a disconnect meanwhile discards it.
     func kibanaForward(context: String, service: KibanaService) async throws -> UInt16 {
         let key = KibanaKey(context: context, service: service)
-        if let pending = kibanaPending[key] { return try await pending.value }
-        if let open = kibanaForwards[key] {
-            if await Integration.podReady(
-                cluster: cluster, context: context, namespace: service.namespace, pod: open.pod)
-            {
-                return open.port
+        while true {
+            if let pending = kibanaPending[key] { return try await pending.task.value }
+            guard let open = kibanaForwards[key] else { break }
+            var ready = open.tunnel.isRunning
+            if ready {
+                ready = await Integration.podReady(
+                    cluster: cluster, context: context, namespace: service.namespace, pod: open.pod)
             }
-            // Another call may already be replacing it.
-            if let pending = kibanaPending[key] { return try await pending.value }
-            open.tunnel.close()
-            kibanaForwards[key] = nil
+            // The entry may have changed during the check: decide again.
+            guard kibanaForwards[key]?.tunnel === open.tunnel else { continue }
+            if ready { return open.port }
+            kibanaForwards.removeValue(forKey: key)?.tunnel.close()
         }
+        kibanaGeneration[key, default: 0] += 1
+        let generation = kibanaGeneration[key, default: 0]
         let cluster = self.cluster
         let task = Task { () throws -> UInt16 in
             let opened = try await self.elastic {
@@ -232,25 +237,41 @@ actor ElasticService {
                     cluster: cluster, context: context, namespace: service.namespace,
                     service: service.service, port: service.port)
             }
-            self.storeKibana(key, opened)
-            return opened.port
+            return try self.storeKibana(key, opened, generation: generation)
         }
-        kibanaPending[key] = task
-        defer { kibanaPending[key] = nil }
+        kibanaPending[key] = (generation, task)
+        defer {
+            if kibanaPending[key]?.generation == generation { kibanaPending[key] = nil }
+        }
         return try await task.value
     }
 
+    /// Keeps a forward that finished opening, unless a disconnect (a newer
+    /// generation) happened meanwhile.
     private func storeKibana(
-        _ key: KibanaKey, _ opened: (tunnel: IntegrationTunnel, port: UInt16, pod: String)
-    ) {
+        _ key: KibanaKey, _ opened: (tunnel: IntegrationTunnel, port: UInt16, pod: String),
+        generation: Int
+    ) throws -> UInt16 {
+        guard kibanaGeneration[key] == generation else {
+            opened.tunnel.close()
+            throw CancellationError()
+        }
         kibanaForwards[key]?.tunnel.close()
         kibanaForwards[key] = opened
+        return opened.port
     }
 
     private func closeKibana(where matches: (KibanaKey) -> Bool) {
-        for key in kibanaForwards.keys where matches(key) {
+        for key in Set(kibanaForwards.keys).union(kibanaPending.keys) where matches(key) {
+            kibanaGeneration[key, default: 0] += 1
+            kibanaPending[key] = nil
             kibanaForwards.removeValue(forKey: key)?.tunnel.close()
         }
+    }
+
+    /// The pod a context's Kibana forward goes to (tests).
+    func kibanaPod(context: String, service: KibanaService) -> String? {
+        kibanaForwards[KibanaKey(context: context, service: service)]?.pod
     }
 
     // MARK: - Private
