@@ -23,6 +23,7 @@
 	import {
 		elasticAuthMethod,
 		elasticDetect,
+		elasticDisconnect,
 		elasticSaveAuth,
 		elasticTest,
 		elasticUseEckCredentials,
@@ -180,6 +181,8 @@
 			}
 			auth.clearSecrets();
 			elastic.setEndpoint(ctx, endpoint);
+			// A changed endpoint or Kibana service must not keep old forwards.
+			await elasticDisconnect(ctx);
 			if (endpoint) await refreshStoredMethod(endpoint);
 			toasts.push(endpoint ? `Elasticsearch saved for ${ctx}` : `Elasticsearch off for ${ctx}`, 'ok');
 		});

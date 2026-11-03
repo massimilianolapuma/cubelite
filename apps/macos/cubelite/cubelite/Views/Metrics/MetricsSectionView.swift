@@ -57,6 +57,8 @@ struct MetricsSectionView: View {
                     context: context, namespace: namespace, workload: workload, endpoint: endpoint,
                     range: model.range, perContainer: model.perContainer)
             ) {
+                // A new endpoint, context or workload drops the old error.
+                grafanaError = nil
                 await model.load(
                     context: context, endpoint: endpoint, namespace: namespace, workload: workload,
                     querying: querying)

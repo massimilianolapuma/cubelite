@@ -152,7 +152,8 @@ final class PrometheusPreferencesModel {
             self.detected = found.filter { $0.kind == .prometheus }
             self.detectedGrafana = found.filter { $0.kind == .grafana }
             if self.detected?.isEmpty ?? true {
-                self.outcome = FormOutcome(ok: false, text: "No Prometheus service found in this cluster.")
+                let grafana = !self.detectedGrafana.isEmpty ? " (only Grafana was found)" : ""
+                self.outcome = FormOutcome(ok: false, text: "No Prometheus service found in this cluster\(grafana).")
             }
         }
     }

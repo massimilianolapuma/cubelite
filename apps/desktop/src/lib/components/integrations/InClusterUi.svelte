@@ -21,7 +21,10 @@
 </script>
 
 <div class="flex items-center gap-2" data-testid={testid}>
-	<span class="type-caption flex-1 truncate text-text-tertiary">
+	<span
+		class="type-caption flex-1 truncate text-text-tertiary"
+		title="The forward opens {name} at its root; if {name} is served under a sub-path, set its URL instead."
+	>
 		{name} in the cluster: {service.namespace}/{service.service}:{service.port}
 		{urlSet ? '(the URL above wins)' : '— opened through a port-forward'}
 	</span>

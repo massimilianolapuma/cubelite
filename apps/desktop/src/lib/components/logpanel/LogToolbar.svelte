@@ -54,7 +54,10 @@
 	});
 
 	// A configured URL wins; else an in-cluster Kibana through a port-forward (#505).
-	const canOpenKibana = $derived(!!endpoint?.kibanaUrl || !!endpoint?.kibanaService);
+	// A configured URL wins; else an in-cluster Kibana through a port-forward.
+	const canOpenKibana = $derived(
+		!!endpoint?.kibanaUrl?.trim() || (endpoint?.target.kind === 'in-cluster' && !!endpoint.kibanaService)
+	);
 
 	/** The configured Kibana URL, else the in-cluster Kibana's forwarded port. */
 	async function kibanaBase(ep: EsEndpoint): Promise<string | null> {

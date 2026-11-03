@@ -228,6 +228,7 @@ struct InClusterUIRow: View {
                     + (urlSet ? " (the URL above wins)" : " — opened through a port-forward")
             )
             .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
+            .help("The forward opens \(name) at its root; if \(name) is served under a sub-path, set its URL instead.")
             Spacer()
             Button("Clear", action: onClear)
                 .buttonStyle(.borderless)
