@@ -270,7 +270,7 @@ fn regex_literal(name: &str) -> String {
 const SAFE: &str = "[bcdfghjklmnpqrstvwxz2456789]";
 
 /// Generated names are cut to 58 characters before the 5-character suffix.
-const GENERATED_PREFIX_MAX: usize = 58;
+pub(crate) const GENERATED_PREFIX_MAX: usize = 58;
 
 /// Regex for a deployment's pods: `name-<hash>-<suffix>`, or for long names
 /// the truncated `generateName` prefix followed by the suffix.

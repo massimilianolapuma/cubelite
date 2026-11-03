@@ -233,6 +233,70 @@ fn kibana_discover_url_escapes_rison_and_kql() {
     assert!(tricky.contains("%5C%22"), "\" escaped in KQL");
 }
 
+/// Undoes `percent_encode` for assertions on Discover links.
+fn decode(url: &str) -> String {
+    let mut out = Vec::new();
+    let bytes = url.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).expect("hex");
+            out.push(u8::from_str_radix(hex, 16).expect("byte"));
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).expect("utf8")
+}
+
+#[test]
+fn deployment_discover_url_matches_the_pod_name_prefix() {
+    let url = kibana_deployment_discover_url(
+        "https://kb.example/",
+        FieldPreset::Ecs,
+        "shop",
+        "api",
+        "now-1h",
+        "now",
+    );
+    assert!(url.starts_with("https://kb.example/app/discover#/?_g="));
+    let decoded = decode(&url);
+    assert!(decoded.contains("_g=(time:(from:'now-1h',to:'now'))"));
+    assert!(
+        decoded.contains("query:'kubernetes.namespace:\"shop\" and kubernetes.pod.name:api-*'"),
+        "{decoded}"
+    );
+    let fluent = decode(&kibana_deployment_discover_url(
+        "http://k",
+        FieldPreset::FluentBit,
+        "shop",
+        "a b(c)",
+        "now-1h",
+        "now",
+    ));
+    assert!(
+        fluent.contains("kubernetes.pod_name:a\\ b\\(c\\)-*"),
+        "special characters escaped: {fluent}"
+    );
+}
+
+#[test]
+fn deployment_pod_prefix_is_cut_like_generated_names() {
+    assert_eq!(deployment_pod_prefix("api"), "api-");
+    let long = "x".repeat(70);
+    assert_eq!(deployment_pod_prefix(&long), "x".repeat(58));
+}
+
+#[test]
+fn discover_home_has_no_filter() {
+    assert_eq!(
+        kibana_discover_home(" https://kb.example/ "),
+        "https://kb.example/app/discover#/"
+    );
+}
+
 fn service(json: serde_json::Value) -> Service {
     serde_json::from_value(json).expect("service")
 }

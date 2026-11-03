@@ -446,8 +446,66 @@ pub fn kibana_discover_url(
     if let Some(c) = container.filter(|c| !c.is_empty()) {
         query.push_str(&format!(" and {}:{}", f.container, kql(c)));
     }
+    discover_link(kibana_base, &query, from, to)
+}
+
+/// KQL value matched with a trailing wildcard: unquoted, so every special
+/// character (and whitespace) is backslash-escaped.
+fn kql_prefix(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    for c in s.chars() {
+        if c.is_whitespace() || r#"\():<>"*{}"#.contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('*');
+    out
+}
+
+/// Name prefix shared by a deployment's pods (`name-<hash>-<suffix>`); long
+/// names are cut where Kubernetes cuts generated names.
+pub fn deployment_pod_prefix(deployment: &str) -> String {
+    format!("{deployment}-")
+        .chars()
+        .take(crate::prometheus::GENERATED_PREFIX_MAX)
+        .collect()
+}
+
+/// Kibana Discover URL for a deployment's logs over `[from, to]`. ECS has
+/// no deployment field, so the pods are matched by their generated name
+/// prefix (#526).
+pub fn kibana_deployment_discover_url(
+    kibana_base: &str,
+    preset: FieldPreset,
+    namespace: &str,
+    deployment: &str,
+    from: &str,
+    to: &str,
+) -> String {
+    let f = preset.fields();
+    let query = format!(
+        "{}:{} and {}:{}",
+        f.namespace,
+        kql(namespace),
+        f.pod,
+        kql_prefix(&deployment_pod_prefix(deployment))
+    );
+    discover_link(kibana_base, &query, from, to)
+}
+
+/// Kibana Discover without a filter (command palette, #526).
+pub fn kibana_discover_home(kibana_base: &str) -> String {
+    format!(
+        "{}/app/discover#/",
+        kibana_base.trim().trim_end_matches('/')
+    )
+}
+
+/// Discover link showing the KQL `query` over `[from, to]`.
+fn discover_link(kibana_base: &str, query: &str, from: &str, to: &str) -> String {
     let g = format!("(time:(from:{},to:{}))", rison(from), rison(to));
-    let a = format!("(query:(language:kuery,query:{}))", rison(&query));
+    let a = format!("(query:(language:kuery,query:{}))", rison(query));
     format!(
         "{}/app/discover#/?_g={}&_a={}",
         kibana_base.trim_end_matches('/'),
