@@ -305,10 +305,13 @@ final class IntegrationConnection<Endpoint: Sendable>: @unchecked Sendable {
         close()
     }
 
-    /// GET (or POST with a JSON body) `path` relative to the base URL.
+    /// GET (or POST with a JSON body) `path` relative to the base URL;
+    /// `method` overrides the verb (`DELETE` with a body).
     /// Throws `IntegrationFailure` when the endpoint cannot be reached; any
     /// HTTP status is returned to the caller.
-    func send(_ path: String, body: Data? = nil) async throws -> (status: Int, body: String) {
+    func send(_ path: String, body: Data? = nil, method: String? = nil) async throws
+        -> (status: Int, body: String)
+    {
         let trimmed = path.hasPrefix("/") ? String(path.dropFirst()) : path
         guard let url = URL(string: base.absoluteString + "/" + trimmed) else {
             throw IntegrationFailure.config("Invalid request path \(path)")
@@ -320,6 +323,7 @@ final class IntegrationConnection<Endpoint: Sendable>: @unchecked Sendable {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        if let method { request.httpMethod = method }
         if let authorization = try await Integration.checkedHeader(authorize()) {
             request.setValue(authorization, forHTTPHeaderField: "Authorization")
         }

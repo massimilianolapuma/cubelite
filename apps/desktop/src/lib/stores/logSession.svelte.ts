@@ -305,6 +305,7 @@ export class LogSession {
 
   async close(): Promise<void> {
     this.#generation++;
+    this.history.close();
     await this.#stopStreams();
   }
 }

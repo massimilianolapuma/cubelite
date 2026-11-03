@@ -2,9 +2,10 @@ pub mod commands;
 pub mod env;
 
 use commands::elastic::{
-    elastic_auth_method, elastic_detect, elastic_disconnect, elastic_save_auth, elastic_search,
-    elastic_test, elastic_use_eck_credentials, kibana_discover_url, kibana_port_forward,
-    open_kibana_deployment, open_kibana_discover, open_kibana_home, ElasticState,
+    elastic_auth_method, elastic_close_cursor, elastic_detect, elastic_disconnect,
+    elastic_save_auth, elastic_search, elastic_test, elastic_use_eck_credentials,
+    kibana_discover_url, kibana_port_forward, open_kibana_deployment, open_kibana_discover,
+    open_kibana_home, ElasticState,
 };
 use commands::integrations::integrations_detect;
 use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
@@ -59,6 +60,7 @@ pub fn run() {
             open_grafana_home,
             elastic_test,
             elastic_search,
+            elastic_close_cursor,
             elastic_save_auth,
             elastic_auth_method,
             elastic_use_eck_credentials,
