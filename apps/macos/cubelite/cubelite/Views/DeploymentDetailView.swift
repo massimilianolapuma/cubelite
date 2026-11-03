@@ -28,7 +28,7 @@ struct DeploymentDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                DeploymentDetailHeader(deployment: deployment)
+                DeploymentDetailHeader(deployment: deployment, context: context)
                     .overlay(alignment: .topTrailing) {
                         if let onClose {
                             Button(action: onClose) {
@@ -103,6 +103,7 @@ struct DeploymentDetailView: View {
 /// Header for ``DeploymentDetailView``: icon, name, namespace and status badge.
 private struct DeploymentDetailHeader: View {
     let deployment: DeploymentInfo
+    let context: String?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -118,6 +119,8 @@ private struct DeploymentDetailHeader: View {
                 Text(deployment.namespace)
                     .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
+                IntegrationLinksRow(
+                    context: context, namespace: deployment.namespace, workload: .deployment(deployment.name))
             }
             Spacer()
             DeploymentStatusBadge(deployment: deployment)

@@ -65,25 +65,33 @@ final class PrometheusStore {
     func grafanaExploreURL(
         context: String, endpoint: PromEndpoint, queries: [String], range: MetricsRange
     ) async throws -> URL? {
-        let base: String
-        if let url = endpoint.grafanaURL?.trimmingCharacters(in: .whitespaces), !url.isEmpty {
-            base = url
-        } else if let service = Integration.forwardedUI(
-            url: endpoint.grafanaURL, target: endpoint.target, service: endpoint.grafanaService),
-            let grafana
-        {
-            base = service.loopbackBase(
-                port: try await grafana.grafanaForward(context: context, service: service))
-        } else {
-            return nil
+        guard let base = try await grafanaBase(context: context, endpoint: endpoint) else { return nil }
+        return Integration.webURL(
+            Prometheus.grafanaExploreURL(
+                grafanaBase: base, datasource: endpoint.grafanaDatasource, queries: queries,
+                from: range.grafanaFrom, to: "now"))
+    }
+
+    /// Grafana Explore with the CPU of a workload over the last hour (#526).
+    func grafanaWorkloadURL(
+        context: String, endpoint: PromEndpoint, namespace: String, workload: Workload
+    ) async throws -> URL? {
+        let query = Prometheus.workloadCPUQuery(namespace: namespace, workload: workload, cluster: endpoint.cluster)
+        return try await grafanaExploreURL(context: context, endpoint: endpoint, queries: [query], range: .hour)
+    }
+
+    /// Grafana's home page (command palette, #526).
+    func grafanaHomeURL(context: String, endpoint: PromEndpoint) async throws -> URL? {
+        try await grafanaBase(context: context, endpoint: endpoint).flatMap(Integration.webURL)
+    }
+
+    /// The configured Grafana URL, else the in-cluster Grafana's forward.
+    private func grafanaBase(context: String, endpoint: PromEndpoint) async throws -> String? {
+        let forward = grafana.map { grafana in
+            { @Sendable (service: ServiceRef) in try await grafana.grafanaForward(context: context, service: service) }
         }
-        let text = Prometheus.grafanaExploreURL(
-            grafanaBase: base, datasource: endpoint.grafanaDatasource, queries: queries,
-            from: range.grafanaFrom, to: "now")
-        guard let url = URL(string: text), ["http", "https"].contains(url.scheme?.lowercased()) else {
-            return nil
-        }
-        return url
+        return try await Integration.webUIBase(
+            url: endpoint.grafanaURL, target: endpoint.target, service: endpoint.grafanaService, forward: forward)
     }
 
     /// Loads the last hour of CPU and memory for `namespace` (nil = every

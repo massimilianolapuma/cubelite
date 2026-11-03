@@ -424,11 +424,54 @@ enum Elastic {
         if let container, !container.isEmpty {
             query += " and \(f.container):\(kql(container))"
         }
+        return kibanaDiscoverURL(kibanaBase: kibanaBase, query: query, from: from, to: to)
+    }
+
+    /// Kibana Discover running the KQL `query` over `[from, to]`.
+    static func kibanaDiscoverURL(kibanaBase: String, query: String, from: String, to: String) -> String {
         let g = "(time:(from:\(rison(from)),to:\(rison(to))))"
         let a = "(query:(language:kuery,query:\(rison(query))))"
-        var base = kibanaBase
-        while base.hasSuffix("/") { base.removeLast() }
-        return "\(base)/app/discover#/?_g=\(Integration.percentEncode(g))&_a=\(Integration.percentEncode(a))"
+        return
+            "\(kibanaHomeURL(kibanaBase: kibanaBase))?_g=\(Integration.percentEncode(g))&_a=\(Integration.percentEncode(a))"
+    }
+
+    /// Plain Kibana Discover, no filter (command palette, #526).
+    static func kibanaHomeURL(kibanaBase: String) -> String {
+        "\(Integration.trimmedBase(kibanaBase))/app/discover#/"
+    }
+
+    /// Kibana Discover for a workload's logs over the last hour (#526): one
+    /// pod, or the pods named after a deployment or StatefulSet (ECS has no
+    /// deployment field, so a pod name prefix stands in for it).
+    static func kibanaWorkloadURL(
+        kibanaBase: String, preset: FieldPreset, namespace: String, workload: Workload
+    ) -> String {
+        let prefix: String
+        switch workload {
+        case .pod(let name):
+            return kibanaDiscoverURL(
+                kibanaBase: kibanaBase, preset: preset, namespace: namespace, pod: name, container: nil,
+                from: "now-1h", to: "now")
+        case .deployment(let name):
+            // Generated pod names keep at most 58 characters of `name-<hash>-`.
+            prefix = String("\(name)-".prefix(Prometheus.generatedPrefixMax))
+        case .statefulSet(let name):
+            prefix = "\(name)-"
+        }
+        let f = preset.fields
+        let query = "\(f.namespace):\(kql(namespace)) and \(f.pod):\(kqlPrefix(prefix))"
+        return kibanaDiscoverURL(kibanaBase: kibanaBase, query: query, from: "now-1h", to: "now")
+    }
+
+    /// Unquoted KQL wildcard matching the values that start with `prefix`.
+    static func kqlPrefix(_ prefix: String) -> String {
+        let special: Set<Character> = ["\\", "(", ")", ":", "<", ">", "\"", "*", "{", "}"]
+        var out = ""
+        for c in prefix {
+            if special.contains(c) || c.isWhitespace { out.append("\\") }
+            out.append(c)
+        }
+        return out + "*"
     }
 
     /// What stored credentials are bound to (see `Integration.binding`).

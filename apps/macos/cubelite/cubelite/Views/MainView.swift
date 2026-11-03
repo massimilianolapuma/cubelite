@@ -43,7 +43,9 @@ struct MainView: View {
     @Environment(AppSettings.self) var appSettings
     @Environment(ResourcePreferences.self) var resourcePreferences
     @Environment(LogSessionStore.self) var logSessionStore
+    @Environment(PrometheusStore.self) var prometheusStore: PrometheusStore?
     @Environment(\.openWindow) var openWindow
+    @Environment(\.openSettings) var openSettings
 
     // MARK: - Navigation State
 
@@ -276,6 +278,8 @@ struct MainView: View {
                         }
                     },
                     onRefresh: { refreshAll() },
+                    integrationEntries: integrationLinks.paletteEntries,
+                    onIntegrationEntry: { runIntegrationEntry($0) },
                     onClose: { showingPalette = false }
                 )
             }

@@ -286,7 +286,7 @@ enum Prometheus {
     /// `rand.SafeEncodeString`), which also keeps CronJob pods out.
     private static let safe = "[bcdfghjklmnpqrstvwxz2456789]"
     /// Generated names are cut to 58 characters before the 5-character suffix.
-    private static let generatedPrefixMax = 58
+    static let generatedPrefixMax = 58
 
     /// PromQL string literal: `"…"` with `\`, `"` and newlines escaped.
     static func escape(_ value: String) -> String {
@@ -336,6 +336,14 @@ enum Prometheus {
             out += ", cluster=\(escape(c))"
         }
         return out
+    }
+
+    /// The CPU chart's PromQL for a workload over the last hour, per
+    /// container (Metrics in Grafana, #526).
+    static func workloadCPUQuery(namespace: String, workload: Workload, cluster: String?) -> String {
+        chartQuery(
+            .cpu, selector: selector(namespace: namespace, workload: workload, cluster: cluster),
+            perContainer: true, window: MetricsRange.hour.window)
     }
 
     /// The PromQL of one chart. Per container charts group `by (container)`;

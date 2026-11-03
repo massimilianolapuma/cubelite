@@ -5,19 +5,16 @@ import SwiftUI
 /// Prometheus.
 struct IntegrationsPreferencesTab: View {
 
-    enum Shown: String, CaseIterable {
-        case elasticsearch = "Elasticsearch"
-        case prometheus = "Prometheus"
-    }
+    typealias Shown = AppSettings.IntegrationPane
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(AppSettings.self) private var settings
     let elastic: (any ElasticPreferencesBackend)?
     let prometheus: (any PrometheusPreferencesBackend)?
 
     @Environment(ElasticEndpointStore.self) private var elasticEndpoints
     @Environment(PrometheusEndpointStore.self) private var prometheusEndpoints
     @State private var context: String?
-    @State private var shown = Shown.elasticsearch
     /// Kept across pane switches so typed edits survive.
     @State private var elasticModel: ElasticPreferencesModel?
     @State private var prometheusModel: PrometheusPreferencesModel?
@@ -29,7 +26,7 @@ struct IntegrationsPreferencesTab: View {
                     ForEach(clusterState.contexts, id: \.self) { Text($0).tag(Optional($0)) }
                 }
                 .accessibilityIdentifier("preferences.integration-context")
-                Picker("Integration", selection: $shown) {
+                Picker("Integration", selection: Bindable(settings).integrationPane) {
                     ForEach(Shown.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
@@ -39,12 +36,19 @@ struct IntegrationsPreferencesTab: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 12)
-            switch shown {
+            switch settings.integrationPane {
             case .elasticsearch:
                 if let elasticModel { ElasticPreferencesForm(model: elasticModel) }
             case .prometheus:
                 if let prometheusModel { PrometheusPreferencesForm(model: prometheusModel) }
             }
+            Divider()
+            Toggle("Show integration hints in panels", isOn: Bindable(settings).integrationHints)
+                .help("Offer setting up Elasticsearch and Prometheus where their data would appear")
+                .accessibilityIdentifier("preferences.integration-hints")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
         }
         .task(id: context) {
             if elasticModel == nil, let elastic {
