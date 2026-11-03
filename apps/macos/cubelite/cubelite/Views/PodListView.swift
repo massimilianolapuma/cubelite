@@ -9,6 +9,7 @@ struct PodListView: View {
 
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
+    @Environment(PrometheusStore.self) private var prometheus: PrometheusStore?
 
     /// Preferences default sort or this session's header sort (#497).
     private var sortedRows: [PodInfo] {
@@ -31,6 +32,11 @@ struct PodListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Last hour of CPU and memory from Prometheus, after the rows (#512).
+        .task(id: "\(clusterState.currentContext ?? "")|\(clusterState.selectedNamespace ?? "*")|\(clusterState.pods.count)") {
+            await prometheus?.loadSparklines(
+                context: clusterState.currentContext, namespace: clusterState.selectedNamespace)
+        }
     }
 
     // MARK: - States
@@ -114,18 +120,28 @@ struct PodListView: View {
             .width(ideal: 60)
 
             TableColumn("CPU") { pod in
-                Text(pod.cpuRequest ?? "—")
-                    .typeStyle(DesignTokens.Typography.dataSm)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(pod.cpuRequest ?? "—")
+                        .typeStyle(DesignTokens.Typography.dataSm)
+                        .foregroundStyle(.secondary)
+                    SparklineView(
+                        points: prometheus?.cpu(namespace: pod.namespace, pod: pod.name),
+                        label: "CPU, last hour")
+                }
             }
-            .width(ideal: 60)
+            .width(ideal: 110)
 
             TableColumn("Memory") { pod in
-                Text(pod.memoryRequest ?? "—")
-                    .typeStyle(DesignTokens.Typography.dataSm)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(pod.memoryRequest ?? "—")
+                        .typeStyle(DesignTokens.Typography.dataSm)
+                        .foregroundStyle(.secondary)
+                    SparklineView(
+                        points: prometheus?.memory(namespace: pod.namespace, pod: pod.name),
+                        label: "Memory, last hour")
+                }
             }
-            .width(ideal: 70)
+            .width(ideal: 120)
 
             TableColumn("IP") { pod in
                 Text(pod.podIP ?? "—")

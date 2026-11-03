@@ -10,6 +10,8 @@ struct PreferencesView: View {
     var kubeAPIService: KubeAPIService?
     /// Elasticsearch backend for the Integrations tab; nil hides that tab.
     var elasticService: (any ElasticPreferencesBackend)?
+    /// Prometheus backend for the Integrations tab.
+    var prometheusService: (any PrometheusPreferencesBackend)?
 
     var body: some View {
         TabView {
@@ -19,8 +21,8 @@ struct PreferencesView: View {
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
             NavigationPreferencesTab()
                 .tabItem { Label("Navigation", systemImage: "sidebar.left") }
-            if let elasticService {
-                IntegrationsPreferencesTab(backend: elasticService)
+            if elasticService != nil || prometheusService != nil {
+                IntegrationsPreferencesTab(elastic: elasticService, prometheus: prometheusService)
                     .tabItem { Label("Integrations", systemImage: "puzzlepiece.extension") }
             }
             AdvancedPreferencesTab(kubeAPIService: kubeAPIService)

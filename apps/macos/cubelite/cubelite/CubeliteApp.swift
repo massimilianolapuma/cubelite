@@ -12,6 +12,8 @@ struct CubeliteApp: App {
     private let kubeAPIService: KubeAPIService
     private let elasticService: ElasticService
     @State private var elasticEndpoints: ElasticEndpointStore
+    private let prometheusService: PrometheusService
+    @State private var prometheusStore: PrometheusStore
 
     /// Persists whether the user has completed the first-launch onboarding flow.
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
@@ -38,6 +40,10 @@ struct CubeliteApp: App {
         let endpoints = ElasticEndpointStore()
         self.elasticService = elastic
         self._elasticEndpoints = State(initialValue: endpoints)
+        let prometheus = PrometheusService(cluster: api)
+        self.prometheusService = prometheus
+        self._prometheusStore = State(
+            initialValue: PrometheusStore(endpoints: PrometheusEndpointStore(), querying: prometheus))
         self._logSessionStore = State(
             initialValue: LogSessionStore(
                 streamer: api,
@@ -62,6 +68,7 @@ struct CubeliteApp: App {
                     .environment(logSessionStore)
                     .environment(loginItemController)
                     .environment(elasticEndpoints)
+                    .environment(prometheusStore)
                     .preferredColorScheme(appSettings.colorScheme)
                     .onChange(of: appSettings.appearanceMode) { _, newMode in
                         applyNSAppearance(newMode)
@@ -123,9 +130,13 @@ struct CubeliteApp: App {
         }
 
         Settings {
-            PreferencesView(kubeAPIService: kubeAPIService, elasticService: elasticService)
+            PreferencesView(
+                kubeAPIService: kubeAPIService, elasticService: elasticService,
+                prometheusService: prometheusService
+            )
                 .environment(clusterState)
                 .environment(elasticEndpoints)
+                .environment(prometheusStore.endpoints)
                 .environment(appSettings)
                 .environment(resourcePreferences)
                 .environment(loginItemController)

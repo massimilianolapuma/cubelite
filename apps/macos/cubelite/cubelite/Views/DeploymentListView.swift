@@ -8,6 +8,7 @@ struct DeploymentListView: View {
 
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
+    @Environment(PrometheusStore.self) private var prometheus: PrometheusStore?
 
     /// Preferences default sort or this session's header sort (#497).
     private var sortedRows: [DeploymentInfo] {
@@ -28,6 +29,10 @@ struct DeploymentListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: "\(clusterState.currentContext ?? "")|\(clusterState.selectedNamespace ?? "*")|\(clusterState.deployments.count)") {
+            await prometheus?.loadSparklines(
+                context: clusterState.currentContext, namespace: clusterState.selectedNamespace)
+        }
     }
 
     // MARK: - States
@@ -69,15 +74,32 @@ struct DeploymentListView: View {
             .width(min: 80, ideal: 120)
 
             TableColumn("Ready", value: \.sortKeyStatus) { dep in
-                replicasBadge(ready: dep.readyReplicas, desired: dep.replicas)
+                HStack(spacing: 6) {
+                    replicasBadge(ready: dep.readyReplicas, desired: dep.replicas)
+                    SparklineView(points: cpu(of: dep), label: "CPU, last hour")
+                        .help("CPU of the current pods, last hour, from Prometheus")
+                }
             }
-            .width(ideal: 80)
+            .width(ideal: 120)
 
         }
         .unifiedTableBackground()
     }
 
     // MARK: - Helpers
+
+    /// Last hour of CPU summed over the deployment's current pods (#512).
+    private func cpu(of dep: DeploymentInfo) -> [MetricPoint]? {
+        guard let prometheus, prometheus.sparklines != nil, let selector = dep.selector,
+            !selector.isEmpty
+        else { return nil }
+        let series = clusterState.pods
+            .filter { pod in
+                pod.namespace == dep.namespace && selector.allSatisfy { pod.labels?[$0.key] == $0.value }
+            }
+            .compactMap { prometheus.cpu(namespace: $0.namespace, pod: $0.name) }
+        return series.isEmpty ? nil : MetricsMath.sum(series)
+    }
 
     private func replicasBadge(ready: Int, desired: Int) -> some View {
         let allReady = ready == desired && desired > 0

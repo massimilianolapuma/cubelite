@@ -20,17 +20,7 @@ extension ElasticService: ElasticPreferencesBackend {}
 @Observable @MainActor
 final class ElasticPreferencesModel {
 
-    enum Mode: String, CaseIterable, Sendable {
-        case off, inCluster, external
-
-        var label: String {
-            switch self {
-            case .off: "Off"
-            case .inCluster: "In cluster"
-            case .external: "External"
-            }
-        }
-    }
+    typealias Mode = TargetFields.Mode
 
     enum AuthMethod: String, CaseIterable, Sendable {
         case none
@@ -52,30 +42,18 @@ final class ElasticPreferencesModel {
 
     enum Busy: Sendable { case detect, test, save, eck }
 
-    struct Outcome: Equatable, Sendable {
-        let ok: Bool
-        let text: String
-    }
+    typealias Outcome = FormOutcome
 
     private(set) var context: String?
-    var mode = Mode.off {
-        // ECK's user is offered only in-cluster.
-        didSet { if !authMethods.contains(authMethod) { authMethod = .none } }
-    }
-    var namespace = ""
-    var service = ""
-    var port = 9200
-    var https = true
-    var url = ""
+    /// Where the endpoint lives.
+    let target = TargetFields(defaultPort: 9200, defaultHTTPS: true)
+    /// Typed credentials (never read back from the keychain).
+    let input = SecretInput()
     var indexPattern = EsEndpoint.defaultIndexPattern
     var preset = FieldPreset.ecs
     var kibanaURL = ""
-    var skipTLSVerify = false
 
     var authMethod = AuthMethod.none
-    var username = ""
-    var password = ""
-    var secret = ""
     private(set) var storedMethod: AuthMethod?
 
     private(set) var detected: [DetectedService]?
@@ -88,6 +66,11 @@ final class ElasticPreferencesModel {
     init(backend: any ElasticPreferencesBackend, endpoints: ElasticEndpointStore) {
         self.backend = backend
         self.endpoints = endpoints
+        // ECK's user is offered only in-cluster.
+        target.onModeChange = { [weak self] in
+            guard let self, !self.authMethods.contains(self.authMethod) else { return }
+            self.authMethod = .none
+        }
     }
 
     /// The saved endpoint of the shown context.
@@ -99,94 +82,43 @@ final class ElasticPreferencesModel {
         self.context = context
         outcome = nil
         detected = nil
-        password = ""
-        secret = ""
-        username = ""
+        input.reset()
         authMethod = .none
         storedMethod = nil
         guard let endpoint = saved else {
-            mode = .off
-            namespace = ""
-            service = ""
-            port = 9200
-            https = true
-            url = ""
+            target.reset()
             indexPattern = EsEndpoint.defaultIndexPattern
             preset = .ecs
             kibanaURL = ""
-            skipTLSVerify = false
             return
         }
-        switch endpoint.target {
-        case .inCluster(let ns, let svc, let p, let secure):
-            mode = .inCluster
-            (namespace, service, port, https) = (ns, svc, p, secure)
-            url = ""
-        case .external(let address):
-            mode = .external
-            url = address
-        }
+        target.load(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify)
         indexPattern = endpoint.indexPattern
         preset = endpoint.preset
         kibanaURL = endpoint.kibanaURL ?? ""
-        skipTLSVerify = endpoint.skipTLSVerify
         await refreshStoredMethod(endpoint)
     }
 
     // MARK: Validation
 
-    var urlProblem: String? { mode == .external ? Self.problem(url) : nil }
-    var kibanaProblem: String? { mode == .off ? nil : Self.problem(kibanaURL) }
+    var kibanaProblem: String? { target.mode == .off ? nil : TargetFields.problem(kibanaURL) }
 
-    var isIncomplete: Bool {
-        if urlProblem != nil || kibanaProblem != nil { return true }
-        switch mode {
-        case .off: return false
-        case .inCluster:
-            return namespace.trimmed.isEmpty || service.trimmed.isEmpty
-                || !(1...65535).contains(port)
-        case .external: return url.trimmed.isEmpty
-        }
-    }
+    var isIncomplete: Bool { target.isIncomplete || kibanaProblem != nil }
 
     /// Methods offered: ECK's user only for in-cluster endpoints.
     var authMethods: [AuthMethod] {
-        mode == .inCluster ? AuthMethod.allCases : AuthMethod.allCases.filter { $0 != .eckUser }
-    }
-
-    /// Credentials in a URL would bypass the keychain.
-    static func problem(_ value: String) -> String? {
-        let v = value.trimmed
-        guard !v.isEmpty else { return nil }
-        guard let parts = URLComponents(string: v), let host = parts.host, !host.isEmpty else {
-            return "Not a valid URL."
-        }
-        guard ["http", "https"].contains(parts.scheme?.lowercased() ?? "") else {
-            return "Use an http:// or https:// URL."
-        }
-        if parts.user != nil || parts.password != nil {
-            return "Remove the credentials from the URL; use the authentication fields."
-        }
-        return nil
+        target.mode == .inCluster ? AuthMethod.allCases : AuthMethod.allCases.filter { $0 != .eckUser }
     }
 
     // MARK: Draft
 
     func draft() -> EsEndpoint? {
-        let target: EsTarget
-        switch mode {
-        case .off: return nil
-        case .inCluster:
-            target = .inCluster(
-                namespace: namespace.trimmed, service: service.trimmed, port: port, https: https)
-        case .external:
-            target = .external(url: url.trimmed)
-        }
+        guard let target = target.target else { return nil }
         let pattern = indexPattern.trimmed
         let kibana = kibanaURL.trimmed
         return EsEndpoint(
             target: target, indexPattern: pattern.isEmpty ? EsEndpoint.defaultIndexPattern : pattern,
-            preset: preset, kibanaURL: kibana.isEmpty ? nil : kibana, skipTLSVerify: skipTLSVerify)
+            preset: preset, kibanaURL: kibana.isEmpty ? nil : kibana, skipTLSVerify: self.target.skipTLSVerify)
     }
 
     /// Auth typed in the form, or nil to use the stored one.
@@ -194,19 +126,16 @@ final class ElasticPreferencesModel {
         switch authMethod {
         case .none: storedMethod == AuthMethod.none ? nil : EsAuth.none
         case .basic:
-            !username.isEmpty && !password.isEmpty
-                ? .basic(username: username, password: password) : nil
-        case .apiKey: secret.isEmpty ? nil : .apiKey(secret)
-        case .bearer: secret.isEmpty ? nil : .bearer(secret)
+            !input.username.isEmpty && !input.password.isEmpty
+                ? .basic(username: input.username, password: input.password) : nil
+        case .apiKey: input.secret.isEmpty ? nil : .apiKey(input.secret)
+        case .bearer: input.secret.isEmpty ? nil : .bearer(input.secret)
         case .eckUser: nil
         }
     }
 
     func pick(_ found: DetectedService) {
-        namespace = found.namespace
-        service = found.name
-        port = found.port
-        https = found.https
+        target.pick(namespace: found.namespace, name: found.name, port: found.port, https: found.https)
     }
 
     // MARK: Actions
@@ -254,24 +183,19 @@ final class ElasticPreferencesModel {
         do {
             if let endpoint {
                 let auth = typedAuth()
-                let moved =
-                    saved.map { (try? Elastic.binding($0)) != (try? Elastic.binding(endpoint)) }
-                    ?? false
+                let moved = IntegrationForm.moved(
+                    saved: saved.map { ($0.target, $0.skipTLSVerify) },
+                    draft: (endpoint.target, endpoint.skipTLSVerify))
                 if authMethod == .eckUser, storedMethod != .eckUser || moved {
                     try await backend.useEckCredentials(context: context, endpoint: endpoint)
                 } else if let auth {
                     try await backend.saveAuth(context: context, endpoint: endpoint, auth: auth)
                 } else if moved, let stored = storedMethod, stored != .none {
                     // Stored secrets only work with the endpoint they were saved for.
-                    outcome = Outcome(
-                        ok: false,
-                        text:
-                            "The endpoint or TLS setting changed: enter the credentials again (or choose No authentication)."
-                    )
+                    outcome = Outcome(ok: false, text: IntegrationForm.movedMessage)
                     return
                 }
-                password = ""
-                secret = ""
+                input.clearSecrets()
             } else if let saved {
                 // Turning it off also removes the stored secret and open connection.
                 try await backend.saveAuth(context: context, endpoint: saved, auth: .none)
@@ -317,6 +241,3 @@ final class ElasticPreferencesModel {
     }
 }
 
-extension String {
-    fileprivate var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
-}

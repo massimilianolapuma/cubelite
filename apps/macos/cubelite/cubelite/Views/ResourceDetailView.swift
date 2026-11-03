@@ -358,6 +358,7 @@ struct ResourceDetailView: View {
             if !containers.isEmpty {
                 containersSection
             }
+            MetricsSectionView(context: context, namespace: pod.namespace, workload: .pod(pod.name))
         }
         .task(id: pod.id) {
             containers = (try? await kubeAPIService?.fetchPodContainers(

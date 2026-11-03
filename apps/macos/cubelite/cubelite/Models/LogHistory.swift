@@ -26,38 +26,6 @@ protocol LogHistorySearching: Sendable {
 
 extension ElasticService: LogHistorySearching {}
 
-/// Per-context Elasticsearch endpoints (spec §3). Only endpoints live here,
-/// in UserDefaults; credentials are in the keychain (`ElasticService`).
-/// Same JSON as the desktop's `elastic.endpoints`.
-@Observable @MainActor
-final class ElasticEndpointStore {
-
-    static let defaultsKey = "elastic.endpoints"
-
-    private(set) var endpoints: [String: EsEndpoint]
-    private let defaults: UserDefaults
-
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-        endpoints =
-            defaults.data(forKey: Self.defaultsKey).flatMap {
-                try? JSONDecoder().decode([String: EsEndpoint].self, from: $0)
-            } ?? [:]
-    }
-
-    func endpoint(for context: String?) -> EsEndpoint? {
-        context.flatMap { endpoints[$0] }
-    }
-
-    /// Stores (or with nil removes) the endpoint of `context`.
-    func setEndpoint(_ endpoint: EsEndpoint?, for context: String) {
-        endpoints[context] = endpoint
-        if let data = try? JSONEncoder().encode(endpoints) {
-            defaults.set(data, forKey: Self.defaultsKey)
-        }
-    }
-}
-
 /// Elasticsearch history of one log session (#503): pages of a pod's logs,
 /// newest first from the server, kept oldest-first here so the panel shows
 /// them like a live buffer; "Load older" prepends. Mirrors the desktop's
