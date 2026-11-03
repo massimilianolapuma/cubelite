@@ -121,20 +121,26 @@ final class AggregatedLogStoreTests: XCTestCase {
         XCTAssertFalse(store.isStreaming)
     }
 
-    // MARK: - JSON view (#477)
+    // MARK: - View mode (#477, #493)
 
-    func testJSONView_ownPreferenceOffByDefaultAndPersisted() throws {
+    func testViewMode_ownPreferenceRawByDefaultAndPersisted() throws {
         let suite = "AggregatedLogStoreTests.jsonView"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defaults.removePersistentDomain(forName: suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "logPanel.jsonView")  // the panel's key is not shared
 
+        defaults.set("ecs", forKey: "logPanel.viewMode")  // the panel's key is not shared
+
         let first = AggregatedLogStore(streamer: streamer, defaults: defaults)
-        XCTAssertFalse(first.jsonView)
-        first.jsonView = true
-        XCTAssertTrue(defaults.bool(forKey: "logs.jsonView"))
-        XCTAssertTrue(AggregatedLogStore(streamer: streamer, defaults: defaults).jsonView)
+        XCTAssertEqual(first.viewMode, .raw)
+        first.viewMode = .json
+        XCTAssertEqual(defaults.string(forKey: "logs.viewMode"), "json")
+        XCTAssertEqual(AggregatedLogStore(streamer: streamer, defaults: defaults).viewMode, .json)
+
+        defaults.removeObject(forKey: "logs.viewMode")
+        defaults.set(true, forKey: "logs.jsonView")  // pre-#493 toggle carries over
+        XCTAssertEqual(AggregatedLogStore(streamer: streamer, defaults: defaults).viewMode, .json)
     }
 
     func testToggleExpanded_flipsAndClearEmpties() async throws {

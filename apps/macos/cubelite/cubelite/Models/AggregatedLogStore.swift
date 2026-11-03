@@ -47,9 +47,9 @@ final class AggregatedLogStore {
     /// `totalAppended` at the moment of pausing; nil while following.
     private(set) var pausedAtCount: Int?
 
-    /// Humanises JSON log lines (#477); its own preference, off by default.
-    var jsonView: Bool {
-        didSet { defaults.set(jsonView, forKey: "logs.jsonView") }
+    /// Raw, JSON (#477) or ECS (#493) rendering; its own preference.
+    var viewMode: LogViewMode {
+        didSet { defaults.set(viewMode.rawValue, forKey: "logs.viewMode") }
     }
     /// Lines expanded into a JSON tree; cleared with the buffer, ids evicted
     /// by the ring are dropped on the next toggle.
@@ -90,7 +90,7 @@ final class AggregatedLogStore {
         self.streamer = streamer
         self.defaults = defaults
         self.backoffBase = backoffBase
-        self.jsonView = defaults.bool(forKey: "logs.jsonView")
+        self.viewMode = LogViewMode.stored(in: defaults, key: "logs.viewMode", legacyKey: "logs.jsonView")
     }
 
     /// Restarts streaming for the given pod set (first ``maxPods`` pods).
