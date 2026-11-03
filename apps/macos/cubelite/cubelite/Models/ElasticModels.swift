@@ -247,6 +247,10 @@ struct HistoryLine: Equatable, Sendable {
     let container: String?
     /// The stored `_source`, compact JSON (what JSON / ECS modes render).
     let document: String
+    /// `_index` of the hit (with `docID`, drops repeats between pages).
+    var docIndex: String? = nil
+    /// `_id` of the hit.
+    var docID: String? = nil
 }
 
 /// One page of history, newest first.
@@ -309,14 +313,24 @@ enum Elastic {
     }
 
     /// How long Elasticsearch keeps a history point in time between pages.
-    static let pitKeepAlive = "2m"
+    static let pitKeepAlive = "5m"
+
+    /// `search_after` that resumes on a new point in time from the boundary
+    /// timestamp of `sort`: the largest `_shard_doc` keeps every hit of that
+    /// millisecond (newest first, descending tiebreaker).
+    static func resumeSort(_ sort: [JSONValue]) -> [JSONValue] {
+        [sort.first ?? .null, .number(String(Int64.max))]
+    }
 
     /// The `_search` body for a history page: filter on namespace, pod,
     /// optional container and time range; newest first; `search_after` paging.
     ///
     /// With a point in time (`pit`), the search names no index and
-    /// `_shard_doc` breaks every tie, so pages neither skip nor repeat hits
-    /// with equal timestamps (#531). Without one (servers without PIT),
+    /// `_shard_doc` breaks every tie, so pages on one PIT neither skip nor
+    /// repeat hits with equal timestamps (#531). When an expired PIT is
+    /// replaced, paging resumes at the boundary millisecond, whose hits may
+    /// repeat (never skip); `LogHistory` drops repeats by `_index` + `_id`.
+    /// Without one (servers without PIT),
     /// `_index` + `_doc` break most ties; equal timestamps on different
     /// shards can still share sort values (rare), as on the desktop.
     static func searchBody(_ query: HistoryQuery, preset: FieldPreset, pit: String? = nil)
@@ -391,9 +405,14 @@ enum Elastic {
                 ["log.level", "level", "severity"].lazy
                 .compactMap { stringField(source, $0).flatMap(mapLevel) }.first
                 ?? LogLine.detectLevel(message)
+            var docIndex: String?
+            var docID: String?
+            if case .string(let index)? = hit["_index"] { docIndex = index }
+            if case .string(let id)? = hit["_id"] { docID = id }
             return HistoryLine(
                 time: stringField(source, "@timestamp"), level: level, message: message,
-                container: stringField(source, f.container), document: source.compactText)
+                container: stringField(source, f.container), document: source.compactText,
+                docIndex: docIndex, docID: docID)
         }
         var total: Int?
         var lowerBound = false

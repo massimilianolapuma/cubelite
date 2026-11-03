@@ -31,7 +31,16 @@ const cursor = (pit: string, sort: number): HistoryCursor => ({ pitId: pit, sort
 
 function page(messages: string[], next: HistoryCursor | null): HistoryPage {
   return {
-    lines: messages.map((message) => ({ time: "t", level: "info", message, container: "web", document: "{}" })),
+    // Each message is its own Elasticsearch hit (`_id` = the message).
+    lines: messages.map((message) => ({
+      time: "t",
+      level: "info",
+      message,
+      container: "web",
+      document: "{}",
+      docIndex: ".ds-logs-1",
+      docId: message,
+    })),
     total: messages.length,
     totalIsLowerBound: false,
     next,
@@ -93,5 +102,41 @@ describe("LogHistory paging cursor (#531)", () => {
     expect(elasticCloseCursor).toHaveBeenCalledWith("/k", "prod", endpoint, stale);
     expect(h.lines.map((l) => l.message)).toEqual(["new"]);
     expect(h.error).toBeNull();
+  });
+
+  it("drops the boundary lines a page resumed on a new point in time repeats", async () => {
+    vi.mocked(elasticSearch)
+      .mockResolvedValueOnce(page(["d", "c"], cursor("pit-a", 3)))
+      .mockResolvedValueOnce(page(["c", "b"], cursor("pit-new", 2)))
+      .mockResolvedValueOnce(page(["a"], null));
+    const h = new LogHistory("shop", "api-0", () => "web");
+    await h.reload();
+    await h.loadOlder();
+    expect(h.lines.map((l) => l.message)).toEqual(["b", "c", "d"]);
+    await h.loadOlder();
+    expect(h.lines.map((l) => l.message)).toEqual(["a", "b", "c", "d"]);
+    // A new search starts over: the same hits are shown again.
+    vi.mocked(elasticSearch).mockResolvedValueOnce(page(["d"], null));
+    await h.reload();
+    expect(h.lines.map((l) => l.message)).toEqual(["d"]);
+  });
+
+  it("releases a stale page's cursor on the cluster it came from", async () => {
+    let resolveFirst!: (p: HistoryPage) => void;
+    const stale = cursor("pit-prod", 1);
+    const dev: EsEndpoint = { ...endpoint, indexPattern: "dev-*" };
+    vi.mocked(elasticSearch)
+      .mockReturnValueOnce(new Promise((r) => (resolveFirst = r)))
+      .mockResolvedValueOnce(page(["dev line"], cursor("pit-dev", 5)));
+    const h = new LogHistory("shop", "api-0", () => "web");
+    const slow = h.reload();
+    app.activeCluster = "dev";
+    elastic.setEndpoint("dev", dev);
+    await h.reload();
+    resolveFirst(page(["old"], stale));
+    await slow;
+    expect(elasticCloseCursor).toHaveBeenCalledWith("/k", "prod", endpoint, stale);
+    h.close();
+    expect(elasticCloseCursor).toHaveBeenLastCalledWith("/k", "dev", dev, cursor("pit-dev", 5));
   });
 });

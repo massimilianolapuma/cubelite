@@ -78,6 +78,8 @@ final class LogHistory {
     private var params: (range: HistoryRange, text: String?, container: String?)?
     /// The endpoint the last page came from: cursors are released there.
     private var lastEndpoint: EsEndpoint?
+    /// `_index`/`_id` of the lines shown: a resumed page may repeat some (#531).
+    private var seen: Set<String> = []
 
     init(
         context: String, namespace: String, pod: String,
@@ -153,6 +155,7 @@ final class LogHistory {
                 return
             }
             onReplace()
+            seen = []
             lines = page.lines.map(toLine).reversed()
             onLinesChanged()
             total = page.total
@@ -199,12 +202,14 @@ final class LogHistory {
                 release(page.next)
                 return
             }
+            // A page resumed on a new point in time may repeat the boundary lines.
+            let fresh = page.lines.filter { Self.key($0).map { !seen.contains($0) } ?? true }
             let room = Self.cap - lines.count
             // Newest-first page: keep its newest `room` lines; past the cap
             // there is nothing older to fetch.
-            let kept = Array(page.lines.prefix(room))
+            let kept = Array(fresh.prefix(room))
             lines = kept.map(toLine).reversed() + lines
-            if kept.count < page.lines.count {
+            if kept.count < fresh.count {
                 release(page.next)
                 next = nil
             } else {
@@ -246,8 +251,15 @@ final class LogHistory {
         return try await searcher.search(context: context, endpoint: endpoint, query: query)
     }
 
+    /// `_index`/`_id` of a hit; nil when the server did not send them.
+    private static func key(_ line: HistoryLine) -> String? {
+        guard let index = line.docIndex, let id = line.docID else { return nil }
+        return "\(index)/\(id)"
+    }
+
     private func toLine(_ line: HistoryLine) -> LogLine {
         defer { nextID += 1 }
+        if let key = Self.key(line) { seen.insert(key) }
         // The panel's time column shows the time of day, like live lines.
         let time = line.time.flatMap { $0.split(separator: "T").last.map(String.init) }
         return LogLine(

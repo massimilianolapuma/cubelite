@@ -15,7 +15,7 @@ import {
   type HistoryPage,
 } from "#lib/tauri.ts";
 import { errorMessage } from "#lib/errors.ts";
-import type { HistoryRange } from "#lib/elastic.ts";
+import { HistoryKeys, type HistoryRange } from "#lib/elastic.ts";
 import type { KeyedLogLine } from "./logs.svelte";
 import { app } from "./app.svelte";
 import { elastic } from "./elastic.svelte";
@@ -25,6 +25,9 @@ export const HISTORY_ID_BASE = 1_000_000_000_000;
 
 /** Upper bound of lines kept (twenty pages of 500). */
 export const HISTORY_CAP = 10_000;
+
+/** The cluster and endpoint a page came from. */
+type Source = { kubeconfigPath: string; context: string; endpoint: EsEndpoint };
 
 export class LogHistory {
   lines = $state<KeyedLogLine[]>([]);
@@ -49,8 +52,10 @@ export class LogHistory {
   #generation = 0;
   /** Range, text and container of the last reload: `next` belongs to them. */
   #params: { range: HistoryRange; text: string | null; container: string | null } | null = null;
-  /** Where the last page came from: cursors are released there. */
-  #source: { kubeconfigPath: string; context: string; endpoint: EsEndpoint } | null = null;
+  /** Where `next` came from: it is released there. */
+  #source: Source | null = null;
+  /** `_index`/`_id` of the lines shown: a resumed page may repeat some (#531). */
+  #seen = new HistoryKeys();
 
   constructor(
     namespace: string,
@@ -69,6 +74,7 @@ export class LogHistory {
   }
 
   #toLine(h: HistoryLine): KeyedLogLine {
+    this.#seen.add(h);
     return {
       id: this.#nextId++,
       pod: this.pod,
@@ -84,15 +90,15 @@ export class LogHistory {
   async #fetch(
     params: { range: HistoryRange; text: string | null; container: string | null },
     searchAfter: HistoryCursor | null,
-  ): Promise<HistoryPage | null> {
+  ): Promise<{ page: HistoryPage; source: Source } | null> {
     const context = app.activeCluster;
     const endpoint = elastic.endpointFor(context);
     if (!context || !endpoint) {
       this.error = "No Elasticsearch endpoint for this cluster — set one in Preferences → Integrations.";
       return null;
     }
-    this.#source = { kubeconfigPath: app.kubeconfigPath, context, endpoint };
-    return elasticSearch(app.kubeconfigPath, context, endpoint, {
+    const source = { kubeconfigPath: app.kubeconfigPath, context, endpoint };
+    const page = await elasticSearch(source.kubeconfigPath, context, endpoint, {
       namespace: this.namespace,
       pod: this.pod,
       container: params.container,
@@ -102,14 +108,15 @@ export class LogHistory {
       searchAfter,
       size: null,
     });
+    return { page, source };
   }
 
   /**
-   * Releases the point in time a cursor may hold (best effort, never awaited
-   * by the UI: it expires on its own if this fails).
+   * Releases the point in time a cursor may hold, on the cluster the cursor
+   * came from (best effort, never awaited by the UI: it expires on its own
+   * if this fails).
    */
-  async #release(cursor: HistoryCursor | null): Promise<void> {
-    const source = this.#source;
+  async #release(cursor: HistoryCursor | null, source: Source | null): Promise<void> {
     if (!cursor || !source) return;
     try {
       await elasticCloseCursor(source.kubeconfigPath, source.context, source.endpoint, cursor);
@@ -121,7 +128,7 @@ export class LogHistory {
   /** The session closed: release the cursor of the shown search. */
   close(): void {
     this.#generation++;
-    void this.#release(this.next);
+    void this.#release(this.next, this.#source);
     this.next = null;
   }
 
@@ -129,7 +136,7 @@ export class LogHistory {
   async reload(): Promise<void> {
     const generation = ++this.#generation;
     // The previous search is replaced: its cursor is never used again.
-    void this.#release(this.next);
+    void this.#release(this.next, this.#source);
     this.next = null;
     const params = { range: this.range, text: this.text.trim() || null, container: this.#container() };
     this.#params = params;
@@ -137,22 +144,25 @@ export class LogHistory {
     this.loading = true;
     this.error = null;
     try {
-      const page = await this.#fetch(params, null);
+      const fetched = await this.#fetch(params, null);
       if (generation !== this.#generation) {
-        void this.#release(page?.next ?? null);
+        void this.#release(fetched?.page.next ?? null, fetched?.source ?? null);
         return;
       }
-      if (!page) {
+      if (!fetched) {
         this.lines = [];
         this.next = null;
         this.total = null;
         return;
       }
+      const { page, source } = fetched;
       this.#onReplace();
+      this.#seen = new HistoryKeys();
       this.lines = page.lines.map((h) => this.#toLine(h)).reverse();
       this.total = page.total;
       this.totalIsLowerBound = page.totalIsLowerBound;
       this.next = page.next;
+      this.#source = source;
       this.loads++;
     } catch (e) {
       if (generation === this.#generation) this.error = errorMessage(e);
@@ -170,20 +180,24 @@ export class LogHistory {
     try {
       // Same range/text/container as the page the cursor came from, even if
       // the inputs were edited since without pressing Enter.
-      const page = await this.#fetch(this.#params, this.next);
-      if (!page) return;
+      const fetched = await this.#fetch(this.#params, this.next);
+      if (!fetched) return;
+      const { page, source } = fetched;
       if (generation !== this.#generation) {
-        void this.#release(page.next);
+        void this.#release(page.next, source);
         return;
       }
+      // A page resumed on a new point in time may repeat the boundary lines.
+      const fresh = page.lines.filter((h) => !this.#seen.has(h));
       const room = HISTORY_CAP - this.lines.length;
       // Newest-first page: keep its newest `room` lines; past the cap there
       // is nothing older to fetch.
-      const kept = page.lines.slice(0, room);
+      const kept = fresh.slice(0, room);
       const older = kept.map((h) => this.#toLine(h)).reverse();
       this.lines = [...older, ...this.lines];
-      if (kept.length < page.lines.length) {
-        void this.#release(page.next);
+      this.#source = source;
+      if (kept.length < fresh.length) {
+        void this.#release(page.next, source);
         this.next = null;
       } else {
         this.next = page.next;

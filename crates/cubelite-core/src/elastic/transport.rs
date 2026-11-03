@@ -32,6 +32,16 @@ pub struct EsConnection {
     _tunnel: Option<ServiceTunnel>,
 }
 
+/// `search_after` that resumes on a new point in time from the boundary
+/// timestamp of `sort`: the largest `_shard_doc` keeps every hit of that
+/// millisecond (newest first, descending tiebreaker).
+fn resume_sort(sort: &[Value]) -> Vec<Value> {
+    vec![
+        sort.first().cloned().unwrap_or(Value::Null),
+        json!(i64::MAX),
+    ]
+}
+
 /// Statuses of a PIT open that mean "no PIT here" rather than a failure:
 /// no `manage`/`read` privilege for PIT, or an older Elasticsearch /
 /// OpenSearch without `/{index}/_pit`.
@@ -228,11 +238,13 @@ impl EsConnection {
     ///
     /// The first page opens a point in time over the index pattern and the
     /// cursor carries it to the next pages (#531), so hits with equal
-    /// timestamps are neither skipped nor repeated between pages. The PIT is
-    /// closed after the last page or a failed first page; the frontends close
-    /// it earlier with [`Self::close_cursor`] when the search is replaced.
-    /// Servers without PIT (or users without the privilege) fall back to
-    /// plain `search_after`, remembered for this connection.
+    /// timestamps are neither skipped nor repeated between pages while the
+    /// PIT lives. The PIT is closed after the last page or a failed first
+    /// page; the frontends close it earlier with [`Self::close_cursor`] when
+    /// the search is replaced. Servers without PIT (or users without the
+    /// privilege) fall back to plain `search_after`, remembered for this
+    /// connection; any other failure to open one falls back for this
+    /// request only.
     pub async fn search(
         &self,
         endpoint: &EsEndpoint,
@@ -240,44 +252,37 @@ impl EsConnection {
     ) -> Result<HistoryPage, ElasticError> {
         validate_index_pattern(&endpoint.index_pattern)?;
         let size = query.size.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
-        let first = query.search_after.is_none();
-        let pit = match &query.search_after {
-            Some(cursor) => cursor.pit_id.clone(),
-            None => self.open_pit(endpoint).await?,
+        let Some(cursor) = &query.search_after else {
+            return self.first_page(endpoint, query, size).await;
         };
-        let Some(mut pit) = pit else {
-            let body = search_body(query, endpoint.preset, None);
-            let url = self.url(&format!(
-                "{}/_search?ignore_unavailable=true&allow_no_indices=true",
-                endpoint.index_pattern
-            ));
-            let response = self.send(self.http.post(url).json(&body)).await?;
-            return map_response(&response, endpoint.preset, size);
+        let Some(pit) = &cursor.pit_id else {
+            return self.search_plain(endpoint, query, size).await;
         };
-        let mut opened_here = first;
-        let mut result = self.search_pit(endpoint, query, &pit, size).await;
-        if !first && matches!(result, Err(ElasticError::Http { status: 404, .. })) {
-            // The PIT expired (idle longer than its keep-alive): continue
-            // from the same sort values on a new one.
-            if let Ok(Some(fresh)) = self.open_pit(endpoint).await {
-                result = self.search_pit(endpoint, query, &fresh, size).await;
-                pit = fresh;
-                opened_here = true;
+        match self.search_pit(endpoint, query, pit, size).await {
+            Err(ElasticError::Http {
+                status: 404,
+                reason,
+            }) => {
+                // The PIT expired (idle longer than its keep-alive), and its
+                // `_shard_doc` values mean nothing on a new one: resume from
+                // the boundary timestamp with the largest tiebreaker. Lines
+                // of that millisecond may repeat (the frontends drop them by
+                // `_index` + `_id`), none is skipped.
+                let Ok(Some(fresh)) = self.open_pit(endpoint).await else {
+                    return Err(ElasticError::Http {
+                        status: 404,
+                        reason,
+                    });
+                };
+                let mut resumed = query.clone();
+                resumed.search_after = Some(HistoryCursor {
+                    pit_id: Some(fresh.clone()),
+                    sort: resume_sort(&cursor.sort),
+                });
+                let result = self.search_pit(endpoint, &resumed, &fresh, size).await;
+                self.settle(result, Some(&fresh)).await
             }
-        }
-        match result {
-            Ok((page, latest)) => {
-                if page.next.is_none() {
-                    self.close_pit(&latest).await;
-                }
-                Ok(page)
-            }
-            Err(e) => {
-                if opened_here {
-                    self.close_pit(&pit).await;
-                }
-                Err(e)
-            }
+            other => self.settle(other, None).await,
         }
     }
 
@@ -290,8 +295,73 @@ impl EsConnection {
         }
     }
 
-    /// Opens a point in time over the index pattern; `Ok(None)` when the
-    /// server has no PIT for us (see [`NO_PIT_STATUSES`]).
+    /// The first page: on a new point in time when the server gives one,
+    /// else with plain `search_after`.
+    async fn first_page(
+        &self,
+        endpoint: &EsEndpoint,
+        query: &HistoryQuery,
+        size: u32,
+    ) -> Result<HistoryPage, ElasticError> {
+        let Some(pit) = self.open_pit(endpoint).await? else {
+            return self.search_plain(endpoint, query, size).await;
+        };
+        match self.search_pit(endpoint, query, &pit, size).await {
+            Err(ElasticError::Http { status: 400, .. }) => {
+                // Elasticsearch 7.10–7.11 has PIT but no `_shard_doc`: page
+                // without PIT on this connection.
+                self.close_pit(&pit).await;
+                self.no_pit.store(true, Ordering::Relaxed);
+                self.search_plain(endpoint, query, size).await
+            }
+            other => self.settle(other, Some(&pit)).await,
+        }
+    }
+
+    /// A PIT page's outcome: the PIT is closed after the last page, or when
+    /// this request `opened` it and failed.
+    async fn settle(
+        &self,
+        result: Result<(HistoryPage, String), ElasticError>,
+        opened: Option<&str>,
+    ) -> Result<HistoryPage, ElasticError> {
+        match result {
+            Ok((page, latest)) => {
+                if page.next.is_none() {
+                    self.close_pit(&latest).await;
+                }
+                Ok(page)
+            }
+            Err(e) => {
+                if let Some(id) = opened {
+                    self.close_pit(id).await;
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// One page with plain `search_after` on the index pattern.
+    async fn search_plain(
+        &self,
+        endpoint: &EsEndpoint,
+        query: &HistoryQuery,
+        size: u32,
+    ) -> Result<HistoryPage, ElasticError> {
+        let body = search_body(query, endpoint.preset, None);
+        let url = self.url(&format!(
+            "{}/_search?ignore_unavailable=true&allow_no_indices=true",
+            endpoint.index_pattern
+        ));
+        let response = self.send(self.http.post(url).json(&body)).await?;
+        map_response(&response, endpoint.preset, size)
+    }
+
+    /// Opens a point in time over the index pattern. `Ok(None)` pages
+    /// without one: remembered for the connection when the server has no
+    /// PIT for us (see [`NO_PIT_STATUSES`]), for this request only on any
+    /// other answer (a full PIT table's 429, a 5xx). Unreachable servers
+    /// stay errors.
     async fn open_pit(&self, endpoint: &EsEndpoint) -> Result<Option<String>, ElasticError> {
         if self.no_pit.load(Ordering::Relaxed) {
             return Ok(None);
@@ -303,7 +373,8 @@ impl EsConnection {
         let id = match self.send(self.http.post(url)).await {
             Ok(body) => body.get("id").and_then(Value::as_str).map(str::to_owned),
             Err(ElasticError::Http { status, .. }) if NO_PIT_STATUSES.contains(&status) => None,
-            Err(e) => return Err(e),
+            Err(ElasticError::Connect(e)) => return Err(ElasticError::Connect(e)),
+            Err(_) => return Ok(None),
         };
         if id.is_none() {
             self.no_pit.store(true, Ordering::Relaxed);

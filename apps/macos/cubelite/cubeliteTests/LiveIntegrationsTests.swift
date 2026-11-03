@@ -55,7 +55,28 @@ final class LiveIntegrationsTests: XCTestCase {
         XCTAssertFalse(older.lines.contains { shown.contains($0.document) }, "no hit repeated")
         if let next = older.next {
             XCTAssertNotNil(next.pitID)
+            // A gone PIT (closed here, like one idle past its keep-alive)
+            // resumes on a new one at the boundary millisecond: repeats only
+            // there, nothing skipped.
             await service.closeCursor(context: context, endpoint: endpoint, cursor: next)
+            let resumed = try await service.search(
+                context: context, endpoint: endpoint,
+                query: HistoryQuery(
+                    namespace: "shop", pod: pod.name, from: "now-1h", to: "now", searchAfter: next,
+                    size: 50))
+            XCTAssertFalse(resumed.lines.isEmpty, "resumes on a new PIT")
+            let boundary = older.lines.last?.time
+            let olderKeys = Set(older.lines.map { "\($0.docIndex ?? "")/\($0.docID ?? "")" })
+            for line in resumed.lines {
+                XCTAssertLessThanOrEqual(line.time ?? "", boundary ?? "")
+                if olderKeys.contains("\(line.docIndex ?? "")/\(line.docID ?? "")") {
+                    XCTAssertEqual(line.time, boundary, "repeats only at the boundary")
+                }
+            }
+            if let again = resumed.next {
+                XCTAssertNotEqual(again.pitID, next.pitID, "a new PIT (the DELETE freed the old one)")
+                await service.closeCursor(context: context, endpoint: endpoint, cursor: again)
+            }
         }
 
         // In-cluster Kibana through the service's forward (#519).

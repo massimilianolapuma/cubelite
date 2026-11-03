@@ -43,7 +43,7 @@ final class ElasticModelsTests: XCTestCase {
         var q = query()
         q.searchAfter = HistoryCursor(pitID: "pit-1", sort: [.number("1730000000000"), .number("7")])
         let body = Elastic.searchBody(q, preset: .ecs, pit: "pit-2")
-        XCTAssertEqual(body["pit"], json(#"{"id":"pit-2","keep_alive":"2m"}"#))
+        XCTAssertEqual(body["pit"], json(#"{"id":"pit-2","keep_alive":"5m"}"#))
         XCTAssertEqual(
             body["sort"],
             json(#"[{"@timestamp":{"order":"desc","unmapped_type":"date"}},{"_shard_doc":"desc"}]"#))
@@ -74,7 +74,7 @@ final class ElasticModelsTests: XCTestCase {
             """
             {"hits":{"total":{"value":10000,"relation":"gte"},"hits":[
               {"_source":{"@timestamp":"2026-11-03T08:00:00Z","log":{"level":"WARN"},
-                "message":"disk almost full\\n","kubernetes":{"container":{"name":"web"}}},"sort":[3,1]},
+                "message":"disk almost full\\n","kubernetes":{"container":{"name":"web"}}},"sort":[3,1],"_index":".ds-logs-1","_id":"id-3"},
               {"_source":{"@timestamp":"2026-11-03T07:59:00Z","log.level":"error",
                 "message":"boom","kubernetes.container.name":"web"},"sort":[2,2]},
               {"_source":{"@timestamp":"2026-11-03T07:58:00Z","event":{"original":"ERROR raw"}},"sort":[1,3]}
@@ -93,6 +93,12 @@ final class ElasticModelsTests: XCTestCase {
         XCTAssertTrue(a.document.contains(#""message":"disk almost full\n""#))
         XCTAssertEqual(b.level, .error)
         XCTAssertEqual(b.container, "web")
+        XCTAssertEqual(a.docIndex, ".ds-logs-1")
+        XCTAssertEqual(a.docID, "id-3")
+        XCTAssertNil(b.docID)
+        XCTAssertEqual(
+            Elastic.resumeSort([.number("1730000000000"), .number("42")]),
+            [.number("1730000000000"), .number("9223372036854775807")])
         XCTAssertEqual(c.message, "ERROR raw")
         XCTAssertEqual(c.level, .error, "detected from the message without a level field")
 

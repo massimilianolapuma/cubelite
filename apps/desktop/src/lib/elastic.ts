@@ -1,4 +1,4 @@
-import type { EsEndpoint } from "#lib/tauri.ts";
+import type { EsEndpoint, HistoryLine } from "#lib/tauri.ts";
 
 /** Default index pattern: Elastic Agent data streams, Filebeat, Logstash. */
 export const DEFAULT_INDEX_PATTERN = "logs-*,filebeat-*,logstash-*";
@@ -38,4 +38,32 @@ export function describeEndpoint(endpoint: EsEndpoint): string {
 export function hitsLabel(total: number | null, lowerBound: boolean): string {
   if (total === null) return "";
   return `${total.toLocaleString("en-US")}${lowerBound ? "+" : ""} hit${total === 1 ? "" : "s"}`;
+}
+
+/**
+ * `_index`/`_id` of the history hits shown (#531): a page resumed on a new
+ * point in time may repeat the boundary hits, dropped with this. Plain (not
+ * reactive) state, kept out of the `.svelte.ts` stores.
+ */
+export class HistoryKeys {
+  #keys = new Set<string>();
+
+  static #key(line: HistoryLine): string | null {
+    return line.docIndex && line.docId ? `${line.docIndex}/${line.docId}` : null;
+  }
+
+  /** Remembers `line`; false when it was already shown. Hits without ids always count as new. */
+  add(line: HistoryLine): boolean {
+    const key = HistoryKeys.#key(line);
+    if (key === null) return true;
+    if (this.#keys.has(key)) return false;
+    this.#keys.add(key);
+    return true;
+  }
+
+  /** True when `line` was already shown. */
+  has(line: HistoryLine): boolean {
+    const key = HistoryKeys.#key(line);
+    return key !== null && this.#keys.has(key);
+  }
 }

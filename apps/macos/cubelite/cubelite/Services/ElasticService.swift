@@ -188,8 +188,10 @@ actor ElasticService {
         do {
             return try await search(connection, context: context, endpoint: endpoint, query: query)
         } catch ElasticError.connect(let reason) {
-            // A dead port-forward or network change: reconnect on the next page.
+            // A dead port-forward or network change: reconnect on the next
+            // page, and probe for a point in time again.
             await pool.invalidate(context: context, connection: connection)
+            noPIT[context] = nil
             throw ElasticError.connect(reason)
         }
     }
@@ -366,48 +368,86 @@ actor ElasticService {
     private func search(
         _ connection: Connection, context: String, endpoint: EsEndpoint, query: HistoryQuery
     ) async throws -> HistoryPage {
-        let first = query.searchAfter == nil
-        let opened: String?
-        if let cursor = query.searchAfter {
-            opened = cursor.pitID
-        } else {
-            opened = try await openPIT(connection, context: context, endpoint: endpoint)
+        guard let cursor = query.searchAfter else {
+            return try await firstPage(connection, context: context, endpoint: endpoint, query: query)
         }
-        guard var pit = opened else {
-            let body = Data(Elastic.searchBody(query, preset: endpoint.preset).compactText.utf8)
-            let response = try await send(
-                connection,
-                path: "\(endpoint.indexPattern)/_search?ignore_unavailable=true&allow_no_indices=true",
-                body: body)
-            return try Elastic.mapResponse(
-                response, preset: endpoint.preset, pageSize: query.pageSize)
+        guard let pit = cursor.pitID else {
+            return try await searchPlain(connection, endpoint: endpoint, query: query)
         }
-        var openedHere = first
+        let result: (page: HistoryPage, pit: String)
         do {
-            let result: (page: HistoryPage, pit: String)
-            do {
-                result = try await searchPIT(connection, endpoint: endpoint, query: query, pit: pit)
-            } catch ElasticError.http(let status, let reason) where status == 404 && !first {
-                // The PIT expired (idle longer than its keep-alive): continue
-                // from the same sort values on a new one.
-                guard
-                    let fresh = try? await openPIT(
-                        connection, context: context, endpoint: endpoint)
-                else { throw ElasticError.http(status: status, reason: reason) }
-                pit = fresh
-                openedHere = true
-                result = try await searchPIT(connection, endpoint: endpoint, query: query, pit: fresh)
+            result = try await searchPIT(connection, endpoint: endpoint, query: query, pit: pit)
+        } catch ElasticError.http(let status, let reason) where status == 404 {
+            // The PIT expired (idle longer than its keep-alive), and its
+            // `_shard_doc` values mean nothing on a new one: resume from the
+            // boundary timestamp with the largest tiebreaker. Lines of that
+            // millisecond may repeat (`LogHistory` drops them by `_index` +
+            // `_id`), none is skipped.
+            guard
+                let fresh = try? await openPIT(connection, context: context, endpoint: endpoint)
+            else { throw ElasticError.http(status: status, reason: reason) }
+            var resumed = query
+            resumed.searchAfter = HistoryCursor(pitID: fresh, sort: Elastic.resumeSort(cursor.sort))
+            return try await settle(opened: fresh, connection) {
+                try await self.searchPIT(connection, endpoint: endpoint, query: resumed, pit: fresh)
             }
+        }
+        if result.page.next == nil { await closePIT(connection, id: result.pit) }
+        return result.page
+    }
+
+    /// The first page: on a new point in time when the server gives one,
+    /// else with plain `search_after`.
+    private func firstPage(
+        _ connection: Connection, context: String, endpoint: EsEndpoint, query: HistoryQuery
+    ) async throws -> HistoryPage {
+        guard let pit = try await openPIT(connection, context: context, endpoint: endpoint) else {
+            return try await searchPlain(connection, endpoint: endpoint, query: query)
+        }
+        do {
+            return try await settle(opened: pit, connection) {
+                try await self.searchPIT(connection, endpoint: endpoint, query: query, pit: pit)
+            }
+        } catch ElasticError.http(let status, _) where status == 400 {
+            // Elasticsearch 7.10–7.11 has PIT but no `_shard_doc`: page
+            // without PIT on this connection (`settle` closed the PIT).
+            noPIT[context] = endpoint
+            return try await searchPlain(connection, endpoint: endpoint, query: query)
+        }
+    }
+
+    /// Runs a page on PIT `opened` (opened by this request): closed after
+    /// the last page, or when the page fails.
+    private func settle(
+        opened: String, _ connection: Connection,
+        _ page: () async throws -> (page: HistoryPage, pit: String)
+    ) async throws -> HistoryPage {
+        do {
+            let result = try await page()
             if result.page.next == nil { await closePIT(connection, id: result.pit) }
             return result.page
         } catch {
-            if openedHere { await closePIT(connection, id: pit) }
+            await closePIT(connection, id: opened)
             throw error
         }
     }
 
-    /// Opens a point in time over the index pattern; nil when the server has
-    /// no PIT for us (see `noPITStatuses`), remembered for the context.
+    /// One page with plain `search_after` on the index pattern.
+    private func searchPlain(_ connection: Connection, endpoint: EsEndpoint, query: HistoryQuery)
+        async throws -> HistoryPage
+    {
+        let body = Data(Elastic.searchBody(query, preset: endpoint.preset).compactText.utf8)
+        let response = try await send(
+            connection,
+            path: "\(endpoint.indexPattern)/_search?ignore_unavailable=true&allow_no_indices=true",
+            body: body)
+        return try Elastic.mapResponse(response, preset: endpoint.preset, pageSize: query.pageSize)
+    }
+
+    /// Opens a point in time over the index pattern. nil pages without one:
+    /// remembered for the context when the server has no PIT for us (see
+    /// `noPITStatuses`), for this request only on any other answer (a full
+    /// PIT table's 429, a 5xx). Unreachable servers stay errors.
     private func openPIT(_ connection: Connection, context: String, endpoint: EsEndpoint)
         async throws -> String?
     {
@@ -422,6 +462,12 @@ actor ElasticService {
             if case .string(let value)? = response["id"] { id = value }
         } catch ElasticError.http(let status, _) where Self.noPITStatuses.contains(status) {
             id = nil
+        } catch ElasticError.connect(let reason) {
+            throw ElasticError.connect(reason)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
         }
         if id == nil { noPIT[context] = endpoint }
         return id

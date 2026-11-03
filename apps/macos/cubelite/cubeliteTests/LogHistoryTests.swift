@@ -169,6 +169,31 @@ final class LogHistoryTests: XCTestCase {
         XCTAssertNil(h.next)
     }
 
+    func testLoadOlderDropsTheBoundaryLinesAResumedPageRepeats() async {
+        /// Newest-first hits whose `_id` is their message.
+        func hits(_ ids: [String], more: Bool) -> HistoryPage {
+            HistoryPage(
+                lines: ids.map {
+                    HistoryLine(
+                        time: "2026-11-03T08:00:00Z", level: .info, message: $0, container: "web",
+                        document: "{}", docIndex: ".ds-logs-1", docID: $0)
+                },
+                total: 4, totalIsLowerBound: false,
+                next: more ? HistoryCursor(pitID: "p", sort: [.number("1")]) : nil)
+        }
+        let searcher = StubSearcher([
+            .success(hits(["d", "c"], more: true)), .success(hits(["c", "b"], more: true)),
+            .success(hits(["a"], more: false)),
+        ])
+        let h = history(searcher)
+        await h.reload()
+        await h.loadOlder()
+        XCTAssertEqual(h.lines.map(\.message), ["b", "c", "d"])
+        XCTAssertNotNil(h.next, "a page of repeats only is not the end")
+        await h.loadOlder()
+        XCTAssertEqual(h.lines.map(\.message), ["a", "b", "c", "d"])
+    }
+
     func testCursorsWithoutAPointInTimeNeedNoRelease() async {
         let searcher = StubSearcher([.success(page(["b"], more: true))])
         let h = history(searcher)

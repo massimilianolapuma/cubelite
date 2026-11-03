@@ -231,7 +231,7 @@ pub struct HistoryCursor {
 }
 
 /// How long Elasticsearch keeps a history point in time between pages.
-pub const PIT_KEEP_ALIVE: &str = "2m";
+pub const PIT_KEEP_ALIVE: &str = "5m";
 
 /// Default and maximum page size.
 pub const DEFAULT_PAGE: u32 = 500;
@@ -242,10 +242,13 @@ pub const MAX_PAGE: u32 = 1000;
 /// optional container and time range; newest first; `search_after` paging.
 ///
 /// With a point in time (`pit`), the search names no index and `_shard_doc`
-/// breaks every tie, so pages neither skip nor repeat hits with equal
-/// timestamps (#531). Without one (servers without PIT), `_index` + `_doc`
-/// break most ties; hits with equal timestamps on different shards of one
-/// index can still share sort values (rare).
+/// breaks every tie, so pages on one PIT neither skip nor repeat hits with
+/// equal timestamps (#531). When an expired PIT is replaced, paging resumes
+/// at the boundary millisecond, whose hits may repeat (never skip); the
+/// frontends drop repeats by `_index` + `_id`. Without a PIT (servers
+/// without one), `_index` + `_doc` break most ties; hits with equal
+/// timestamps on different shards of one index can still share sort values
+/// (rare).
 pub fn search_body(query: &HistoryQuery, preset: FieldPreset, pit: Option<&str>) -> Value {
     let f = preset.fields();
     let mut filter = vec![
@@ -307,6 +310,12 @@ pub struct HistoryLine {
     pub container: Option<String>,
     /// The stored `_source`, compact JSON (what JSON / ECS modes render).
     pub document: String,
+    /// `_index` of the hit (with `doc_id`, drops repeats between pages).
+    #[serde(default)]
+    pub doc_index: Option<String>,
+    /// `_id` of the hit.
+    #[serde(default)]
+    pub doc_id: Option<String>,
 }
 
 /// One page of history, newest first.
@@ -390,6 +399,8 @@ pub fn map_response(
                 container: string_field(&source, f.container),
                 message: message.trim_end_matches(['\n', '\r']).to_string(),
                 document: source.to_string(),
+                doc_index: hit.get("_index").and_then(Value::as_str).map(str::to_owned),
+                doc_id: hit.get("_id").and_then(Value::as_str).map(str::to_owned),
             }
         })
         .collect::<Vec<_>>();

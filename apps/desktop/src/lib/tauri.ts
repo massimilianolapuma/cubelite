@@ -781,6 +781,9 @@ export type HistoryLine = {
   container: string | null;
   /** Stored `_source`, compact JSON. */
   document: string;
+  /** `_index` and `_id` of the hit (drop lines repeated between pages). */
+  docIndex?: string | null;
+  docId?: string | null;
 };
 
 export type HistoryPage = {

@@ -47,7 +47,7 @@ fn search_body_on_a_point_in_time_breaks_ties_with_shard_doc() {
         sort: vec![json!(1_730_000_000_000_u64), json!(7)],
     });
     let body = search_body(&q, FieldPreset::Ecs, Some("pit-2"));
-    assert_eq!(body["pit"], json!({ "id": "pit-2", "keep_alive": "2m" }));
+    assert_eq!(body["pit"], json!({ "id": "pit-2", "keep_alive": "5m" }));
     assert_eq!(
         body["sort"],
         json!([
@@ -103,7 +103,8 @@ fn map_response_reads_ecs_fluent_bit_and_flat_documents() {
         "hits": {
             "total": { "value": 10000, "relation": "gte" },
             "hits": [
-                { "_source": { "@timestamp": "2026-11-03T08:00:00Z", "log": { "level": "WARN" },
+                { "_index": ".ds-logs-1", "_id": "id-3",
+                  "_source": { "@timestamp": "2026-11-03T08:00:00Z", "log": { "level": "WARN" },
                     "message": "disk almost full\n", "kubernetes": { "container": { "name": "web" } } },
                   "sort": [3, 1] },
                 { "_source": { "@timestamp": "2026-11-03T07:59:00Z", "log.level": "error",
@@ -126,6 +127,9 @@ fn map_response_reads_ecs_fluent_bit_and_flat_documents() {
     let [a, b, c] = &page.lines[..] else {
         panic!("three lines")
     };
+    assert_eq!(a.doc_index.as_deref(), Some(".ds-logs-1"));
+    assert_eq!(a.doc_id.as_deref(), Some("id-3"));
+    assert_eq!(b.doc_id, None);
     assert_eq!(a.message, "disk almost full");
     assert_eq!(a.level, LogLevel::Warn);
     assert_eq!(a.container.as_deref(), Some("web"));
@@ -413,7 +417,7 @@ async fn history_pages_on_a_point_in_time_and_close_it_at_the_end() {
     assert_eq!(requests.len(), 4);
     let open = requests[0].to_ascii_lowercase();
     assert!(
-        open.starts_with("post /logs-*/_pit?keep_alive=2m&ignore_unavailable=true "),
+        open.starts_with("post /logs-*/_pit?keep_alive=5m&ignore_unavailable=true "),
         "{open}"
     );
     assert!(open.contains("authorization: apikey k1"));
@@ -422,7 +426,7 @@ async fn history_pages_on_a_point_in_time_and_close_it_at_the_end() {
         "no index with a PIT"
     );
     let body = body_of(&requests[1]);
-    assert_eq!(body["pit"], json!({ "id": "pit-a", "keep_alive": "2m" }));
+    assert_eq!(body["pit"], json!({ "id": "pit-a", "keep_alive": "5m" }));
     assert_eq!(body["sort"][1], json!({ "_shard_doc": "desc" }));
     assert!(body.get("search_after").is_none());
     assert_eq!(
@@ -544,17 +548,98 @@ async fn an_expired_point_in_time_continues_on_a_new_one() {
     assert!(requests[1].starts_with("POST /logs-*/_pit?"));
     let body = body_of(&requests[2]);
     assert_eq!(body["pit"]["id"], "pit-new");
-    assert_eq!(body["search_after"], json!([2, 8]));
+    assert_eq!(
+        body["search_after"],
+        json!([2, i64::MAX]),
+        "the old _shard_doc means nothing on a new PIT: resume at the boundary millisecond"
+    );
     assert!(requests[3].starts_with("DELETE /_pit "));
 }
 
 #[tokio::test]
-async fn external_errors_carry_the_server_reason() {
-    let (url, server) = mock_server(vec![(
-        401,
-        r#"{"error":{"root_cause":[{"reason":"unable to authenticate user [elastic]"}]},"status":401}"#.into(),
-    )])
+async fn other_pit_open_failures_page_without_pit_for_that_request_only() {
+    let hits = json!({ "hits": { "total": 1, "hits": [
+        { "_source": { "@timestamp": "t", "message": "hello" }, "sort": [1, 1] }
+    ] } })
+    .to_string();
+    let (url, server) = mock_server(vec![
+        (
+            429,
+            r#"{"error":{"reason":"Trying to create too many Point In Time contexts"}}"#.into(),
+        ),
+        (200, hits.clone()),
+        (503, r#"{"error":{"reason":"unavailable"}}"#.into()),
+        (200, hits),
+        (200, json!({ "id": "pit-a" }).to_string()),
+        (200, pit_hits("pit-a", &[[1, 7]])),
+        (200, json!({ "succeeded": true }).to_string()),
+    ])
     .await;
+    let endpoint = external(&url);
+    let conn = connect(None, &endpoint, &EsAuth::None)
+        .await
+        .expect("connect");
+    for _ in 0..2 {
+        let page = conn.search(&endpoint, &query()).await.expect("plain page");
+        assert_eq!(page.lines[0].message, "hello");
+    }
+    let page = conn.search(&endpoint, &query()).await.expect("PIT again");
+    assert_eq!(page.lines[0].message, "m1");
+    let requests = server.await.expect("server");
+    assert!(requests[1].starts_with("POST /logs-*/_search?"));
+    assert!(
+        requests[2].starts_with("POST /logs-*/_pit?"),
+        "probed again"
+    );
+    assert!(requests[3].starts_with("POST /logs-*/_search?"));
+    assert!(
+        requests[4].starts_with("POST /logs-*/_pit?"),
+        "probed again"
+    );
+    assert!(requests[5].starts_with("POST /_search "));
+}
+
+#[tokio::test]
+async fn a_pit_without_shard_doc_closes_it_and_pages_without_pit() {
+    let hits = json!({ "hits": { "total": 1, "hits": [
+        { "_source": { "@timestamp": "t", "message": "hello" }, "sort": [1, 1] }
+    ] } })
+    .to_string();
+    let (url, server) = mock_server(vec![
+        (200, json!({ "id": "pit-7" }).to_string()),
+        (
+            400,
+            r#"{"error":{"reason":"No mapping found for [_shard_doc] in order to sort on"}}"#
+                .into(),
+        ),
+        (200, json!({ "succeeded": true }).to_string()),
+        (200, hits.clone()),
+        (200, hits),
+    ])
+    .await;
+    let endpoint = external(&url);
+    let conn = connect(None, &endpoint, &EsAuth::None)
+        .await
+        .expect("connect");
+    let page = conn.search(&endpoint, &query()).await.expect("plain page");
+    assert_eq!(page.lines[0].message, "hello");
+    conn.search(&endpoint, &query())
+        .await
+        .expect("no probe on the next first page");
+    let requests = server.await.expect("server");
+    assert!(requests[1].starts_with("POST /_search "));
+    assert!(requests[2].starts_with("DELETE /_pit "));
+    assert_eq!(body_of(&requests[2]), json!({ "id": "pit-7" }));
+    assert!(requests[3].starts_with("POST /logs-*/_search?"));
+    assert!(requests[4].starts_with("POST /logs-*/_search?"));
+}
+
+#[tokio::test]
+async fn external_errors_carry_the_server_reason() {
+    let unauthorized = r#"{"error":{"root_cause":[{"reason":"unable to authenticate user [elastic]"}]},"status":401}"#;
+    // The PIT open fails, then the plain search reports the reason.
+    let (url, server) =
+        mock_server(vec![(401, unauthorized.into()), (401, unauthorized.into())]).await;
     let endpoint = external(&url);
     let conn = connect(None, &endpoint, &EsAuth::None)
         .await
