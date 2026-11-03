@@ -227,11 +227,7 @@ actor ElasticService {
                 session: URLSession(configuration: config, delegate: delegate, delegateQueue: nil),
                 base: base, tunnel: nil, authorize: { header })
         case .inCluster(let namespace, let service, let port, let https):
-            let (tunnel, local) = try await elastic {
-                try await Integration.openServiceTunnel(
-                    cluster: cluster, context: context, namespace: namespace, service: service,
-                    port: port)
-            }
+            try Elastic.mapped { try Integration.checkNames(namespace: namespace, service: service) }
             var anchor: SecCertificate?
             if https, !endpoint.skipTLSVerify {
                 anchor = try await eckCA(context: context, namespace: namespace, service: service)
@@ -240,6 +236,12 @@ actor ElasticService {
                 auth == .eckUser
                     ? try await eckCredentials(context: context, namespace: namespace, service: service)
                     : auth)
+            // Opened last: nothing to forward when the secrets cannot be read.
+            let (tunnel, local) = try await elastic {
+                try await Integration.openServiceTunnel(
+                    cluster: cluster, context: context, namespace: namespace, service: service,
+                    port: port)
+            }
             // The tunnel is local: never route it through a proxy.
             config.connectionProxyDictionary = [:]
             let delegate = IntegrationTrustDelegate(

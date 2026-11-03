@@ -95,7 +95,8 @@ enum Integration {
         }
         parts.query = nil
         parts.fragment = nil
-        while parts.path.hasSuffix("/") { parts.path.removeLast() }
+        // Trim the encoded path so an escaped `%2F` in a prefix survives.
+        while parts.percentEncodedPath.hasSuffix("/") { parts.percentEncodedPath.removeLast() }
         guard let result = parts.url else {
             throw IntegrationFailure.config("Invalid URL: use http:// or https://")
         }

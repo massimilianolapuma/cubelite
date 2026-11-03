@@ -1303,7 +1303,7 @@ actor KubeAPIService {
 /// - `SecCertificate` and `SecIdentity` are immutable Core Foundation objects
 /// - `Bool` is a value type
 /// - No mutable state exists after initialization
-private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
+final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate,
     @unchecked Sendable
 {
 
@@ -1400,6 +1400,18 @@ private final class KubeURLSessionDelegate: NSObject, URLSessionDelegate, URLSes
     }
 
     // MARK: - URLSessionTaskDelegate (completion-handler)
+
+    /// Never follows redirects: the Kubernetes API does not redirect, and a
+    /// service behind the API server's proxy (#511) could answer with a 3xx
+    /// to another host that must not receive the cluster bearer token. The
+    /// 3xx itself comes back as the response.
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+    }
 
     /// Task-level authentication challenge handler.
     ///

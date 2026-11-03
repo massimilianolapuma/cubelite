@@ -237,6 +237,36 @@ final class PrometheusServiceTests: XCTestCase {
         XCTAssertTrue(requests.contains { $0.url.contains("cluster%3D%22aks-prod%22") })
     }
 
+    func testOneRejectedChartDoesNotCollapseTheSection() async throws {
+        let matrix = self.matrix
+        IntegrationStubProtocol.reset([:]) { request in
+            (request.url?.query ?? "").contains("container_cpu") ? (401, "") : (200, matrix)
+        }
+        let result = try await service().metrics(
+            context: "prod", endpoint: external,
+            request: MetricsRequest(namespace: "shop", workload: .pod("api-0"), range: .hour, perContainer: false))
+        XCTAssertNotNil(result.data(.cpu)?.error)
+        XCTAssertNil(result.data(.memory)?.error)
+    }
+
+    func testCancelledMetricsKeepTheConnection() async throws {
+        let matrix = self.matrix
+        IntegrationStubProtocol.reset([:]) { _ in (200, matrix) }
+        let prom = service()
+        let endpoint = external
+        let task = Task {
+            try await prom.metrics(
+                context: "prod", endpoint: endpoint,
+                request: MetricsRequest(namespace: "shop", workload: .pod("api-0"), range: .hour, perContainer: false))
+        }
+        task.cancel()
+        do {
+            _ = try await task.value
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+    }
+
     func testRejectedCredentialsAreReportedOnce() async {
         IntegrationStubProtocol.reset([:]) { _ in (401, "") }
         do {
@@ -380,5 +410,25 @@ final class PrometheusServiceTests: XCTestCase {
         }
         let info = try await service().test(context: "prod", endpoint: external, auth: PromAuth.none)
         XCTAssertEqual(info, PromInfo(version: "2.54.1", cadvisor: true, kubeStateMetrics: false, clusters: ["aks-prod"]))
+    }
+}
+
+final class KubeURLSessionDelegateTests: XCTestCase {
+
+    func testKubeSessionsNeverFollowRedirects() throws {
+        let delegate = KubeURLSessionDelegate(
+            trustedCertificate: nil, clientIdentity: nil, insecureSkipTLS: false)
+        let from = try XCTUnwrap(URL(string: "https://api.cluster:6443/api/v1/namespaces/x/services/http:s:80/proxy/"))
+        let to = try XCTUnwrap(URL(string: "https://evil.example/collect"))
+        let response = try XCTUnwrap(
+            HTTPURLResponse(url: from, statusCode: 302, httpVersion: "HTTP/1.1", headerFields: ["Location": to.absoluteString]))
+        var next = URLRequest(url: to)
+        next.setValue("Bearer cluster-token", forHTTPHeaderField: "Authorization")
+        var followed: URLRequest? = next
+        delegate.urlSession(
+            .shared, task: URLSession.shared.dataTask(with: from), willPerformHTTPRedirection: response,
+            newRequest: next
+        ) { followed = $0 }
+        XCTAssertNil(followed)
     }
 }

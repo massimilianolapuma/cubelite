@@ -316,6 +316,9 @@ final class IntegrationConnection<Endpoint: Sendable>: @unchecked Sendable {
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: request)
+        } catch let error as URLError where error.code == .cancelled {
+            // The caller went away: not a transport failure.
+            throw CancellationError()
         } catch let error as URLError {
             throw IntegrationFailure.connect(Integration.describe(error))
         } catch {

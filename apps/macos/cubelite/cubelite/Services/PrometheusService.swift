@@ -29,6 +29,9 @@ actor AzureCLIToken {
         let task = Task { () throws -> String in
             let output = try await run()
             guard output.status == 0 else {
+                if output.status == SIGTERM {
+                    throw PromError.config("The Azure CLI did not answer within 30 s")
+                }
                 throw Prometheus.azureCLIError(String(decoding: output.stderr, as: UTF8.self))
             }
             let parsed = try Prometheus.parseAzureToken(output.stdout, now: now)
@@ -88,6 +91,8 @@ actor PrometheusService {
     private let azure: AzureCLIToken
     private let pool = ConnectionPool<PromEndpoint>()
     private var routes: [String: (endpoint: PromEndpoint, route: Route)] = [:]
+    /// Contexts whose cached connection uses an Azure CLI token.
+    private var azureContexts: Set<String> = []
 
     init(
         cluster: any IntegrationClusterAccess,
@@ -135,7 +140,15 @@ actor PrometheusService {
     /// Closes the context's connection (and its port-forward).
     func disconnect(context: String) async {
         routes[context] = nil
+        azureContexts.remove(context)
         await pool.disconnect(context: context)
+    }
+
+    /// Closes every connection (app quit, kubeconfig reload).
+    func disconnectAll() async {
+        routes.removeAll()
+        azureContexts.removeAll()
+        await pool.disconnectAll()
     }
 
     // MARK: Queries
@@ -161,8 +174,8 @@ actor PrometheusService {
         } else {
             version = "unknown"
         }
-        let filter = endpoint.cluster?.trimmingCharacters(in: .whitespaces).isEmpty == false
-            ? "{cluster=\(Prometheus.escape(endpoint.cluster ?? ""))}" : ""
+        let cluster = endpoint.cluster?.trimmingCharacters(in: .whitespaces) ?? ""
+        let filter = cluster.isEmpty ? "" : "{cluster=\(Prometheus.escape(cluster))}"
         func present(_ q: String) async -> Bool {
             guard let data = try? await query(session, q),
                 let series = try? Prometheus.parseSeries(data, labels: [])
@@ -208,9 +221,11 @@ actor PrometheusService {
             for await (index, result) in group { out[index] = result }
             return out.compactMap { $0 }
         }
+        // Cancelled (the view moved on): nothing is wrong with the connection.
+        try Task.checkCancellation()
         let errors = results.compactMap { if case .failure(let e) = $0 { e as? PromError } else { nil } }
         // Unreachable or rejected credentials are everyone's problem: report them once.
-        if errors.count == results.count, let first = errors.first, Self.isFatal(first) {
+        if errors.count == results.count, errors.allSatisfy(Self.isFatal), let first = errors.first {
             await dropConnection(context: context, session: session, after: first)
             throw first
         }
@@ -260,6 +275,8 @@ actor PrometheusService {
         let endpoint: PromEndpoint
         let context: String
         let connection: IntegrationConnection<PromEndpoint>?
+        /// The connection carries an Azure CLI token.
+        var azure = false
     }
 
     private static func isFatal(_ error: PromError) -> Bool {
@@ -271,8 +288,8 @@ actor PrometheusService {
     }
 
     private func dropConnection(context: String, session: Session, after error: PromError) async {
-        guard Self.isFatal(error) else { return }
-        if case .http(401, _) = error, case .external = session.endpoint.target {
+        guard Self.isFatal(error), !Task.isCancelled else { return }
+        if case .http(401, _) = error, session.azure {
             await azure.forget()
         }
         if let connection = session.connection {
@@ -280,6 +297,10 @@ actor PrometheusService {
         } else {
             routes[context] = nil
         }
+    }
+
+    private func markAzure(_ context: String) {
+        azureContexts.insert(context)
     }
 
     private func prom<T>(_ body: () async throws -> T) async throws -> T {
@@ -341,12 +362,15 @@ actor PrometheusService {
                 } else {
                     resolved = try await self.loadAuth(context: context, endpoint: endpoint)
                 }
+                if resolved == .azureCLI { await self.markAzure(context) }
                 return try await self.connectExternal(endpoint: endpoint, auth: resolved)
             }
             let connection =
                 cached ? try await pool.connection(context: context, endpoint: endpoint, connect: connect)
                 : try await connect()
-            return Session(endpoint: endpoint, context: context, connection: connection)
+            return Session(
+                endpoint: endpoint, context: context, connection: connection,
+                azure: azureContexts.contains(context) || auth == .azureCLI)
         case .inCluster(let namespace, let service, let port, let https):
             do {
                 try Integration.checkNames(namespace: namespace, service: service)
@@ -404,6 +428,7 @@ actor PrometheusService {
         do {
             raw = try await cluster.rawGet(path: base + path, inContext: context)
         } catch {
+            if Task.isCancelled { throw CancellationError() }
             throw PromError.connect(error.localizedDescription)
         }
         let body = String(decoding: raw.body, as: UTF8.self)
@@ -468,13 +493,18 @@ actor PrometheusService {
         let body: String
         if let connection = session.connection {
             (status, body) = try await prom { try await connection.send(path) }
-            if status == 401, case .external = session.endpoint.target {
+            if status == 401, session.azure {
                 // An expired or revoked Azure token: fetch a new one next time.
                 await azure.forget()
             }
         } else {
             let answer = try await fetchProxy(context: session.context, endpoint: session.endpoint, path: path)
             (status, body) = (answer.status, answer.body)
+            if answer.fromAPIServer, [500, 502, 503].contains(status) {
+                // The API server cannot reach the pod any more: probe again
+                // next time (a port-forward may still work).
+                routes[session.context] = nil
+            }
         }
         guard (200..<300).contains(status) else {
             throw PromError.http(status: status, reason: Prometheus.errorReason(body: body, status: status))
@@ -498,10 +528,8 @@ actor PrometheusService {
 
     /// `application/x-www-form-urlencoded` query string (stable key order).
     static func form(_ pairs: [String: String]) -> String {
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
-        return pairs.sorted { $0.key < $1.key }.map { key, value in
-            "\(key)=\(value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value)"
+        pairs.sorted { $0.key < $1.key }.map { key, value in
+            "\(key)=\(Integration.percentEncode(value))"
         }.joined(separator: "&")
     }
 }
