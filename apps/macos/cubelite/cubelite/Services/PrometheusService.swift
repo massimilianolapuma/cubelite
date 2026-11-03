@@ -303,7 +303,7 @@ actor PrometheusService {
         azureContexts.insert(context)
     }
 
-    private func prom<T>(_ body: () async throws -> T) async throws -> T {
+    private func prom<T: Sendable>(_ body: () async throws -> T) async throws -> T {
         do {
             return try await body()
         } catch let failure as IntegrationFailure {

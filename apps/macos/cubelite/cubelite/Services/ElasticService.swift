@@ -198,7 +198,7 @@ actor ElasticService {
     // MARK: - Private
 
     /// Runs shared integration code, reporting its failures as `ElasticError`.
-    private func elastic<T>(_ body: () async throws -> T) async throws -> T {
+    private func elastic<T: Sendable>(_ body: () async throws -> T) async throws -> T {
         do {
             return try await body()
         } catch let failure as IntegrationFailure {

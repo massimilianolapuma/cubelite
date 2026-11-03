@@ -55,7 +55,7 @@ struct KeychainSecrets: IntegrationSecretStore {
 // MARK: - Kubernetes objects (only the fields discovery reads)
 
 enum IntegrationK8s {
-    struct List<Item: Decodable>: Decodable {
+    struct List<Item: Decodable & Sendable>: Decodable, Sendable {
         let items: [Item]
     }
 
@@ -355,7 +355,7 @@ extension Integration {
     }
 
     /// Decodes a kube API object; `IntegrationFailure` when it is missing or unreadable.
-    static func get<T: Decodable>(
+    static func get<T: Decodable & Sendable>(
         _ path: String, context: String, from cluster: any IntegrationClusterAccess
     ) async throws -> T {
         guard let data = try await cluster.getIfPresent(path: path, inContext: context) else {
