@@ -26,6 +26,10 @@ declare global {
     __grafanaForwards?: Record<string, unknown>[];
     /** Test hook: arguments of the last `apply_resource_yaml` call. */
     __lastApply?: Record<string, unknown>;
+    /** Test hook: what `integrations_detect` finds (#527); null = nothing. */
+    __detectedIntegrations?: Record<string, unknown>;
+    /** Test hook: every integration command the banner's Enable sent, in order. */
+    __integrationCalls?: { cmd: string; args: Record<string, unknown> }[];
   }
 }
 
@@ -233,6 +237,16 @@ export function tauriMockScript(): string {
         };
       }
       case "elastic_auth_method": return "none";
+      case "integrations_detect": return window.__detectedIntegrations ?? null;
+      case "elastic_test":
+      case "elastic_use_eck_credentials":
+      case "prometheus_test":
+      case "prometheus_save_auth": {
+        window.__integrationCalls = [...(window.__integrationCalls ?? []), { cmd, args }];
+        if (cmd === "elastic_test") return { version: "8.15.0", clusterName: "quickstart", health: "green", indices: 3 };
+        if (cmd === "prometheus_test") return { version: "2.54.1", cadvisor: true, kubeStateMetrics: true, clusters: [] };
+        return cmd === "elastic_use_eck_credentials" ? "eck-user" : null;
+      }
       case "prometheus_metrics": {
         window.__lastPromMetrics = args;
         const charts = ["cpu", "cpu-request", "cpu-limit", "memory", "memory-request", "memory-limit", "restarts", "restarts-total", "network-rx", "network-tx"];

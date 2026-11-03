@@ -17,6 +17,7 @@ import {
 import { assignIdentityColors, type IdentityColor } from "#lib/cluster-identity.ts";
 import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
+import { integrations } from "./integrations.svelte";
 import { logPanel } from "./logPanel.svelte";
 import { portforward } from "./portforward.svelte";
 import { resources } from "./resources.svelte";
@@ -116,6 +117,8 @@ class ClustersStore {
       if (ok) {
         await resources.startWatching();
         resources.applyRefreshInterval();
+        // Once per connect, in the background (#527).
+        void integrations.detect(name);
       }
     } finally {
       if (epoch === this.#switchEpoch) {
@@ -234,6 +237,7 @@ class ClustersStore {
     if (ok) {
       await resources.startWatching();
       resources.applyRefreshInterval();
+      if (app.activeCluster) void integrations.detect(app.activeCluster);
     }
   }
 }

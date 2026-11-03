@@ -11,6 +11,8 @@
 	import ElasticPreferences from '#lib/components/ElasticPreferences.svelte';
 	import PrometheusPreferences from '#lib/components/PrometheusPreferences.svelte';
 	import { errorMessage } from '#lib/errors.ts';
+	import { ACCENT_LINK_CLASS } from '#lib/integration.ts';
+	import { integrations } from '#lib/stores/integrations.svelte.ts';
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import Switch from '#lib/components/ui/Switch.svelte';
 	import { app, type PreferencesSection } from '#lib/stores/app.svelte.ts';
@@ -256,6 +258,15 @@
 				<div>
 					<div class="type-body text-text-primary">Integrations</div>
 					<p class="type-caption mt-0.5 text-text-tertiary">Show integration hints in panels</p>
+					{#if app.activeCluster && integrations.dismissed(app.activeCluster).length > 0}
+						<button
+							type="button"
+							class="{ACCENT_LINK_CLASS} mt-1"
+							onclick={() => app.activeCluster && integrations.resetDismissals(app.activeCluster)}
+						>
+							Suggest detected integrations again
+						</button>
+					{/if}
 				</div>
 				<Switch
 					checked={settings.integrationHints.value}

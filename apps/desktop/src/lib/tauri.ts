@@ -976,6 +976,22 @@ export function prometheusDetect(kubeconfigPath: string, context: string): Promi
   return invoke<DetectedPrometheus[]>("prometheus_detect", { kubeconfigPath, context });
 }
 
+/** The services the integrations would use, found when a context connects (#527). */
+export type DetectedIntegrations = {
+  elasticsearch: DetectedService | null;
+  kibana: DetectedService | null;
+  prometheus: DetectedPrometheus | null;
+  grafana: DetectedPrometheus | null;
+};
+
+/**
+ * One listing of the services across namespaces, classified (#527). Only
+ * the Kubernetes API is contacted; nothing is found when listing is forbidden.
+ */
+export function integrationsDetect(kubeconfigPath: string, context: string): Promise<DetectedIntegrations> {
+  return invoke<DetectedIntegrations>("integrations_detect", { kubeconfigPath, context });
+}
+
 /** `auth` tests credentials before saving them; omitted uses the stored ones. */
 export function prometheusTest(
   kubeconfigPath: string,

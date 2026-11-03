@@ -17,8 +17,10 @@
 		urlProblem,
 		type FormResult
 	} from '#lib/integration-form.svelte.ts';
+	import { SUGGESTED_TEXT } from '#lib/integration-suggest.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { elastic } from '#lib/stores/elastic.svelte.ts';
+	import { integrations } from '#lib/stores/integrations.svelte.ts';
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import {
 		elasticAuthMethod,
@@ -68,6 +70,14 @@
 			preset = 'ecs';
 			kibanaUrl = '';
 			kibanaService = null;
+			// Review in the integrations banner (#527): pre-filled, not saved.
+			const suggested = context ? integrations.takeElastic(context) : null;
+			if (suggested) {
+				form.load(suggested.endpoint.target, false);
+				kibanaService = suggested.endpoint.kibanaService ?? null;
+				if (suggested.eck) auth.method = 'eck-user';
+				result = { ok: true, text: SUGGESTED_TEXT };
+			}
 			return;
 		}
 		form.load(e.target, e.skipTlsVerify);
