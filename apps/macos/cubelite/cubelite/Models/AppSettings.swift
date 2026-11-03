@@ -124,6 +124,32 @@ final class AppSettings {
         didSet { defaults.set(skipTLSVerification, forKey: Keys.skipTLSVerification) }
     }
 
+    // MARK: - Integrations (#526)
+
+    /// Whether panels offer setting up an integration that is not configured
+    /// (the disabled History segment, the Metrics placeholder).
+    var integrationHints: Bool = true {
+        didSet { defaults.set(integrationHints, forKey: Keys.integrationHints) }
+    }
+
+    /// Settings tab shown; panels set it before opening Settings (not persisted).
+    var preferencesTab: PreferencesTab = .general
+
+    /// Integration shown in the Integrations tab (not persisted).
+    var integrationPane: IntegrationPane = .elasticsearch
+
+    /// Context the Integrations tab edits, requested by the panel that opened
+    /// it (not persisted); nil leaves the tab's own choice.
+    var integrationContext: String?
+
+    /// Selects the Integrations tab on `pane` for `context` (the panel's
+    /// active context); the caller then opens Settings.
+    func showIntegrationSettings(_ pane: IntegrationPane?, context: String?) {
+        preferencesTab = .integrations
+        if let pane { integrationPane = pane }
+        if let context { integrationContext = context }
+    }
+
     // MARK: - Init
 
     /// Where settings persist; injectable so parallel test processes never
@@ -157,6 +183,7 @@ final class AppSettings {
         }
         if let v = d.object(forKey: Keys.apiTimeout) as? Int { apiTimeout = min(120, max(5, v)) }
         skipTLSVerification = d.bool(forKey: Keys.skipTLSVerification)
+        if let v = d.object(forKey: Keys.integrationHints) as? Bool { integrationHints = v }
         if let data = d.data(forKey: Keys.contextNamespaces),
             let decoded = try? JSONDecoder().decode([String: [String]].self, from: data)
         {
@@ -170,6 +197,17 @@ final class AppSettings {
     }
 
     // MARK: - Nested Types
+
+    /// Tabs of the Settings window.
+    enum PreferencesTab: Hashable {
+        case general, appearance, navigation, integrations, advanced
+    }
+
+    /// Integrations configured in the Integrations tab.
+    enum IntegrationPane: String, CaseIterable {
+        case elasticsearch = "Elasticsearch"
+        case prometheus = "Prometheus"
+    }
 
     /// Color scheme preference.
     enum AppearanceMode: String, CaseIterable {
@@ -216,5 +254,6 @@ final class AppSettings {
         static let skipTLSVerification = "skipTLSVerification"
         static let contextNamespaces = "contextNamespaces"
         static let lastNamespaces = "lastNamespaces"
+        static let integrationHints = "integrationHints"
     }
 }

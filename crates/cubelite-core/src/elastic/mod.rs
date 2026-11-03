@@ -446,11 +446,69 @@ pub fn kibana_discover_url(
     if let Some(c) = container.filter(|c| !c.is_empty()) {
         query.push_str(&format!(" and {}:{}", f.container, kql(c)));
     }
+    discover_link(kibana_base, "kuery", &query, from, to)
+}
+
+/// Escapes Lucene regexp operators (and `/`, the regexp delimiter in a
+/// query string) so a name matches literally.
+fn lucene_regex_literal(name: &str) -> String {
+    name.chars()
+        .flat_map(|c| {
+            let meta = r#".?+*|{}[]()"\#@&<>~/"#.contains(c);
+            meta.then_some('\\').into_iter().chain(std::iter::once(c))
+        })
+        .collect()
+}
+
+/// Lucene query for a deployment's pods: ECS has no deployment field, so
+/// the pod name must match the regexp Prometheus uses for the deployment
+/// (`name-<hash>-<suffix>`, with the same alphabet and long-name cut), which
+/// keeps `name-gateway-…` or `name-0` pods out. Lucene regexps match the
+/// whole term.
+pub fn deployment_lucene_query(preset: FieldPreset, namespace: &str, deployment: &str) -> String {
+    let f = preset.fields();
+    format!(
+        "{}:{} AND {}:/{}/",
+        f.namespace,
+        kql(namespace),
+        f.pod,
+        crate::prometheus::deployment_pods_regex(deployment, lucene_regex_literal)
+    )
+}
+
+/// Kibana Discover URL for a deployment's logs over `[from, to]`, a Lucene
+/// query on its pods (see [`deployment_lucene_query`], #526).
+pub fn kibana_deployment_discover_url(
+    kibana_base: &str,
+    preset: FieldPreset,
+    namespace: &str,
+    deployment: &str,
+    from: &str,
+    to: &str,
+) -> String {
+    let query = deployment_lucene_query(preset, namespace, deployment);
+    discover_link(kibana_base, "lucene", &query, from, to)
+}
+
+/// Kibana Discover without a filter (command palette, #526).
+pub fn kibana_discover_home(kibana_base: &str) -> String {
+    format!("{}/app/discover#/", clean_base(kibana_base))
+}
+
+/// The Kibana base without its query, fragment or trailing slash.
+fn clean_base(kibana_base: &str) -> &str {
+    let base = kibana_base.trim();
+    let end = base.find(['?', '#']).unwrap_or(base.len());
+    base[..end].trim_end_matches('/')
+}
+
+/// Discover link showing `query` (`kuery` or `lucene`) over `[from, to]`.
+fn discover_link(kibana_base: &str, language: &str, query: &str, from: &str, to: &str) -> String {
     let g = format!("(time:(from:{},to:{}))", rison(from), rison(to));
-    let a = format!("(query:(language:kuery,query:{}))", rison(&query));
+    let a = format!("(query:(language:{language},query:{}))", rison(query));
     format!(
         "{}/app/discover#/?_g={}&_a={}",
-        kibana_base.trim_end_matches('/'),
+        clean_base(kibana_base),
         percent_encode(&g),
         percent_encode(&a)
     )

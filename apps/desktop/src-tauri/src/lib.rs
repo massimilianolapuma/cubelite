@@ -4,7 +4,7 @@ pub mod env;
 use commands::elastic::{
     elastic_auth_method, elastic_detect, elastic_disconnect, elastic_save_auth, elastic_search,
     elastic_test, elastic_use_eck_credentials, kibana_discover_url, kibana_port_forward,
-    open_kibana_discover, ElasticState,
+    open_kibana_deployment, open_kibana_discover, open_kibana_home, ElasticState,
 };
 use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
 use commands::kubernetes::{
@@ -18,9 +18,9 @@ use commands::kubernetes::{
     PortForwardState, WatchState,
 };
 use commands::prometheus::{
-    grafana_port_forward, open_grafana_explore, prometheus_auth_method, prometheus_detect,
-    prometheus_disconnect, prometheus_metrics, prometheus_save_auth, prometheus_sparklines,
-    prometheus_test, PrometheusState,
+    grafana_port_forward, open_grafana_explore, open_grafana_home, open_grafana_workload,
+    prometheus_auth_method, prometheus_detect, prometheus_disconnect, prometheus_metrics,
+    prometheus_save_auth, prometheus_sparklines, prometheus_test, PrometheusState,
 };
 
 /// Entry point for the Tauri application.
@@ -53,6 +53,8 @@ pub fn run() {
             prometheus_disconnect,
             grafana_port_forward,
             open_grafana_explore,
+            open_grafana_workload,
+            open_grafana_home,
             elastic_test,
             elastic_search,
             elastic_save_auth,
@@ -61,6 +63,8 @@ pub fn run() {
             elastic_disconnect,
             kibana_discover_url,
             open_kibana_discover,
+            open_kibana_deployment,
+            open_kibana_home,
             list_pods,
             list_namespaces,
             list_deployments,

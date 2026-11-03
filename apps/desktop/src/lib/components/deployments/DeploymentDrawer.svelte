@@ -9,6 +9,7 @@
 	import YamlModal from '#lib/components/YamlModal.svelte';
 	import StatusPill from '#lib/components/ui/StatusPill.svelte';
 	import MetricsSection from '#lib/components/metrics/MetricsSection.svelte';
+	import WorkloadLinks from '#lib/components/integrations/WorkloadLinks.svelte';
 	import { deploymentStatus, podStatusLabel, podTone, toneColor } from '#lib/status.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { logs } from '#lib/stores/logs.svelte.ts';
@@ -53,8 +54,12 @@
 
 <Drawer title={deployment.name} {onClose}>
 	<div class="flex flex-col gap-4">
-		<div>
+		<div class="flex flex-wrap items-center justify-between gap-2">
 			<StatusPill label={status.label} tone={status.tone} />
+			<WorkloadLinks
+				namespace={deployment.namespace}
+				workload={{ kind: 'deployment', name: deployment.name }}
+			/>
 		</div>
 
 		<div class="grid grid-cols-2 gap-x-4 gap-y-2.5">

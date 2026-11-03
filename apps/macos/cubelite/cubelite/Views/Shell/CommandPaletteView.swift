@@ -15,6 +15,9 @@ struct CommandPaletteView: View {
     var onOpenPodLogs: ((PodInfo) -> Void)?
     /// Reloads the active cluster (or the All Clusters dashboard) — ⌘R.
     var onRefresh: (() -> Void)?
+    /// Open Kibana / Open Grafana / Integrations settings for the active context (#526).
+    var integrationEntries: [IntegrationPaletteEntry] = []
+    var onIntegrationEntry: ((IntegrationPaletteEntry) -> Void)?
     let onClose: () -> Void
 
     @State private var query = ""
@@ -29,6 +32,7 @@ struct CommandPaletteView: View {
         case resource(ResourceType)
         case podLogs(PodInfo)
         case refresh
+        case integration(IntegrationPaletteEntry)
 
         var id: String {
             switch self {
@@ -37,6 +41,7 @@ struct CommandPaletteView: View {
             case .resource(let type): "resource-\(type.rawValue)"
             case .podLogs(let pod): "pod-logs-\(pod.id)"
             case .refresh: "refresh"
+            case .integration(let entry): "integration-\(entry.rawValue)"
             }
         }
 
@@ -47,6 +52,7 @@ struct CommandPaletteView: View {
             case .resource(let type): "Go to \(type.rawValue)"
             case .podLogs(let pod): "Pod logs: \(pod.name)"
             case .refresh: "Refresh cluster data"
+            case .integration(let entry): entry.label
             }
         }
     }
@@ -60,7 +66,9 @@ struct CommandPaletteView: View {
     private var actionItems: [Item] {
         let podLogs = selectedPod.map { [Item.podLogs($0)] } ?? []
         let refresh: [Item] = onRefresh == nil ? [] : [.refresh]
-        return (podLogs + refresh + [Item.allClusters] + ResourceType.allCases.map { Item.resource($0) })
+        let integrations = integrationEntries.map { Item.integration($0) }
+        return (podLogs + refresh + [Item.allClusters] + ResourceType.allCases.map { Item.resource($0) }
+            + integrations)
             .filter { query.isEmpty || $0.label.localizedCaseInsensitiveContains(query) }
     }
 
@@ -188,47 +196,17 @@ struct CommandPaletteView: View {
                             .accessibilityHidden(true)
                     }
                 case .allClusters:
-                    Image(systemName: "house")
-                        .iconSize(DesignTokens.iconMd)
-                        .foregroundStyle(DesignTokens.textTertiary)
-                        .frame(width: 14)
-                        .accessibilityHidden(true)
-                    Text(item.label)
-                        .scaledFont(size: 12.5, weight: .medium)
-                        .foregroundStyle(DesignTokens.textSecondary)
-                    Spacer(minLength: 0)
+                    actionLabel("house", item.label)
                 case .resource(let type):
-                    Image(systemName: type.systemImage)
-                        .iconSize(DesignTokens.iconMd)
-                        .foregroundStyle(DesignTokens.textTertiary)
-                        .frame(width: 14)
-                        .accessibilityHidden(true)
-                    Text(item.label)
-                        .scaledFont(size: 12.5, weight: .medium)
-                        .foregroundStyle(DesignTokens.textSecondary)
-                    Spacer(minLength: 0)
+                    actionLabel(type.systemImage, item.label)
                 case .podLogs:
-                    Image(systemName: "doc.plaintext")
-                        .iconSize(DesignTokens.iconMd)
-                        .foregroundStyle(DesignTokens.textTertiary)
-                        .frame(width: 14)
-                        .accessibilityHidden(true)
-                    Text(item.label)
-                        .scaledFont(size: 12.5, weight: .medium)
-                        .foregroundStyle(DesignTokens.textSecondary)
-                    Spacer(minLength: 0)
+                    actionLabel("doc.plaintext", item.label)
                 case .refresh:
-                    Image(systemName: "arrow.clockwise")
-                        .iconSize(DesignTokens.iconMd)
-                        .foregroundStyle(DesignTokens.textTertiary)
-                        .frame(width: 14)
-                        .accessibilityHidden(true)
-                    Text(item.label)
-                        .scaledFont(size: 12.5, weight: .medium)
-                        .foregroundStyle(DesignTokens.textSecondary)
-                    Spacer(minLength: 0)
+                    actionLabel("arrow.clockwise", item.label)
                     kbd("⌘R")
                         .accessibilityHidden(true)
+                case .integration(let entry):
+                    actionLabel(entry.systemImage, item.label)
                 }
             }
             .padding(.horizontal, 10)
@@ -249,6 +227,20 @@ struct CommandPaletteView: View {
             return ""
         }())
         .accessibilityIdentifier("palette.result-\(item.id)")
+    }
+
+    /// Icon, label and the trailing space of an action row.
+    @ViewBuilder
+    private func actionLabel(_ systemImage: String, _ label: String) -> some View {
+        Image(systemName: systemImage)
+            .iconSize(DesignTokens.iconMd)
+            .foregroundStyle(DesignTokens.textTertiary)
+            .frame(width: 14)
+            .accessibilityHidden(true)
+        Text(label)
+            .scaledFont(size: 12.5, weight: .medium)
+            .foregroundStyle(DesignTokens.textSecondary)
+        Spacer(minLength: 0)
     }
 
     private func kbd(_ label: String) -> some View {
@@ -281,6 +273,8 @@ struct CommandPaletteView: View {
             onOpenPodLogs?(pod)
         case .refresh:
             onRefresh?()
+        case .integration(let entry):
+            onIntegrationEntry?(entry)
         }
         onClose()
     }

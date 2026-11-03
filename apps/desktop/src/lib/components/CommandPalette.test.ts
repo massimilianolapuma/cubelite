@@ -19,6 +19,10 @@ vi.mock("#lib/tauri.ts", () => ({
   streamPodLog: vi.fn(async () => "1"),
   stopLogs: vi.fn(async () => {}),
   getPodContainers: vi.fn(async () => []),
+  kibanaPortForward: vi.fn(async () => 41000),
+  grafanaPortForward: vi.fn(async () => 42000),
+  openKibanaHome: vi.fn(async () => {}),
+  openGrafanaHome: vi.fn(async () => {}),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -37,7 +41,17 @@ import CommandPalette from "./CommandPalette.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
 import { logPanel } from "#lib/stores/logPanel.svelte.ts";
-import type { PodInfo } from "#lib/tauri.ts";
+import { elastic } from "#lib/stores/elastic.svelte.ts";
+import { prometheus } from "#lib/stores/prometheus.svelte.ts";
+import {
+  grafanaPortForward,
+  kibanaPortForward,
+  openGrafanaHome,
+  openKibanaHome,
+  type EsEndpoint,
+  type PodInfo,
+  type PromEndpoint,
+} from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
   return {
@@ -138,5 +152,65 @@ describe("CommandPalette", () => {
     await flush();
     expect(app.paletteOpen).toBe(false);
     expect(logPanel.activeKey).toBe("default/api-0");
+  });
+});
+
+describe("CommandPalette integrations (#526)", () => {
+  const es: EsEndpoint = {
+    target: { kind: "in-cluster", namespace: "logging", service: "es-http", port: 9200, https: true },
+    indexPattern: "logs-*",
+    preset: "ecs",
+    kibanaUrl: null,
+    kibanaService: { namespace: "logging", service: "kb-http", port: 5601, https: true },
+    skipTlsVerify: false,
+  };
+  const prom: PromEndpoint = {
+    target: { kind: "external", url: "https://prom.example" },
+    cluster: null,
+    grafanaUrl: "https://grafana.example",
+    grafanaDatasource: null,
+    skipTlsVerify: false,
+  };
+
+  afterEach(() => {
+    elastic.setEndpoint("prod", null);
+    prometheus.setEndpoint("prod", null);
+    app.preferencesOpen = false;
+    app.preferencesSection = null;
+  });
+
+  it("offers only Integrations settings when the context has no web UI", async () => {
+    elastic.setEndpoint("prod", { ...es, kibanaService: null });
+    prometheus.setEndpoint("prod", { ...prom, grafanaUrl: " " });
+    render(CommandPalette);
+    await flush();
+    expect(screen.queryByText("Open Kibana")).toBeNull();
+    expect(screen.queryByText("Open Grafana")).toBeNull();
+    await fireEvent.click(screen.getByText("Integrations settings"));
+    await flush();
+    expect(app.preferencesOpen).toBe(true);
+    expect(app.preferencesSection).toBe("integrations");
+    expect(app.paletteOpen).toBe(false);
+  });
+
+  it("opens the active context's Kibana and Grafana", async () => {
+    app.kubeconfigPath = "/k";
+    elastic.setEndpoint("prod", es);
+    prometheus.setEndpoint("prod", prom);
+    // Another context's endpoints never show up.
+    elastic.setEndpoint("staging", { ...es, kibanaUrl: "https://other" });
+    render(CommandPalette);
+    await flush();
+    await fireEvent.click(screen.getByText("Open Kibana"));
+    await flush();
+    expect(kibanaPortForward).toHaveBeenCalledWith("/k", "prod", es.kibanaService);
+    expect(openKibanaHome).toHaveBeenCalledWith("https://127.0.0.1:41000");
+    app.paletteOpen = true;
+    await flush();
+    await fireEvent.click(screen.getByText("Open Grafana"));
+    await flush();
+    expect(openGrafanaHome).toHaveBeenCalledWith("https://grafana.example");
+    expect(grafanaPortForward).not.toHaveBeenCalled();
+    elastic.setEndpoint("staging", null);
   });
 });

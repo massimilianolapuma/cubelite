@@ -7,14 +7,16 @@
 
 use cubelite_core::elastic::transport::{self, DetectedService, EsConnection, EsInfo};
 use cubelite_core::elastic::{
-    kibana_discover_url as discover_url, ElasticError, EsAuth, EsEndpoint, EsTarget, FieldPreset,
-    HistoryPage, HistoryQuery, KibanaService,
+    kibana_deployment_discover_url, kibana_discover_home, kibana_discover_url as discover_url,
+    ElasticError, EsAuth, EsEndpoint, EsTarget, FieldPreset, HistoryPage, HistoryQuery,
+    KibanaService,
 };
 
 use cubelite_core::integration;
 use cubelite_core::KubeClient;
 
 use super::vault;
+use super::web_ui::{http_base, open_in_browser};
 use tauri::State;
 
 use super::cache::{ConnCache, ConnKey, ServiceForwards};
@@ -258,11 +260,8 @@ pub fn kibana_discover_url(
     )
 }
 
-/// Opens Kibana Discover for a pod's logs in the default browser. The URL
-/// is built here and must be http(s), so the webview cannot open other
-/// schemes through this command. Accepted risk: the Kibana base comes from
-/// the frontend's settings, so a compromised webview could open any http(s)
-/// page in the browser; it could already show any page inside the app.
+/// Opens Kibana Discover for a pod's logs in the default browser (the URL
+/// is built here, see `web_ui`).
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn open_kibana_discover(
@@ -275,12 +274,7 @@ pub fn open_kibana_discover(
     from: String,
     to: String,
 ) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-    let base =
-        url::Url::parse(kibana_url.trim()).map_err(|e| format!("Invalid Kibana URL: {e}"))?;
-    if !matches!(base.scheme(), "http" | "https") {
-        return Err("Kibana URL must start with http:// or https://".to_string());
-    }
+    let base = http_base(&kibana_url, "Kibana")?;
     let target = discover_url(
         base.as_str(),
         preset,
@@ -290,9 +284,31 @@ pub fn open_kibana_discover(
         &from,
         &to,
     );
-    app.opener()
-        .open_url(target, None::<&str>)
-        .map_err(|e| format!("Cannot open the browser: {e}"))
+    open_in_browser(&app, target)
+}
+
+/// Opens Kibana Discover for a deployment's pods (#526).
+#[tauri::command]
+pub fn open_kibana_deployment(
+    app: tauri::AppHandle,
+    kibana_url: String,
+    preset: FieldPreset,
+    namespace: String,
+    deployment: String,
+    from: String,
+    to: String,
+) -> Result<(), String> {
+    let base = http_base(&kibana_url, "Kibana")?;
+    let target =
+        kibana_deployment_discover_url(base.as_str(), preset, &namespace, &deployment, &from, &to);
+    open_in_browser(&app, target)
+}
+
+/// Opens Kibana Discover without a filter (#526).
+#[tauri::command]
+pub fn open_kibana_home(app: tauri::AppHandle, kibana_url: String) -> Result<(), String> {
+    let base = http_base(&kibana_url, "Kibana")?;
+    open_in_browser(&app, kibana_discover_home(base.as_str()))
 }
 
 #[cfg(test)]

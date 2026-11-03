@@ -13,20 +13,28 @@ struct PreferencesView: View {
     /// Prometheus backend for the Integrations tab.
     var prometheusService: (any PrometheusPreferencesBackend)?
 
+    @Environment(AppSettings.self) private var settings
+
     var body: some View {
-        TabView {
+        // Bound to AppSettings so panels can open Settings on a tab (#526).
+        TabView(selection: Bindable(settings).preferencesTab) {
             GeneralPreferencesTab()
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(AppSettings.PreferencesTab.general)
             AppearancePreferencesTab()
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
+                .tag(AppSettings.PreferencesTab.appearance)
             NavigationPreferencesTab()
                 .tabItem { Label("Navigation", systemImage: "sidebar.left") }
+                .tag(AppSettings.PreferencesTab.navigation)
             if elasticService != nil || prometheusService != nil {
                 IntegrationsPreferencesTab(elastic: elasticService, prometheus: prometheusService)
                     .tabItem { Label("Integrations", systemImage: "puzzlepiece.extension") }
+                    .tag(AppSettings.PreferencesTab.integrations)
             }
             AdvancedPreferencesTab(kubeAPIService: kubeAPIService)
                 .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
+                .tag(AppSettings.PreferencesTab.advanced)
         }
         .frame(width: 480, height: 420)
         .padding()

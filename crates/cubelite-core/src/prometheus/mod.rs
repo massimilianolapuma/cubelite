@@ -273,13 +273,18 @@ const SAFE: &str = "[bcdfghjklmnpqrstvwxz2456789]";
 const GENERATED_PREFIX_MAX: usize = 58;
 
 /// Regex for a deployment's pods: `name-<hash>-<suffix>`, or for long names
-/// the truncated `generateName` prefix followed by the suffix.
-fn deployment_pods(name: &str) -> String {
+/// the truncated `generateName` prefix followed by the suffix. `literal`
+/// escapes the name for the regex dialect (RE2 here, Lucene for Kibana).
+pub(crate) fn deployment_pods_regex(name: &str, literal: fn(&str) -> String) -> String {
     if name.len() + "-".len() + 10 + "-".len() <= GENERATED_PREFIX_MAX {
-        return format!("{}-{SAFE}{{6,10}}-{SAFE}{{5}}", regex_literal(name));
+        return format!("{}-{SAFE}{{6,10}}-{SAFE}{{5}}", literal(name));
     }
     let kept: String = name.chars().take(GENERATED_PREFIX_MAX).collect();
-    format!("{}(-{SAFE}{{0,10}}-?)?{SAFE}{{5}}", regex_literal(&kept))
+    format!("{}(-{SAFE}{{0,10}}-?)?{SAFE}{{5}}", literal(&kept))
+}
+
+fn deployment_pods(name: &str) -> String {
+    deployment_pods_regex(name, regex_literal)
 }
 
 /// Label matchers for a workload: namespace, pod (exact or regex) and the

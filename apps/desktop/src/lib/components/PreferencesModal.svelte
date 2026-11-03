@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick, untrack } from 'svelte';
 	import { setMode } from 'mode-watcher';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { addPaths, originLabel, removePath, seedIfEmpty } from '#lib/kubeconfig-list.ts';
@@ -11,7 +12,8 @@
 	import PrometheusPreferences from '#lib/components/PrometheusPreferences.svelte';
 	import { errorMessage } from '#lib/errors.ts';
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
-	import { app } from '#lib/stores/app.svelte.ts';
+	import Switch from '#lib/components/ui/Switch.svelte';
+	import { app, type PreferencesSection } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import { clusters } from '#lib/stores/clusters.svelte.ts';
 	import {
@@ -26,6 +28,35 @@
 	function close() {
 		app.preferencesOpen = false;
 	}
+
+	// "Set up" in a panel opens Preferences on an integration (#526).
+	const sections = $state<Record<PreferencesSection, HTMLElement | null>>({
+		integrations: null,
+		elasticsearch: null,
+		prometheus: null
+	});
+	let content = $state<HTMLElement | null>(null);
+	/** How long the scroll follows content that loads above the section. */
+	const FOLLOW_MS = 1000;
+	$effect(() => {
+		// Read once (the modal mounts per opening) so clearing it does not re-run this.
+		const wanted = untrack(() => app.preferencesSection);
+		const el = wanted ? sections[wanted] : null;
+		if (!el || !content) return;
+		untrack(() => (app.preferencesSection = null));
+		const scroll = () => el.scrollIntoView?.({ block: 'start' });
+		void tick().then(scroll);
+		// Sections above (kubeconfig list, detected services) fill in
+		// asynchronously and push the target down: follow them briefly.
+		if (typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver(scroll);
+		observer.observe(content);
+		const stop = setTimeout(() => observer.disconnect(), FOLLOW_MS);
+		return () => {
+			clearTimeout(stop);
+			observer.disconnect();
+		};
+	});
 
 	let updateChecked = $state(false);
 
@@ -117,7 +148,7 @@
 </script>
 
 <Modal title="Preferences" onClose={close}>
-	<div class="flex flex-col gap-5">
+	<div bind:this={content} class="flex flex-col gap-5">
 		<section class="flex items-center justify-between gap-4">
 			<div>
 				<div class="type-body text-text-primary">Appearance</div>
@@ -182,20 +213,11 @@
 				<div class="type-body text-text-primary">Skip TLS verification</div>
 				<p class="type-caption mt-0.5 text-text-tertiary">Stored only — not yet enforced by the backend.</p>
 			</div>
-			<button
-				type="button"
-				role="switch"
-				aria-checked={settings.skipTls.value}
-				aria-label="Skip TLS verification"
-				class="focus-ring relative h-[22px] w-[38px] shrink-0 rounded-full transition-colors"
-				style="background: {settings.skipTls.value ? 'var(--color-status-ok)' : 'var(--color-surface-raised)'};"
-				onclick={() => (settings.skipTls.value = !settings.skipTls.value)}
-			>
-				<span
-					class="absolute top-[3px] h-4 w-4 rounded-full bg-text-primary transition-[left]"
-					style="left: {settings.skipTls.value ? '18px' : '3px'};"
-				></span>
-			</button>
+			<Switch
+				checked={settings.skipTls.value}
+				label="Skip TLS verification"
+				onChange={(v) => (settings.skipTls.value = v)}
+			/>
 		</section>
 
 		{#if clusters.contexts.length > 0}
@@ -229,9 +251,27 @@
 
 		<NavigationPreferences />
 
-		<ElasticPreferences />
+		<div bind:this={sections.integrations} class="flex flex-col gap-5" data-testid="integrations-prefs">
+			<section class="flex items-center justify-between gap-4">
+				<div>
+					<div class="type-body text-text-primary">Integrations</div>
+					<p class="type-caption mt-0.5 text-text-tertiary">Show integration hints in panels</p>
+				</div>
+				<Switch
+					checked={settings.integrationHints.value}
+					label="Show integration hints in panels"
+					onChange={(v) => (settings.integrationHints.value = v)}
+				/>
+			</section>
 
-		<PrometheusPreferences />
+			<div bind:this={sections.elasticsearch}>
+				<ElasticPreferences />
+			</div>
+
+			<div bind:this={sections.prometheus}>
+				<PrometheusPreferences />
+			</div>
+		</div>
 
 		<section>
 			<div class="mb-1.5 flex items-baseline justify-between gap-3">

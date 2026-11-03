@@ -63,28 +63,27 @@ final class LogSession {
     /// Whether Open in Kibana is offered: a Kibana URL, or an in-cluster
     /// Kibana service the app can forward to.
     var canOpenKibana: Bool {
-        guard let endpoint = historyEndpoint else { return false }
-        return Integration.canOpenUI(
-            url: endpoint.kibanaURL, target: endpoint.target, service: endpoint.kibanaService,
-            canForward: elastic?.kibana != nil)
+        guard let endpoint = historyEndpoint, let elastic else { return false }
+        return elastic.canOpenKibana(endpoint)
     }
 
     /// Kibana Discover for this pod: the configured URL, else the
     /// in-cluster service through a port-forward (on 127.0.0.1, where it listens).
     func kibanaDiscoverURL() async throws -> URL? {
-        guard let history, let endpoint = historyEndpoint, let context else { return nil }
-        if let url = history.kibanaURL(shown: showsHistory) { return url }
-        guard
-            let service = Integration.forwardedUI(
-                url: endpoint.kibanaURL, target: endpoint.target, service: endpoint.kibanaService),
-            let kibana = elastic?.kibana
+        guard let history, let endpoint = historyEndpoint, let context, let elastic,
+            let base = try await elastic.kibanaBase(context: context, endpoint: endpoint)
         else { return nil }
-        let port = try await kibana.kibanaForward(context: context, service: service)
-        return history.kibanaURL(shown: showsHistory, base: service.loopbackBase(port: port))
+        return history.kibanaURL(shown: showsHistory, base: base)
     }
 
     /// History is shown (and still possible: the endpoint may have been removed).
     var showsHistory: Bool { source == .history && historyEndpoint != nil }
+
+    /// Whether the toolbar offers setting up Elasticsearch (#526): History
+    /// is possible here but the context has no endpoint, and hints are on.
+    func offersHistorySetup(hints: Bool) -> Bool {
+        IntegrationHints.showsSetup(available: history != nil, configured: historyEndpoint != nil, hints: hints)
+    }
 
     /// Lines the panel shows, searches and exports.
     var displayedLines: [LogLine] {
@@ -341,6 +340,38 @@ struct LogHistoryAccess {
     var kibana: (any KibanaForwarding)? = nil
 }
 
+@MainActor
+extension LogHistoryAccess {
+
+    /// Whether Kibana can be opened: a Kibana URL, or an in-cluster Kibana
+    /// service the app can forward to.
+    func canOpenKibana(_ endpoint: EsEndpoint) -> Bool {
+        Integration.canOpenUI(
+            url: endpoint.kibanaURL, target: endpoint.target, service: endpoint.kibanaService,
+            canForward: kibana != nil)
+    }
+
+    /// The configured Kibana URL, else the in-cluster Kibana's forward.
+    func kibanaBase(context: String, endpoint: EsEndpoint) async throws -> String? {
+        let forward = kibana.map { kibana in
+            { @Sendable (service: ServiceRef) in try await kibana.kibanaForward(context: context, service: service) }
+        }
+        return try await Integration.webUIBase(
+            url: endpoint.kibanaURL, target: endpoint.target, service: endpoint.kibanaService, forward: forward)
+    }
+
+    /// Discover for a workload's logs (#526), or plain Discover without one.
+    func kibanaURL(context: String, endpoint: EsEndpoint, namespace: String, workload: Workload?)
+        async throws -> URL?
+    {
+        guard let base = try await kibanaBase(context: context, endpoint: endpoint) else { return nil }
+        guard let workload else { return Integration.webURL(Elastic.kibanaHomeURL(kibanaBase: base)) }
+        return Integration.webURL(
+            Elastic.kibanaWorkloadURL(
+                kibanaBase: base, preset: endpoint.preset, namespace: namespace, workload: workload))
+    }
+}
+
 /// Shell-level owner of the log panel: the open sessions (one tab each),
 /// the active tab, and panel chrome state.
 @Observable @MainActor
@@ -397,7 +428,8 @@ final class LogSessionStore {
     private let streamer: any PodLogStreaming
     private let defaults: UserDefaults
     private let backoffBase: Double
-    private let elastic: LogHistoryAccess?
+    /// Elasticsearch access shared with the detail panels' Kibana links (#526).
+    let elastic: LogHistoryAccess?
     private var toastTask: Task<Void, Never>?
 
     init(
