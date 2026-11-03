@@ -57,11 +57,11 @@ final class ElasticPreferencesModelTests: XCTestCase {
         let backend = StubBackend()
         let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
         await model.load(context: "prod")
-        XCTAssertEqual(model.mode, .off)
-        model.mode = .external
-        model.url = " https://es.example:9243 "
+        XCTAssertEqual(model.target.mode, .off)
+        model.target.mode = .external
+        model.target.url = " https://es.example:9243 "
         model.authMethod = .apiKey
-        model.secret = "abc=="
+        model.input.secret = "abc=="
         model.kibanaURL = "https://kb.example"
         await model.save()
         XCTAssertEqual(model.outcome, .init(ok: true, text: "Elasticsearch saved for prod"))
@@ -70,7 +70,7 @@ final class ElasticPreferencesModelTests: XCTestCase {
         XCTAssertEqual(saved?.kibanaURL, "https://kb.example")
         let calls = await backend.saved
         XCTAssertEqual(calls.map(\.1), [.apiKey("abc==")])
-        XCTAssertEqual(model.secret, "", "secrets are not kept in the form")
+        XCTAssertEqual(model.input.secret, "", "secrets are not kept in the form")
         XCTAssertEqual(model.storedMethod, .apiKey)
     }
 
@@ -78,13 +78,13 @@ final class ElasticPreferencesModelTests: XCTestCase {
         let backend = StubBackend()
         let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
         await model.load(context: "prod")
-        model.mode = .external
-        model.url = "https://es.example"
+        model.target.mode = .external
+        model.target.url = "https://es.example"
         model.authMethod = .bearer
-        model.secret = "t"
+        model.input.secret = "t"
         await model.save()
 
-        model.url = "https://other.example"
+        model.target.url = "https://other.example"
         await model.save()
         XCTAssertEqual(model.outcome?.ok, false)
         XCTAssertTrue(model.outcome?.text.contains("enter the credentials again") ?? false)
@@ -96,8 +96,8 @@ final class ElasticPreferencesModelTests: XCTestCase {
         endpoints.setEndpoint(EsEndpoint(target: .external(url: "https://es.example")), for: "prod")
         let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
         await model.load(context: "prod")
-        XCTAssertEqual(model.mode, .external)
-        model.mode = .off
+        XCTAssertEqual(model.target.mode, .external)
+        model.target.mode = .off
         await model.save()
         XCTAssertNil(endpoints.endpoint(for: "prod"))
         let calls = await backend.saved
@@ -108,7 +108,7 @@ final class ElasticPreferencesModelTests: XCTestCase {
         let backend = StubBackend()
         let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
         await model.load(context: "prod")
-        model.mode = .inCluster
+        model.target.mode = .inCluster
         await model.detect()
         XCTAssertEqual(model.detected?.map(\.name), ["quickstart-es-http"], "Kibana is not offered")
         model.pick(model.detected![0])
@@ -125,29 +125,29 @@ final class ElasticPreferencesModelTests: XCTestCase {
     func testValidationAndLoadingAnotherContextClearsTheForm() async {
         let model = ElasticPreferencesModel(backend: StubBackend(), endpoints: endpoints)
         await model.load(context: "prod")
-        model.mode = .external
-        model.url = "https://user:pw@es.example"
-        XCTAssertNotNil(model.urlProblem)
+        model.target.mode = .external
+        model.target.url = "https://user:pw@es.example"
+        XCTAssertNotNil(model.target.urlProblem)
         XCTAssertTrue(model.isIncomplete)
         XCTAssertFalse(model.authMethods.contains(.eckUser))
-        model.url = "https://es.example"
+        model.target.url = "https://es.example"
         model.kibanaURL = "ftp://kb"
         XCTAssertEqual(model.kibanaProblem, "Use an http:// or https:// URL.")
         model.kibanaURL = ""
         XCTAssertFalse(model.isIncomplete)
-        model.secret = "typed"
+        model.input.secret = "typed"
         await model.load(context: "dev")
-        XCTAssertEqual(model.mode, .off)
-        XCTAssertEqual(model.url, "")
-        XCTAssertEqual(model.secret, "")
+        XCTAssertEqual(model.target.mode, .off)
+        XCTAssertEqual(model.target.url, "")
+        XCTAssertEqual(model.input.secret, "")
     }
 
     func testSaveStoresTheEndpointEvenAfterAContextSwitch() async {
         let backend = StubBackend()
         let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
         await model.load(context: "prod")
-        model.mode = .external
-        model.url = "https://es.example"
+        model.target.mode = .external
+        model.target.url = "https://es.example"
         let saving = Task { await model.save() }
         while model.busy != .save { await Task.yield() }
         await model.load(context: "dev")
@@ -160,14 +160,14 @@ final class ElasticPreferencesModelTests: XCTestCase {
         let backend = StubBackend()
         let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
         await model.load(context: "prod")
-        model.mode = .inCluster
-        model.namespace = "logging"
-        model.service = "quickstart-es-http"
+        model.target.mode = .inCluster
+        model.target.namespace = "logging"
+        model.target.service = "quickstart-es-http"
         model.authMethod = .eckUser
         await model.useEck()
         XCTAssertEqual(model.storedMethod, .eckUser)
         XCTAssertEqual(model.outcome?.ok, true)
-        model.mode = .external
+        model.target.mode = .external
         XCTAssertEqual(model.authMethod, .none)
     }
 
@@ -175,15 +175,15 @@ final class ElasticPreferencesModelTests: XCTestCase {
         let backend = StubBackend()
         let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
         await model.load(context: "prod")
-        model.mode = .external
-        model.url = "https://es.example"
+        model.target.mode = .external
+        model.target.url = "https://es.example"
         model.authMethod = .basic
-        model.username = "elastic"
-        model.password = "pw"
+        model.input.username = "elastic"
+        model.input.password = "pw"
         await model.test()
         XCTAssertEqual(
             model.outcome?.text, "Elasticsearch 8.15.0 · logs · health green · 2 matching indices or data streams")
-        model.password = ""
+        model.input.password = ""
         await model.test()
         let tested = await backend.tested
         XCTAssertEqual(tested, [.basic(username: "elastic", password: "pw"), nil])

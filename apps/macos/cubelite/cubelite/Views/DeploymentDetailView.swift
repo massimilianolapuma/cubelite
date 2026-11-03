@@ -44,6 +44,9 @@ struct DeploymentDetailView: View {
                 Divider()
                     .padding(.vertical, 12)
                 DeploymentSpecGrid(deployment: deployment)
+                MetricsSectionView(
+                    context: context, namespace: deployment.namespace,
+                    workload: .deployment(deployment.name))
                 if let conditions = deployment.conditions, !conditions.isEmpty {
                     Divider()
                         .padding(.vertical, 12)

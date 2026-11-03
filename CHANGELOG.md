@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Metrics history from Prometheus on macOS** (#512, closes #484): Settings
+  → Integrations gets a Prometheus pane next to Elasticsearch (in-cluster
+  with Detect, or external with basic, bearer or the Azure CLI; cluster
+  label, Grafana URL and datasource, Test connection); pod and deployment
+  details show a Metrics section (CPU and memory with requests and limits,
+  restarts, network over 1 h – 7 d, per container or total, hover values,
+  Open in Grafana), and the Pods and Deployments lists last-hour sparklines.
 - **Prometheus service on macOS** (#511, part of #484): the native app can
   detect Prometheus servers, test a connection, chart a pod's or
   deployment's history and load list sparklines — in-cluster through the
