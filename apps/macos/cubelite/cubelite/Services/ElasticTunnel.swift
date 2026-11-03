@@ -45,8 +45,12 @@ final class ElasticTunnel: @unchecked Sendable {
                 guard let self else { return }
                 switch state {
                 case .ready:
-                    self.resolveReadiness(.success(self.listener.port?.rawValue ?? 0))
-                case .failed(let error):
+                    if let port = self.listener.port?.rawValue, port > 0 {
+                        self.resolveReadiness(.success(port))
+                    } else {
+                        self.resolveReadiness(.failure(ElasticError.connect("no local port")))
+                    }
+                case .waiting(let error), .failed(let error):
                     self.resolveReadiness(
                         .failure(ElasticError.connect("local port failed: \(error.localizedDescription)")))
                 case .cancelled:
@@ -113,6 +117,6 @@ final class ElasticTunnel: @unchecked Sendable {
     }
 
     deinit {
-        listener.cancel()
+        close()
     }
 }

@@ -497,6 +497,17 @@ enum Elastic {
         return result
     }
 
+    /// The `Authorization` value for `auth`, refusing control characters and
+    /// non-ASCII text that cannot travel in an HTTP header.
+    static func checkedHeader(_ auth: EsAuth) throws -> String? {
+        guard let header = auth.header else { return nil }
+        guard header.unicodeScalars.allSatisfy({ $0.isASCII && $0.value >= 0x20 && $0.value != 0x7F })
+        else {
+            throw ElasticError.config("Credentials contain invalid characters")
+        }
+        return header
+    }
+
     /// `{service}.{namespace}.svc`: the name ECK puts in the HTTP certificate.
     static func serviceHost(namespace: String, service: String) -> String {
         "\(service).\(namespace).svc"

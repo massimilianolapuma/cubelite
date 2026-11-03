@@ -162,6 +162,36 @@ final class ElasticServiceTests: XCTestCase {
         XCTAssertNil(deleted)
     }
 
+    func testDeletingWorksWithABrokenURL() async throws {
+        let secrets = MemorySecrets()
+        try await secrets.write(Data("{}".utf8), account: "prod")
+        let broken = EsEndpoint(target: .external(url: "not a url"))
+        try await service(secrets: secrets).saveAuth(context: "prod", endpoint: broken, auth: .none)
+        let left = await secrets.items["prod"]
+        XCTAssertNil(left)
+    }
+
+    func testHeadersWithControlCharactersAreRefused() async {
+        ElasticStubProtocol.reset(["/": (200, #"{"version":{"number":"8"}}"#)])
+        do {
+            _ = try await service().test(
+                context: "prod", endpoint: endpoint, auth: .bearer("a\r\nX-Injected: 1"))
+            XCTFail("expected a refusal")
+        } catch {
+            XCTAssertEqual(error as? ElasticError, .config("Credentials contain invalid characters"))
+        }
+        XCTAssertTrue(ElasticStubProtocol.requests.isEmpty)
+        XCTAssertEqual(try Elastic.checkedHeader(.apiKey(" ok== ")), "ApiKey ok==")
+        XCTAssertThrowsError(try Elastic.checkedHeader(.apiKey("clé")))
+    }
+
+    func testPathSegmentsRefuseDotNames() throws {
+        XCTAssertEqual(try ElasticService.pathSegment("a b/c"), "a%20b%2Fc")
+        for bad in ["", ".", ".."] {
+            XCTAssertThrowsError(try ElasticService.pathSegment(bad), bad)
+        }
+    }
+
     func testCredentialsOverPlainHTTPAreRefused() async {
         let es = service()
         let plain = EsEndpoint(target: .external(url: "http://es.example"))
@@ -289,5 +319,26 @@ final class ElasticTunnelTests: XCTestCase {
         XCTAssertGreaterThan(port, 0)
         tunnel.close()
         tunnel.close()  // idempotent
+    }
+}
+
+final class ElasticTrustDelegateTests: XCTestCase {
+
+    func testRedirectsAreNeverFollowed() throws {
+        let delegate = ElasticTrustDelegate(hostname: nil, anchor: nil, insecure: false)
+        let from = try XCTUnwrap(URL(string: "https://es.example/_search"))
+        let to = try XCTUnwrap(URL(string: "https://evil.example/collect"))
+        let response = try XCTUnwrap(
+            HTTPURLResponse(
+                url: from, statusCode: 302, httpVersion: "HTTP/1.1",
+                headerFields: ["Location": to.absoluteString]))
+        var next = URLRequest(url: to)
+        next.setValue("ApiKey secret", forHTTPHeaderField: "Authorization")
+        let task = URLSession.shared.dataTask(with: from)
+        var followed: URLRequest? = next
+        delegate.urlSession(
+            .shared, task: task, willPerformHTTPRedirection: response, newRequest: next
+        ) { followed = $0 }
+        XCTAssertNil(followed)
     }
 }

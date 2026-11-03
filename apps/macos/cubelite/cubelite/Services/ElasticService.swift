@@ -257,6 +257,17 @@ final class ElasticTrustDelegate: NSObject, URLSessionDelegate, URLSessionTaskDe
         completionHandler(disposition, credential)
     }
 
+    /// Never follows redirects: the Elasticsearch API does not redirect, and
+    /// a followed redirect could carry the `Authorization` header to another
+    /// host. The 3xx response itself comes back as an error status.
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+    }
+
     func urlSession(
         _ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
@@ -308,9 +319,20 @@ actor ElasticService {
             self.tunnel = tunnel
         }
 
+        /// Cancels in-flight requests and closes the tunnel.
         func close() {
             session.invalidateAndCancel()
             tunnel?.close()
+        }
+
+        /// Lets in-flight requests finish; the tunnel closes when the last
+        /// holder releases the connection.
+        func retire() {
+            session.finishTasksAndInvalidate()
+        }
+
+        deinit {
+            close()
         }
     }
 
@@ -318,6 +340,9 @@ actor ElasticService {
     private let secrets: ElasticSecretStore
     private let configuration: URLSessionConfiguration
     private var connections: [String: Connection] = [:]
+    /// Bumped by `disconnect` (credential changes): a connect that started
+    /// before is discarded instead of cached with the old credentials.
+    private var generations: [String: Int] = [:]
     private var lastUse: [String: ContinuousClock.Instant] = [:]
     private var idleTasks: [String: Task<Void, Never>] = [:]
 
@@ -356,7 +381,8 @@ actor ElasticService {
     /// Saves `auth` for `context`, bound to `endpoint` (`none` deletes it),
     /// and closes the context's connection.
     func saveAuth(context: String, endpoint: EsEndpoint, auth: EsAuth) async throws {
-        if case .external(let url) = endpoint.target {
+        // Deleting must work even when the endpoint URL is broken.
+        if auth != .none, case .external(let url) = endpoint.target {
             _ = try Elastic.checkExternalURL(url, auth: auth)
         }
         if auth == .none {
@@ -448,6 +474,7 @@ actor ElasticService {
 
     /// Closes the context's connection (and its port-forward).
     func disconnect(context: String) {
+        generations[context, default: 0] += 1
         connections.removeValue(forKey: context)?.close()
         lastUse[context] = nil
         idleTasks.removeValue(forKey: context)?.cancel()
@@ -497,15 +524,22 @@ actor ElasticService {
             touch(context)
             return cached
         }
+        let generation = generations[context, default: 0]
         let auth = try await loadAuth(context: context, endpoint: endpoint)
         let fresh = try await connect(context: context, endpoint: endpoint, auth: auth)
+        // Credentials were saved or removed meanwhile: start over with them.
+        guard generations[context, default: 0] == generation else {
+            fresh.close()
+            return try await cachedConnection(context: context, endpoint: endpoint)
+        }
         // Another call may have connected meanwhile: keep the first one.
         if let existing = connections[context], existing.endpoint == endpoint {
             fresh.close()
             touch(context)
             return existing
         }
-        connections.removeValue(forKey: context)?.close()
+        // A search on the previous endpoint may still be using it.
+        connections.removeValue(forKey: context)?.retire()
         connections[context] = fresh
         touch(context)
         return fresh
@@ -533,6 +567,7 @@ actor ElasticService {
     {
         let config = configuration.copy() as? URLSessionConfiguration ?? .ephemeral
         config.timeoutIntervalForRequest = Self.requestTimeout
+        config.timeoutIntervalForResource = Self.requestTimeout
         config.urlCache = nil
         config.httpCookieStorage = nil
         config.httpShouldSetCookies = false
@@ -544,7 +579,7 @@ actor ElasticService {
             return Connection(
                 endpoint: endpoint,
                 session: URLSession(configuration: config, delegate: delegate, delegateQueue: nil),
-                base: base, authorization: auth.header, tunnel: nil)
+                base: base, authorization: try Elastic.checkedHeader(auth), tunnel: nil)
         case .inCluster(let namespace, let service, let port, let https):
             return try await connectInCluster(
                 context: context, endpoint: endpoint, auth: auth, config: config,
@@ -557,9 +592,9 @@ actor ElasticService {
         context: String, endpoint: EsEndpoint, auth: EsAuth, config: URLSessionConfiguration,
         namespace: String, service: String, port: Int, https: Bool
     ) async throws -> Connection {
-        let ns = Self.pathSegment(namespace)
+        let ns = try Self.pathSegment(namespace)
         let svc: ElasticK8s.Service = try await get(
-            "/api/v1/namespaces/\(ns)/services/\(Self.pathSegment(service))", context: context)
+            "/api/v1/namespaces/\(ns)/services/\(try Self.pathSegment(service))", context: context)
         guard let selector = Elastic.selector(svc) else {
             throw ElasticError.config("Service \(namespace)/\(service) has no pod selector")
         }
@@ -577,15 +612,15 @@ actor ElasticService {
         if https, !endpoint.skipTLSVerify {
             anchor = try await eckCA(context: context, namespace: namespace, service: service)
         }
-        let header =
+        let header = try Elastic.checkedHeader(
             auth == .eckUser
-            ? try await eckCredentials(context: context, namespace: namespace, service: service)
-                .header
-            : auth.header
+                ? try await eckCredentials(context: context, namespace: namespace, service: service)
+                : auth)
         let cluster = self.cluster
         let (tunnel, local) = try await ElasticTunnel.open {
             try await cluster.portForwardWebSocket(
-                namespace: namespace, pod: podName, remotePort: remote, inContext: context)
+                namespace: try Self.pathSegment(namespace), pod: try Self.pathSegment(podName),
+                remotePort: remote, inContext: context)
         }
         // The tunnel is local: never route it through a proxy.
         config.connectionProxyDictionary = [:]
@@ -612,7 +647,7 @@ actor ElasticService {
         let data: Data?
         do {
             data = try await cluster.getIfPresent(
-                path: "/api/v1/namespaces/\(Self.pathSegment(namespace))/secrets/\(Self.pathSegment(name))",
+                path: "/api/v1/namespaces/\(try Self.pathSegment(namespace))/secrets/\(try Self.pathSegment(name))",
                 inContext: context)
         } catch {
             throw ElasticError.connect(
@@ -643,7 +678,7 @@ actor ElasticService {
         do {
             data = try await self.cluster.getIfPresent(
                 path:
-                    "/api/v1/namespaces/\(Self.pathSegment(namespace))/secrets/\(Self.pathSegment("\(cluster)-es-elastic-user"))",
+                    "/api/v1/namespaces/\(try Self.pathSegment(namespace))/secrets/\(try Self.pathSegment("\(cluster)-es-elastic-user"))",
                 inContext: context)
         } catch {
             throw ElasticError.config(
@@ -709,7 +744,12 @@ actor ElasticService {
         }
     }
 
-    private static func pathSegment(_ text: String) -> String {
+    /// One percent-encoded path segment; `.`/`..` and empty names are refused
+    /// (they would be normalised into another API path).
+    static func pathSegment(_ text: String) throws -> String {
+        guard !text.isEmpty, text != ".", text != ".." else {
+            throw ElasticError.config("Invalid name \"\(text)\"")
+        }
         var allowed = CharacterSet.urlPathAllowed
         allowed.remove("/")
         return text.addingPercentEncoding(withAllowedCharacters: allowed) ?? text
