@@ -6,6 +6,12 @@ import SwiftUI
 struct JobListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [JobInfo] {
+        ListSort.sorted(clusterState.jobs, by: resourcePreferences.spec(for: "jobs"))
+    }
 
     var body: some View {
         Group {
@@ -38,7 +44,7 @@ struct JobListView: View {
     }
 
     private var jobTable: some View {
-        Table(clusterState.jobs) {
+        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "jobs", of: JobInfo.self)) {
             TableColumn("") { job in
                 Circle()
                     .fill(tone(for: job))
@@ -47,7 +53,7 @@ struct JobListView: View {
             }
             .width(16)
 
-            TableColumn("Name") { job in
+            TableColumn("Name", value: \.sortKeyName) { job in
                 Text(job.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
@@ -72,7 +78,7 @@ struct JobListView: View {
             }
             .width(60)
 
-            TableColumn("Age") { job in
+            TableColumn("Age", value: \.sortKeyAge) { job in
                 Text(job.creationTimestamp.k8sAge)
                     .foregroundStyle(DesignTokens.textTertiary)
             }

@@ -7,6 +7,12 @@ import SwiftUI
 struct DeploymentListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [DeploymentInfo] {
+        ListSort.sorted(clusterState.deployments, by: resourcePreferences.spec(for: "deployments"))
+    }
     @Binding var selectedDeploymentID: DeploymentInfo.ID?
 
     var body: some View {
@@ -41,20 +47,20 @@ struct DeploymentListView: View {
     // MARK: - Table
 
     private var deploymentTable: some View {
-        Table(clusterState.deployments, selection: $selectedDeploymentID) {
+        Table(sortedRows, selection: $selectedDeploymentID, sortOrder: resourcePreferences.sortOrder(for: "deployments", of: DeploymentInfo.self)) {
             TableColumn("") { dep in
                 DeploymentStatusDot(ready: dep.readyReplicas, desired: dep.replicas)
             }
             .width(16)
 
-            TableColumn("Name") { dep in
+            TableColumn("Name", value: \.sortKeyName) { dep in
                 Text(dep.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 220)
 
-            TableColumn("Namespace") { dep in
+            TableColumn("Namespace", value: \.sortKeyNamespace) { dep in
                 Text(dep.namespace)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -62,7 +68,7 @@ struct DeploymentListView: View {
             }
             .width(min: 80, ideal: 120)
 
-            TableColumn("Ready") { dep in
+            TableColumn("Ready", value: \.sortKeyStatus) { dep in
                 replicasBadge(ready: dep.readyReplicas, desired: dep.replicas)
             }
             .width(ideal: 80)
@@ -123,6 +129,7 @@ private struct DeploymentListPreview: View {
     var body: some View {
         DeploymentListView(selectedDeploymentID: $selectedID)
             .environment(state)
+            .environment(ResourcePreferences())
             .task {
                 guard state.deployments.isEmpty else { return }
                 state.deployments = previewDeployments()

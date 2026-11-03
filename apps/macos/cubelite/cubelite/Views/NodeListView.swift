@@ -7,6 +7,12 @@ import SwiftUI
 struct NodeListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [NodeInfo] {
+        ListSort.sorted(clusterState.nodes, by: resourcePreferences.spec(for: "nodes"))
+    }
 
     var body: some View {
         Group {
@@ -23,7 +29,7 @@ struct NodeListView: View {
     }
 
     private var nodeTable: some View {
-        Table(clusterState.nodes) {
+        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "nodes", of: NodeInfo.self)) {
             TableColumn("") { node in
                 Circle()
                     .fill(
@@ -36,13 +42,13 @@ struct NodeListView: View {
             }
             .width(16)
 
-            TableColumn("Name") { node in
+            TableColumn("Name", value: \.sortKeyName) { node in
                 Text(node.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
 
-            TableColumn("Status") { node in
+            TableColumn("Status", value: \.sortKeyStatus) { node in
                 Text(node.status)
                     .foregroundStyle(
                         node.status == "Ready"
@@ -63,7 +69,7 @@ struct NodeListView: View {
             }
             .width(110)
 
-            TableColumn("Age") { node in
+            TableColumn("Age", value: \.sortKeyAge) { node in
                 Text(node.creationTimestamp.k8sAge)
                     .foregroundStyle(DesignTokens.textTertiary)
             }

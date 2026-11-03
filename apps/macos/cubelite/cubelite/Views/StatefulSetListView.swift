@@ -6,6 +6,12 @@ import SwiftUI
 struct StatefulSetListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [StatefulSetInfo] {
+        ListSort.sorted(clusterState.statefulSets, by: resourcePreferences.spec(for: "statefulsets"))
+    }
 
     var body: some View {
         Group {
@@ -27,7 +33,7 @@ struct StatefulSetListView: View {
     }
 
     private var table: some View {
-        Table(clusterState.statefulSets) {
+        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "statefulsets", of: StatefulSetInfo.self)) {
             TableColumn("") { set in
                 Circle()
                     .fill(isAvailable(set) ? DesignTokens.statusOk : DesignTokens.statusWarn)
@@ -36,7 +42,7 @@ struct StatefulSetListView: View {
             }
             .width(16)
 
-            TableColumn("Name") { set in
+            TableColumn("Name", value: \.sortKeyName) { set in
                 Text(set.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
@@ -48,14 +54,14 @@ struct StatefulSetListView: View {
             }
             .width(70)
 
-            TableColumn("Status") { set in
+            TableColumn("Status", value: \.sortKeyStatus) { set in
                 Text(isAvailable(set) ? "Available" : "Progressing")
                     .foregroundStyle(
                         isAvailable(set) ? DesignTokens.statusOk : DesignTokens.statusWarn)
             }
             .width(100)
 
-            TableColumn("Age") { set in
+            TableColumn("Age", value: \.sortKeyAge) { set in
                 Text(set.creationTimestamp.k8sAge)
                     .foregroundStyle(DesignTokens.textTertiary)
             }

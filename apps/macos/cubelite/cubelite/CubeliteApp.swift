@@ -6,6 +6,7 @@ struct CubeliteApp: App {
 
     @State private var clusterState = ClusterState()
     @State private var appSettings = AppSettings()
+    @State private var resourcePreferences = ResourcePreferences()
     @State private var loginItemController: LoginItemController
     private let kubeconfigService: KubeconfigService
     private let kubeAPIService: KubeAPIService
@@ -47,6 +48,7 @@ struct CubeliteApp: App {
                 )
                     .environment(clusterState)
                     .environment(appSettings)
+                    .environment(resourcePreferences)
                     .environment(logStore)
                     .environment(logSessionStore)
                     .environment(loginItemController)
@@ -113,6 +115,7 @@ struct CubeliteApp: App {
         Settings {
             PreferencesView(kubeAPIService: kubeAPIService)
                 .environment(appSettings)
+                .environment(resourcePreferences)
                 .environment(loginItemController)
         }
     }
