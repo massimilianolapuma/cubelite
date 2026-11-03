@@ -61,3 +61,17 @@ Nothing tells the user the feature exists. The services are usually already in t
   - dismissals persist.
 - **Desktop UI:** a Playwright test for banner → Enable with the mocked Tauri layer.
 - **Live:** against minikube with ECK and kube-prometheus-stack, the banner finds all four services.
+
+## 6. Decisions after review (2026-11-04)
+
+These supersede §2 and §4 where they differ.
+
+- **Service spoofing (security review, MEDIUM).** In a shared cluster, anyone allowed to create Services in their own namespace can name one `foo-es-http` or `prometheus-operated`, and a one-click Enable would then show their "history" or metrics. ECK credentials stay safe (the secret is read from the service's namespace), but the data would be fake. So:
+  - **Ranking:** operator-managed first, then the well-known namespaces `logging`, `elastic-system`, `monitoring`, `observability`, then the conventional name (`-es-http`, `prometheus-operated`), then namespace and name.
+    - Elasticsearch is operator-managed when the Service is owned by an ECK `Elasticsearch` resource (`ownerReferences`, kind `Elasticsearch`, API group `elasticsearch.k8s.elastic.co`), or carries ECK's `common.k8s.elastic.co/type=elasticsearch` and `elasticsearch.k8s.elastic.co/cluster-name` labels.
+    - Prometheus is operator-managed when owned by a `Prometheus` resource (`monitoring.coreos.com`), or is `prometheus-operated` with `operated-prometheus=true`.
+  - Kibana and Grafana are taken only from the namespace of the service they go with.
+  - **One-click Enable** only when exactly one operator-managed service exists for each offered integration. Otherwise (several, or the only one is not operator-managed) the banner offers Review only, and Review pre-fills the best guess and lists every candidate. Enable refuses in the model too, not only in the UI.
+  - **Banner text** always names what Enable would use: "Elasticsearch found (logging/quickstart-es-http) and Prometheus (monitoring/prometheus-operated) — Enable · Review · ✕".
+- **Turning an integration off** in Preferences records it as dismissed for that context, so the banner does not offer it again; "Suggest detected integrations again" clears it.
+- **Prometheus without cAdvisor series:** Enable still saves it, and reports a warning, "Prometheus enabled for <context> — no container metrics (cAdvisor) found yet".

@@ -365,70 +365,183 @@ pub fn http_builder(skip_tls_verify: bool) -> reqwest::ClientBuilder {
 
 /// The services the integrations would use, found in one listing of the
 /// cluster's services when a context connects (#527): what the banner
-/// offers to enable.
+/// offers.
+///
+/// Anyone allowed to create a Service in their own namespace can name it
+/// `foo-es-http` or `prometheus-operated`, so a name is not trusted:
+/// one-click Enable is offered only when exactly one operator-managed
+/// service exists for the integration ([`es_trusted`], [`prom_trusted`]).
+/// Otherwise the banner offers Review, with every candidate.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Detected {
-    /// Elasticsearch, preferring ECK's `{cluster}-es-http`.
+    /// Best Elasticsearch guess (see [`pick_services`]).
     pub elasticsearch: Option<DetectedService>,
-    /// Kibana, preferring Elasticsearch's namespace.
+    /// Kibana in the Elasticsearch's namespace.
     pub kibana: Option<DetectedService>,
-    /// Prometheus, preferring `prometheus-operated`.
+    /// Best Prometheus guess.
     pub prometheus: Option<DetectedPrometheus>,
-    /// Grafana, preferring Prometheus's namespace.
+    /// Grafana in the Prometheus's namespace.
     pub grafana: Option<DetectedPrometheus>,
+    /// `elasticsearch` is the only ECK-managed Elasticsearch: Enable may
+    /// save it without a review.
+    pub elasticsearch_one_click: bool,
+    /// `prometheus` is the only operator-managed Prometheus.
+    pub prometheus_one_click: bool,
+    /// Every Elasticsearch and Kibana found, best first (for Review).
+    pub elastic_services: Vec<DetectedService>,
+    /// Every Prometheus and Grafana found, best first (for Review).
+    pub prometheus_services: Vec<DetectedPrometheus>,
 }
 
-/// The first of `found` by `(preferred, namespace, name)`: `preferred`
-/// services come first, then the order is alphabetical.
-fn first<T>(
-    found: impl Iterator<Item = T>,
-    preferred: impl Fn(&T) -> bool,
-    names: impl Fn(&T) -> (String, String),
-) -> Option<T> {
-    found.min_by_key(|d| {
-        let (namespace, name) = names(d);
-        (!preferred(d), namespace, name)
-    })
+/// Namespaces where observability stacks usually live, preferred after
+/// operator ownership.
+pub const WELL_KNOWN_NAMESPACES: [&str; 4] =
+    ["logging", "elastic-system", "monitoring", "observability"];
+
+/// Whether `service` is owned by a custom resource of `kind` in API group
+/// `group`.
+fn owned_by(service: &Service, kind: &str, group: &str) -> bool {
+    service
+        .metadata
+        .owner_references
+        .iter()
+        .flatten()
+        .any(|o| o.kind == kind && o.api_version.split('/').next() == Some(group))
 }
 
-/// Picks one service per integration from a service list with the
-/// Elasticsearch and Prometheus classifiers: ECK's `-es-http` and
-/// `prometheus-operated` first, else the first by namespace and name; Kibana
-/// and Grafana prefer the namespace of the service they go with.
+fn label<'a>(service: &'a Service, key: &str) -> Option<&'a str> {
+    service
+        .metadata
+        .labels
+        .as_ref()?
+        .get(key)
+        .map(String::as_str)
+}
+
+/// An Elasticsearch service managed by ECK: owned by an `Elasticsearch`
+/// resource, or carrying ECK's type and cluster-name labels.
+pub fn es_trusted(service: &Service) -> bool {
+    owned_by(service, "Elasticsearch", "elasticsearch.k8s.elastic.co")
+        || (label(service, "common.k8s.elastic.co/type") == Some("elasticsearch")
+            && label(service, "elasticsearch.k8s.elastic.co/cluster-name").is_some())
+}
+
+/// A Prometheus service managed by the Prometheus operator: owned by a
+/// `Prometheus` resource, or its governing `prometheus-operated` service.
+pub fn prom_trusted(service: &Service) -> bool {
+    owned_by(service, "Prometheus", "monitoring.coreos.com")
+        || (service.metadata.name.as_deref() == Some("prometheus-operated")
+            && label(service, "operated-prometheus") == Some("true"))
+}
+
+/// What ranking needs from a detected service.
+trait Found: Clone {
+    fn kind(&self) -> &str;
+    fn namespace(&self) -> &str;
+    fn name(&self) -> &str;
+}
+
+impl Found for DetectedService {
+    fn kind(&self) -> &str {
+        &self.kind
+    }
+    fn namespace(&self) -> &str {
+        &self.namespace
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl Found for DetectedPrometheus {
+    fn kind(&self) -> &str {
+        &self.kind
+    }
+    fn namespace(&self) -> &str {
+        &self.namespace
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+/// One integration's pick: the main service, its web UI, whether Enable
+/// can skip the review, and every candidate best first.
+struct Picked<T> {
+    main: Option<T>,
+    web_ui: Option<T>,
+    one_click: bool,
+    all: Vec<T>,
+}
+
+/// Ranks `found` (service, trusted): the `main` kind first, then trusted,
+/// well-known namespace, `conventional` name, namespace and name. The web
+/// UI comes only from the main service's namespace; one-click needs exactly
+/// one trusted main service.
+fn pick<T: Found>(
+    mut found: Vec<(T, bool)>,
+    main: &str,
+    conventional: impl Fn(&T) -> bool,
+) -> Picked<T> {
+    found.sort_by_key(|(d, trusted)| {
+        (
+            d.kind() != main,
+            !trusted,
+            !WELL_KNOWN_NAMESPACES.contains(&d.namespace()),
+            !conventional(d),
+            d.namespace().to_string(),
+            d.name().to_string(),
+        )
+    });
+    let best = found.iter().find(|(d, _)| d.kind() == main);
+    let web_ui = best.and_then(|(m, _)| {
+        found
+            .iter()
+            .find(|(d, _)| d.kind() != main && d.namespace() == m.namespace())
+            .map(|(d, _)| d.clone())
+    });
+    let trusted = found.iter().filter(|(d, t)| *t && d.kind() == main).count();
+    Picked {
+        main: best.map(|(d, _)| d.clone()),
+        web_ui,
+        one_click: trusted == 1 && best.is_some_and(|(_, t)| *t),
+        all: found.into_iter().map(|(d, _)| d).collect(),
+    }
+}
+
+/// Picks the integrations' services from a service list with the
+/// Elasticsearch and Prometheus classifiers, ranked by operator ownership
+/// ([`es_trusted`], [`prom_trusted`]), well-known namespace
+/// ([`WELL_KNOWN_NAMESPACES`]), conventional name (`-es-http`,
+/// `prometheus-operated`), namespace and name. Kibana and Grafana come only
+/// from the namespace of the service they go with.
 pub fn pick_services(services: &[Service]) -> Detected {
-    let es_found: Vec<DetectedService> = services.iter().filter_map(es::classify).collect();
-    let prom_found: Vec<DetectedPrometheus> = services.iter().filter_map(prom::classify).collect();
-    let es_of = |kind: &'static str| es_found.iter().filter(move |d| d.kind == kind).cloned();
-    let prom_of = |kind: &'static str| prom_found.iter().filter(move |d| d.kind == kind).cloned();
-    let es_names = |d: &DetectedService| (d.namespace.clone(), d.name.clone());
-    let prom_names = |d: &DetectedPrometheus| (d.namespace.clone(), d.name.clone());
-
-    let elasticsearch = first(
-        es_of("elasticsearch"),
-        |d| d.name.ends_with("-es-http"),
-        es_names,
+    let es = pick(
+        services
+            .iter()
+            .filter_map(|s| es::classify(s).map(|d| (d, es_trusted(s))))
+            .collect(),
+        "elasticsearch",
+        |d| d.name.ends_with("-es-http") || d.name.ends_with("-kb-http"),
     );
-    let kibana = first(
-        es_of("kibana"),
-        |d| elasticsearch.as_ref().map(|e| &e.namespace) == Some(&d.namespace),
-        es_names,
-    );
-    let prometheus = first(
-        prom_of("prometheus"),
+    let prom = pick(
+        services
+            .iter()
+            .filter_map(|s| prom::classify(s).map(|d| (d, prom_trusted(s))))
+            .collect(),
+        "prometheus",
         |d| d.name == "prometheus-operated",
-        prom_names,
-    );
-    let grafana = first(
-        prom_of("grafana"),
-        |d| prometheus.as_ref().map(|p| &p.namespace) == Some(&d.namespace),
-        prom_names,
     );
     Detected {
-        elasticsearch,
-        kibana,
-        prometheus,
-        grafana,
+        elasticsearch: es.main,
+        kibana: es.web_ui,
+        prometheus: prom.main,
+        grafana: prom.web_ui,
+        elasticsearch_one_click: es.one_click,
+        prometheus_one_click: prom.one_click,
+        elastic_services: es.all,
+        prometheus_services: prom.all,
     }
 }
 
@@ -564,11 +677,15 @@ mod tests {
                 eck("elasticsearch"),
                 json!([{ "name": "https", "port": 9200 }]),
             ),
-            svc(
-                "logging",
-                "quickstart-es-http",
-                eck("elasticsearch"),
-                json!([{ "name": "https", "port": 9200 }]),
+            owned(
+                svc(
+                    "logging",
+                    "quickstart-es-http",
+                    eck("elasticsearch"),
+                    json!([{ "name": "https", "port": 9200 }]),
+                ),
+                "Elasticsearch",
+                "elasticsearch.k8s.elastic.co/v1",
             ),
             svc(
                 "a-search",
@@ -621,63 +738,168 @@ mod tests {
         ]
     }
 
-    #[test]
-    fn pick_services_prefers_eck_operated_and_companions_next_to_them() {
-        let found = pick_services(&mixed_services());
-        let es = found.elasticsearch.expect("elasticsearch");
-        assert_eq!(
-            (es.namespace.as_str(), es.name.as_str(), es.port, es.https),
-            ("logging", "quickstart-es-http", 9200, true)
-        );
-        let kb = found.kibana.expect("kibana");
-        assert_eq!(
-            (kb.namespace.as_str(), kb.name.as_str(), kb.https),
-            ("logging", "quickstart-kb-http", true)
-        );
-        let prom = found.prometheus.expect("prometheus");
-        assert_eq!(
-            (prom.namespace.as_str(), prom.name.as_str(), prom.port),
-            ("monitoring", "prometheus-operated", 9090)
-        );
-        let grafana = found.grafana.expect("grafana");
-        assert_eq!(
-            (
-                grafana.namespace.as_str(),
-                grafana.name.as_str(),
-                grafana.port
-            ),
-            ("monitoring", "kps-grafana", 80)
-        );
+    /// `service` with an owner reference to a `kind` of `api_version`.
+    fn owned(mut service: Service, kind: &str, api_version: &str) -> Service {
+        service.metadata.owner_references = Some(vec![serde_json::from_value(
+            serde_json::json!({ "apiVersion": api_version, "kind": kind, "name": "quickstart", "uid": "u1" }),
+        )
+        .expect("owner")]);
+        service
+    }
+
+    fn names<T: Found>(d: &Option<T>) -> Option<(&str, &str)> {
+        d.as_ref().map(|d| (d.namespace(), d.name()))
     }
 
     #[test]
-    fn pick_services_falls_back_to_the_first_by_namespace_and_name() {
-        let without_preferred: Vec<Service> = mixed_services()
+    fn pick_services_ranks_operator_owned_then_well_known_namespaces() {
+        let found = pick_services(&mixed_services());
+        let es = found.elasticsearch.as_ref().expect("elasticsearch");
+        assert_eq!((es.port, es.https), (9200, true));
+        assert_eq!(
+            names(&found.elasticsearch),
+            Some(("logging", "quickstart-es-http"))
+        );
+        assert_eq!(
+            names(&found.kibana),
+            Some(("logging", "quickstart-kb-http"))
+        );
+        assert_eq!(
+            names(&found.prometheus),
+            Some(("monitoring", "prometheus-operated"))
+        );
+        assert_eq!(names(&found.grafana), Some(("monitoring", "kps-grafana")));
+        // One operator-managed service each: Enable needs no review.
+        assert!(found.elasticsearch_one_click && found.prometheus_one_click);
+        // Review lists every candidate, the main kind first, best first.
+        let listed: Vec<&str> = found
+            .elastic_services
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                "quickstart-es-http",
+                "elasticsearch-master",
+                "quickstart-kb-http",
+                "kibana"
+            ]
+        );
+        let listed: Vec<&str> = found
+            .prometheus_services
+            .iter()
+            .map(|d| d.name.as_str())
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                "prometheus-operated",
+                "kps-kube-prometheus-stack-prometheus",
+                "prometheus-server",
+                "kps-grafana",
+                "grafana"
+            ]
+        );
+
+        // Without operator-managed services: well-known namespaces first,
+        // then namespace and name; nothing is one-click.
+        let unmanaged: Vec<Service> = mixed_services()
             .into_iter()
             .filter(|s| {
                 let name = s.metadata.name.as_deref().unwrap_or_default();
                 !name.starts_with("quickstart") && name != "prometheus-operated"
             })
             .collect();
-        let found = pick_services(&without_preferred);
-        let name = |d: Option<(String, String)>| d.expect("found");
+        let found = pick_services(&unmanaged);
         assert_eq!(
-            name(found.elasticsearch.map(|d| (d.namespace, d.name))),
-            ("a-search".into(), "elasticsearch-master".into())
+            names(&found.elasticsearch),
+            Some(("a-search", "elasticsearch-master"))
         );
+        assert_eq!(names(&found.kibana), Some(("a-search", "kibana")));
         assert_eq!(
-            name(found.kibana.map(|d| (d.namespace, d.name))),
-            ("a-search".into(), "kibana".into())
+            names(&found.prometheus),
+            Some(("monitoring", "kps-kube-prometheus-stack-prometheus"))
         );
-        assert_eq!(
-            name(found.prometheus.map(|d| (d.namespace, d.name))),
-            ("a-metrics".into(), "prometheus-server".into())
-        );
-        assert_eq!(
-            name(found.grafana.map(|d| (d.namespace, d.name))),
-            ("a-metrics".into(), "grafana".into())
-        );
+        assert_eq!(names(&found.grafana), Some(("monitoring", "kps-grafana")));
+        assert!(!found.elasticsearch_one_click && !found.prometheus_one_click);
         assert_eq!(pick_services(&[]), Detected::default());
+    }
+
+    #[test]
+    fn several_operator_managed_candidates_need_a_review() {
+        use serde_json::json;
+        let mut services = mixed_services();
+        // Look-alikes in a namespace anyone may create Services in.
+        services.push(svc(
+            "team-a",
+            "prometheus-operated",
+            json!({ "operated-prometheus": "true" }),
+            json!([{ "name": "http-web", "port": 9090 }]),
+        ));
+        services.push(svc(
+            "team-a",
+            "evil-es-http",
+            json!({ "common.k8s.elastic.co/type": "elasticsearch", "elasticsearch.k8s.elastic.co/cluster-name": "evil" }),
+            json!([{ "name": "https", "port": 9200 }]),
+        ));
+        let found = pick_services(&services);
+        // The best guess stays the well-known one, but Enable needs a review.
+        assert_eq!(
+            names(&found.prometheus),
+            Some(("monitoring", "prometheus-operated"))
+        );
+        assert_eq!(
+            names(&found.elasticsearch),
+            Some(("logging", "quickstart-es-http"))
+        );
+        assert!(!found.elasticsearch_one_click && !found.prometheus_one_click);
+    }
+
+    #[test]
+    fn a_lone_unmanaged_look_alike_needs_a_review() {
+        use serde_json::json;
+        let lone = |s: Service| pick_services(&[s]);
+        let found = lone(svc(
+            "team-a",
+            "foo-es-http",
+            json!({}),
+            json!([{ "name": "https", "port": 9200 }]),
+        ));
+        assert_eq!(names(&found.elasticsearch), Some(("team-a", "foo-es-http")));
+        assert!(!found.elasticsearch_one_click);
+        // An owner reference must name ECK's API group, not a look-alike.
+        let found = lone(owned(
+            svc(
+                "team-a",
+                "foo-es-http",
+                json!({}),
+                json!([{ "name": "https", "port": 9200 }]),
+            ),
+            "Elasticsearch",
+            "elasticsearch.k8s.evil.example/v1",
+        ));
+        assert!(!found.elasticsearch_one_click);
+        // `prometheus-operated` without the operator's label is not managed.
+        let found = lone(svc(
+            "team-a",
+            "prometheus-operated",
+            json!({}),
+            json!([{ "name": "http-web", "port": 9090 }]),
+        ));
+        assert!(found.prometheus.is_some() && !found.prometheus_one_click);
+        // Owned by a Prometheus resource: managed.
+        let found = lone(owned(
+            svc(
+                "team-a",
+                "prom",
+                json!({ "app": "prometheus" }),
+                json!([{ "name": "web", "port": 9090 }]),
+            ),
+            "Prometheus",
+            "monitoring.coreos.com/v1",
+        ));
+        assert!(found.prometheus_one_click);
     }
 
     /// A kube client whose API server answers every request with `status`
