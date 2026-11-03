@@ -20,11 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the defaults (the ECK elastic user, the default index pattern with
   ECS fields, the Kibana and Grafana next to them); a failed test saves
   nothing and the banner says why, and a Prometheus without cAdvisor series
-  is saved with a warning. Enable is offered only when each integration has
-  exactly one operator-managed service (owned by ECK or the Prometheus
-  operator), so a look-alike Service in another namespace cannot be
-  enabled in one click; otherwise Review opens Preferences pre-filled with
-  the best guess and every candidate, not saved. ✕, or turning the
+  is saved with a warning. Enable is offered only when the service is the
+  only candidate and its owner, an ECK `Elasticsearch` or a `Prometheus`
+  resource, was verified through the Kubernetes API (it exists with the
+  referenced uid); labels and names only rank candidates, so a look-alike
+  Service cannot be enabled in one click. Otherwise Review opens
+  Preferences pre-filled with the best guess and every candidate, not
+  saved. ✕, or turning the
   integration off in Preferences, hides the banner for that context until
   Preferences → Integrations brings it back.
   Nothing reaches Elasticsearch or Prometheus and no secret is read before

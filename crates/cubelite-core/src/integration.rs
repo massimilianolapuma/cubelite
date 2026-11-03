@@ -7,8 +7,9 @@
 use std::time::Duration;
 
 use k8s_openapi::api::core::v1::{Pod, Service};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
-use kube::api::ListParams;
+use kube::api::{ApiResource, DynamicObject, ListParams};
 use kube::{Api, Client};
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
@@ -363,15 +364,15 @@ pub fn http_builder(skip_tls_verify: bool) -> reqwest::ClientBuilder {
         .danger_accept_invalid_certs(skip_tls_verify)
 }
 
-/// The services the integrations would use, found in one listing of the
-/// cluster's services when a context connects (#527): what the banner
-/// offers.
+/// The services the integrations would use, found when a context connects
+/// (#527): what the banner offers.
 ///
 /// Anyone allowed to create a Service in their own namespace can name it
-/// `foo-es-http` or `prometheus-operated`, so a name is not trusted:
-/// one-click Enable is offered only when exactly one operator-managed
-/// service exists for the integration ([`es_trusted`], [`prom_trusted`]).
-/// Otherwise the banner offers Review, with every candidate.
+/// `foo-es-http` or `prometheus-operated`, label it like an operator would,
+/// and point an owner reference anywhere. So names and labels only rank
+/// candidates; trust needs a verified owner ([`detect_all`]), and one-click
+/// Enable needs that owner's service to be the only candidate in the
+/// cluster. Otherwise the banner offers Review, with every candidate.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Detected {
@@ -383,10 +384,11 @@ pub struct Detected {
     pub prometheus: Option<DetectedPrometheus>,
     /// Grafana in the Prometheus's namespace.
     pub grafana: Option<DetectedPrometheus>,
-    /// `elasticsearch` is the only ECK-managed Elasticsearch: Enable may
-    /// save it without a review.
+    /// `elasticsearch` is owned by a verified ECK `Elasticsearch` and is the
+    /// only Elasticsearch: Enable may save it without a review.
     pub elasticsearch_one_click: bool,
-    /// `prometheus` is the only operator-managed Prometheus.
+    /// `prometheus` is owned by a verified `Prometheus` and is the only
+    /// Prometheus.
     pub prometheus_one_click: bool,
     /// Every Elasticsearch and Kibana found, best first (for Review).
     pub elastic_services: Vec<DetectedService>,
@@ -394,45 +396,65 @@ pub struct Detected {
     pub prometheus_services: Vec<DetectedPrometheus>,
 }
 
-/// Namespaces where observability stacks usually live, preferred after
-/// operator ownership.
+/// Namespaces where observability stacks usually live, preferred (after a
+/// verified owner) when ranking.
 pub const WELL_KNOWN_NAMESPACES: [&str; 4] =
     ["logging", "elastic-system", "monitoring", "observability"];
 
-/// Whether `service` is owned by a custom resource of `kind` in API group
-/// `group`.
-fn owned_by(service: &Service, kind: &str, group: &str) -> bool {
+/// The operator resource that owns an integration's Service.
+#[derive(Debug)]
+pub struct Operator {
+    /// Owner kind (`Elasticsearch`).
+    pub kind: &'static str,
+    /// API group (`elasticsearch.k8s.elastic.co`).
+    pub group: &'static str,
+    /// API version.
+    pub version: &'static str,
+    /// Resource plural (`elasticsearches`).
+    pub plural: &'static str,
+    /// Selector label naming the instance, which other Services of the
+    /// same instance select on.
+    pub instance_label: &'static str,
+}
+
+/// ECK's `Elasticsearch`.
+pub const ECK: Operator = Operator {
+    kind: "Elasticsearch",
+    group: "elasticsearch.k8s.elastic.co",
+    version: "v1",
+    plural: "elasticsearches",
+    instance_label: "elasticsearch.k8s.elastic.co/cluster-name",
+};
+
+/// The Prometheus operator's `Prometheus`.
+pub const PROMETHEUS_OPERATOR: Operator = Operator {
+    kind: "Prometheus",
+    group: "monitoring.coreos.com",
+    version: "v1",
+    plural: "prometheuses",
+    instance_label: "operator.prometheus.io/name",
+};
+
+/// The owner reference to `operator`'s resource a Service claims.
+fn owner_claim<'a>(service: &'a Service, operator: &Operator) -> Option<&'a OwnerReference> {
     service
         .metadata
         .owner_references
         .iter()
         .flatten()
-        .any(|o| o.kind == kind && o.api_version.split('/').next() == Some(group))
+        .find(|o| {
+            o.kind == operator.kind && o.api_version.split('/').next() == Some(operator.group)
+        })
 }
 
-fn label<'a>(service: &'a Service, key: &str) -> Option<&'a str> {
-    service
-        .metadata
-        .labels
-        .as_ref()?
-        .get(key)
-        .map(String::as_str)
-}
-
-/// An Elasticsearch service managed by ECK: owned by an `Elasticsearch`
-/// resource, or carrying ECK's type and cluster-name labels.
-pub fn es_trusted(service: &Service) -> bool {
-    owned_by(service, "Elasticsearch", "elasticsearch.k8s.elastic.co")
-        || (label(service, "common.k8s.elastic.co/type") == Some("elasticsearch")
-            && label(service, "elasticsearch.k8s.elastic.co/cluster-name").is_some())
-}
-
-/// A Prometheus service managed by the Prometheus operator: owned by a
-/// `Prometheus` resource, or its governing `prometheus-operated` service.
-pub fn prom_trusted(service: &Service) -> bool {
-    owned_by(service, "Prometheus", "monitoring.coreos.com")
-        || (service.metadata.name.as_deref() == Some("prometheus-operated")
-            && label(service, "operated-prometheus") == Some("true"))
+/// A resource name (DNS subdomain): keeps it out of other API paths.
+fn is_resource_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 253
+        && !name.contains("..")
+        && name
+            .split('.')
+            .all(|part| is_dns_label(part) || part.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// What ranking needs from a detected service.
@@ -466,8 +488,118 @@ impl Found for DetectedPrometheus {
     }
 }
 
-/// One integration's pick: the main service, its web UI, whether Enable
-/// can skip the review, and every candidate best first.
+/// One integration's detection rules.
+struct Integration<T> {
+    /// Kind of the service the integration reads (`elasticsearch`).
+    main: &'static str,
+    operator: &'static Operator,
+    classify: fn(&Service) -> Option<T>,
+    /// The name its operator or chart usually gives it.
+    conventional: fn(&T) -> bool,
+}
+
+const ELASTIC: Integration<DetectedService> = Integration {
+    main: "elasticsearch",
+    operator: &ECK,
+    classify: es::classify,
+    conventional: |d| d.name.ends_with("-es-http") || d.name.ends_with("-kb-http"),
+};
+
+const PROMETHEUS: Integration<DetectedPrometheus> = Integration {
+    main: "prometheus",
+    operator: &PROMETHEUS_OPERATOR,
+    classify: prom::classify,
+    conventional: |d| d.name == "prometheus-operated",
+};
+
+/// Services whose owner was verified, as `(namespace, name)`.
+pub type Verified = std::collections::HashSet<(String, String)>;
+
+/// How many claimed owners are checked per integration.
+const MAX_VERIFIED: usize = 3;
+
+impl<T: Found> Integration<T> {
+    /// Candidates with their Service, best first: main kind, verified owner,
+    /// well-known namespace, conventional name, namespace, name.
+    fn ranked<'a>(
+        &self,
+        services: &'a [Service],
+        verified: &Verified,
+    ) -> Vec<(T, &'a Service, bool)> {
+        let mut found: Vec<(T, &Service, bool)> = services
+            .iter()
+            .filter_map(|s| {
+                let d = (self.classify)(s)?;
+                let key = (d.namespace().to_string(), d.name().to_string());
+                let trusted = d.kind() == self.main && verified.contains(&key);
+                Some((d, s, trusted))
+            })
+            .collect();
+        found.sort_by_key(|(d, _, trusted)| {
+            (
+                d.kind() != self.main,
+                !trusted,
+                !WELL_KNOWN_NAMESPACES.contains(&d.namespace()),
+                !(self.conventional)(d),
+                d.namespace().to_string(),
+                d.name().to_string(),
+            )
+        });
+        found
+    }
+
+    /// The owners worth checking: main-kind candidates claiming one, best
+    /// first, at most [`MAX_VERIFIED`] (a flood of fake claims cannot make
+    /// detection send many requests).
+    fn claims<'a>(&self, services: &'a [Service]) -> Vec<(&'a Service, &'a OwnerReference)> {
+        self.ranked(services, &Verified::new())
+            .into_iter()
+            .filter(|(d, _, _)| d.kind() == self.main)
+            .filter_map(|(_, s, _)| owner_claim(s, self.operator).map(|o| (s, o)))
+            .take(MAX_VERIFIED)
+            .collect()
+    }
+
+    /// The pick: the best main service, its web UI from the same namespace,
+    /// whether Enable may skip the review, and every candidate.
+    fn pick(&self, services: &[Service], verified: &Verified) -> Picked<T> {
+        let found = self.ranked(services, verified);
+        let best = found.iter().find(|(d, _, _)| d.kind() == self.main);
+        let web_ui = best.and_then(|(m, _, _)| {
+            found
+                .iter()
+                .find(|(d, _, _)| d.kind() != self.main && d.namespace() == m.namespace())
+                .map(|(d, _, _)| d.clone())
+        });
+        let one_click = best.is_some_and(|(m, service, trusted)| {
+            let owner = owner_claim(service, self.operator).map(|o| o.name.as_str());
+            // Another Service of the same instance (kube-prometheus-stack's
+            // own Service next to prometheus-operated) is not a second one.
+            let same_instance = |s: &Service| {
+                s.metadata.namespace.as_deref() == Some(m.namespace())
+                    && s.spec
+                        .as_ref()
+                        .and_then(|spec| spec.selector.as_ref())
+                        .and_then(|sel| sel.get(self.operator.instance_label))
+                        .map(String::as_str)
+                        == owner
+            };
+            *trusted
+                && found
+                    .iter()
+                    .filter(|(d, s, _)| d.kind() == self.main && !std::ptr::eq(*s, *service))
+                    .all(|(_, s, _)| same_instance(s))
+        });
+        Picked {
+            main: best.map(|(d, _, _)| d.clone()),
+            web_ui,
+            one_click,
+            all: found.into_iter().map(|(d, _, _)| d).collect(),
+        }
+    }
+}
+
+/// One integration's pick.
 struct Picked<T> {
     main: Option<T>,
     web_ui: Option<T>,
@@ -475,64 +607,16 @@ struct Picked<T> {
     all: Vec<T>,
 }
 
-/// Ranks `found` (service, trusted): the `main` kind first, then trusted,
-/// well-known namespace, `conventional` name, namespace and name. The web
-/// UI comes only from the main service's namespace; one-click needs exactly
-/// one trusted main service.
-fn pick<T: Found>(
-    mut found: Vec<(T, bool)>,
-    main: &str,
-    conventional: impl Fn(&T) -> bool,
-) -> Picked<T> {
-    found.sort_by_key(|(d, trusted)| {
-        (
-            d.kind() != main,
-            !trusted,
-            !WELL_KNOWN_NAMESPACES.contains(&d.namespace()),
-            !conventional(d),
-            d.namespace().to_string(),
-            d.name().to_string(),
-        )
-    });
-    let best = found.iter().find(|(d, _)| d.kind() == main);
-    let web_ui = best.and_then(|(m, _)| {
-        found
-            .iter()
-            .find(|(d, _)| d.kind() != main && d.namespace() == m.namespace())
-            .map(|(d, _)| d.clone())
-    });
-    let trusted = found.iter().filter(|(d, t)| *t && d.kind() == main).count();
-    Picked {
-        main: best.map(|(d, _)| d.clone()),
-        web_ui,
-        one_click: trusted == 1 && best.is_some_and(|(_, t)| *t),
-        all: found.into_iter().map(|(d, _)| d).collect(),
-    }
-}
-
 /// Picks the integrations' services from a service list with the
-/// Elasticsearch and Prometheus classifiers, ranked by operator ownership
-/// ([`es_trusted`], [`prom_trusted`]), well-known namespace
-/// ([`WELL_KNOWN_NAMESPACES`]), conventional name (`-es-http`,
-/// `prometheus-operated`), namespace and name. Kibana and Grafana come only
-/// from the namespace of the service they go with.
-pub fn pick_services(services: &[Service]) -> Detected {
-    let es = pick(
-        services
-            .iter()
-            .filter_map(|s| es::classify(s).map(|d| (d, es_trusted(s))))
-            .collect(),
-        "elasticsearch",
-        |d| d.name.ends_with("-es-http") || d.name.ends_with("-kb-http"),
-    );
-    let prom = pick(
-        services
-            .iter()
-            .filter_map(|s| prom::classify(s).map(|d| (d, prom_trusted(s))))
-            .collect(),
-        "prometheus",
-        |d| d.name == "prometheus-operated",
-    );
+/// Elasticsearch and Prometheus classifiers. `verified` holds the Services
+/// whose operator owner was checked ([`detect_all`]); they rank first, then
+/// well-known namespaces ([`WELL_KNOWN_NAMESPACES`]), the conventional name
+/// (`-es-http`, `prometheus-operated`), namespace and name. Labels and names
+/// never make a service trusted. Kibana and Grafana come only from the
+/// namespace of the service they go with.
+pub fn pick_services(services: &[Service], verified: &Verified) -> Detected {
+    let es = ELASTIC.pick(services, verified);
+    let prom = PROMETHEUS.pick(services, verified);
     Detected {
         elasticsearch: es.main,
         kibana: es.web_ui,
@@ -545,17 +629,63 @@ pub fn pick_services(services: &[Service]) -> Detected {
     }
 }
 
-/// Lists the services of every namespace once and picks the integrations'
-/// ([`pick_services`]). Only the Kubernetes API is contacted: no traffic to
-/// Elasticsearch or Prometheus and no secrets. A user who may not list
-/// services across namespaces (403) gets nothing found, not an error.
-pub async fn detect_all(client: Client) -> Result<Detected, String> {
-    let services: Api<Service> = Api::all(client);
-    match services.list(&ListParams::default()).await {
-        Ok(list) => Ok(pick_services(&list.items)),
-        Err(kube::Error::Api(status)) if status.code == 403 => Ok(Detected::default()),
-        Err(e) => Err(e.to_string()),
+/// Whether `operator`'s resource `owner` exists in `namespace` with the
+/// claimed uid. Any error (403, 404, no such CRD) means no.
+async fn owner_exists(
+    client: &Client,
+    operator: &Operator,
+    namespace: &str,
+    owner: &OwnerReference,
+) -> bool {
+    if !is_dns_label(namespace) || !is_resource_name(&owner.name) {
+        return false;
     }
+    let resource = ApiResource {
+        group: operator.group.to_string(),
+        version: operator.version.to_string(),
+        api_version: format!("{}/{}", operator.group, operator.version),
+        kind: operator.kind.to_string(),
+        plural: operator.plural.to_string(),
+    };
+    let api: Api<DynamicObject> = Api::namespaced_with(client.clone(), namespace, &resource);
+    matches!(
+        api.get_opt(&owner.name).await,
+        Ok(Some(found)) if found.metadata.uid.as_deref() == Some(owner.uid.as_str())
+    )
+}
+
+/// The Services among `claims` whose owner exists with the claimed uid.
+async fn verify(
+    client: &Client,
+    operator: &Operator,
+    claims: Vec<(&Service, &OwnerReference)>,
+) -> Verified {
+    let mut verified = Verified::new();
+    for (service, owner) in claims {
+        let namespace = service.metadata.namespace.clone().unwrap_or_default();
+        if owner_exists(client, operator, &namespace, owner).await {
+            verified.insert((namespace, service.metadata.name.clone().unwrap_or_default()));
+        }
+    }
+    verified
+}
+
+/// Lists the services of every namespace once, checks the operator owners
+/// the best candidates claim (a GET of the `Elasticsearch` or `Prometheus`
+/// resource, whose uid must match), and picks ([`pick_services`]). Only the
+/// Kubernetes API is contacted: no traffic to Elasticsearch or Prometheus
+/// and no secrets. A user who may not list services across namespaces (403)
+/// gets nothing found, not an error.
+pub async fn detect_all(client: Client) -> Result<Detected, String> {
+    let services: Api<Service> = Api::all(client.clone());
+    let list = match services.list(&ListParams::default()).await {
+        Ok(list) => list.items,
+        Err(kube::Error::Api(status)) if status.code == 403 => return Ok(Detected::default()),
+        Err(e) => return Err(e.to_string()),
+    };
+    let mut verified = verify(&client, &ECK, ELASTIC.claims(&list)).await;
+    verified.extend(verify(&client, &PROMETHEUS_OPERATOR, PROMETHEUS.claims(&list)).await);
+    Ok(pick_services(&list, &verified))
 }
 
 #[cfg(test)]
@@ -634,117 +764,129 @@ mod tests {
         assert!(check_external_url("ftp://es.example", false).is_err());
     }
 
-    fn svc(
-        namespace: &str,
-        name: &str,
-        labels: serde_json::Value,
-        ports: serde_json::Value,
-    ) -> Service {
-        serde_json::from_value(serde_json::json!({
+    use serde_json::{json, Value};
+
+    /// A Service; `extra` is merged into it (`ownerReferences`, `selector`).
+    fn svc(namespace: &str, name: &str, labels: Value, port: (&str, u16), extra: Value) -> Service {
+        let mut v = json!({
             "metadata": { "name": name, "namespace": namespace, "labels": labels },
-            "spec": { "ports": ports }
-        }))
-        .expect("service")
+            "spec": { "ports": [{ "name": port.0, "port": port.1 }] }
+        });
+        if let Some(owner) = extra.get("owner") {
+            v["metadata"]["ownerReferences"] = json!([owner]);
+        }
+        if let Some(selector) = extra.get("selector") {
+            v["spec"]["selector"] = selector.clone();
+        }
+        serde_json::from_value(v).expect("service")
     }
 
-    /// A cluster with ECK, kube-prometheus-stack, a second Elasticsearch
-    /// chart, a second Grafana and unrelated services.
-    fn mixed_services() -> Vec<Service> {
-        use serde_json::json;
-        let eck = |kind: &str| json!({ "common.k8s.elastic.co/type": kind });
+    fn owner(kind: &str, api_version: &str, name: &str, uid: &str) -> Value {
+        json!({ "owner": { "apiVersion": api_version, "kind": kind, "name": name, "uid": uid } })
+    }
+
+    fn eck_owner() -> Value {
+        owner(
+            "Elasticsearch",
+            "elasticsearch.k8s.elastic.co/v1",
+            "quickstart",
+            "es-uid",
+        )
+    }
+
+    fn prom_owner() -> Value {
+        owner(
+            "Prometheus",
+            "monitoring.coreos.com/v1",
+            "kps-prometheus",
+            "prom-uid",
+        )
+    }
+
+    /// ECK and kube-prometheus-stack as they really are (owners, selectors),
+    /// another unmanaged Elasticsearch/Kibana chart, a second Grafana and
+    /// unrelated services.
+    fn cluster() -> Vec<Service> {
+        let eck = |kind: &str| json!({ "common.k8s.elastic.co/type": kind, "elasticsearch.k8s.elastic.co/cluster-name": "quickstart" });
         vec![
             svc(
                 "default",
                 "kubernetes",
                 json!({}),
-                json!([{ "name": "https", "port": 443 }]),
-            ),
-            svc(
-                "a-search",
-                "elasticsearch-master",
-                json!({ "app": "elasticsearch-master" }),
-                json!([{ "name": "http", "port": 9200 }]),
+                ("https", 443),
+                json!({}),
             ),
             svc(
                 "logging",
                 "quickstart-es-transport",
                 eck("elasticsearch"),
-                json!([{ "name": "tls-transport", "port": 9300 }]),
+                ("tls-transport", 9300),
+                eck_owner(),
             ),
             svc(
                 "logging",
                 "quickstart-es-default",
                 eck("elasticsearch"),
-                json!([{ "name": "https", "port": 9200 }]),
-            ),
-            owned(
-                svc(
-                    "logging",
-                    "quickstart-es-http",
-                    eck("elasticsearch"),
-                    json!([{ "name": "https", "port": 9200 }]),
-                ),
-                "Elasticsearch",
-                "elasticsearch.k8s.elastic.co/v1",
+                ("https", 9200),
+                eck_owner(),
             ),
             svc(
-                "a-search",
-                "kibana",
-                json!({ "app.kubernetes.io/name": "kibana" }),
-                json!([{ "name": "http", "port": 5601 }]),
+                "logging",
+                "quickstart-es-http",
+                eck("elasticsearch"),
+                ("https", 9200),
+                eck_owner(),
             ),
             svc(
                 "logging",
                 "quickstart-kb-http",
                 eck("kibana"),
-                json!([{ "name": "https", "port": 5601 }]),
-            ),
-            svc(
-                "a-metrics",
-                "prometheus-server",
-                json!({ "app": "prometheus" }),
-                json!([{ "name": "http", "port": 80 }]),
-            ),
-            svc(
-                "monitoring",
-                "kps-kube-prometheus-stack-prometheus",
+                ("https", 5601),
                 json!({}),
-                json!([{ "name": "http-web", "port": 9090 }]),
             ),
             svc(
                 "monitoring",
                 "prometheus-operated",
                 json!({ "operated-prometheus": "true" }),
-                json!([{ "name": "http-web", "port": 9090 }]),
+                ("http-web", 9090),
+                prom_owner(),
             ),
             svc(
                 "monitoring",
-                "kps-kube-prometheus-stack-alertmanager",
+                "kps-prometheus",
                 json!({}),
-                json!([{ "name": "http-web", "port": 9093 }]),
+                ("http-web", 9090),
+                json!({ "selector": { "app.kubernetes.io/name": "prometheus", "operator.prometheus.io/name": "kps-prometheus" } }),
             ),
             svc(
-                "a-metrics",
-                "grafana",
-                json!({ "app.kubernetes.io/name": "grafana" }),
-                json!([{ "name": "service", "port": 80 }]),
+                "monitoring",
+                "kps-alertmanager",
+                json!({}),
+                ("http-web", 9093),
+                json!({}),
             ),
             svc(
                 "monitoring",
                 "kps-grafana",
                 json!({ "app.kubernetes.io/name": "grafana" }),
-                json!([{ "name": "http-web", "port": 80 }]),
+                ("http-web", 80),
+                json!({}),
             ),
         ]
     }
 
-    /// `service` with an owner reference to a `kind` of `api_version`.
-    fn owned(mut service: Service, kind: &str, api_version: &str) -> Service {
-        service.metadata.owner_references = Some(vec![serde_json::from_value(
-            serde_json::json!({ "apiVersion": api_version, "kind": kind, "name": "quickstart", "uid": "u1" }),
-        )
-        .expect("owner")]);
-        service
+    fn verified(services: &[(&str, &str)]) -> Verified {
+        services
+            .iter()
+            .map(|(n, s)| (n.to_string(), s.to_string()))
+            .collect()
+    }
+
+    fn real_owners() -> Verified {
+        verified(&[
+            ("logging", "quickstart-es-http"),
+            ("monitoring", "prometheus-operated"),
+        ])
     }
 
     fn names<T: Found>(d: &Option<T>) -> Option<(&str, &str)> {
@@ -752,8 +894,8 @@ mod tests {
     }
 
     #[test]
-    fn pick_services_ranks_operator_owned_then_well_known_namespaces() {
-        let found = pick_services(&mixed_services());
+    fn verified_owners_alone_are_one_click() {
+        let found = pick_services(&cluster(), &real_owners());
         let es = found.elasticsearch.as_ref().expect("elasticsearch");
         assert_eq!((es.port, es.https), (9200, true));
         assert_eq!(
@@ -769,23 +911,8 @@ mod tests {
             Some(("monitoring", "prometheus-operated"))
         );
         assert_eq!(names(&found.grafana), Some(("monitoring", "kps-grafana")));
-        // One operator-managed service each: Enable needs no review.
+        // kube-prometheus-stack's own Service selects the same instance: not a second Prometheus.
         assert!(found.elasticsearch_one_click && found.prometheus_one_click);
-        // Review lists every candidate, the main kind first, best first.
-        let listed: Vec<&str> = found
-            .elastic_services
-            .iter()
-            .map(|d| d.name.as_str())
-            .collect();
-        assert_eq!(
-            listed,
-            [
-                "quickstart-es-http",
-                "elasticsearch-master",
-                "quickstart-kb-http",
-                "kibana"
-            ]
-        );
         let listed: Vec<&str> = found
             .prometheus_services
             .iter()
@@ -793,120 +920,129 @@ mod tests {
             .collect();
         assert_eq!(
             listed,
-            [
-                "prometheus-operated",
-                "kps-kube-prometheus-stack-prometheus",
-                "prometheus-server",
-                "kps-grafana",
-                "grafana"
-            ]
+            ["prometheus-operated", "kps-prometheus", "kps-grafana"]
         );
-
-        // Without operator-managed services: well-known namespaces first,
-        // then namespace and name; nothing is one-click.
-        let unmanaged: Vec<Service> = mixed_services()
-            .into_iter()
-            .filter(|s| {
-                let name = s.metadata.name.as_deref().unwrap_or_default();
-                !name.starts_with("quickstart") && name != "prometheus-operated"
-            })
-            .collect();
-        let found = pick_services(&unmanaged);
-        assert_eq!(
-            names(&found.elasticsearch),
-            Some(("a-search", "elasticsearch-master"))
-        );
-        assert_eq!(names(&found.kibana), Some(("a-search", "kibana")));
-        assert_eq!(
-            names(&found.prometheus),
-            Some(("monitoring", "kps-kube-prometheus-stack-prometheus"))
-        );
-        assert_eq!(names(&found.grafana), Some(("monitoring", "kps-grafana")));
-        assert!(!found.elasticsearch_one_click && !found.prometheus_one_click);
-        assert_eq!(pick_services(&[]), Detected::default());
-    }
-
-    #[test]
-    fn several_operator_managed_candidates_need_a_review() {
-        use serde_json::json;
-        let mut services = mixed_services();
-        // Look-alikes in a namespace anyone may create Services in.
-        services.push(svc(
-            "team-a",
-            "prometheus-operated",
-            json!({ "operated-prometheus": "true" }),
-            json!([{ "name": "http-web", "port": 9090 }]),
-        ));
-        services.push(svc(
-            "team-a",
-            "evil-es-http",
-            json!({ "common.k8s.elastic.co/type": "elasticsearch", "elasticsearch.k8s.elastic.co/cluster-name": "evil" }),
-            json!([{ "name": "https", "port": 9200 }]),
-        ));
-        let found = pick_services(&services);
-        // The best guess stays the well-known one, but Enable needs a review.
-        assert_eq!(
-            names(&found.prometheus),
-            Some(("monitoring", "prometheus-operated"))
-        );
+        // Without verification the same cluster needs a review.
+        let found = pick_services(&cluster(), &Verified::new());
         assert_eq!(
             names(&found.elasticsearch),
             Some(("logging", "quickstart-es-http"))
         );
         assert!(!found.elasticsearch_one_click && !found.prometheus_one_click);
+        assert_eq!(pick_services(&[], &Verified::new()), Detected::default());
     }
 
     #[test]
-    fn a_lone_unmanaged_look_alike_needs_a_review() {
-        use serde_json::json;
-        let lone = |s: Service| pick_services(&[s]);
-        let found = lone(svc(
+    fn labels_and_names_rank_but_never_trust() {
+        // A lone look-alike labelled like ECK, or like the operator: Review.
+        let eck_labels = json!({ "common.k8s.elastic.co/type": "elasticsearch", "elasticsearch.k8s.elastic.co/cluster-name": "evil" });
+        let lone = svc(
             "team-a",
-            "foo-es-http",
+            "evil-es-http",
+            eck_labels.clone(),
+            ("https", 9200),
             json!({}),
-            json!([{ "name": "https", "port": 9200 }]),
-        ));
-        assert_eq!(names(&found.elasticsearch), Some(("team-a", "foo-es-http")));
+        );
+        let found = pick_services(&[lone], &Verified::new());
+        assert_eq!(
+            names(&found.elasticsearch),
+            Some(("team-a", "evil-es-http"))
+        );
         assert!(!found.elasticsearch_one_click);
-        // An owner reference must name ECK's API group, not a look-alike.
-        let found = lone(owned(
-            svc(
-                "team-a",
-                "foo-es-http",
-                json!({}),
-                json!([{ "name": "https", "port": 9200 }]),
-            ),
-            "Elasticsearch",
-            "elasticsearch.k8s.evil.example/v1",
-        ));
-        assert!(!found.elasticsearch_one_click);
-        // `prometheus-operated` without the operator's label is not managed.
-        let found = lone(svc(
+        let lone = svc(
             "team-a",
             "prometheus-operated",
+            json!({ "operated-prometheus": "true" }),
+            ("http-web", 9090),
             json!({}),
-            json!([{ "name": "http-web", "port": 9090 }]),
-        ));
-        assert!(found.prometheus.is_some() && !found.prometheus_one_click);
-        // Owned by a Prometheus resource: managed.
-        let found = lone(owned(
+        );
+        assert!(!pick_services(&[lone], &Verified::new()).prometheus_one_click);
+
+        // An unverified look-alike in a well-known namespace ranks above
+        // others, but a verified owner elsewhere ranks first.
+        let services = vec![
             svc(
-                "team-a",
-                "prom",
-                json!({ "app": "prometheus" }),
-                json!([{ "name": "web", "port": 9090 }]),
+                "search",
+                "logs-es-http",
+                json!({ "app": "es" }),
+                ("https", 9200),
+                eck_owner(),
             ),
-            "Prometheus",
-            "monitoring.coreos.com/v1",
-        ));
-        assert!(found.prometheus_one_click);
+            svc(
+                "logging",
+                "fake-es-http",
+                eck_labels,
+                ("https", 9200),
+                json!({}),
+            ),
+            svc("aaa", "elasticsearch", json!({}), ("http", 9200), json!({})),
+        ];
+        let found = pick_services(&services, &Verified::new());
+        assert_eq!(
+            names(&found.elasticsearch),
+            Some(("logging", "fake-es-http"))
+        );
+        let found = pick_services(&services, &verified(&[("search", "logs-es-http")]));
+        assert_eq!(
+            names(&found.elasticsearch),
+            Some(("search", "logs-es-http"))
+        );
+        // Verified, but other Elasticsearch candidates exist: Review.
+        assert!(!found.elasticsearch_one_click);
     }
 
-    /// A kube client whose API server answers every request with `status`
-    /// and `body`, recording the paths it was asked for.
+    #[test]
+    fn a_verified_owner_with_a_second_candidate_needs_a_review() {
+        let mut services = cluster();
+        services.push(svc(
+            "team-a",
+            "elasticsearch",
+            json!({}),
+            ("http", 9200),
+            json!({}),
+        ));
+        // Same selector label, but another namespace: not the same instance.
+        services.push(svc(
+            "team-a",
+            "prom",
+            json!({ "app": "prometheus" }),
+            ("web", 9090),
+            json!({ "selector": { "operator.prometheus.io/name": "kps-prometheus" } }),
+        ));
+        let found = pick_services(&services, &real_owners());
+        assert_eq!(
+            names(&found.elasticsearch),
+            Some(("logging", "quickstart-es-http"))
+        );
+        assert_eq!(
+            names(&found.prometheus),
+            Some(("monitoring", "prometheus-operated"))
+        );
+        assert!(!found.elasticsearch_one_click && !found.prometheus_one_click);
+        // The web UIs never come from another namespace.
+        let services = vec![
+            svc(
+                "team-a",
+                "elasticsearch",
+                json!({}),
+                ("http", 9200),
+                json!({}),
+            ),
+            svc(
+                "logging",
+                "kibana",
+                json!({ "app.kubernetes.io/name": "kibana" }),
+                ("http", 5601),
+                json!({}),
+            ),
+        ];
+        assert_eq!(pick_services(&services, &Verified::new()).kibana, None);
+    }
+
+    /// A kube client whose API server answers `respond(path)`, recording
+    /// the paths it was asked for.
     fn api_server(
-        status: u16,
-        body: serde_json::Value,
+        respond: impl Fn(&str) -> (u16, Value) + Send + 'static,
     ) -> (Client, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
         use http::{Request, Response};
         use kube::client::Body;
@@ -916,9 +1052,9 @@ mod tests {
         tokio::spawn(async move {
             let mut handle = std::pin::pin!(handle);
             while let Some((request, send)) = handle.next_request().await {
-                seen.lock()
-                    .expect("paths")
-                    .push(request.uri().path().to_string());
+                let path = request.uri().path().to_string();
+                let (status, body) = respond(&path);
+                seen.lock().expect("paths").push(path);
                 let response = Response::builder()
                     .status(status)
                     .body(Body::from(body.to_string().into_bytes()))
@@ -929,31 +1065,131 @@ mod tests {
         (Client::new(service, "default"), paths)
     }
 
+    const ES_CR: &str =
+        "/apis/elasticsearch.k8s.elastic.co/v1/namespaces/logging/elasticsearches/quickstart";
+    const PROM_CR: &str =
+        "/apis/monitoring.coreos.com/v1/namespaces/monitoring/prometheuses/kps-prometheus";
+
+    fn not_found() -> (u16, Value) {
+        (
+            404,
+            json!({ "kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "NotFound", "code": 404, "message": "not found" }),
+        )
+    }
+
+    /// The cluster's services, and its Elasticsearch / Prometheus resources
+    /// answered by `es` / `prom`.
+    fn cluster_api(
+        es: (u16, Value),
+        prom: (u16, Value),
+    ) -> (Client, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        let list = json!({ "apiVersion": "v1", "kind": "ServiceList", "metadata": {}, "items": cluster() });
+        api_server(move |path| match path {
+            "/api/v1/services" => (200, list.clone()),
+            ES_CR => es.clone(),
+            PROM_CR => prom.clone(),
+            _ => not_found(),
+        })
+    }
+
+    fn resource(kind: &str, api_version: &str, name: &str, uid: &str) -> (u16, Value) {
+        (
+            200,
+            json!({ "apiVersion": api_version, "kind": kind, "metadata": { "name": name, "uid": uid } }),
+        )
+    }
+
     #[tokio::test]
-    async fn detect_all_lists_services_once_and_reads_nothing_else() {
-        let list = serde_json::json!({
-            "apiVersion": "v1", "kind": "ServiceList", "metadata": {},
-            "items": mixed_services(),
-        });
-        let (client, paths) = api_server(200, list);
+    async fn detect_all_verifies_the_claimed_owners_and_nothing_else() {
+        let (client, paths) = cluster_api(
+            resource(
+                "Elasticsearch",
+                "elasticsearch.k8s.elastic.co/v1",
+                "quickstart",
+                "es-uid",
+            ),
+            resource(
+                "Prometheus",
+                "monitoring.coreos.com/v1",
+                "kps-prometheus",
+                "prom-uid",
+            ),
+        );
         let found = detect_all(client).await.expect("detect");
-        assert!(found.elasticsearch.is_some() && found.kibana.is_some());
-        assert!(found.prometheus.is_some() && found.grafana.is_some());
-        assert_eq!(*paths.lock().expect("paths"), ["/api/v1/services"]);
+        assert!(found.elasticsearch_one_click && found.prometheus_one_click);
+        assert!(found.kibana.is_some() && found.grafana.is_some());
+        // The services, then the owners claimed by the best candidates (ECK's
+        // three Services claim the same Elasticsearch; only main-kind ones
+        // are checked): Kubernetes API only, no secrets.
+        let paths = paths.lock().expect("paths").clone();
+        assert_eq!(paths[0], "/api/v1/services");
+        assert!(
+            paths[1..].iter().all(|p| p == ES_CR || p == PROM_CR),
+            "{paths:?}"
+        );
+        assert!(paths.iter().all(|p| !p.contains("secrets")));
+    }
+
+    #[tokio::test]
+    async fn fake_owner_references_are_not_trusted() {
+        // The claimed resource does not exist (or its CRD is not installed).
+        let (client, _) = cluster_api(not_found(), not_found());
+        let found = detect_all(client).await.expect("detect");
+        assert!(!found.elasticsearch_one_click && !found.prometheus_one_click);
+        // It exists, but with another uid (a reference to a deleted or other object).
+        let (client, _) = cluster_api(
+            resource(
+                "Elasticsearch",
+                "elasticsearch.k8s.elastic.co/v1",
+                "quickstart",
+                "other-uid",
+            ),
+            resource(
+                "Prometheus",
+                "monitoring.coreos.com/v1",
+                "kps-prometheus",
+                "other-uid",
+            ),
+        );
+        let found = detect_all(client).await.expect("detect");
+        assert!(!found.elasticsearch_one_click && !found.prometheus_one_click);
+        // The user may not read the resources: silently not trusted.
+        let forbidden = (
+            403,
+            json!({ "kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "Forbidden", "code": 403, "message": "forbidden" }),
+        );
+        let (client, _) = cluster_api(forbidden.clone(), forbidden);
+        let found = detect_all(client).await.expect("detect");
+        assert!(!found.elasticsearch_one_click && !found.prometheus_one_click);
+        assert_eq!(
+            names(&found.prometheus),
+            Some(("monitoring", "prometheus-operated"))
+        );
     }
 
     #[tokio::test]
     async fn detect_all_gives_up_silently_when_forbidden() {
-        let forbidden = serde_json::json!({
+        let forbidden = json!({
             "kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "Forbidden", "code": 403,
             "message": "services is forbidden: User \"dev\" cannot list resource \"services\" at the cluster scope",
         });
-        let (client, _) = api_server(403, forbidden);
+        let (client, _) = api_server(move |_| (403, forbidden.clone()));
         assert_eq!(detect_all(client).await, Ok(Detected::default()));
-        let (client, _) = api_server(
-            500,
-            serde_json::json!({ "kind": "Status", "code": 500, "message": "boom" }),
-        );
+        let (client, _) = api_server(|_| {
+            (
+                500,
+                json!({ "kind": "Status", "code": 500, "message": "boom" }),
+            )
+        });
         assert!(detect_all(client).await.is_err());
+    }
+
+    #[test]
+    fn owner_names_must_be_resource_names() {
+        assert!(is_resource_name("quickstart"));
+        assert!(is_resource_name("kps.prometheus-1"));
+        for bad in ["", "a/b", "..", "a..b", "Up", "-a"] {
+            assert!(!is_resource_name(bad), "{bad}");
+        }
     }
 }
