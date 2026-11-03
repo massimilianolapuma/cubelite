@@ -204,6 +204,15 @@ enum StatusTone: Int, Sendable {
     case err = 0, warn, neutral, ok
 }
 
+/// Row constraint for the native sort binding: Swift 6.2 needs a sendable
+/// metatype to use `T` inside the binding's closures; older compilers (CI)
+/// have no `SendableMetatype`.
+#if compiler(>=6.2)
+    typealias SortableRow = SortableResource & SendableMetatype
+#else
+    typealias SortableRow = SortableResource
+#endif
+
 /// What a resource row exposes to the sort; nil means the list lacks the field.
 protocol SortableResource {
     var name: String { get }
@@ -376,7 +385,7 @@ final class ResourcePreferences {
 
     /// Native `Table` sort binding for `list`: shows the effective sort as
     /// the header indicator and turns header clicks into session overrides.
-    func sortOrder<T: SortableResource & SendableMetatype>(for list: String, of _: T.Type = T.self)
+    func sortOrder<T: SortableRow>(for list: String, of _: T.Type = T.self)
         -> Binding<[KeyPathComparator<T>]>
     {
         Binding(
