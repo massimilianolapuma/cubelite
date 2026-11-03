@@ -5,7 +5,8 @@ import SwiftUI
 /// Persistent app-wide settings backed by UserDefaults.
 ///
 /// All properties are observed via the `@Observable` macro; changes are
-/// automatically persisted to `UserDefaults.standard` through `didSet`.
+/// automatically persisted to `defaults` (the standard domain in the app, a
+/// per-suite domain in tests) through `didSet`.
 /// Credentials and secrets must **never** be stored here — use `KeychainService`.
 @Observable
 @MainActor
@@ -15,18 +16,18 @@ final class AppSettings {
 
     /// Auto-refresh interval in seconds. `0` means disabled.
     var autoRefreshInterval: Int = 30 {
-        didSet { UserDefaults.standard.set(autoRefreshInterval, forKey: Keys.autoRefreshInterval) }
+        didSet { defaults.set(autoRefreshInterval, forKey: Keys.autoRefreshInterval) }
     }
 
     /// Whether CubeLite should launch at login.
     var launchAtLogin: Bool = false {
-        didSet { UserDefaults.standard.set(launchAtLogin, forKey: Keys.launchAtLogin) }
+        didSet { defaults.set(launchAtLogin, forKey: Keys.launchAtLogin) }
     }
 
     /// Whether to show system namespaces (e.g. kube-system, kube-public).
     var showSystemNamespaces: Bool = false {
         didSet {
-            UserDefaults.standard.set(showSystemNamespaces, forKey: Keys.showSystemNamespaces)
+            defaults.set(showSystemNamespaces, forKey: Keys.showSystemNamespaces)
         }
     }
 
@@ -34,7 +35,7 @@ final class AppSettings {
 
     /// Preferred color scheme.
     var appearanceMode: AppearanceMode = .system {
-        didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: Keys.appearanceMode) }
+        didSet { defaults.set(appearanceMode.rawValue, forKey: Keys.appearanceMode) }
     }
 
     /// The SwiftUI `ColorScheme` corresponding to the current `appearanceMode`.
@@ -52,7 +53,7 @@ final class AppSettings {
     /// Menu bar icon style.
     var menuBarIconStyle: MenuBarIconStyle = .standard {
         didSet {
-            UserDefaults.standard.set(menuBarIconStyle.rawValue, forKey: Keys.menuBarIconStyle)
+            defaults.set(menuBarIconStyle.rawValue, forKey: Keys.menuBarIconStyle)
         }
     }
 
@@ -60,12 +61,12 @@ final class AppSettings {
 
     /// Custom kubeconfig file paths. When empty, default path resolution is used.
     var kubeconfigPaths: [String] = [] {
-        didSet { UserDefaults.standard.set(kubeconfigPaths, forKey: Keys.kubeconfigPaths) }
+        didSet { defaults.set(kubeconfigPaths, forKey: Keys.kubeconfigPaths) }
     }
 
     /// Kubernetes API request timeout in seconds. Clamped to 5–120.
     var apiTimeout: Int = 30 {
-        didSet { UserDefaults.standard.set(apiTimeout, forKey: Keys.apiTimeout) }
+        didSet { defaults.set(apiTimeout, forKey: Keys.apiTimeout) }
     }
 
     /// User-configured namespaces per context for RBAC-restricted clusters.
@@ -75,7 +76,7 @@ final class AppSettings {
     var contextNamespaces: [String: [String]] = [:] {
         didSet {
             if let data = try? JSONEncoder().encode(contextNamespaces) {
-                UserDefaults.standard.set(data, forKey: Keys.contextNamespaces)
+                defaults.set(data, forKey: Keys.contextNamespaces)
             }
         }
     }
@@ -86,7 +87,7 @@ final class AppSettings {
     var lastNamespaces: [String: String] = [:] {
         didSet {
             if let data = try? JSONEncoder().encode(lastNamespaces) {
-                UserDefaults.standard.set(data, forKey: Keys.lastNamespaces)
+                defaults.set(data, forKey: Keys.lastNamespaces)
             }
         }
     }
@@ -120,13 +121,18 @@ final class AppSettings {
     /// When enabled, self-signed certificates (e.g., minikube) are accepted.
     /// ⚠️ Security risk — only enable for local development clusters.
     var skipTLSVerification: Bool = false {
-        didSet { UserDefaults.standard.set(skipTLSVerification, forKey: Keys.skipTLSVerification) }
+        didSet { defaults.set(skipTLSVerification, forKey: Keys.skipTLSVerification) }
     }
 
     // MARK: - Init
 
-    init() {
-        let d = UserDefaults.standard
+    /// Where settings persist; injectable so parallel test processes never
+    /// share the standard domain (#482).
+    @ObservationIgnored private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let d = defaults
         // `didSet` is NOT called during initialisation, so we load manually.
         if let v = d.object(forKey: Keys.autoRefreshInterval) as? Int { autoRefreshInterval = v }
         launchAtLogin = d.bool(forKey: Keys.launchAtLogin)
