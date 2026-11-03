@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Prometheus service on macOS** (#511, part of #484): the native app can
+  detect Prometheus servers, test a connection, chart a pod's or
+  deployment's history and load list sparklines — in-cluster through the
+  API server (a port-forward when the proxy is not allowed), or external
+  with basic, bearer or an Azure CLI token for Azure Monitor — with
+  credentials in the keychain bound to their endpoint. The UI comes in #512.
 - **Metrics history from Prometheus** (desktop, #510, part of #484): with a
   Prometheus endpoint set for the cluster (Preferences → Prometheus: detect
   in-cluster servers or enter an external URL — basic, bearer or Azure CLI

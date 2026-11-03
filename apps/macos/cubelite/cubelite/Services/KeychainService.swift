@@ -20,6 +20,8 @@ actor KeychainService {
         case clientKey         = "it.lapuma.cubelite.client-key"
         /// Elasticsearch credentials bound to an endpoint (#502).
         case elasticAuth       = "it.lapuma.cubelite.elastic"
+        /// Prometheus credentials bound to an endpoint (#511).
+        case prometheusAuth    = "it.lapuma.cubelite.prometheus"
     }
 
     // MARK: - Store

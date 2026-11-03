@@ -8,51 +8,8 @@ import Foundation
 // `crates/cubelite-core/src/elastic/mod.rs` with the same test vectors.
 // `ElasticService` reaches the cluster.
 
-/// Where the Elasticsearch HTTP API lives.
-enum EsTarget: Hashable, Sendable {
-    /// A service in the cluster, reached through a port-forward.
-    case inCluster(namespace: String, service: String, port: Int, https: Bool)
-    /// An external deployment (`https://…:9243`), base URL without a path.
-    case external(url: String)
-}
-
-extension EsTarget: Codable {
-    private enum CodingKeys: String, CodingKey {
-        case kind, namespace, service, port, https, url
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        switch try c.decode(String.self, forKey: .kind) {
-        case "in-cluster":
-            self = .inCluster(
-                namespace: try c.decode(String.self, forKey: .namespace),
-                service: try c.decode(String.self, forKey: .service),
-                port: try c.decode(Int.self, forKey: .port),
-                https: try c.decode(Bool.self, forKey: .https))
-        case "external":
-            self = .external(url: try c.decode(String.self, forKey: .url))
-        case let other:
-            throw DecodingError.dataCorruptedError(
-                forKey: .kind, in: c, debugDescription: "Unknown target kind \(other)")
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        switch self {
-        case .inCluster(let namespace, let service, let port, let https):
-            try c.encode("in-cluster", forKey: .kind)
-            try c.encode(namespace, forKey: .namespace)
-            try c.encode(service, forKey: .service)
-            try c.encode(port, forKey: .port)
-            try c.encode(https, forKey: .https)
-        case .external(let url):
-            try c.encode("external", forKey: .kind)
-            try c.encode(url, forKey: .url)
-        }
-    }
-}
+/// Where the Elasticsearch HTTP API lives (shared with the other integrations).
+typealias EsTarget = IntegrationTarget
 
 /// Which log shipper wrote the documents, i.e. which field names to filter on.
 enum FieldPreset: String, Codable, CaseIterable, Sendable {
@@ -222,6 +179,15 @@ enum ElasticError: Error, Equatable, LocalizedError {
         case .connect(let text): "Cannot reach Elasticsearch: \(text)"
         case .http(let status, let reason): "Elasticsearch returned \(status): \(reason)"
         case .response(let text): "Unexpected Elasticsearch response: \(text)"
+        }
+    }
+}
+
+extension ElasticError {
+    init(_ failure: IntegrationFailure) {
+        switch failure {
+        case .config(let text): self = .config(text)
+        case .connect(let text): self = .connect(text)
         }
     }
 }
@@ -453,74 +419,35 @@ enum Elastic {
         let a = "(query:(language:kuery,query:\(rison(query))))"
         var base = kibanaBase
         while base.hasSuffix("/") { base.removeLast() }
-        return "\(base)/app/discover#/?_g=\(percentEncode(g))&_a=\(percentEncode(a))"
+        return "\(base)/app/discover#/?_g=\(Integration.percentEncode(g))&_a=\(Integration.percentEncode(a))"
     }
 
-    /// What stored credentials are bound to: the external origin (scheme,
-    /// host, port) or the in-cluster service, plus the TLS setting. Same
-    /// strings as the desktop.
+    /// What stored credentials are bound to (see `Integration.binding`).
     static func binding(_ endpoint: EsEndpoint) throws -> String {
-        let origin: String
-        switch endpoint.target {
-        case .external(let url):
-            origin = try self.origin(of: url)
-        case .inCluster(let namespace, let service, let port, let https):
-            origin = "in-cluster:\(namespace)/\(service):\(port):\(https ? "https" : "http")"
-        }
-        return endpoint.skipTLSVerify ? origin + "|insecure" : origin
+        try mapped { try Integration.binding(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify) }
     }
 
-    /// Checks an external URL: http(s), a host, no credentials in it, and
-    /// credentials only over https (or plain http to loopback, which never
-    /// leaves the host). Returns the base URL without a trailing slash.
+    /// Checks an external URL (see `Integration.checkExternalURL`); ECK's
+    /// user applies to in-cluster endpoints only.
     static func checkExternalURL(_ url: String, auth: EsAuth) throws -> URL {
-        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let parts = URLComponents(string: trimmed), let scheme = parts.scheme?.lowercased(),
-            ["http", "https"].contains(scheme), let host = parts.host, !host.isEmpty
-        else {
-            throw ElasticError.config("Invalid URL: use http:// or https://")
-        }
-        if parts.user != nil || parts.password != nil {
-            throw ElasticError.config("Put credentials in the authentication fields, not in the URL")
-        }
         if auth == .eckUser {
             throw ElasticError.config("ECK credentials apply to in-cluster endpoints only")
         }
-        if scheme == "http", auth != .none, !isLoopback(host) {
-            throw ElasticError.config("Credentials are only sent over https://")
-        }
-        var base = trimmed
-        while base.hasSuffix("/") { base.removeLast() }
-        guard let result = URL(string: base) else {
-            throw ElasticError.config("Invalid URL: use http:// or https://")
-        }
-        return result
+        return try mapped { try Integration.checkExternalURL(url, sendsCredentials: auth != .none) }
     }
 
-    /// The `Authorization` value for `auth`, refusing control characters and
-    /// non-ASCII text that cannot travel in an HTTP header.
+    /// The `Authorization` value for `auth`, refusing what cannot travel in a header.
     static func checkedHeader(_ auth: EsAuth) throws -> String? {
-        guard let header = auth.header else { return nil }
-        guard header.unicodeScalars.allSatisfy({ $0.isASCII && $0.value >= 0x20 && $0.value != 0x7F })
-        else {
-            throw ElasticError.config("Credentials contain invalid characters")
+        try mapped { try Integration.checkedHeader(auth.header) }
+    }
+
+    /// Runs a shared integration helper, reporting its failure as an `ElasticError`.
+    static func mapped<T>(_ body: () throws -> T) throws -> T {
+        do {
+            return try body()
+        } catch let failure as IntegrationFailure {
+            throw ElasticError(failure)
         }
-        return header
-    }
-
-    /// `{service}.{namespace}.svc`: the name ECK puts in the HTTP certificate.
-    static func serviceHost(namespace: String, service: String) -> String {
-        "\(service).\(namespace).svc"
-    }
-
-    /// First PEM certificate of a bundle as DER (ECK's `ca.crt`).
-    static func firstPEMCertificate(_ pem: Data) -> Data? {
-        guard let text = String(data: pem, encoding: .utf8),
-            let begin = text.range(of: "-----BEGIN CERTIFICATE-----"),
-            let end = text.range(of: "-----END CERTIFICATE-----", range: begin.upperBound..<text.endIndex)
-        else { return nil }
-        let body = text[begin.upperBound..<end.lowerBound].filter { !$0.isWhitespace }
-        return Data(base64Encoded: String(body))
     }
 
     // MARK: Helpers
@@ -571,45 +498,6 @@ enum Elastic {
             + "\""
     }
 
-    /// Percent-encodes everything outside the URL-safe unreserved set.
-    static func percentEncode(_ s: String) -> String {
-        var out = ""
-        for byte in s.utf8 {
-            switch byte {
-            case UInt8(ascii: "A")...UInt8(ascii: "Z"), UInt8(ascii: "a")...UInt8(ascii: "z"),
-                UInt8(ascii: "0")...UInt8(ascii: "9"), UInt8(ascii: "-"), UInt8(ascii: "."),
-                UInt8(ascii: "_"), UInt8(ascii: "~"):
-                out.append(Character(Unicode.Scalar(byte)))
-            default:
-                out += String(format: "%%%02X", byte)
-            }
-        }
-        return out
-    }
-
-    /// `scheme://host[:port]`, lower-cased, default ports omitted (like the
-    /// WHATWG origin the desktop uses).
-    private static func origin(of url: String) throws -> String {
-        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let parts = URLComponents(string: trimmed), let scheme = parts.scheme?.lowercased(),
-            let host = parts.host?.lowercased(), !host.isEmpty
-        else {
-            throw ElasticError.config("Invalid URL \"\(url)\"")
-        }
-        let hostText = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
-        let defaultPort = scheme == "https" ? 443 : scheme == "http" ? 80 : nil
-        if let port = parts.port, port != defaultPort {
-            return "\(scheme)://\(hostText):\(port)"
-        }
-        return "\(scheme)://\(hostText)"
-    }
-
-    private static func isLoopback(_ host: String) -> Bool {
-        let h = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        if h == "localhost" || h == "::1" { return true }
-        let octets = h.split(separator: ".")
-        return octets.count == 4 && octets.first == "127" && octets.allSatisfy { UInt8($0) != nil }
-    }
 }
 
 // MARK: - JSONValue access

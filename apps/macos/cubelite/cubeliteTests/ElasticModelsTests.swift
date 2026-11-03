@@ -239,34 +239,34 @@ final class ElasticModelsTests: XCTestCase {
 
     func testTargetPortResolvesNumericNamedAndDefault() throws {
         let pod = try decode(
-            ElasticK8s.Pod.self,
+            IntegrationK8s.Pod.self,
             #"{"spec":{"containers":[{"name":"es","ports":[{"name":"https","containerPort":9201}]}]}}"#)
         let numeric = try decode(
-            ElasticK8s.Service.self, #"{"spec":{"ports":[{"port":9200,"targetPort":9300}]}}"#)
+            IntegrationK8s.Service.self, #"{"spec":{"ports":[{"port":9200,"targetPort":9300}]}}"#)
         let named = try decode(
-            ElasticK8s.Service.self, #"{"spec":{"ports":[{"port":9200,"targetPort":"https"}]}}"#)
-        let none = try decode(ElasticK8s.Service.self, #"{"spec":{"ports":[{"port":9200}]}}"#)
-        XCTAssertEqual(Elastic.targetPort(numeric, port: 9200, pod: pod), 9300)
-        XCTAssertEqual(Elastic.targetPort(named, port: 9200, pod: pod), 9201)
-        XCTAssertEqual(Elastic.targetPort(none, port: 9200, pod: pod), 9200)
-        XCTAssertNil(Elastic.targetPort(none, port: 1234, pod: pod))
+            IntegrationK8s.Service.self, #"{"spec":{"ports":[{"port":9200,"targetPort":"https"}]}}"#)
+        let none = try decode(IntegrationK8s.Service.self, #"{"spec":{"ports":[{"port":9200}]}}"#)
+        XCTAssertEqual(Integration.targetPort(numeric, port: 9200, pod: pod), 9300)
+        XCTAssertEqual(Integration.targetPort(named, port: 9200, pod: pod), 9201)
+        XCTAssertEqual(Integration.targetPort(none, port: 9200, pod: pod), 9200)
+        XCTAssertNil(Integration.targetPort(none, port: 1234, pod: pod))
     }
 
     func testReadyPodSkipsPendingAndUnready() throws {
         let pods = try decode(
-            [ElasticK8s.Pod].self,
+            [IntegrationK8s.Pod].self,
             """
             [{"metadata":{"name":"a"},"status":{"phase":"Pending"}},
              {"metadata":{"name":"b"},"status":{"phase":"Running","conditions":[{"type":"Ready","status":"False"}]}},
              {"metadata":{"name":"c"},"status":{"phase":"Running","conditions":[{"type":"Ready","status":"True"}]}}]
             """)
-        XCTAssertEqual(Elastic.readyPod(pods)?.metadata.name, "c")
-        XCTAssertNil(Elastic.readyPod(Array(pods.prefix(2))))
+        XCTAssertEqual(Integration.readyPod(pods)?.metadata.name, "c")
+        XCTAssertNil(Integration.readyPod(Array(pods.prefix(2))))
     }
 
     func testClassifyFindsEckAndHelmServices() throws {
         let eck = try decode(
-            ElasticK8s.Service.self,
+            IntegrationK8s.Service.self,
             #"{"metadata":{"name":"quickstart-es-http","namespace":"logging","labels":{"common.k8s.elastic.co/type":"elasticsearch"}},"spec":{"ports":[{"name":"https","port":9200}]}}"#
         )
         let found = try XCTUnwrap(Elastic.classify(eck))
@@ -274,27 +274,27 @@ final class ElasticModelsTests: XCTestCase {
         XCTAssertEqual(found.port, 9200)
         XCTAssertTrue(found.https)
         let kibana = try decode(
-            ElasticK8s.Service.self,
+            IntegrationK8s.Service.self,
             #"{"metadata":{"name":"kibana-kibana","namespace":"logging"},"spec":{"ports":[{"name":"http","port":5601}]}}"#
         )
         let kb = try XCTUnwrap(Elastic.classify(kibana))
         XCTAssertEqual(kb.kind, .kibana)
         XCTAssertFalse(kb.https)
         let transport = try decode(
-            ElasticK8s.Service.self,
+            IntegrationK8s.Service.self,
             #"{"metadata":{"name":"quickstart-es-transport","labels":{"common.k8s.elastic.co/type":"elasticsearch"}},"spec":{"ports":[{"port":9300}]}}"#
         )
         XCTAssertNil(Elastic.classify(transport))
         let other = try decode(
-            ElasticK8s.Service.self, #"{"metadata":{"name":"web"},"spec":{"ports":[{"port":80}]}}"#)
+            IntegrationK8s.Service.self, #"{"metadata":{"name":"web"},"spec":{"ports":[{"port":80}]}}"#)
         XCTAssertNil(Elastic.classify(other))
         XCTAssertEqual(
-            Elastic.serviceHost(namespace: "logging", service: "quickstart-es-http"),
+            Integration.serviceHost(namespace: "logging", service: "quickstart-es-http"),
             "quickstart-es-http.logging.svc")
         let selector = try decode(
-            ElasticK8s.Service.self,
+            IntegrationK8s.Service.self,
             #"{"spec":{"selector":{"b":"2","a":"1"}}}"#)
-        XCTAssertEqual(Elastic.selector(selector), "a=1,b=2")
+        XCTAssertEqual(Integration.selector(selector), "a=1,b=2")
     }
 
     func testFirstPEMCertificateTakesTheFirstBlock() {
@@ -302,7 +302,7 @@ final class ElasticModelsTests: XCTestCase {
         let two = Data([0xFF]).base64EncodedString()
         let pem =
             "-----BEGIN CERTIFICATE-----\n\(one)\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\n\(two)\n-----END CERTIFICATE-----\n"
-        XCTAssertEqual(Elastic.firstPEMCertificate(Data(pem.utf8)), Data([0x30, 0x82, 0x01]))
-        XCTAssertNil(Elastic.firstPEMCertificate(Data("nope".utf8)))
+        XCTAssertEqual(Integration.firstPEMCertificate(Data(pem.utf8)), Data([0x30, 0x82, 0x01]))
+        XCTAssertNil(Integration.firstPEMCertificate(Data("nope".utf8)))
     }
 }

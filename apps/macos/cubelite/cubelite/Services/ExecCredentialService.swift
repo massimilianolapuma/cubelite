@@ -73,10 +73,39 @@ actor ExecCredentialService {
             )
         }
 
+        let output = try await Self.runProcess(
+            executable, arguments: exec.args ?? [], environment: Self.environment(for: exec),
+            timeout: Self.pluginTimeout
+        ) { error in
+            CubeliteError.clientError(
+                reason:
+                    "Credential plugin '\(exec.command)' failed to launch: \(error.localizedDescription)"
+            )
+        }
+        guard output.status == 0 else {
+            let errText = String(data: output.stderr, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let detail = errText.isEmpty ? "" : ": \(errText.prefix(300))"
+            throw CubeliteError.clientError(
+                reason: "Credential plugin '\(exec.command)' exited with status \(output.status)\(detail)"
+            )
+        }
+        let outData = output.stdout
+
+        return try Self.parseExecCredential(outData, command: exec.command)
+    }
+
+    /// Runs `executable` without stdin and returns its exit status and
+    /// output; it is terminated after `timeout` (a plugin waiting on a
+    /// browser flow, a hung CLI). Shared with the Azure CLI token (#511).
+    static func runProcess(
+        _ executable: URL, arguments: [String], environment: [String: String],
+        timeout: TimeInterval, launchError: @escaping @Sendable (Error) -> Error
+    ) async throws -> (status: Int32, stdout: Data, stderr: Data) {
         let process = Process()
         process.executableURL = executable
-        process.arguments = exec.args ?? []
-        process.environment = Self.environment(for: exec)
+        process.arguments = arguments
+        process.environment = environment
         process.standardInput = FileHandle.nullDevice
         let stdout = Pipe()
         let stderr = Pipe()
@@ -89,31 +118,28 @@ actor ExecCredentialService {
                 try process.run()
             } catch {
                 process.terminationHandler = nil
-                continuation.resume(
-                    throwing: CubeliteError.clientError(
-                        reason:
-                            "Credential plugin '\(exec.command)' failed to launch: \(error.localizedDescription)"
-                    ))
+                continuation.resume(throwing: launchError(error))
                 return
             }
-            // Watchdog: kill plugins that hang (e.g. waiting on a browser flow).
-            DispatchQueue.global().asyncAfter(deadline: .now() + Self.pluginTimeout) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
                 if process.isRunning { process.terminate() }
             }
         }
+        return (
+            status, stdout.fileHandleForReading.readDataToEndOfFile(),
+            stderr.fileHandleForReading.readDataToEndOfFile()
+        )
+    }
 
-        let outData = stdout.fileHandleForReading.readDataToEndOfFile()
-        guard status == 0 else {
-            let errData = stderr.fileHandleForReading.readDataToEndOfFile()
-            let errText = String(data: errData, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let detail = errText.isEmpty ? "" : ": \(errText.prefix(300))"
-            throw CubeliteError.clientError(
-                reason: "Credential plugin '\(exec.command)' exited with status \(status)\(detail)"
-            )
+    /// The inherited environment with the fallback search paths appended to PATH.
+    static func searchEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        var parts = (env["PATH"] ?? "").split(separator: ":").map(String.init)
+        for fallback in fallbackSearchPaths where !parts.contains(fallback) {
+            parts.append(fallback)
         }
-
-        return try Self.parseExecCredential(outData, command: exec.command)
+        env["PATH"] = parts.joined(separator: ":")
+        return env
     }
 
     /// Resolves the plugin command against PATH plus well-known install
@@ -142,13 +168,7 @@ actor ExecCredentialService {
     /// own env entries, and KUBERNETES_EXEC_INFO per the client.authentication
     /// contract.
     private static func environment(for exec: ExecConfig) -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
-        let inherited = env["PATH"] ?? ""
-        var parts = inherited.split(separator: ":").map(String.init)
-        for fallback in fallbackSearchPaths where !parts.contains(fallback) {
-            parts.append(fallback)
-        }
-        env["PATH"] = parts.joined(separator: ":")
+        var env = searchEnvironment()
         for pair in exec.env ?? [] {
             env[pair.name] = pair.value
         }
