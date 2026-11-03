@@ -69,8 +69,10 @@
 			// Review in the integrations banner (#527): pre-filled, not saved.
 			const suggested = context ? integrations.takePrometheus(context) : null;
 			if (suggested) {
-				form.load(suggested.target, false);
-				grafanaService = suggested.grafanaService ?? null;
+				form.load(suggested.endpoint.target, false);
+				grafanaService = suggested.endpoint.grafanaService ?? null;
+				// Every candidate, so another one can be picked.
+				detected = suggested.candidates;
 				result = { ok: true, text: SUGGESTED_TEXT };
 			}
 			return;
@@ -198,6 +200,8 @@
 			// A changed endpoint or Grafana service must not keep old forwards.
 			await prometheusDisconnect(ctx);
 			if (endpoint) await refreshStoredMethod(endpoint);
+			// Turned off on purpose: the detection banner must not offer it again.
+			if (!endpoint) integrations.dismissKind(ctx, 'prometheus');
 			toasts.push(endpoint ? `Prometheus saved for ${ctx}` : `Prometheus off for ${ctx}`, 'ok');
 		});
 	}

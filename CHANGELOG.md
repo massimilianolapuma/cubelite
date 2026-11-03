@@ -14,13 +14,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lists its services once (across namespaces, classified by the existing
   Elasticsearch/Kibana and Prometheus/Grafana detectors) and, for each
   integration that is not configured yet, shows a slim banner above the
-  content: "Elasticsearch and Prometheus found in this cluster — Enable ·
-  Review · ✕". Enable tests and saves the in-cluster endpoints with the
-  defaults (ECK `-es-http` preferred with the ECK elastic user, the default
-  index pattern with ECS fields, `prometheus-operated` preferred, the
-  detected Kibana and Grafana); a failed test saves nothing and the banner
-  says why. Review opens Preferences pre-filled but not saved; ✕ hides the
-  banner for that context until Preferences → Integrations brings it back.
+  content naming the services it would use, e.g. "Elasticsearch found
+  (logging/quickstart-es-http) and Prometheus (monitoring/prometheus-operated)
+  — Enable · Review · ✕". Enable tests and saves the in-cluster endpoints
+  with the defaults (the ECK elastic user, the default index pattern with
+  ECS fields, the Kibana and Grafana next to them); a failed test saves
+  nothing and the banner says why, and a Prometheus without cAdvisor series
+  is saved with a warning. Enable is offered only when each integration has
+  exactly one operator-managed service (owned by ECK or the Prometheus
+  operator), so a look-alike Service in another namespace cannot be
+  enabled in one click; otherwise Review opens Preferences pre-filled with
+  the best guess and every candidate, not saved. ✕, or turning the
+  integration off in Preferences, hides the banner for that context until
+  Preferences → Integrations brings it back.
   Nothing reaches Elasticsearch or Prometheus and no secret is read before
   the click; a user who may not list services across namespaces gets no
   banner. The banner follows "Show integration hints in panels".

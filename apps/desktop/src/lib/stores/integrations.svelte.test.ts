@@ -19,7 +19,14 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
 import IntegrationsBanner from "#lib/components/IntegrationsBanner.svelte";
 import ElasticPreferences from "#lib/components/ElasticPreferences.svelte";
 import PrometheusPreferences from "#lib/components/PrometheusPreferences.svelte";
-import { bannerTitle, failureText, isDismissals, NOTHING_DETECTED, SUGGESTED_TEXT } from "#lib/integration-suggest.ts";
+import {
+  REVIEW_ONLY_HINT,
+  SUGGESTED_TEXT,
+  bannerTitle,
+  failureText,
+  isDismissals,
+  NOTHING_DETECTED,
+} from "#lib/integration-suggest.ts";
 import {
   elasticSaveAuth,
   elasticTest,
@@ -36,11 +43,22 @@ import { prometheus } from "./prometheus.svelte";
 import { settings } from "./settings.svelte";
 import { toasts } from "./toasts.svelte";
 
+const ES = { kind: "elasticsearch", namespace: "logging", name: "quickstart-es-http", port: 9200, https: true } as const;
+const KB = { kind: "kibana", namespace: "logging", name: "quickstart-kb-http", port: 5601, https: true } as const;
+const PROM = { kind: "prometheus", namespace: "monitoring", name: "prometheus-operated", port: 9090, https: false } as const;
+const GRAFANA = { kind: "grafana", namespace: "monitoring", name: "kps-grafana", port: 80, https: false } as const;
+const LOOK_ALIKE = { kind: "elasticsearch", namespace: "team-a", name: "foo-es-http", port: 9200, https: true } as const;
+
+/** ECK and kube-prometheus-stack, each the single operator-managed service. */
 const ECK: DetectedIntegrations = {
-  elasticsearch: { kind: "elasticsearch", namespace: "logging", name: "quickstart-es-http", port: 9200, https: true },
-  kibana: { kind: "kibana", namespace: "logging", name: "quickstart-kb-http", port: 5601, https: true },
-  prometheus: { kind: "prometheus", namespace: "monitoring", name: "prometheus-operated", port: 9090, https: false },
-  grafana: { kind: "grafana", namespace: "monitoring", name: "kps-grafana", port: 80, https: false },
+  elasticsearch: ES,
+  kibana: KB,
+  prometheus: PROM,
+  grafana: GRAFANA,
+  elasticsearchOneClick: true,
+  prometheusOneClick: true,
+  elasticServices: [ES, KB],
+  prometheusServices: [PROM, GRAFANA],
 };
 
 const ES_INFO = { version: "8.15.0", clusterName: "quickstart", health: "green", indices: 3 };
@@ -73,12 +91,16 @@ describe("integrations banner model (#527)", () => {
     await detected(ECK);
     expect(integrationsDetect).toHaveBeenCalledWith("/k", "prod");
     expect(integrations.offered("prod")).toEqual(["elasticsearch", "prometheus"]);
-    expect(bannerTitle(integrations.banner!.kinds)).toBe("Elasticsearch and Prometheus found in this cluster");
+    expect(integrations.banner?.canEnable).toBe(true);
+    // The banner always names the services Enable would use.
+    expect(bannerTitle(ECK, integrations.banner!.kinds)).toBe(
+      "Elasticsearch found (logging/quickstart-es-http) and Prometheus (monitoring/prometheus-operated)",
+    );
 
     // Configured: no offer for that integration.
     prometheus.setEndpoint("prod", { target: { kind: "external", url: "https://p.example" }, cluster: null, grafanaUrl: null, grafanaDatasource: null, skipTlsVerify: false });
     expect(integrations.offered("prod")).toEqual(["elasticsearch"]);
-    expect(bannerTitle(["elasticsearch"])).toBe("Elasticsearch found in this cluster");
+    expect(bannerTitle(ECK, ["prometheus"])).toBe("Prometheus found (monitoring/prometheus-operated)");
 
     // Hints off: nothing.
     settings.integrationHints.value = false;
@@ -100,6 +122,29 @@ describe("integrations banner model (#527)", () => {
     expect(toasts.items).toEqual([]);
   });
 
+  it("several candidates or an unmanaged one: Review only, Enable refused", async () => {
+    // A lone look-alike `*-es-http` in a namespace anyone may use.
+    await detected({
+      ...NOTHING_DETECTED,
+      elasticsearch: LOOK_ALIKE,
+      elasticServices: [LOOK_ALIKE],
+    });
+    expect(integrations.banner).toMatchObject({ kinds: ["elasticsearch"], canEnable: false });
+    await integrations.enable("prod");
+    expect(elasticTest).not.toHaveBeenCalled();
+    expect(elastic.endpointFor("prod")).toBeNull();
+
+    // One integration needing a review keeps Enable away for both.
+    await detected({ ...ECK, prometheusOneClick: false, prometheusServices: [PROM, { ...PROM, namespace: "team-a" }, GRAFANA] });
+    expect(integrations.banner?.canEnable).toBe(false);
+    render(IntegrationsBanner);
+    expect(screen.queryByRole("button", { name: "Enable" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review" })).toHaveAttribute("title", REVIEW_ONLY_HINT);
+    expect(screen.getByTestId("integrations-banner")).toHaveTextContent(
+      "Elasticsearch found (logging/quickstart-es-http) and Prometheus (monitoring/prometheus-operated)",
+    );
+  });
+
   it("dismissals hide the banner per context and persist", async () => {
     await detected(ECK);
     await detected(ECK, "staging");
@@ -115,6 +160,25 @@ describe("integrations banner model (#527)", () => {
     const reloaded = await import("./settings.svelte");
     expect(reloaded.settings.integrationDismissals.value).toEqual({ prod: ["elasticsearch", "prometheus"] });
 
+    integrations.resetDismissals("prod");
+    expect(integrations.offered("prod")).toEqual(["elasticsearch", "prometheus"]);
+  });
+
+  it("turning an integration off in Preferences dismisses it", async () => {
+    await detected(ECK);
+    elastic.setEndpoint("prod", {
+      target: { kind: "external", url: "https://es.example" },
+      indexPattern: "logs-*",
+      preset: "ecs",
+      kibanaUrl: null,
+      skipTlsVerify: false,
+    });
+    render(ElasticPreferences);
+    await fireEvent.click(screen.getByRole("radio", { name: "Off" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(elastic.endpointFor("prod")).toBeNull());
+    expect(integrations.dismissed("prod")).toEqual(["elasticsearch"]);
+    expect(integrations.offered("prod")).toEqual(["prometheus"]);
     integrations.resetDismissals("prod");
     expect(integrations.offered("prod")).toEqual(["elasticsearch", "prometheus"]);
   });
@@ -151,32 +215,45 @@ describe("integrations banner model (#527)", () => {
     });
     expect(prometheusTest).toHaveBeenCalledWith("/k", "prod", prom, { method: "none" });
     expect(prometheusSaveAuth).toHaveBeenCalledWith("prod", prom, { method: "none" });
-    expect(toasts.items.map((t) => t.message)).toEqual(["Elasticsearch enabled for prod", "Prometheus enabled for prod"]);
+    expect(toasts.items.map((t) => [t.message, t.tone])).toEqual([
+      ["Elasticsearch enabled for prod", "ok"],
+      ["Prometheus enabled for prod", "ok"],
+    ]);
     expect(integrations.banner).toBeNull();
   });
 
-  it("a failed Test saves nothing and the banner says why", async () => {
-    const plain = { ...ECK.elasticsearch!, namespace: "search", name: "elasticsearch-master" };
-    await detected({ ...ECK, elasticsearch: plain, kibana: null });
-    vi.mocked(elasticTest).mockRejectedValueOnce("security_exception: missing authentication credentials");
+  it("a Prometheus without cAdvisor series is saved with a warning", async () => {
+    await detected({ ...ECK, elasticsearch: null, kibana: null, elasticsearchOneClick: false, elasticServices: [] });
+    vi.mocked(prometheusTest).mockResolvedValueOnce({ ...PROM_INFO, cadvisor: false });
     await integrations.enable("prod");
-    expect(vi.mocked(elasticTest).mock.calls[0]![3]).toEqual({ method: "none" });
+    expect(prometheus.endpointFor("prod")).not.toBeNull();
+    expect(toasts.items.map((t) => [t.message, t.tone])).toEqual([
+      ["Prometheus enabled for prod — no container metrics (cAdvisor) found yet", "warn"],
+    ]);
+  });
+
+  it("a failed Test saves nothing and the banner says why", async () => {
+    await detected(ECK);
+    vi.mocked(elasticTest).mockRejectedValueOnce("security_exception: unable to authenticate user [elastic]");
+    await integrations.enable("prod");
     expect(elastic.endpointFor("prod")).toBeNull();
     expect(elasticSaveAuth).not.toHaveBeenCalled();
     expect(elasticUseEckCredentials).not.toHaveBeenCalled();
     // Prometheus answered: it is saved.
     expect(prometheus.endpointFor("prod")).not.toBeNull();
-    expect(integrations.banner).toEqual({
+    expect(integrations.banner).toMatchObject({
       context: "prod",
       kinds: ["elasticsearch"],
-      failure:
-        "Couldn't connect to Elasticsearch: security_exception: missing authentication credentials (credentials may be needed)",
+      failure: "Couldn't connect to Elasticsearch: security_exception: unable to authenticate user [elastic]",
     });
+    expect(failureText("elasticsearch", "401", false)).toBe(
+      "Couldn't connect to Elasticsearch: 401 (credentials may be needed)",
+    );
     expect(failureText("prometheus", "timed out", false)).toBe("Couldn't connect to Prometheus: timed out");
   });
 
-  it("Review opens Preferences pre-filled, without saving", async () => {
-    await detected(ECK);
+  it("Review opens Preferences pre-filled with every candidate, without saving", async () => {
+    await detected({ ...ECK, elasticsearchOneClick: false, elasticServices: [ES, LOOK_ALIKE, KB] });
     integrations.review("prod");
     expect(app.preferencesOpen).toBe(true);
     expect(app.preferencesSection).toBe("elasticsearch");
@@ -187,6 +264,8 @@ describe("integrations banner model (#527)", () => {
     expect(screen.getByTestId("kibana-service")).toHaveTextContent("logging/quickstart-kb-http:5601");
     expect(screen.getByLabelText("Authentication")).toHaveValue("eck-user");
     expect(screen.getAllByText(SUGGESTED_TEXT)).toHaveLength(1);
+    // The other candidates can be picked instead.
+    expect(screen.getByText("team-a/foo-es-http:9200", { exact: false })).toBeInTheDocument();
 
     render(PrometheusPreferences);
     expect(screen.getAllByLabelText("Service")[1]).toHaveValue("prometheus-operated");
@@ -200,7 +279,9 @@ describe("integrations banner model (#527)", () => {
   it("the banner enables and dismisses", async () => {
     await detected(ECK);
     render(IntegrationsBanner);
-    expect(screen.getByTestId("integrations-banner")).toHaveTextContent("Elasticsearch and Prometheus found in this cluster");
+    expect(screen.getByTestId("integrations-banner")).toHaveTextContent(
+      "Elasticsearch found (logging/quickstart-es-http) and Prometheus (monitoring/prometheus-operated)",
+    );
     await fireEvent.click(screen.getByRole("button", { name: "Enable" }));
     await waitFor(() => expect(screen.queryByTestId("integrations-banner")).not.toBeInTheDocument());
     expect(elastic.endpointFor("prod")).not.toBeNull();

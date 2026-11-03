@@ -29,7 +29,27 @@ export const NOTHING_DETECTED: DetectedIntegrations = {
   kibana: null,
   prometheus: null,
   grafana: null,
+  elasticsearchOneClick: false,
+  prometheusOneClick: false,
+  elasticServices: [],
+  prometheusServices: [],
 };
+
+/** The best guess for `kind`: what Enable would use. */
+export function bestGuess(found: DetectedIntegrations, kind: IntegrationKind): DetectedService | DetectedPrometheus | null {
+  return kind === "elasticsearch" ? found.elasticsearch : found.prometheus;
+}
+
+/**
+ * Whether Enable may save `kind` without a review: exactly one
+ * operator-managed service (anyone may create a look-alike Service).
+ */
+export function isOneClick(found: DetectedIntegrations, kind: IntegrationKind): boolean {
+  return kind === "elasticsearch" ? found.elasticsearchOneClick : found.prometheusOneClick;
+}
+
+/** Help of Review when Enable is not offered. */
+export const REVIEW_ONLY_HINT = "Several candidates or not operator-managed: review before enabling";
 
 function inCluster(found: DetectedService | DetectedPrometheus): IntegrationTarget {
   return { kind: "in-cluster", namespace: found.namespace, service: found.name, port: found.port, https: found.https };
@@ -62,9 +82,18 @@ export function suggestedPrometheus(found: DetectedIntegrations): PromEndpoint |
   };
 }
 
-/** "Elasticsearch and Prometheus found in this cluster". */
-export function bannerTitle(kinds: readonly IntegrationKind[]): string {
-  return `${kinds.map((k) => INTEGRATION_LABELS[k]).join(" and ")} found in this cluster`;
+/**
+ * "Elasticsearch found (logging/quickstart-es-http) and Prometheus
+ * (monitoring/prometheus-operated)": always the services Enable would use.
+ */
+export function bannerTitle(found: DetectedIntegrations, kinds: readonly IntegrationKind[]): string {
+  return kinds
+    .map((k, i) => {
+      const svc = bestGuess(found, k);
+      const where = svc ? ` (${svc.namespace}/${svc.name})` : "";
+      return i === 0 ? `${INTEGRATION_LABELS[k]} found${where}` : `${INTEGRATION_LABELS[k]}${where}`;
+    })
+    .join(" and ");
 }
 
 /** The banner's text after a failed Enable; nothing was saved. */
@@ -75,6 +104,11 @@ export function failureText(kind: IntegrationKind, reason: string, eck: boolean)
 
 export function enabledText(kind: IntegrationKind, context: string): string {
   return `${INTEGRATION_LABELS[kind]} enabled for ${context}`;
+}
+
+/** Prometheus answered but has no cAdvisor series: saved, with a warning. */
+export function noCadvisorText(context: string): string {
+  return `Prometheus enabled for ${context} — no container metrics (cAdvisor) found yet`;
 }
 
 /** Persisted dismissals: context → integrations hidden from the banner. */

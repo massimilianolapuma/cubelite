@@ -1,28 +1,58 @@
 import { test, expect, type Page } from "@playwright/test";
 import { tauriMockScript } from "./tauri-mock";
 
+const ES = { kind: "elasticsearch", namespace: "logging", name: "quickstart-es-http", port: 9200, https: true };
+const KB = { kind: "kibana", namespace: "logging", name: "quickstart-kb-http", port: 5601, https: true };
+const PROM = { kind: "prometheus", namespace: "monitoring", name: "prometheus-operated", port: 9090, https: false };
+const GRAFANA = { kind: "grafana", namespace: "monitoring", name: "kps-grafana", port: 80, https: false };
+
 /** ECK and kube-prometheus-stack, as `integrations_detect` reports them (#527). */
 const DETECTED = {
-  elasticsearch: { kind: "elasticsearch", namespace: "logging", name: "quickstart-es-http", port: 9200, https: true },
-  kibana: { kind: "kibana", namespace: "logging", name: "quickstart-kb-http", port: 5601, https: true },
-  prometheus: { kind: "prometheus", namespace: "monitoring", name: "prometheus-operated", port: 9090, https: false },
-  grafana: { kind: "grafana", namespace: "monitoring", name: "kps-grafana", port: 80, https: false },
+  elasticsearch: ES,
+  kibana: KB,
+  prometheus: PROM,
+  grafana: GRAFANA,
+  elasticsearchOneClick: true,
+  prometheusOneClick: true,
+  elasticServices: [ES, KB],
+  prometheusServices: [PROM, GRAFANA],
 };
 
-async function boot(page: Page) {
+async function boot(page: Page, detected: Record<string, unknown> = DETECTED) {
   await page.addInitScript(tauriMockScript());
-  await page.addInitScript((detected) => {
+  await page.addInitScript((found) => {
     window.localStorage.setItem("cubelite.onboardingSeen", "true");
     window.localStorage.setItem("cubelite.theme", '"dark"');
-    window.__detectedIntegrations = detected;
-  }, DETECTED);
+    window.__detectedIntegrations = found;
+  }, detected);
   await page.goto("/");
 }
+
+test("an unmanaged look-alike only gets Review (#527)", async ({ page }) => {
+  const lookAlike = { ...ES, namespace: "team-a", name: "foo-es-http" };
+  await boot(page, {
+    ...DETECTED,
+    elasticsearch: lookAlike,
+    kibana: null,
+    prometheus: null,
+    grafana: null,
+    elasticsearchOneClick: false,
+    prometheusOneClick: false,
+    elasticServices: [lookAlike],
+    prometheusServices: [],
+  });
+  const banner = page.getByTestId("integrations-banner");
+  await expect(banner).toHaveText(/Elasticsearch found \(team-a\/foo-es-http\)/);
+  await expect(banner.getByRole("button", { name: "Enable" })).toHaveCount(0);
+  await expect(banner.getByRole("button", { name: "Review" })).toBeVisible();
+});
 
 test("the banner offers the detected integrations and Enable saves them (#527)", async ({ page }) => {
   await boot(page);
   const banner = page.getByTestId("integrations-banner");
-  await expect(banner).toHaveText(/Elasticsearch and Prometheus found in this cluster/);
+  await expect(banner).toHaveText(
+    /Elasticsearch found \(logging\/quickstart-es-http\) and Prometheus \(monitoring\/prometheus-operated\)/,
+  );
   // Nothing reached Elasticsearch or Prometheus before the click.
   expect(await page.evaluate(() => window.__integrationCalls ?? [])).toEqual([]);
 
@@ -53,7 +83,9 @@ test("Review opens Preferences pre-filled and ✕ hides the banner for good (#52
   const banner = page.getByTestId("integrations-banner");
   await banner.getByRole("button", { name: "Review" }).click();
   const prefs = page.getByTestId("elastic-prefs");
-  await expect(prefs.getByLabel("Service")).toHaveValue("quickstart-es-http");
+  await expect(prefs.getByLabel("Service", { exact: true })).toHaveValue("quickstart-es-http");
+  // Every candidate is listed, to pick another one.
+  await expect(prefs.getByRole("list", { name: "Detected services" }).getByRole("listitem")).toHaveCount(2);
   await expect(prefs.getByLabel("Authentication")).toHaveValue("eck-user");
   await page.keyboard.press("Escape");
 

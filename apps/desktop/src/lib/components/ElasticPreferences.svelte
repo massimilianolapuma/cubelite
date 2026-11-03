@@ -76,6 +76,8 @@
 				form.load(suggested.endpoint.target, false);
 				kibanaService = suggested.endpoint.kibanaService ?? null;
 				if (suggested.eck) auth.method = 'eck-user';
+				// Every candidate, so another one can be picked.
+				detected = suggested.candidates;
 				result = { ok: true, text: SUGGESTED_TEXT };
 			}
 			return;
@@ -194,6 +196,8 @@
 			// A changed endpoint or Kibana service must not keep old forwards.
 			await elasticDisconnect(ctx);
 			if (endpoint) await refreshStoredMethod(endpoint);
+			// Turned off on purpose: the detection banner must not offer it again.
+			if (!endpoint) integrations.dismissKind(ctx, 'elasticsearch');
 			toasts.push(endpoint ? `Elasticsearch saved for ${ctx}` : `Elasticsearch off for ${ctx}`, 'ok');
 		});
 	}

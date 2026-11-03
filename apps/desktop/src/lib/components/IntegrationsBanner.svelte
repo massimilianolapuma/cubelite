@@ -1,11 +1,12 @@
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
 	import { ACCENT_LINK_CLASS, UI_LINK_CLASS } from '#lib/integration.ts';
-	import { bannerTitle } from '#lib/integration-suggest.ts';
+	import { REVIEW_ONLY_HINT, bannerTitle } from '#lib/integration-suggest.ts';
 	import { integrations } from '#lib/stores/integrations.svelte.ts';
 
 	// Integrations found when the context connected (#527): one slim line
-	// above the content, "… found in this cluster — Enable · Review · ✕".
+	// above the content naming the services, "— Enable · Review · ✕". Enable
+	// only when each one is the single operator-managed service; else Review.
 	const banner = $derived(integrations.banner);
 	const busy = $derived(banner !== null && integrations.enabling === banner.context);
 </script>
@@ -18,9 +19,9 @@
 		data-testid="integrations-banner"
 	>
 		<span class="type-caption min-w-0 flex-1 truncate {banner.failure ? 'text-status-err' : 'text-text-secondary'}">
-			{banner.failure ?? bannerTitle(banner.kinds)}
+			{banner.failure ?? bannerTitle(banner.found, banner.kinds)}
 		</span>
-		{#if !banner.failure && banner.kinds.length > 0}
+		{#if !banner.failure && banner.canEnable}
 			<button
 				type="button"
 				class={ACCENT_LINK_CLASS}
@@ -30,7 +31,13 @@
 				{busy ? 'Enabling…' : 'Enable'}
 			</button>
 		{/if}
-		<button type="button" class={UI_LINK_CLASS} disabled={busy} onclick={() => integrations.review(banner.context)}>
+		<button
+			type="button"
+			class={banner.canEnable || banner.failure ? UI_LINK_CLASS : ACCENT_LINK_CLASS}
+			title={banner.canEnable || banner.failure ? undefined : REVIEW_ONLY_HINT}
+			disabled={busy}
+			onclick={() => integrations.review(banner.context)}
+		>
 			Review
 		</button>
 		<button
