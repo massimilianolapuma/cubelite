@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   aliases renamed, Kubernetes metadata added, a `service.name` chip, a sorted
   field table with Copy ECS, and NDJSON export. Log lines now keep the full
   kubelet timestamp for `@timestamp`.
+- **ECS log view** (desktop, #492): the log toolbar's `{}` toggle becomes a
+  Raw · JSON · ECS mode control (log panel, pop-out and aggregated Logs view;
+  an enabled JSON toggle carries over). ECS mode shows every line as the
+  Elastic Common Schema document it would be in Kibana: common aliases
+  (`msg`, `level`, `trace_id`, `service`…) renamed, Kubernetes metadata
+  added, `service.name` chip on the row, a sorted field table on expand with
+  Copy ECS, and NDJSON export.
 - **Pod shell** (desktop, #488): a Shell button in the pod drawer opens a
   line-based `/bin/sh` session (no TTY) in the pod's first container, like
   the native app; stdout, stderr and exit status stream into a scrollback.

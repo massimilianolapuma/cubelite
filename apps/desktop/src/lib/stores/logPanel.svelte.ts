@@ -7,6 +7,7 @@
  * query text survives tab switches; cleared only when `openFor` creates a
  * brand-new session.
  */
+import { isLogViewMode, type LogViewMode } from "#lib/log-ecs.ts";
 import { persisted } from "./settings.svelte";
 import { LogSession } from "./logSession.svelte";
 import { LogSearch } from "./logSearch.svelte";
@@ -43,7 +44,9 @@ class LogPanelStore {
   #collapsed = persisted<boolean>("logPanel.collapsed", false, isBoolean);
   #timestamps = persisted<boolean>("logPanel.timestamps", true, isBoolean);
   #wrap = persisted<boolean>("logPanel.wrap", false, isBoolean);
-  #jsonView = persisted<boolean>("logPanel.jsonView", false, isBoolean);
+  /** Pre-#492 boolean toggle, read once to seed `viewMode`. */
+  #legacyJsonView = persisted<boolean>("logPanel.jsonView", false, isBoolean);
+  #viewMode = persisted<LogViewMode>("logPanel.viewMode", this.#legacyJsonView.value ? "json" : "raw", isLogViewMode);
   /** `namespace/pod` → last chosen container. */
   #containers = persisted<Record<string, string>>("logPanel.containers", {}, isStringRecord);
 
@@ -82,11 +85,12 @@ class LogPanelStore {
   set wrap(v: boolean) {
     this.#wrap.value = v;
   }
-  get jsonView(): boolean {
-    return this.#jsonView.value;
+  /** Raw, JSON (#454) or ECS (#492) rendering of the lines. */
+  get viewMode(): LogViewMode {
+    return this.#viewMode.value;
   }
-  set jsonView(v: boolean) {
-    this.#jsonView.value = v;
+  set viewMode(v: LogViewMode) {
+    this.#viewMode.value = v;
   }
 
   rememberContainer(key: string, container: string): void {
