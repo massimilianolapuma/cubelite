@@ -136,6 +136,22 @@ final class LogSession {
                 container: { [weak self] in self?.historyContainer },
                 searcher: elastic.searcher,
                 onReplace: { [weak self] in self?.dropHistoryExpansions() })
+            history?.onLinesChanged = { [weak self] in
+                guard let self, self.showsHistory else { return }
+                self.search.recompute(over: self.displayedLines)
+            }
+        }
+    }
+
+    /// The context's endpoint was edited or removed: back to Live when it is
+    /// gone, and history from the old endpoint is dropped.
+    func historyEndpointChanged() {
+        guard let history else { return }
+        history.reset()
+        if historyEndpoint == nil {
+            setSource(.live)
+        } else if source == .history {
+            Task { await history.reload() }
         }
     }
 
@@ -192,7 +208,8 @@ final class LogSession {
         defaults.set(name, forKey: containerMemoryKey)
         showingPrevious = false
         restart()
-        if showsHistory, let history {
+        // History follows the picker even while Live is shown.
+        if let history, history.started {
             Task { await history.reload() }
         }
     }

@@ -103,15 +103,31 @@ final class LogHistoryTests: XCTestCase {
     func testKibanaURLFollowsTheShownSearch() async {
         let h = history(StubSearcher([]), container: nil)
         h.range = .last24h
-        let before = try? XCTUnwrap(h.kibanaURL?.absoluteString.removingPercentEncoding)
-        XCTAssertTrue(before?.hasPrefix("https://kb.example/app/discover#/?_g=(time:(from:'now-24h'") ?? false)
-        XCTAssertFalse(before?.contains("container") ?? true)
+        let shown = try? XCTUnwrap(h.kibanaURL(shown: true)?.absoluteString.removingPercentEncoding)
+        XCTAssertTrue(shown?.hasPrefix("https://kb.example/app/discover#/?_g=(time:(from:'now-24h'") ?? false)
+        XCTAssertFalse(shown?.contains("container") ?? true)
+        let live = h.kibanaURL(shown: false)?.absoluteString.removingPercentEncoding
+        XCTAssertTrue(live?.contains("from:'now-1h'") ?? false, "Live opens the last hour")
 
         var noKibana = endpoint
         noKibana.kibanaURL = nil
-        XCTAssertNil(history(StubSearcher([]), endpoint: noKibana).kibanaURL)
+        XCTAssertNil(history(StubSearcher([]), endpoint: noKibana).kibanaURL(shown: true))
         noKibana.kibanaURL = "javascript:alert(1)"
-        XCTAssertNil(history(StubSearcher([]), endpoint: noKibana).kibanaURL)
+        XCTAssertNil(history(StubSearcher([]), endpoint: noKibana).kibanaURL(shown: true))
+    }
+
+    func testAFailedReloadDropsTheOldCursor() async {
+        let h = history(
+            StubSearcher([.success(page(["a"], more: true)), .failure(ElasticError.connect("down"))]))
+        await h.reload()
+        XCTAssertNotNil(h.next)
+        await h.reload()
+        XCTAssertNil(h.next, "the cursor belonged to the previous search")
+        XCTAssertFalse(h.canLoadOlder)
+        h.reset()
+        XCTAssertFalse(h.started)
+        XCTAssertTrue(h.lines.isEmpty)
+        XCTAssertNil(h.error)
     }
 
     func testEndpointStorePersistsPerContext() {
@@ -183,6 +199,54 @@ final class LogSessionHistoryTests: XCTestCase {
         XCTAssertEqual(session.displayedLines.map(\.message), ["live line"])
         session.setSource(.history)
         XCTAssertEqual(searcher.queries.count, 1, "switching back does not search again")
+        logs.closeAll()
+    }
+
+    private func waitFor(_ condition: @escaping () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(2)
+        while !condition(), Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+
+    func testFilterSearchFollowsHistoryPages() async throws {
+        let searcher = StubSearcher([
+            .success(page(["error one", "ok"])), .success(page(["error two", "fine"])),
+        ])
+        let (logs, _) = store(searcher, endpoint: EsEndpoint(target: .external(url: "https://es.example")))
+        logs.open(pod: pod(), context: "prod")
+        let session = try XCTUnwrap(logs.activeSession)
+        session.search.query = "error"
+        session.search.filterMode = true
+        session.setSource(.history)
+        try await waitFor { session.history?.loads == 1 }
+        XCTAssertEqual(
+            session.search.visibleLines(from: session.displayedLines).map(\.message), ["error one"])
+        await session.history?.reload()
+        XCTAssertEqual(
+            session.search.visibleLines(from: session.displayedLines).map(\.message), ["error two"],
+            "same count, new ids: matches recomputed")
+        logs.closeAll()
+    }
+
+    func testHistoryFollowsTheContainerAndEndpointChanges() async throws {
+        let searcher = StubSearcher([])
+        let (logs, endpoints) = store(
+            searcher, endpoint: EsEndpoint(target: .external(url: "https://es.example")))
+        logs.open(pod: pod(), context: "prod")
+        let session = try XCTUnwrap(logs.activeSession)
+        session.setSource(.history)
+        try await waitFor { searcher.queries.count == 1 }
+        session.setSource(.live)
+        session.switchContainer(to: "sidecar")
+        try await waitFor { searcher.queries.count == 2 }
+        XCTAssertEqual(searcher.queries.last?.container, "sidecar", "reloaded while Live")
+
+        session.setSource(.history)
+        endpoints.setEndpoint(nil, for: "prod")
+        session.historyEndpointChanged()
+        XCTAssertEqual(session.source, .live)
+        XCTAssertEqual(session.history?.started, false)
         logs.closeAll()
     }
 

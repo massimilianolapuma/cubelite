@@ -58,7 +58,10 @@ final class ElasticPreferencesModel {
     }
 
     private(set) var context: String?
-    var mode = Mode.off
+    var mode = Mode.off {
+        // ECK's user is offered only in-cluster.
+        didSet { if !authMethods.contains(authMethod) { authMethod = .none } }
+    }
     var namespace = ""
     var service = ""
     var port = 9200
@@ -273,13 +276,32 @@ final class ElasticPreferencesModel {
                 // Turning it off also removes the stored secret and open connection.
                 try await backend.saveAuth(context: context, endpoint: saved, auth: .none)
             }
-            guard context == self.context else { return }
+            // Stored even if the form moved to another context meanwhile:
+            // the keychain already matches this endpoint.
             endpoints.setEndpoint(endpoint, for: context)
+            guard context == self.context else { return }
             if let endpoint { await refreshStoredMethod(endpoint) }
             outcome = Outcome(
                 ok: true,
                 text: endpoint == nil
                     ? "Elasticsearch off for \(context)" : "Elasticsearch saved for \(context)")
+        } catch {
+            if context == self.context { outcome = Outcome(ok: false, text: error.localizedDescription) }
+        }
+    }
+
+    /// Checks ECK's `elastic` user can be read now and stores that choice.
+    func useEck() async {
+        guard let context, let endpoint = draft() else { return }
+        busy = .eck
+        outcome = nil
+        defer { busy = nil }
+        do {
+            try await backend.useEckCredentials(context: context, endpoint: endpoint)
+            guard context == self.context else { return }
+            storedMethod = .eckUser
+            authMethod = .eckUser
+            outcome = Outcome(ok: true, text: "ECK credentials found; Save to keep this endpoint.")
         } catch {
             if context == self.context { outcome = Outcome(ok: false, text: error.localizedDescription) }
         }

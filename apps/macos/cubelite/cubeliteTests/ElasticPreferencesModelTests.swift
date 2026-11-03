@@ -142,6 +142,35 @@ final class ElasticPreferencesModelTests: XCTestCase {
         XCTAssertEqual(model.secret, "")
     }
 
+    func testSaveStoresTheEndpointEvenAfterAContextSwitch() async {
+        let backend = StubBackend()
+        let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
+        await model.load(context: "prod")
+        model.mode = .external
+        model.url = "https://es.example"
+        let saving = Task { await model.save() }
+        while model.busy != .save { await Task.yield() }
+        await model.load(context: "dev")
+        await saving.value
+        XCTAssertEqual(endpoints.endpoint(for: "prod")?.target, .external(url: "https://es.example"))
+        XCTAssertNil(endpoints.endpoint(for: "dev"))
+    }
+
+    func testLeavingInClusterDropsTheEckMethod() async {
+        let backend = StubBackend()
+        let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
+        await model.load(context: "prod")
+        model.mode = .inCluster
+        model.namespace = "logging"
+        model.service = "quickstart-es-http"
+        model.authMethod = .eckUser
+        await model.useEck()
+        XCTAssertEqual(model.storedMethod, .eckUser)
+        XCTAssertEqual(model.outcome?.ok, true)
+        model.mode = .external
+        XCTAssertEqual(model.authMethod, .none)
+    }
+
     func testTestConnectionUsesTypedOrStoredCredentials() async {
         let backend = StubBackend()
         let model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)

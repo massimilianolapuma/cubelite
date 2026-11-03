@@ -20,11 +20,14 @@ struct IntegrationsPreferencesTab: View {
                 ProgressView()
             }
         }
-        .task {
+        .task(id: clusterState.contexts) {
             if model == nil {
                 model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
             }
-            context = context ?? clusterState.currentContext ?? clusterState.contexts.first
+            // Contexts may load after Settings opened.
+            if context == nil || !clusterState.contexts.contains(context ?? "") {
+                context = clusterState.currentContext ?? clusterState.contexts.first
+            }
         }
         .task(id: context) {
             await model?.load(context: context)
@@ -167,7 +170,11 @@ private struct ElasticAuthSection: View {
                 SecureField("API key:", text: $model.secret, prompt: Text(keepPrompt))
             case .bearer:
                 SecureField("Token:", text: $model.secret, prompt: Text(keepPrompt))
-            case .none, .eckUser:
+            case .eckUser:
+                Button("Check ECK credentials") { Task { await model.useEck() } }
+                    .disabled(model.busy != nil || model.isIncomplete || model.context == nil)
+                    .accessibilityIdentifier("preferences.elastic-eck")
+            case .none:
                 EmptyView()
             }
         } header: {

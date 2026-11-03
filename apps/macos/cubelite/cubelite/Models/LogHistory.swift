@@ -91,6 +91,8 @@ final class LogHistory {
     private let container: () -> String?
     private let searcher: any LogHistorySearching
     private let onReplace: () -> Void
+    /// Called whenever `lines` changes (the session re-runs its search).
+    var onLinesChanged: () -> Void = {}
     private var nextID = LogHistory.idBase
     private var generation = 0
     /// Range, text and container of the last reload: `next` belongs to them.
@@ -121,16 +123,18 @@ final class LogHistory {
         return "\(hits) · showing \(shown) · \(params?.range.label ?? range.label)"
     }
 
-    /// Kibana Discover for what is shown (the last reload's range and
-    /// container); nil without a Kibana URL.
-    var kibanaURL: URL? {
+    /// Kibana Discover for the shown search (last reload's range and
+    /// container) or, with `shown == false` (Live), the current container
+    /// over the last hour; nil without a Kibana URL.
+    func kibanaURL(shown: Bool) -> URL? {
         guard let endpoint = endpoint(), let base = endpoint.kibanaURL,
             !base.trimmingCharacters(in: .whitespaces).isEmpty
         else { return nil }
+        let shownParams = shown ? params : nil
         let text = Elastic.kibanaDiscoverURL(
             kibanaBase: base.trimmingCharacters(in: .whitespaces), preset: endpoint.preset,
-            namespace: namespace, pod: pod, container: params?.container ?? container(),
-            from: (params?.range ?? range).rawValue, to: "now")
+            namespace: namespace, pod: pod, container: shownParams?.container ?? container(),
+            from: (shownParams?.range ?? (shown ? range : .last1h)).rawValue, to: "now")
         guard let url = URL(string: text), ["http", "https"].contains(url.scheme?.lowercased())
         else { return nil }
         return url
@@ -152,18 +156,39 @@ final class LogHistory {
                 lines = []
                 next = nil
                 total = nil
+                onLinesChanged()
                 return
             }
             guard mine == generation else { return }
             onReplace()
             lines = page.lines.map(toLine).reversed()
+            onLinesChanged()
             total = page.total
             totalIsLowerBound = page.totalIsLowerBound
             next = page.next
             loads += 1
         } catch {
-            if mine == generation { self.error = error.localizedDescription }
+            if mine == generation {
+                self.error = error.localizedDescription
+                // The cursor belongs to the previous search.
+                next = nil
+            }
         }
+    }
+
+    /// Forgets everything (the endpoint changed); the next switch to
+    /// History searches again.
+    func reset() {
+        generation += 1
+        onReplace()
+        lines = []
+        next = nil
+        total = nil
+        error = nil
+        isLoading = false
+        started = false
+        params = nil
+        onLinesChanged()
     }
 
     /// Prepends the next older page.
@@ -185,6 +210,7 @@ final class LogHistory {
             let kept = Array(page.lines.prefix(room))
             lines = kept.map(toLine).reversed() + lines
             next = kept.count < page.lines.count ? nil : page.next
+            onLinesChanged()
         } catch {
             if mine == generation { self.error = error.localizedDescription }
         }

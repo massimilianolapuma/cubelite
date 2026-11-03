@@ -12,6 +12,11 @@ struct LogSessionContentView: View {
     let bodyHeight: Double?
 
     var body: some View {
+        content
+            .onChange(of: session.historyEndpoint) { session.historyEndpointChanged() }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             LogToolbar(session: session)
             Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)

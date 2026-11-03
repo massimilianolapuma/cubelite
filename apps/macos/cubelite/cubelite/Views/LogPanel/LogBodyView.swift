@@ -32,6 +32,15 @@ struct LogBodyView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignTokens.surfaceSunken)
+        // Recomputes live on the outer view: in filter mode with no match the
+        // list is not on screen, and its handlers would never fire again.
+        .onChange(of: session.buffer.totalAppended) {
+            guard !session.showsHistory else { return }
+            session.search.recomputeDebounced(over: session.displayedLines)
+        }
+        .onChange(of: session.search.query) {
+            session.search.recomputeDebounced(over: session.displayedLines)
+        }
         .onHover { isHovering = $0 }
         .onAppear { installScrollMonitor() }
         .onDisappear { removeScrollMonitor() }
@@ -94,26 +103,15 @@ struct LogBodyView: View {
             }
             .onChange(of: session.buffer.totalAppended) {
                 guard !session.showsHistory else { return }
-                session.search.recomputeDebounced(over: session.displayedLines)
                 if session.isFollowing, let last = session.buffer.lines.last {
                     proxy.scrollTo(last.id, anchor: .bottom)
                 }
             }
-            .onChange(of: session.history?.lines.count) {
-                guard session.showsHistory else { return }
-                session.search.recomputeDebounced(over: session.displayedLines)
-            }
             // A (re)load or a switch of source lands on the newest line;
             // "Load older" keeps the reading position.
             .onChange(of: session.history?.loads) { scrollToNewest(proxy) }
-            .onChange(of: session.showsHistory) {
-                session.search.recompute(over: session.displayedLines)
-                scrollToNewest(proxy)
-            }
+            .onChange(of: session.showsHistory) { scrollToNewest(proxy) }
             .onAppear { scrollToNewest(proxy) }
-            .onChange(of: session.search.query) {
-                session.search.recomputeDebounced(over: session.displayedLines)
-            }
             .onChange(of: session.search.activeLineID) {
                 if let id = session.search.activeLineID {
                     proxy.scrollTo(id, anchor: .center)

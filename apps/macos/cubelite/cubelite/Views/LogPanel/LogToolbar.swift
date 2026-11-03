@@ -374,7 +374,7 @@ struct LogToolbar: View {
                 .accessibilityIdentifier("logpanel.timestamps")
             Toggle("Wrap lines", isOn: Bindable(store).wrapLines)
                 .accessibilityIdentifier("logpanel.wrap")
-            if let kibana = session.history?.kibanaURL {
+            if let kibana = session.history?.kibanaURL(shown: session.showsHistory) {
                 Divider()
                 Button("Open in Kibana") { NSWorkspace.shared.open(kibana) }
                     .accessibilityIdentifier("logpanel.open-kibana")
