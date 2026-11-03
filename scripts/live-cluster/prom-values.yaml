@@ -1,0 +1,12 @@
+alertmanager: { enabled: false }
+grafana:
+  enabled: true
+  resources: { requests: { memory: 256Mi }, limits: { memory: 512Mi } }
+prometheus:
+  prometheusSpec:
+    retention: 6h
+    resources: { requests: { memory: 400Mi }, limits: { memory: 800Mi } }
+    scrapeInterval: 30s
+nodeExporter: { enabled: false }
+prometheus-node-exporter: { enabled: false }
+kubeStateMetrics: { enabled: true }

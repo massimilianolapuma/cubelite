@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Namespace
+metadata: { name: shop }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: api, namespace: shop }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: api } }
+  template:
+    metadata: { labels: { app: api } }
+    spec:
+      containers:
+        - name: api
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - i=0; while true; do i=$((i+1));
+              if [ $((i % 7)) -eq 0 ]; then echo "{\"level\":\"error\",\"msg\":\"payment failed\",\"order\":$i}";
+              elif [ $((i % 3)) -eq 0 ]; then echo "WARN slow request id=$i";
+              else echo "{\"level\":\"info\",\"msg\":\"request served\",\"order\":$i,\"latency_ms\":$((i % 50))}"; fi;
+              sleep 2; done
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }
