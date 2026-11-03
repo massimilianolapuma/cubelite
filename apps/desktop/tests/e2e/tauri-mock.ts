@@ -233,8 +233,8 @@ export function tauriMockScript(): string {
       case "elastic_auth_method": return "none";
       case "prometheus_metrics": {
         window.__lastPromMetrics = args;
-        const charts = ["cpu", "cpu-request", "cpu-limit", "memory", "memory-request", "memory-limit", "restarts", "network-rx", "network-tx"];
-        const value = { cpu: 0.25, "cpu-request": 0.5, "cpu-limit": 1, memory: 104857600, "memory-request": 134217728, "memory-limit": 268435456, restarts: 2, "network-rx": 2048, "network-tx": 1024 };
+        const charts = ["cpu", "cpu-request", "cpu-limit", "memory", "memory-request", "memory-limit", "restarts", "restarts-total", "network-rx", "network-tx"];
+        const value = { cpu: 0.25, "cpu-request": 0.5, "cpu-limit": 1, memory: 104857600, "memory-request": 134217728, "memory-limit": 268435456, restarts: 2, "restarts-total": 1, "network-rx": 2048, "network-tx": 1024 };
         return {
           start: 0, end: 3600, step: 15,
           charts: charts.map((chart) => ({

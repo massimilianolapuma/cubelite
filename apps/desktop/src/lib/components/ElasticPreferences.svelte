@@ -53,11 +53,10 @@
 		void context;
 		result = null;
 		detected = null;
-		auth.clearSecrets();
+		// Nothing typed for the previous context may leak into this one.
+		auth.reset();
 		if (!e) {
-			// Nothing from the previous context may leak into this one.
 			form.reset();
-			auth.reset();
 			indexPattern = DEFAULT_INDEX_PATTERN;
 			preset = 'ecs';
 			kibanaUrl = '';

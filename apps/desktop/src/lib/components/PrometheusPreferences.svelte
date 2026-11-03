@@ -49,11 +49,10 @@
 		void context;
 		result = null;
 		detected = null;
-		auth.clearSecrets();
+		// Nothing typed for the previous context may leak into this one.
+		auth.reset();
 		if (!e) {
-			// Nothing from the previous context may leak into this one.
 			form.reset();
-			auth.reset();
 			cluster = '';
 			grafanaUrl = '';
 			grafanaDatasource = '';
@@ -66,10 +65,6 @@
 		void refreshStoredMethod(e);
 	});
 
-	// In-cluster endpoints use the cluster credentials only.
-	$effect(() => {
-		if (form.mode === 'in-cluster' && auth.method !== 'none') auth.method = 'none';
-	});
 
 	async function refreshStoredMethod(e: PromEndpoint) {
 		const ctx = context;
@@ -110,8 +105,10 @@
 		};
 	}
 
-	/** Auth typed in the form, or null to use the stored one. */
+	/** Auth typed in the form, or null to use the stored one. In-cluster
+	 * endpoints always use the cluster credentials. */
 	function typedAuth(): PromAuth | null {
+		if (form.mode === 'in-cluster') return auth.stored === 'none' ? null : { method: 'none' };
 		switch (auth.method) {
 			case 'none':
 				return auth.stored === 'none' ? null : { method: 'none' };
@@ -184,16 +181,12 @@
 		});
 	}
 
-	const authOptions = $derived(
-		form.mode === 'in-cluster'
-			? [{ value: 'none', label: 'Cluster credentials' }]
-			: [
-					{ value: 'none', label: 'No authentication' },
-					{ value: 'basic', label: 'User and password' },
-					{ value: 'bearer', label: 'Bearer token' },
-					{ value: 'azure-cli', label: 'Azure CLI (Azure Monitor)' }
-				]
-	);
+	const authOptions = [
+		{ value: 'none', label: 'No authentication' },
+		{ value: 'basic', label: 'User and password' },
+		{ value: 'bearer', label: 'Bearer token' },
+		{ value: 'azure-cli', label: 'Azure CLI (Azure Monitor)' }
+	];
 	const secretMethods = { bearer: { label: 'Bearer token', placeholder: 'token' } };
 </script>
 
@@ -235,17 +228,19 @@
 				</div>
 				{#if grafanaError}<p class="type-caption text-status-err">{grafanaError}</p>{/if}
 
-				<AuthFields fields={auth} options={authOptions} {secretMethods}>
-					{#snippet extra()}
-						{#if auth.method === 'azure-cli'}
-							<p class="type-caption {azureError ? 'text-status-err' : 'text-text-tertiary'}">
-								{azureError ?? 'Uses the account `az` is logged in with; the token is kept in memory only.'}
-							</p>
-						{:else if form.mode === 'in-cluster'}
-							<p class="type-caption text-text-tertiary">Reached through the API server with your cluster credentials.</p>
-						{/if}
-					{/snippet}
-				</AuthFields>
+				{#if form.mode === 'in-cluster'}
+					<p class="type-caption text-text-tertiary">Reached through the API server with your cluster credentials.</p>
+				{:else}
+					<AuthFields fields={auth} options={authOptions} {secretMethods}>
+						{#snippet extra()}
+							{#if auth.method === 'azure-cli'}
+								<p class="type-caption {azureError ? 'text-status-err' : 'text-text-tertiary'}">
+									{azureError ?? 'Uses the account `az` is logged in with; the token is kept in memory only.'}
+								</p>
+							{/if}
+						{/snippet}
+					</AuthFields>
+				{/if}
 			{/if}
 
 			<FormActions

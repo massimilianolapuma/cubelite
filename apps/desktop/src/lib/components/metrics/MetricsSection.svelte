@@ -10,7 +10,6 @@
 		formatValue,
 		latest,
 		latestTotal,
-		restartsInRange,
 		seriesColor,
 		sumPoints,
 		type ChartLine,
@@ -42,6 +41,10 @@
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let result = $state<MetricsResult | null>(null);
+	/** Range of `result` (the selection may already be another one). */
+	let resultRange = $state<MetricsRange>('1h');
+	/** Pod or deployment the result belongs to. */
+	let resultKey = '';
 	let root = $state<HTMLElement | null>(null);
 	let generation = 0;
 
@@ -65,6 +68,13 @@
 		const context = app.activeCluster;
 		const ep = endpoint;
 		const request = { namespace, workload, range, perContainer };
+		const key = `${context}|${namespace}|${workload.kind}/${workload.name}`;
+		if (key !== resultKey) {
+			// Another pod in the same drawer: never show the previous one's charts.
+			resultKey = key;
+			result = null;
+			error = null;
+		}
 		if (!visible || !context || !ep) return;
 		void load(context, ep, request);
 	});
@@ -79,7 +89,10 @@
 		error = null;
 		try {
 			const data = await prometheusMetrics(app.kubeconfigPath, context, ep, request);
-			if (mine === generation) result = data;
+			if (mine === generation) {
+				result = data;
+				resultRange = request.range;
+			}
 		} catch (e) {
 			if (mine === generation) {
 				error = errorMessage(e);
@@ -158,12 +171,28 @@
 			grafanaUrl: ep.grafanaUrl,
 			datasource: ep.grafanaDatasource,
 			queries,
-			range
+			range: resultRange
 		}).catch((e) => toasts.push(errorMessage(e), 'err'));
 	}
 
 	const onGrafana = (...charts: Chart[]) => (endpoint?.grafanaUrl && result ? () => grafana(...charts) : undefined);
-	const ALL: Chart[] = ['cpu', 'cpu-request', 'cpu-limit', 'memory', 'memory-request', 'memory-limit', 'restarts', 'network-rx', 'network-tx'];
+	const ALL: Chart[] = [
+		'cpu',
+		'cpu-request',
+		'cpu-limit',
+		'memory',
+		'memory-request',
+		'memory-limit',
+		'restarts',
+		'restarts-total',
+		'network-rx',
+		'network-tx'
+	];
+	const restartsTotal = $derived.by(() => {
+		const total = series('restarts-total')[0];
+		const value = total ? latest(total.points) : null;
+		return value === null ? '—' : `${Math.round(value)} in range`;
+	});
 	const emptyCadvisor = 'no data — needs cAdvisor metrics in Prometheus';
 	const emptyKsm = 'no data — needs kube-state-metrics in Prometheus';
 </script>
@@ -176,13 +205,14 @@
 				<LoaderCircle class="h-3 w-3 animate-spin text-text-tertiary" aria-label="Loading metrics" />
 			{/if}
 			<span class="ml-auto"></span>
-			<SegmentedControl segments={METRICS_RANGES} bind:value={range} />
+			<SegmentedControl segments={METRICS_RANGES} bind:value={range} label="Metrics range" />
 			<SegmentedControl
 				segments={[
 					{ value: 'container', label: 'per container' },
 					{ value: 'total', label: 'total' }
 				]}
 				bind:value={split}
+				label="Per container or total"
 			/>
 			{#if endpoint.grafanaUrl && result}
 				<button
@@ -205,7 +235,7 @@
 					lines={cpuLines}
 					start={result.start}
 					end={result.end}
-					{range}
+					range={resultRange}
 					error={chartError('cpu')}
 					emptyText={emptyCadvisor}
 					onGrafana={onGrafana('cpu', 'cpu-request', 'cpu-limit')}
@@ -217,7 +247,7 @@
 					lines={memoryLines}
 					start={result.start}
 					end={result.end}
-					{range}
+					range={resultRange}
 					error={chartError('memory')}
 					emptyText={emptyCadvisor}
 					onGrafana={onGrafana('memory', 'memory-request', 'memory-limit')}
@@ -225,14 +255,14 @@
 				<LineChart
 					title="Restarts"
 					unit="count"
-					summary="{restartsInRange(series('restarts'))} in range"
+					summary={restartsTotal}
 					lines={restartLines}
 					start={result.start}
 					end={result.end}
-					{range}
-					error={chartError('restarts')}
+					range={resultRange}
+					error={chartError('restarts', 'restarts-total')}
 					emptyText={emptyKsm}
-					onGrafana={onGrafana('restarts')}
+					onGrafana={onGrafana('restarts', 'restarts-total')}
 				/>
 				<LineChart
 					title="Network"
@@ -241,7 +271,7 @@
 					lines={networkLines}
 					start={result.start}
 					end={result.end}
-					{range}
+					range={resultRange}
 					error={chartError('network-rx', 'network-tx')}
 					emptyText={emptyCadvisor}
 					onGrafana={onGrafana('network-rx', 'network-tx')}

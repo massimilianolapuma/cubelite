@@ -32,7 +32,7 @@
 	// Last hour of CPU and memory from Prometheus, after the rows (#510).
 	$effect(() => {
 		void pods;
-		if (prometheus.active) void prometheus.loadSparklines(app.namespace);
+		void prometheus.loadSparklines(app.namespace);
 	});
 	const sparkTitle = $derived(
 		prometheus.sparklineError ? `sparklines unavailable: ${prometheus.sparklineError}` : 'sparkline: last hour, from Prometheus'
@@ -94,13 +94,17 @@
 						<span class="type-data-sm {usage ? 'text-text-secondary' : 'text-text-disabled'}">
 							{usage ? formatCpu(usage.cpu_millis) : '—'}
 						</span>
-						<Sparkline points={prometheus.cpuFor(pod.namespace, pod.name)} label="CPU, last hour" />
+						{#if prometheus.active}
+							<Sparkline points={prometheus.cpuFor(pod.namespace, pod.name)} label="CPU, last hour" />
+						{/if}
 					</span>
 					<span class="flex items-center gap-1.5">
 						<span class="type-data-sm {usage ? 'text-text-secondary' : 'text-text-disabled'}">
 							{usage ? formatBytes(usage.memory_bytes) : '—'}
 						</span>
-						<Sparkline points={prometheus.memoryFor(pod.namespace, pod.name)} label="Memory, last hour" />
+						{#if prometheus.active}
+							<Sparkline points={prometheus.memoryFor(pod.namespace, pod.name)} label="Memory, last hour" />
+						{/if}
 					</span>
 					<span class="flex items-center justify-between gap-1.5">
 						<span

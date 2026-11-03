@@ -30,7 +30,7 @@ const endpoint: PromEndpoint = {
 };
 
 function result(overrides: Partial<Record<Chart, { series?: MetricsResult["charts"][number]["series"]; error?: string }>> = {}): MetricsResult {
-  const charts: Chart[] = ["cpu", "cpu-request", "cpu-limit", "memory", "memory-request", "memory-limit", "restarts", "network-rx", "network-tx"];
+  const charts: Chart[] = ["cpu", "cpu-request", "cpu-limit", "memory", "memory-request", "memory-limit", "restarts", "restarts-total", "network-rx", "network-tx"];
   return {
     start: 0,
     end: 3600,
@@ -61,7 +61,7 @@ describe("MetricsSection (#510)", () => {
 
   it("charts the pod and reloads for another range", async () => {
     vi.mocked(prometheusMetrics).mockResolvedValue(
-      result({ restarts: { series: [{ label: "web", points: [[0, 1], [1800, 3]] }] } }),
+      result({ "restarts-total": { series: [{ label: "", points: [[3600, 2]] }] } }),
     );
     render(MetricsSection, { namespace: "shop", workload: { kind: "pod", name: "api-0" } });
     await waitFor(() => expect(screen.getAllByTestId("metrics-chart")).toHaveLength(4));
@@ -81,11 +81,21 @@ describe("MetricsSection (#510)", () => {
 
   it("shows per-chart errors and missing exporters", async () => {
     vi.mocked(prometheusMetrics).mockResolvedValue(
-      result({ restarts: { series: [] }, cpu: { error: "Prometheus returned 422: boom" } }),
+      result({ restarts: { series: [] }, "restarts-total": { series: [] }, cpu: { error: "Prometheus returned 422: boom" } }),
     );
     render(MetricsSection, { namespace: "shop", workload: { kind: "deployment", name: "api" } });
     await waitFor(() => expect(screen.getByText("Prometheus returned 422: boom")).toBeInTheDocument());
     expect(screen.getByText(/needs kube-state-metrics/)).toBeInTheDocument();
+  });
+
+  it("never shows the previous pod's charts in the same drawer", async () => {
+    vi.mocked(prometheusMetrics).mockResolvedValueOnce(result());
+    const view = render(MetricsSection, { namespace: "shop", workload: { kind: "pod", name: "api-0" } });
+    await waitFor(() => expect(screen.getAllByTestId("metrics-chart")).toHaveLength(4));
+    vi.mocked(prometheusMetrics).mockReturnValueOnce(new Promise(() => {}));
+    await view.rerender({ namespace: "shop", workload: { kind: "pod", name: "api-1" } });
+    await waitFor(() => expect(screen.queryAllByTestId("metrics-chart")).toHaveLength(0));
+    expect(screen.getByText("loading metrics…")).toBeInTheDocument();
   });
 
   it("opens Grafana with the chart queries", async () => {
@@ -108,6 +118,26 @@ describe("MetricsSection (#510)", () => {
 });
 
 describe("prometheus sparklines store (#510)", () => {
+  it("drops another cluster's sparklines and late answers", async () => {
+    let resolveA: (v: { cpu: Record<string, [number, number][]>; memory: object }) => void = () => {};
+    vi.mocked(prometheusSparklines).mockReturnValueOnce(
+      new Promise((r) => (resolveA = r as typeof resolveA)) as never,
+    );
+    const loadingA = prometheus.loadSparklines("shop", 5_000_000);
+    app.activeCluster = "staging";
+    prometheus.setEndpoint("staging", endpoint);
+    vi.mocked(prometheusSparklines).mockResolvedValueOnce({ cpu: { "shop/b-0": [[0, 1]] }, memory: {} });
+    await prometheus.loadSparklines("shop", 5_000_001);
+    resolveA({ cpu: { "shop/a-0": [[0, 1]] }, memory: {} });
+    await loadingA;
+    expect(prometheus.cpuFor("shop", "b-0")).not.toBeNull();
+    expect(prometheus.cpuFor("shop", "a-0")).toBeNull();
+    prometheus.setEndpoint("staging", null);
+    await prometheus.loadSparklines("shop", 5_000_002);
+    expect(prometheus.sparklines).toBeNull();
+    app.activeCluster = "prod";
+  });
+
   it("loads once per scope within the interval and keys by namespace/pod", async () => {
     vi.mocked(prometheusSparklines).mockResolvedValue({ cpu: { "shop/api-0": [[0, 0.1]] }, memory: {} });
     await prometheus.loadSparklines("shop", 1_000_000);

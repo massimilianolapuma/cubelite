@@ -7,7 +7,6 @@ import {
   maxValue,
   nearestIndex,
   niceMax,
-  restartsInRange,
   sumPoints,
 } from "./metrics";
 import { bindingOf, saveCredentials, urlProblem } from "./integration";
@@ -33,13 +32,6 @@ describe("metrics helpers (#510)", () => {
     expect(latestTotal([{ label: "a", points: [[1, 1]] }, { label: "b", points: [[1, 2]] }])).toBe(3);
     expect(latestTotal([])).toBeNull();
     expect(maxValue([{ label: "", points: [[1, 3], [2, null], [3, 7]] }])).toBe(7);
-  });
-
-  it("counts restarts across counter resets", () => {
-    // 2 restarts, a new pod starting from 0, then 1 more.
-    const points: Point[] = [[1, 3], [2, 4], [3, 5], [4, 0], [5, null], [6, 1]];
-    expect(restartsInRange([{ label: "web", points }])).toBe(3);
-    expect(restartsInRange([])).toBe(0);
   });
 
   it("sums series point-wise for deployment sparklines", () => {

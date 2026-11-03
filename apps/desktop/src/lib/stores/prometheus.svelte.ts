@@ -17,7 +17,6 @@ class PrometheusStore extends EndpointStore<PromEndpoint> {
   sparklineError = $state<string | null>(null);
   #scope: string | null = null;
   #loadedAt = 0;
-  #inFlight = false;
 
   /** The active context's endpoint. */
   get active(): PromEndpoint | null {
@@ -31,16 +30,17 @@ class PrometheusStore extends EndpointStore<PromEndpoint> {
   async loadSparklines(namespace: string | null, now = Date.now()): Promise<void> {
     const context = app.activeCluster;
     const endpoint = this.endpointFor(context);
-    if (!context || !endpoint) {
+    const scope = context && endpoint ? `${context}|${namespace ?? "*"}|${JSON.stringify(endpoint)}` : null;
+    if (scope !== this.#scope) {
+      // Another cluster, namespace or endpoint: nothing of the old one stays,
+      // and a late answer for it is dropped below.
+      this.#scope = scope;
+      this.#loadedAt = 0;
       this.sparklines = null;
-      return;
+      this.sparklineError = null;
     }
-    const scope = `${context}|${namespace ?? "*"}|${JSON.stringify(endpoint)}`;
-    if (this.#inFlight || (scope === this.#scope && now - this.#loadedAt < SPARKLINE_INTERVAL_MS)) return;
-    if (scope !== this.#scope) this.sparklines = null;
-    this.#scope = scope;
+    if (!scope || !context || !endpoint || now - this.#loadedAt < SPARKLINE_INTERVAL_MS) return;
     this.#loadedAt = now;
-    this.#inFlight = true;
     try {
       const data = await prometheusSparklines(app.kubeconfigPath, context, endpoint, namespace);
       if (scope !== this.#scope) return;
@@ -48,8 +48,6 @@ class PrometheusStore extends EndpointStore<PromEndpoint> {
       this.sparklineError = null;
     } catch (e) {
       if (scope === this.#scope) this.sparklineError = errorMessage(e);
-    } finally {
-      this.#inFlight = false;
     }
   }
 

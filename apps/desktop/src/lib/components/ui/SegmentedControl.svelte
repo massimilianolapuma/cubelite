@@ -9,17 +9,21 @@
 	let {
 		segments,
 		value = $bindable(),
-		onChange
+		onChange,
+		label
 	}: {
 		segments: Segment<T>[];
 		value: T;
 		onChange?: (value: T) => void;
+		/** Accessible name of the group. */
+		label?: string;
 	} = $props();
 </script>
 
 <div
 	class="inline-flex overflow-hidden rounded-md border border-border-default bg-surface-window"
 	role="radiogroup"
+	aria-label={label}
 >
 	{#each segments as segment (segment.value)}
 		{@const active = value === segment.value}

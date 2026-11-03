@@ -92,6 +92,16 @@ fn chart_queries_group_by_container_or_sum() {
         Chart::ALL
     );
     assert!(queries[0].1.contains("[1440s]"));
+    let total = &queries
+        .iter()
+        .find(|(c, _)| *c == Chart::RestartsTotal)
+        .expect("total")
+        .1;
+    assert_eq!(
+        total,
+        r#"sum(increase(kube_pod_container_status_restarts_total{namespace="shop", pod="api-0"}[86400s]))"#,
+        "per pod and container over the whole range, then summed"
+    );
 }
 
 #[test]

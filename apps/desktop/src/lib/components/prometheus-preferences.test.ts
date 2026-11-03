@@ -33,8 +33,8 @@ describe("PrometheusPreferences (#510)", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Detect" }));
     await fireEvent.click(await screen.findByRole("button", { name: "Use" }));
     expect(screen.getByLabelText("Service")).toHaveValue("prometheus-operated");
-    expect(screen.getByLabelText("Authentication")).toHaveValue("none");
-    expect(screen.queryByRole("option", { name: "Bearer token" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Authentication")).not.toBeInTheDocument();
+    expect(screen.getByText(/with your cluster credentials/)).toBeInTheDocument();
     await fireEvent.input(screen.getByLabelText("Grafana URL"), { target: { value: "https://grafana.example" } });
     await fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
@@ -74,6 +74,22 @@ describe("PrometheusPreferences (#510)", () => {
     await waitFor(() => expect(prometheusSaveAuth).toHaveBeenCalled());
     expect(vi.mocked(prometheusSaveAuth).mock.calls[0][2]).toEqual({ method: "azure-cli" });
     expect(prometheus.endpointFor("prod")?.cluster).toBe("aks-prod");
+  });
+
+  it("keeps a stored Azure CLI choice when switching modes back and forth", async () => {
+    prometheus.setEndpoint("prod", {
+      target: { kind: "external", url: "https://ws.westeurope.prometheus.monitor.azure.com" },
+      cluster: null,
+      grafanaUrl: null,
+      grafanaDatasource: null,
+      skipTlsVerify: false,
+    });
+    vi.mocked(prometheusAuthMethod).mockResolvedValue("azure-cli");
+    render(PrometheusPreferences);
+    await waitFor(() => expect(screen.getByLabelText("Authentication")).toHaveValue("azure-cli"));
+    await fireEvent.click(screen.getByRole("radio", { name: "In cluster" }));
+    await fireEvent.click(screen.getByRole("radio", { name: "External" }));
+    expect(screen.getByLabelText("Authentication")).toHaveValue("azure-cli");
   });
 
   it("turning it off removes the endpoint and its secret", async () => {

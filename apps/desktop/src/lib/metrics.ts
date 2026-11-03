@@ -64,23 +64,6 @@ export function latestTotal(series: Series[]): number | null {
   return values.length === 0 ? null : values.reduce((a, b) => a + b, 0);
 }
 
-/**
- * Restarts in range from cumulative counters: the sum of every increase
- * (a counter dropping means a new pod started again from 0).
- */
-export function restartsInRange(series: Series[]): number {
-  let total = 0;
-  for (const s of series) {
-    let previous: number | null = null;
-    for (const [, v] of s.points) {
-      if (v === null) continue;
-      if (previous !== null && v > previous) total += v - previous;
-      previous = v;
-    }
-  }
-  return Math.round(total);
-}
-
 /** Point-wise sum of series sharing timestamps (deployment sparklines). */
 export function sumPoints(series: Point[][]): Point[] {
   const byTime = new Map<number, number>();

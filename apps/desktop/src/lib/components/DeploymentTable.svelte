@@ -38,15 +38,21 @@
 	// Last hour of CPU from Prometheus, summed over each deployment's pods (#510).
 	$effect(() => {
 		void deployments;
-		if (prometheus.active) void prometheus.loadSparklines(app.namespace);
+		void prometheus.loadSparklines(app.namespace);
 	});
-	function cpuOf(dep: DeploymentInfo) {
-		const series = resources.pods
-			.filter((p) => p.namespace === dep.namespace && matchesSelector(p.labels, dep.selector))
-			.map((p) => prometheus.cpuFor(p.namespace, p.name))
-			.filter((s) => s !== null);
-		return series.length > 0 ? sumPoints(series) : null;
-	}
+	// Current pods only: a rollout within the hour shows the new pods' part.
+	const cpuByDeployment = $derived.by(() => {
+		const out: Record<string, ReturnType<typeof sumPoints>> = {};
+		if (!withCpu || !prometheus.sparklines) return out;
+		for (const dep of deployments) {
+			const series = resources.pods
+				.filter((p) => p.namespace === dep.namespace && matchesSelector(p.labels, dep.selector))
+				.map((p) => prometheus.cpuFor(p.namespace, p.name))
+				.filter((s) => s !== null);
+			if (series.length > 0) out[`${dep.namespace}/${dep.name}`] = sumPoints(series);
+		}
+		return out;
+	});
 
 	/** Replica segments shown next to the stepper (more render as "+N"). */
 	const MAX_SEGMENTS = 8;
@@ -101,7 +107,7 @@
 					</span>
 					<span class="type-data-sm text-text-secondary">{formatAge(dep.creation_timestamp)}</span>
 					{#if withCpu}
-						<span class="flex items-center"><Sparkline points={cpuOf(dep)} label="CPU, last hour" /></span>
+						<span class="flex items-center"><Sparkline points={cpuByDeployment[`${dep.namespace}/${dep.name}`] ?? null} label="CPU, last hour" /></span>
 					{/if}
 					<span class="flex items-center gap-1.5">
 						<span class="flex items-center overflow-hidden rounded-md border border-border-default">

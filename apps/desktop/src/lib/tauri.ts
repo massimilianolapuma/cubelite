@@ -896,6 +896,8 @@ export type Chart =
   | "memory-request"
   | "memory-limit"
   | "restarts"
+  /** Restarts over the whole range, computed by Prometheus (one point). */
+  | "restarts-total"
   | "network-rx"
   | "network-tx";
 

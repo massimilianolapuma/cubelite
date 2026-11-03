@@ -395,12 +395,21 @@ impl PromConnection {
             &[]
         };
         let results = join_all(queries.iter().map(|(chart, q)| async move {
-            let label: &[&str] = if matches!(chart, Chart::NetworkRx | Chart::NetworkTx) {
+            let label: &[&str] = if matches!(
+                chart,
+                Chart::NetworkRx | Chart::NetworkTx | Chart::RestartsTotal
+            ) {
                 &[]
             } else {
                 label
             };
-            self.query_range(q, start, end, step)
+            // The total is one evaluation at the end of the range.
+            let from = if *chart == Chart::RestartsTotal {
+                end
+            } else {
+                start
+            };
+            self.query_range(q, from, end, step)
                 .await
                 .and_then(|data| parse_series(&data, label))
         }))

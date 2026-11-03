@@ -202,9 +202,11 @@ pub enum Chart {
     MemoryRequest,
     /// Memory limits (bytes).
     MemoryLimit,
-    /// Cumulative restart counter; the range total is the sum of its
-    /// increases (a new pod starts again from 0).
+    /// Cumulative restart counter (the line; a new pod starts again from 0).
     Restarts,
+    /// Restarts over the whole range, computed per pod and container by
+    /// Prometheus (counter resets and replaced pods handled), one point.
+    RestartsTotal,
     /// Received bytes per second (pod level).
     NetworkRx,
     /// Transmitted bytes per second (pod level).
@@ -213,7 +215,7 @@ pub enum Chart {
 
 impl Chart {
     /// Every chart, in display order.
-    pub const ALL: [Chart; 9] = [
+    pub const ALL: [Chart; 10] = [
         Chart::Cpu,
         Chart::CpuRequest,
         Chart::CpuLimit,
@@ -221,6 +223,7 @@ impl Chart {
         Chart::MemoryRequest,
         Chart::MemoryLimit,
         Chart::Restarts,
+        Chart::RestartsTotal,
         Chart::NetworkRx,
         Chart::NetworkTx,
     ];
@@ -310,6 +313,12 @@ pub fn chart_query(chart: Chart, sel: &str, per_container: bool, window: u64) ->
         }
         Chart::Memory => format!("container_memory_working_set_bytes{{{sel}, {containers}}}"),
         Chart::Restarts => format!("kube_pod_container_status_restarts_total{{{sel}}}"),
+        // `window` is the whole range here (see `metrics_queries`).
+        Chart::RestartsTotal => {
+            return format!(
+                "sum(increase(kube_pod_container_status_restarts_total{{{sel}}}[{window}s]))"
+            )
+        }
         Chart::NetworkRx => {
             return format!("sum(rate(container_network_receive_bytes_total{{{sel}}}[{window}s]))")
         }
@@ -348,7 +357,16 @@ pub fn metrics_queries(request: &MetricsRequest, cluster: Option<&str>) -> Vec<(
         .map(|&chart| {
             (
                 chart,
-                chart_query(chart, &sel, request.per_container, window),
+                chart_query(
+                    chart,
+                    &sel,
+                    request.per_container,
+                    if chart == Chart::RestartsTotal {
+                        request.range.seconds()
+                    } else {
+                        window
+                    },
+                ),
             )
         })
         .collect()
