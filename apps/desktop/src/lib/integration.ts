@@ -52,6 +52,11 @@ export const INPUT_CLASS =
   "focus-ring h-7 w-full rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled";
 export const BUTTON_CLASS =
   "focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110 disabled:opacity-50";
+/** Borderless caption link that opens a web UI (Kibana, Grafana). */
+export const UI_LINK_CLASS =
+  "focus-ring type-caption flex items-center gap-1 rounded-sm text-text-tertiary hover:text-text-secondary";
+/** Borderless caption link in the accent color ("Set up"). */
+export const ACCENT_LINK_CLASS = "focus-ring type-caption rounded-sm text-accent hover:brightness-110";
 
 /**
  * Stores the credentials typed for `endpoint` (or removes them when the
@@ -94,6 +99,18 @@ export async function saveCredentials<E extends { target: IntegrationTarget; ski
 /** A detected service as stored on an endpoint (`kibanaService`, `grafanaService`). */
 export function serviceRef(found: { namespace: string; name: string; port: number; https: boolean }): ServiceRef {
   return { namespace: found.namespace, service: found.name, port: found.port, https: found.https };
+}
+
+/**
+ * Whether a web UI can be opened: a configured URL wins, else an in-cluster
+ * service reached through a port-forward (Kibana #505, Grafana #525).
+ */
+export function canOpenWebUi(
+  url: string | null | undefined,
+  target: IntegrationTarget,
+  service: ServiceRef | null | undefined,
+): boolean {
+  return !!url?.trim() || (target.kind === "in-cluster" && !!service);
 }
 
 /**

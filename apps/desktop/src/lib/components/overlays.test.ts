@@ -243,6 +243,24 @@ describe("PreferencesModal", () => {
     expect(settings.skipTls.value).toBe(true);
   });
 
+  it("toggles integration hints and opens on a requested integration (#526)", async () => {
+    settings.integrationHints.value = true;
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    app.openPreferences("prometheus");
+    render(PreferencesModal);
+    expect(app.preferencesOpen).toBe(true);
+    expect(app.preferencesSection).toBeNull();
+    expect(scrolled[0]?.querySelector('[data-testid="prometheus-prefs"]')).not.toBeNull();
+    await fireEvent.click(screen.getByRole("switch", { name: "Show integration hints in panels" }));
+    expect(settings.integrationHints.value).toBe(false);
+    await fireEvent.click(screen.getByRole("switch", { name: "Show integration hints in panels" }));
+    expect(settings.integrationHints.value).toBe(true);
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
   it("persists density and applies it to the document", async () => {
     render(PreferencesModal);
     await fireEvent.click(screen.getByRole("radio", { name: "Compact" }));

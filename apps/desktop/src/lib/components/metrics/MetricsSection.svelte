@@ -4,7 +4,15 @@
 	import LineChart from '#lib/components/metrics/LineChart.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import { errorMessage } from '#lib/errors.ts';
-	import { webUiBase } from '#lib/integration.ts';
+	import { BUTTON_CLASS, UI_LINK_CLASS } from '#lib/integration.ts';
+	import {
+		METRICS_HINT,
+		canOpenGrafana as canOpenGrafanaUi,
+		grafanaBase,
+		showsIntegrationHint,
+		toastErrors
+	} from '#lib/integration-links.ts';
+	import { settings } from '#lib/stores/settings.svelte.ts';
 	import {
 		METRICS_RANGES,
 		chartData,
@@ -19,7 +27,6 @@
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import {
-		grafanaPortForward,
 		openGrafanaExplore,
 		prometheusMetrics,
 		type Chart,
@@ -28,7 +35,6 @@
 		type Series,
 		type Workload
 	} from '#lib/tauri.ts';
-	import { toasts } from '#lib/stores/toasts.svelte.ts';
 
 	// Metrics section of a pod or deployment drawer (#510, spec §5.1): the
 	// recent history from Prometheus; only rendered when the context has a
@@ -164,27 +170,21 @@
 	});
 
 	// A configured URL wins; else an in-cluster Grafana through a port-forward (#525).
-	const canOpenGrafana = $derived(
-		!!endpoint?.grafanaUrl?.trim() || (endpoint?.target.kind === 'in-cluster' && !!endpoint.grafanaService)
-	);
+	const canOpenGrafana = $derived(canOpenGrafanaUi(endpoint));
+	// Without Prometheus, a compact placeholder tells what the section would show (#526).
+	const hint = $derived(showsIntegrationHint(endpoint, settings.integrationHints.value));
 
 	async function grafana(...charts: Chart[]) {
 		const ep = endpoint;
-		const context = app.activeCluster;
 		const data = result;
-		if (!ep || !context || !data) return;
+		if (!ep || !data) return;
 		const queries = charts.map((c) => chartData(data.charts, c)?.query).filter((q): q is string => !!q);
 		const range = resultRange;
-		try {
-			const service = ep.target.kind === 'in-cluster' ? ep.grafanaService : null;
-			const grafanaUrl = await webUiBase(ep.grafanaUrl, service, (s) =>
-				grafanaPortForward(app.kubeconfigPath, context, s)
-			);
+		await toastErrors(async () => {
+			const grafanaUrl = await grafanaBase(ep);
 			if (!grafanaUrl) return;
 			await openGrafanaExplore({ grafanaUrl, datasource: ep.grafanaDatasource, queries, range });
-		} catch (e) {
-			toasts.push(errorMessage(e), 'err');
-		}
+		});
 	}
 
 	const onGrafana = (...charts: Chart[]) => (canOpenGrafana && result ? () => void grafana(...charts) : undefined);
@@ -227,11 +227,7 @@
 				label="Per container or total"
 			/>
 			{#if canOpenGrafana && result}
-				<button
-					type="button"
-					class="focus-ring type-caption flex items-center gap-1 rounded-sm text-text-tertiary hover:text-text-secondary"
-					onclick={() => void grafana(...ALL)}
-				>
+				<button type="button" class={UI_LINK_CLASS} onclick={() => void grafana(...ALL)}>
 					<ExternalLink class="h-3 w-3" /> Grafana
 				</button>
 			{/if}
@@ -292,5 +288,26 @@
 		{:else}
 			<p class="type-caption text-text-disabled">loading metrics…</p>
 		{/if}
+	</div>
+{:else if hint}
+	<div
+		class="flex items-center gap-2 rounded-lg border border-border-faint px-2.5 py-2"
+		data-testid="metrics-hint"
+	>
+		<div class="min-w-0 flex-1">
+			<div class="type-section text-text-tertiary">Metrics</div>
+			<p class="type-caption mt-0.5 text-text-tertiary">{METRICS_HINT}</p>
+		</div>
+		<button type="button" class={BUTTON_CLASS} onclick={() => app.openPreferences('prometheus')}>
+			Set up Prometheus
+		</button>
+		<button
+			type="button"
+			class={UI_LINK_CLASS}
+			title="Hide integration hints (Preferences → Integrations brings them back)"
+			onclick={() => (settings.integrationHints.value = false)}
+		>
+			Hide
+		</button>
 	</div>
 {/if}
