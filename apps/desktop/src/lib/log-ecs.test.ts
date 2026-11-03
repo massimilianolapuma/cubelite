@@ -186,6 +186,25 @@ describe("nested output", () => {
     expect(Object.keys(nested)).toContain("__proto__");
   });
 
+  it("does not let a later scalar overwrite an object on the same path", () => {
+    const nested = ecsNested({
+      level: "info",
+      fields: [
+        { key: "service.name", value: "a", added: false },
+        { key: "service", value: "b", added: false },
+      ],
+    });
+    expect(JSON.parse(JSON.stringify(nested))).toEqual({ service: { name: "a" }, service_: "b" });
+    const deep = ecsNested({
+      level: "info",
+      fields: [
+        { key: "log.level.x", value: 1, added: false },
+        { key: "log.level", value: "info", added: false },
+      ],
+    });
+    expect(JSON.parse(JSON.stringify(deep))).toEqual({ log: { level: { x: 1 } }, "log.level": "info" });
+  });
+
   it("keeps large integers exact", () => {
     expect(ecsJson(toEcs(line('{"msg":"m","id":12345678901234567890}')))).toContain('"id":12345678901234567890');
   });
@@ -223,6 +242,11 @@ describe("ecsTable", () => {
     const keys = ecsTable(toEcs(line('{"msg":"m","zeta":1,"alpha":2}'))).map((f) => f.key);
     expect(keys[0]).toBe("@timestamp");
     expect(keys).toEqual([...keys].sort());
+  });
+
+  it("keeps @timestamp first even before digit or $ keys", () => {
+    const keys = ecsTable(toEcs(line('{"msg":"m","1":2,"$x":1}'))).map((f) => f.key);
+    expect(keys[0]).toBe("@timestamp");
   });
 });
 

@@ -200,7 +200,13 @@ export function ecsNested(doc: EcsDocument): JsonObject {
       }
       node = node[parts[i]] as JsonObject;
     }
-    if (!placed) node[parts[parts.length - 1]] = value;
+    if (!placed) {
+      const last = parts[parts.length - 1];
+      // An object already sits at this slot (`service.name` before `service`): keep the
+      // key dotted at the root, or suffixed like a flatten collision when it has no dots.
+      if (Object.hasOwn(node, last) && isPlainObject(node[last])) root[parts.length > 1 ? key : `${key}_`] = value;
+      else node[last] = value;
+    }
   }
   return root;
 }
@@ -256,7 +262,10 @@ export function ecsRow(doc: EcsDocument): EcsRow {
 
 /** Field-table rows, Kibana order (by name; `@timestamp` sorts first). */
 export function ecsTable(doc: EcsDocument): EcsField[] {
-  return [...doc.fields].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const rank = (k: string) => (k === "@timestamp" ? 0 : 1);
+  return [...doc.fields].sort(
+    (a, b) => rank(a.key) - rank(b.key) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+  );
 }
 
 /** NDJSON export: one compact nested ECS document per line, newline-terminated. */
