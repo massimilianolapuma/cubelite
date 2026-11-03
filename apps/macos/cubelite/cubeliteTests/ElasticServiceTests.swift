@@ -225,6 +225,181 @@ final class ElasticServiceTests: XCTestCase {
             XCTAssertEqual(error as? ElasticError, .connect("no ready pod behind logging/es-http"))
         }
     }
+
+    // MARK: Point in time (#531)
+
+    private let pitPath = "/logs-*,filebeat-*,logstash-*/_pit"
+
+    /// A newest-first `_search` response on point in time `pit`.
+    private func pitPage(_ pit: String, sorts: [[Int]]) -> String {
+        let hits = sorts.map {
+            #"{"_source":{"@timestamp":"t","message":"m\#($0[0])"},"sort":[\#($0[0]),\#($0[1])]}"#
+        }
+        return #"{"pit_id":"\#(pit)","hits":{"total":{"value":3,"relation":"eq"},"hits":["#
+            + hits.joined(separator: ",") + "]}}"
+    }
+
+    func testHistoryPagesOnAPointInTimeAndClosesItAtTheEnd() async throws {
+        let searches = StubCounter()
+        let first = pitPage("pit-b", sorts: [[3, 9], [2, 8]])
+        let last = pitPage("pit-c", sorts: [[1, 7]])
+        IntegrationStubProtocol.reset(
+            [pitPath: (200, #"{"id":"pit-a"}"#), "/_pit": (200, #"{"succeeded":true}"#)],
+            handle: { request in
+                guard request.url?.path == "/_search" else { return nil }
+                return (200, searches.next() == 0 ? first : last)
+            })
+        let es = service()
+        var query = HistoryQuery(namespace: "shop", pod: "api-0", from: "now-1h", to: "now", size: 2)
+        let page = try await es.search(context: "prod", endpoint: endpoint, query: query)
+        XCTAssertEqual(page.lines.first?.message, "m3")
+        XCTAssertEqual(page.next, HistoryCursor(pitID: "pit-b", sort: [.number("2"), .number("8")]))
+        query.searchAfter = page.next
+        let older = try await es.search(context: "prod", endpoint: endpoint, query: query)
+        XCTAssertEqual(older.lines.map(\.message), ["m1"])
+        XCTAssertNil(older.next, "short page is the last")
+
+        let requests = IntegrationStubProtocol.requests
+        XCTAssertEqual(requests.map(\.method), ["POST", "POST", "POST", "DELETE"])
+        XCTAssertEqual(requests[0].url, "\(base)\(pitPath)?keep_alive=5m&ignore_unavailable=true")
+        XCTAssertEqual(requests[1].url, "\(base)/_search", "no index with a PIT")
+        let firstBody = JSONValue.parse(requests[1].body)
+        XCTAssertEqual(firstBody?["pit"], JSONValue.parse(#"{"id":"pit-a","keep_alive":"5m"}"#))
+        XCTAssertNil(firstBody?["search_after"])
+        let olderBody = JSONValue.parse(requests[2].body)
+        XCTAssertEqual(olderBody?["pit"]?["id"], .string("pit-b"), "Load older reuses the updated id")
+        XCTAssertEqual(olderBody?["search_after"], JSONValue.parse("[2,8]"))
+        XCTAssertEqual(requests[3].url, "\(base)/_pit", "closed after the last page")
+        XCTAssertEqual(JSONValue.parse(requests[3].body), JSONValue.parse(#"{"id":"pit-c"}"#))
+    }
+
+    func testHistoryFallsBackToSearchAfterWithoutPITAndRemembersIt() async throws {
+        IntegrationStubProtocol.reset([
+            pitPath: (403, #"{"error":{"reason":"unauthorized"}}"#),
+            "/logs-*,filebeat-*,logstash-*/_search": (200, searchResponse),
+        ])
+        let es = service()
+        let page = try await es.search(
+            context: "prod", endpoint: endpoint,
+            query: HistoryQuery(namespace: "shop", pod: "api-0", from: "now-1h", to: "now"))
+        XCTAssertEqual(page.lines.map(\.message), ["hello"])
+        let again = try await es.search(
+            context: "prod", endpoint: endpoint,
+            query: HistoryQuery(namespace: "shop", pod: "api-0", from: "now-1h", to: "now", size: 1))
+        XCTAssertEqual(again.next, HistoryCursor(pitID: nil, sort: [.number("1"), .number("2")]))
+        let requests = IntegrationStubProtocol.requests
+        XCTAssertEqual(requests.count, 3, "the PIT is probed once per connection")
+        XCTAssertTrue(requests[0].url.contains("/_pit?"))
+        for request in requests.dropFirst() {
+            XCTAssertTrue(request.url.contains("logstash-*/_search?ignore_unavailable=true"))
+            XCTAssertNil(JSONValue.parse(request.body)?["pit"])
+        }
+    }
+
+    func testAnExpiredPointInTimeResumesAtTheBoundaryOnANewOne() async throws {
+        let searches = StubCounter()
+        let expired = #"{"error":{"root_cause":[{"reason":"No search context found"}]},"status":404}"#
+        let resumed = pitPage("pit-new", sorts: [[1, 7]])
+        IntegrationStubProtocol.reset(
+            [pitPath: (200, #"{"id":"pit-new"}"#), "/_pit": (200, #"{"succeeded":true}"#)],
+            handle: { request in
+                guard request.url?.path == "/_search" else { return nil }
+                return searches.next() == 0 ? (404, expired) : (200, resumed)
+            })
+        let es = service()
+        var query = HistoryQuery(namespace: "shop", pod: "api-0", from: "now-1h", to: "now")
+        query.searchAfter = HistoryCursor(pitID: "pit-old", sort: [.number("2"), .number("8")])
+        let page = try await es.search(context: "prod", endpoint: endpoint, query: query)
+        XCTAssertEqual(page.lines.map(\.message), ["m1"])
+        let requests = IntegrationStubProtocol.requests
+        XCTAssertEqual(requests.map(\.method), ["POST", "POST", "POST", "DELETE"])
+        XCTAssertEqual(JSONValue.parse(requests[0].body)?["pit"]?["id"], .string("pit-old"))
+        XCTAssertTrue(requests[1].url.contains("/_pit?"))
+        let body = JSONValue.parse(requests[2].body)
+        XCTAssertEqual(body?["pit"]?["id"], .string("pit-new"))
+        XCTAssertEqual(
+            body?["search_after"], JSONValue.parse("[2,9223372036854775807]"),
+            "the old _shard_doc means nothing on a new PIT: resume at the boundary millisecond")
+    }
+
+    func testOtherPITOpenFailuresPageWithoutPITForThatRequestOnly() async throws {
+        let opens = StubCounter()
+        IntegrationStubProtocol.reset(
+            [
+                "/logs-*,filebeat-*,logstash-*/_search": (200, searchResponse),
+                "/_search": (200, pitPage("pit-a", sorts: [[1, 7]])),
+                "/_pit": (200, #"{"succeeded":true}"#),
+            ],
+            handle: { request in
+                guard request.url?.path == "/logs-*,filebeat-*,logstash-*/_pit" else { return nil }
+                return opens.next() == 0
+                    ? (429, #"{"error":{"reason":"too many Point In Time contexts"}}"#)
+                    : (200, #"{"id":"pit-a"}"#)
+            })
+        let es = service()
+        let query = HistoryQuery(namespace: "shop", pod: "api-0", from: "now-1h", to: "now")
+        let plain = try await es.search(context: "prod", endpoint: endpoint, query: query)
+        XCTAssertEqual(plain.lines.map(\.message), ["hello"])
+        let onPIT = try await es.search(context: "prod", endpoint: endpoint, query: query)
+        XCTAssertEqual(onPIT.lines.map(\.message), ["m1"], "probed again: a 429 is not remembered")
+        let urls = IntegrationStubProtocol.requests.map(\.url)
+        XCTAssertTrue(urls[1].contains("logstash-*/_search?"))
+        XCTAssertTrue(urls[2].contains("/_pit?"))
+        XCTAssertEqual(urls[3], "\(base)/_search")
+    }
+
+    func testAPITWithoutShardDocClosesItAndPagesWithoutPIT() async throws {
+        IntegrationStubProtocol.reset([
+            pitPath: (200, #"{"id":"pit-7"}"#),
+            "/_search": (400, #"{"error":{"reason":"No mapping found for [_shard_doc]"}}"#),
+            "/_pit": (200, #"{"succeeded":true}"#),
+            "/logs-*,filebeat-*,logstash-*/_search": (200, searchResponse),
+        ])
+        let es = service()
+        let query = HistoryQuery(namespace: "shop", pod: "api-0", from: "now-1h", to: "now")
+        let page = try await es.search(context: "prod", endpoint: endpoint, query: query)
+        XCTAssertEqual(page.lines.map(\.message), ["hello"])
+        _ = try await es.search(context: "prod", endpoint: endpoint, query: query)
+        let requests = IntegrationStubProtocol.requests
+        XCTAssertEqual(requests.map(\.method), ["POST", "POST", "DELETE", "POST", "POST"])
+        XCTAssertEqual(JSONValue.parse(requests[2].body), JSONValue.parse(#"{"id":"pit-7"}"#))
+        XCTAssertTrue(requests[3].url.contains("logstash-*/_search?"))
+        XCTAssertTrue(requests[4].url.contains("logstash-*/_search?"), "no probe on this connection")
+    }
+
+    func testClosingACursorDeletesItsPointInTimeThroughTheOpenConnection() async throws {
+        IntegrationStubProtocol.reset([
+            pitPath: (404, ""),
+            "/logs-*,filebeat-*,logstash-*/_search": (200, searchResponse),
+            "/_pit": (404, #"{"succeeded":true,"num_freed":0}"#),
+        ])
+        let es = service()
+        let cursor = HistoryCursor(pitID: "pit-z", sort: [.number("1")])
+        await es.closeCursor(context: "prod", endpoint: endpoint, cursor: cursor)
+        XCTAssertTrue(IntegrationStubProtocol.requests.isEmpty, "never connects just to close")
+        _ = try await es.search(
+            context: "prod", endpoint: endpoint,
+            query: HistoryQuery(namespace: "shop", pod: "api-0", from: "now-1h", to: "now"))
+        await es.closeCursor(context: "prod", endpoint: endpoint, cursor: cursor)
+        let close = try XCTUnwrap(IntegrationStubProtocol.requests.last)
+        XCTAssertEqual(close.method, "DELETE")
+        XCTAssertEqual(close.url, "\(base)/_pit")
+        XCTAssertEqual(JSONValue.parse(close.body), JSONValue.parse(#"{"id":"pit-z"}"#))
+    }
+}
+
+/// Counts calls across the stub protocol's threads.
+private final class StubCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    /// The number of earlier calls.
+    func next() -> Int {
+        lock.withLock {
+            defer { count += 1 }
+            return count
+        }
+    }
 }
 
 final class ElasticTunnelTests: XCTestCase {

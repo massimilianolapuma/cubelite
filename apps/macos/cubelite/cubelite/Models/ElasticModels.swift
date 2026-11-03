@@ -217,12 +217,22 @@ struct HistoryQuery: Equatable, Sendable {
     var to: String
     /// Free text, as a `simple_query_string` on the message field.
     var text: String?
-    /// `sort` values of the last hit of the previous page (exact numbers).
-    var searchAfter: [JSONValue]?
+    /// Where the previous page ended (its `next`); nil for the first page.
+    var searchAfter: HistoryCursor?
     /// Page size (default 500, capped at 1000).
     var size: Int?
 
     var pageSize: Int { min(max(size ?? Self.defaultPage, 1), Self.maxPage) }
+}
+
+/// Opaque paging cursor (#531): the `sort` values of the last hit (exact
+/// numbers) and, when the search runs on a point in time, its id. The log
+/// panel passes it back untouched for the next (older) page.
+struct HistoryCursor: Equatable, Sendable {
+    /// Point-in-time id; nil when the server has no PIT (plain `search_after`).
+    var pitID: String?
+    /// `sort` values of the last hit.
+    var sort: [JSONValue]
 }
 
 /// One history line, newest first in a page.
@@ -237,6 +247,10 @@ struct HistoryLine: Equatable, Sendable {
     let container: String?
     /// The stored `_source`, compact JSON (what JSON / ECS modes render).
     let document: String
+    /// `_index` of the hit (with `docID`, drops repeats between pages).
+    var docIndex: String? = nil
+    /// `_id` of the hit.
+    var docID: String? = nil
 }
 
 /// One page of history, newest first.
@@ -246,8 +260,8 @@ struct HistoryPage: Equatable, Sendable {
     let total: Int?
     /// `total` is a lower bound (more than 10 000 hits).
     let totalIsLowerBound: Bool
-    /// `searchAfter` for the next (older) page; nil at the end.
-    let next: [JSONValue]?
+    /// Cursor of the next (older) page; nil at the end.
+    let next: HistoryCursor?
 }
 
 /// Server facts for Preferences → Test connection.
@@ -298,9 +312,30 @@ enum Elastic {
         }
     }
 
+    /// How long Elasticsearch keeps a history point in time between pages.
+    static let pitKeepAlive = "5m"
+
+    /// `search_after` that resumes on a new point in time from the boundary
+    /// timestamp of `sort`: the largest `_shard_doc` keeps every hit of that
+    /// millisecond (newest first, descending tiebreaker).
+    static func resumeSort(_ sort: [JSONValue]) -> [JSONValue] {
+        [sort.first ?? .null, .number(String(Int64.max))]
+    }
+
     /// The `_search` body for a history page: filter on namespace, pod,
     /// optional container and time range; newest first; `search_after` paging.
-    static func searchBody(_ query: HistoryQuery, preset: FieldPreset) -> JSONValue {
+    ///
+    /// With a point in time (`pit`), the search names no index and
+    /// `_shard_doc` breaks every tie, so pages on one PIT neither skip nor
+    /// repeat hits with equal timestamps (#531). When an expired PIT is
+    /// replaced, paging resumes at the boundary millisecond, whose hits may
+    /// repeat (never skip); `LogHistory` drops repeats by `_index` + `_id`.
+    /// Without one (servers without PIT),
+    /// `_index` + `_doc` break most ties; equal timestamps on different
+    /// shards can still share sort values (rare), as on the desktop.
+    static func searchBody(_ query: HistoryQuery, preset: FieldPreset, pit: String? = nil)
+        -> JSONValue
+    {
         let f = preset.fields
         var filter: [JSONValue] = [
             object(["term": object([f.namespace: .string(query.namespace)])]),
@@ -325,34 +360,32 @@ enum Elastic {
                     ])
                 ]))
         }
+        // `unmapped_type` keeps indices without `@timestamp` from failing.
+        let timestamp = object([
+            "@timestamp": object(["order": .string("desc"), "unmapped_type": .string("date")])
+        ])
+        let tiebreakers =
+            pit == nil
+            ? [object(["_index": .string("asc")]), object(["_doc": .string("asc")])]
+            : [object(["_shard_doc": .string("desc")])]
         var members: [(String, JSONValue)] = [
             ("size", .number(String(query.pageSize))),
             ("track_total_hits", .number("10000")),
             ("query", object(["bool": object(["filter": .array(filter), "must": .array(must)])])),
-            // `_index` + `_doc` break most ties for `search_after`; without a
-            // point-in-time, equal timestamps on different shards can still
-            // share sort values (rare; accepted in v1, as on the desktop).
-            // `unmapped_type` keeps indices without `@timestamp` from failing.
-            (
-                "sort",
-                .array([
-                    object([
-                        "@timestamp": object([
-                            "order": .string("desc"), "unmapped_type": .string("date"),
-                        ])
-                    ]),
-                    object(["_index": .string("asc")]),
-                    object(["_doc": .string("asc")]),
-                ])
-            ),
+            ("sort", .array([timestamp] + tiebreakers)),
         ]
+        if let pit {
+            members.append(
+                ("pit", object(["id": .string(pit), "keep_alive": .string(pitKeepAlive)])))
+        }
         if let after = query.searchAfter {
-            members.append(("search_after", .array(after)))
+            members.append(("search_after", .array(after.sort)))
         }
         return .object(members.map { JSONMember(key: $0.0, value: $0.1) })
     }
 
-    /// Maps a `_search` response to a history page.
+    /// Maps a `_search` response to a history page. The cursor carries the
+    /// response's `pit_id` (Elasticsearch may update it between pages).
     static func mapResponse(_ response: JSONValue, preset: FieldPreset, pageSize: Int) throws
         -> HistoryPage
     {
@@ -372,9 +405,14 @@ enum Elastic {
                 ["log.level", "level", "severity"].lazy
                 .compactMap { stringField(source, $0).flatMap(mapLevel) }.first
                 ?? LogLine.detectLevel(message)
+            var docIndex: String?
+            var docID: String?
+            if case .string(let index)? = hit["_index"] { docIndex = index }
+            if case .string(let id)? = hit["_id"] { docID = id }
             return HistoryLine(
                 time: stringField(source, "@timestamp"), level: level, message: message,
-                container: stringField(source, f.container), document: source.compactText)
+                container: stringField(source, f.container), document: source.compactText,
+                docIndex: docIndex, docID: docID)
         }
         var total: Int?
         var lowerBound = false
@@ -387,9 +425,11 @@ enum Elastic {
         case nil:
             break
         }
-        var next: [JSONValue]?
+        var next: HistoryCursor?
         if hits.count >= pageSize, case .array(let sort)? = hits.last?["sort"] {
-            next = sort
+            var pit: String?
+            if case .string(let id)? = response["pit_id"] { pit = id }
+            next = HistoryCursor(pitID: pit, sort: sort)
         }
         return HistoryPage(lines: lines, total: total, totalIsLowerBound: lowerBound, next: next)
     }

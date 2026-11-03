@@ -98,7 +98,81 @@ async fn elasticsearch_history_through_the_eck_tunnel() {
         page.lines.first()
     );
     assert!(!page.lines.is_empty(), "history for {pod}");
-    assert!(page.next.is_some(), "more than one page");
+    let cursor = page.next.clone().expect("more than one page");
+    // #531: the first page opened a point in time (ECK's `elastic` user may).
+    assert!(cursor.pit_id.is_some(), "paging on a point in time");
+    let older = conn
+        .search(
+            &endpoint,
+            &HistoryQuery {
+                namespace: "shop".into(),
+                pod: pod.clone(),
+                container: None,
+                from: "now-1h".into(),
+                to: "now".into(),
+                text: None,
+                search_after: Some(cursor),
+                size: Some(50),
+            },
+        )
+        .await
+        .expect("older page on the PIT");
+    assert!(!older.lines.is_empty(), "a second page");
+    let first: std::collections::HashSet<&str> =
+        page.lines.iter().map(|l| l.document.as_str()).collect();
+    assert!(
+        older
+            .lines
+            .iter()
+            .all(|l| !first.contains(l.document.as_str())),
+        "no hit repeated between pages"
+    );
+    assert!(
+        older.lines.first().and_then(|l| l.time.as_deref())
+            <= page.lines.last().and_then(|l| l.time.as_deref()),
+        "older page continues where the first ended"
+    );
+    if let Some(next) = older.next.clone() {
+        assert!(next.pit_id.is_some());
+        // A gone PIT (closed here, like one idle past its keep-alive)
+        // resumes on a new one at the boundary millisecond: repeats only
+        // there, nothing skipped.
+        let gone = next.pit_id.clone();
+        conn.close_cursor(&next).await;
+        let resumed = conn
+            .search(
+                &endpoint,
+                &HistoryQuery {
+                    namespace: "shop".into(),
+                    pod: pod.clone(),
+                    container: None,
+                    from: "now-1h".into(),
+                    to: "now".into(),
+                    text: None,
+                    search_after: Some(next),
+                    size: Some(50),
+                },
+            )
+            .await
+            .expect("resumes on a new PIT");
+        assert!(!resumed.lines.is_empty());
+        let boundary = older.lines.last().and_then(|l| l.time.clone());
+        let key = |l: &cubelite_core::elastic::HistoryLine| (l.doc_index.clone(), l.doc_id.clone());
+        let seen: std::collections::HashSet<_> = older.lines.iter().map(key).collect();
+        for line in &resumed.lines {
+            assert!(line.time <= boundary, "older than the boundary");
+            if seen.contains(&key(line)) {
+                assert_eq!(line.time, boundary, "repeats only at the boundary");
+            }
+        }
+        if let Some(next) = &resumed.next {
+            assert_ne!(
+                next.pit_id, gone,
+                "a new PIT (the DELETE freed the old one)"
+            );
+            conn.close_cursor(next).await;
+        }
+    }
     let text = conn
         .search(
             &endpoint,
@@ -117,6 +191,9 @@ async fn elasticsearch_history_through_the_eck_tunnel() {
         .expect("text search");
     assert!(text.lines.iter().all(|l| l.message.contains("payment")));
     assert!(!text.lines.is_empty());
+    if let Some(next) = &text.next {
+        conn.close_cursor(next).await;
+    }
 }
 
 #[tokio::test]

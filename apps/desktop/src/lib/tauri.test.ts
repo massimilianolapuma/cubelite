@@ -7,6 +7,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import {
+  elasticCloseCursor,
   elasticSaveAuth,
   elasticSearch,
   elasticTest,
@@ -428,6 +429,15 @@ describe("Elasticsearch bindings (#500)", () => {
     };
     await elasticSearch("/k", "prod", endpoint, query);
     expect(mockedInvoke).toHaveBeenCalledWith("elastic_search", { kubeconfigPath: "/k", context: "prod", endpoint, query });
+    mockedInvoke.mockResolvedValueOnce(undefined);
+    const cursor = { pitId: "p", sort: [1, 2] };
+    await elasticCloseCursor("/k", "prod", endpoint, cursor);
+    expect(mockedInvoke).toHaveBeenCalledWith("elastic_close_cursor", {
+      kubeconfigPath: "/k",
+      context: "prod",
+      endpoint,
+      cursor,
+    });
     mockedInvoke.mockResolvedValueOnce(undefined);
     await elasticSaveAuth("prod", endpoint, { method: "api-key", key: "k" });
     expect(mockedInvoke).toHaveBeenCalledWith("elastic_save_auth", {

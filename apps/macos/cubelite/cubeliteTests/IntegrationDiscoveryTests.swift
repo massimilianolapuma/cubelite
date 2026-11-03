@@ -7,6 +7,7 @@ private struct NoSearch: LogHistorySearching {
     func search(context: String, endpoint: EsEndpoint, query: HistoryQuery) async throws -> HistoryPage {
         HistoryPage(lines: [], total: 0, totalIsLowerBound: false, next: nil)
     }
+    func closeCursor(context: String, endpoint: EsEndpoint, cursor: HistoryCursor) async {}
 }
 
 private struct NoQuerying: PrometheusQuerying {

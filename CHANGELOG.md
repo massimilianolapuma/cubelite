@@ -149,6 +149,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Exact Elasticsearch history paging** (desktop and macOS, #531): Load
+  older could repeat or skip lines whose timestamps were equal across shards.
+  A history search now opens a point in time (`keep_alive` 5m) and pages on it
+  with `_shard_doc` as tiebreaker; the opaque cursor carries the PIT id (the
+  latest one Elasticsearch returns). An expired PIT resumes on a new one at the
+  boundary millisecond, and the panel drops the lines repeated there by
+  `_index` + `_id`. The PIT is closed, best effort, after the last page or
+  when the search is replaced or its log tab closed. Servers without PIT,
+  users without the privilege (400/403/404/405 on open) and Elasticsearch
+  7.10–7.11 (no `_shard_doc`) keep plain `search_after`, remembered per
+  connection; any other failure to open a PIT (a full PIT table, a 5xx) pages
+  without one for that request only.
 - **Desktop skipped kubectl-written kubeconfigs in ~/.kube** (#479): discovery
   read only the first 512 bytes, where kubectl's sorted keys rarely put
   `kind: Config`; it now parses the whole file (16 MiB cap), like macOS (#473).

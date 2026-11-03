@@ -29,6 +29,9 @@ extension ElasticService: KibanaForwarding {}
 protocol LogHistorySearching: Sendable {
     func search(context: String, endpoint: EsEndpoint, query: HistoryQuery) async throws
         -> HistoryPage
+    /// Releases the point in time behind a cursor whose search was replaced
+    /// or closed (#531), best effort.
+    func closeCursor(context: String, endpoint: EsEndpoint, cursor: HistoryCursor) async
 }
 
 extension ElasticService: LogHistorySearching {}
@@ -36,7 +39,8 @@ extension ElasticService: LogHistorySearching {}
 /// Elasticsearch history of one log session (#503): pages of a pod's logs,
 /// newest first from the server, kept oldest-first here so the panel shows
 /// them like a live buffer; "Load older" prepends. Mirrors the desktop's
-/// `LogHistory`.
+/// `LogHistory`. The paging cursor is opaque (#531): it may hold a point in
+/// time, released when the search is replaced, capped or closed.
 @Observable @MainActor
 final class LogHistory {
 
@@ -50,8 +54,8 @@ final class LogHistory {
     private(set) var error: String?
     private(set) var total: Int?
     private(set) var totalIsLowerBound = false
-    /// `search_after` for older lines; nil at the end.
-    private(set) var next: [JSONValue]?
+    /// Opaque cursor for older lines; nil at the end.
+    private(set) var next: HistoryCursor?
     var range: HistoryRange = .last1h
     var text = ""
     /// True once a first page was requested.
@@ -72,6 +76,10 @@ final class LogHistory {
     private var generation = 0
     /// Range, text and container of the last reload: `next` belongs to them.
     private var params: (range: HistoryRange, text: String?, container: String?)?
+    /// The endpoint the last page came from: cursors are released there.
+    private var lastEndpoint: EsEndpoint?
+    /// `_index`/`_id` of the lines shown: a resumed page may repeat some (#531).
+    private var seen: Set<String> = []
 
     init(
         context: String, namespace: String, pod: String,
@@ -122,6 +130,9 @@ final class LogHistory {
     func reload() async {
         generation += 1
         let mine = generation
+        // The previous search is replaced: its cursor is never used again.
+        release(next)
+        next = nil
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let current = (range: range, text: trimmed.isEmpty ? nil : trimmed, container: container())
         params = current
@@ -137,8 +148,12 @@ final class LogHistory {
                 onLinesChanged()
                 return
             }
-            guard mine == generation else { return }
+            guard mine == generation else {
+                release(page.next)
+                return
+            }
             onReplace()
+            seen = []
             lines = page.lines.map(toLine).reversed()
             onLinesChanged()
             total = page.total
@@ -160,6 +175,7 @@ final class LogHistory {
         generation += 1
         onReplace()
         lines = []
+        release(next)
         next = nil
         total = nil
         error = nil
@@ -179,36 +195,69 @@ final class LogHistory {
         do {
             // Same range, text and container as the page the cursor came
             // from, even if the inputs were edited since.
-            guard let page = try await fetch(params, after: cursor), mine == generation else {
+            guard let page = try await fetch(params, after: cursor) else { return }
+            guard mine == generation else {
+                release(page.next)
                 return
             }
+            // A page resumed on a new point in time may repeat the boundary lines.
+            let fresh = page.lines.filter { Self.key($0).map { !seen.contains($0) } ?? true }
             let room = Self.cap - lines.count
             // Newest-first page: keep its newest `room` lines; past the cap
             // there is nothing older to fetch.
-            let kept = Array(page.lines.prefix(room))
+            let kept = Array(fresh.prefix(room))
             lines = kept.map(toLine).reversed() + lines
-            next = kept.count < page.lines.count ? nil : page.next
+            if kept.count < fresh.count {
+                release(page.next)
+                next = nil
+            } else {
+                next = page.next
+            }
             onLinesChanged()
         } catch {
             if mine == generation { self.error = error.localizedDescription }
         }
     }
 
+    /// The session closed: releases the cursor of the shown search.
+    func close() {
+        generation += 1
+        release(next)
+        next = nil
+    }
+
+    /// Releases the point in time a cursor may hold, without waiting (it
+    /// expires on its own if this fails).
+    private func release(_ cursor: HistoryCursor?) {
+        guard let cursor, cursor.pitID != nil, let endpoint = lastEndpoint else { return }
+        let searcher = searcher
+        let context = context
+        Task { await searcher.closeCursor(context: context, endpoint: endpoint, cursor: cursor) }
+    }
+
     private func fetch(
-        _ params: (range: HistoryRange, text: String?, container: String?), after: [JSONValue]?
+        _ params: (range: HistoryRange, text: String?, container: String?), after: HistoryCursor?
     ) async throws -> HistoryPage? {
         guard let endpoint = endpoint() else {
             error = "No Elasticsearch endpoint for this cluster — set one in Settings → Integrations."
             return nil
         }
+        lastEndpoint = endpoint
         let query = HistoryQuery(
             namespace: namespace, pod: pod, container: params.container, from: params.range.rawValue,
             to: "now", text: params.text, searchAfter: after)
         return try await searcher.search(context: context, endpoint: endpoint, query: query)
     }
 
+    /// `_index`/`_id` of a hit; nil when the server did not send them.
+    private static func key(_ line: HistoryLine) -> String? {
+        guard let index = line.docIndex, let id = line.docID else { return nil }
+        return "\(index)/\(id)"
+    }
+
     private func toLine(_ line: HistoryLine) -> LogLine {
         defer { nextID += 1 }
+        if let key = Self.key(line) { seen.insert(key) }
         // The panel's time column shows the time of day, like live lines.
         let time = line.time.flatMap { $0.split(separator: "T").last.map(String.init) }
         return LogLine(
