@@ -52,11 +52,16 @@ final class ElasticPreferencesModel {
     var indexPattern = EsEndpoint.defaultIndexPattern
     var preset = FieldPreset.ecs
     var kibanaURL = ""
+    /// In-cluster Kibana picked from Detect, opened through a port-forward
+    /// when there is no Kibana URL (#519).
+    var kibanaService: KibanaService?
 
     var authMethod = AuthMethod.none
     private(set) var storedMethod: AuthMethod?
 
     private(set) var detected: [DetectedService]?
+    /// Kibana services found by the last Detect.
+    private(set) var detectedKibana: [DetectedService] = []
     private(set) var busy: Busy?
     private(set) var outcome: Outcome?
 
@@ -82,6 +87,7 @@ final class ElasticPreferencesModel {
         self.context = context
         outcome = nil
         detected = nil
+        detectedKibana = []
         input.reset()
         authMethod = .none
         storedMethod = nil
@@ -90,12 +96,14 @@ final class ElasticPreferencesModel {
             indexPattern = EsEndpoint.defaultIndexPattern
             preset = .ecs
             kibanaURL = ""
+            kibanaService = nil
             return
         }
         target.load(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify)
         indexPattern = endpoint.indexPattern
         preset = endpoint.preset
         kibanaURL = endpoint.kibanaURL ?? ""
+        kibanaService = endpoint.kibanaService
         await refreshStoredMethod(endpoint)
     }
 
@@ -118,7 +126,9 @@ final class ElasticPreferencesModel {
         let kibana = kibanaURL.trimmed
         return EsEndpoint(
             target: target, indexPattern: pattern.isEmpty ? EsEndpoint.defaultIndexPattern : pattern,
-            preset: preset, kibanaURL: kibana.isEmpty ? nil : kibana, skipTLSVerify: self.target.skipTLSVerify)
+            preset: preset, kibanaURL: kibana.isEmpty ? nil : kibana,
+            kibanaService: self.target.mode == .inCluster ? kibanaService : nil,
+            skipTLSVerify: self.target.skipTLSVerify)
     }
 
     /// Auth typed in the form, or nil to use the stored one.
@@ -132,6 +142,12 @@ final class ElasticPreferencesModel {
         case .bearer: input.secret.isEmpty ? nil : .bearer(input.secret)
         case .eckUser: nil
         }
+    }
+
+    /// Uses a detected Kibana service for Open in Kibana.
+    func pickKibana(_ found: DetectedService) {
+        kibanaService = KibanaService(
+            namespace: found.namespace, service: found.name, port: found.port, https: found.https)
     }
 
     func pick(_ found: DetectedService) {
@@ -148,6 +164,7 @@ final class ElasticPreferencesModel {
             let found = try await backend.detect(context: context)
             guard context == self.context else { return }
             detected = found.filter { $0.kind == .elasticsearch }
+            detectedKibana = found.filter { $0.kind == .kibana }
             if detected?.isEmpty ?? true {
                 outcome = Outcome(ok: false, text: "No Elasticsearch service found in this cluster.")
             }

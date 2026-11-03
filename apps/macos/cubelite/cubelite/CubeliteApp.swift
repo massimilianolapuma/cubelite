@@ -47,7 +47,7 @@ struct CubeliteApp: App {
         self._logSessionStore = State(
             initialValue: LogSessionStore(
                 streamer: api,
-                elastic: LogHistoryAccess(searcher: elastic, endpoints: endpoints)))
+                elastic: LogHistoryAccess(searcher: elastic, endpoints: endpoints, kibana: elastic)))
         // Default-initialised; the real `onError` closure is bound in `.task`
         // once `logStore` and `appSettings` are available in scope.
         self._loginItemController = State(initialValue: LoginItemController())

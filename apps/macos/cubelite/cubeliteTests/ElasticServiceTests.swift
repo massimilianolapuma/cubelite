@@ -259,3 +259,64 @@ final class ElasticTrustDelegateTests: XCTestCase {
         XCTAssertNil(followed)
     }
 }
+
+/// A cluster whose objects can change during a test (pod replaced).
+private final class MutableCluster: IntegrationClusterAccess, @unchecked Sendable {
+    private let lock = NSLock()
+    private var objects: [String: String]
+
+    init(_ objects: [String: String]) { self.objects = objects }
+
+    func set(_ path: String, _ json: String?) { lock.withLock { objects[path] = json } }
+
+    func getIfPresent(path: String, inContext contextName: String?) async throws -> Data? {
+        lock.withLock { objects[path] }.map { Data($0.utf8) }
+    }
+
+    func portForwardWebSocket(
+        namespace: String, pod: String, remotePort: Int, inContext contextName: String?
+    ) async throws -> URLSessionWebSocketTask {
+        throw ElasticError.connect("no port-forward in tests")
+    }
+
+    func rawGet(path: String, inContext contextName: String?) async throws -> (status: Int, body: Data) {
+        (404, Data())
+    }
+}
+
+final class ElasticKibanaForwardTests: XCTestCase {
+
+    private static func pod(_ name: String) -> String {
+        #"{"metadata":{"name":"\#(name)"},"status":{"phase":"Running","conditions":[{"type":"Ready","status":"True"}]}}"#
+    }
+
+    func testKibanaForwardIsReusedWhileItsPodIsReady() async throws {
+        let base = "/api/v1/namespaces/logging"
+        let cluster = MutableCluster([
+            "\(base)/services/quickstart-kb-http":
+                #"{"metadata":{"name":"quickstart-kb-http"},"spec":{"selector":{"kibana":"q"},"ports":[{"name":"https","port":5601}]}}"#,
+            "\(base)/pods?labelSelector=kibana%3Dq": #"{"items":[\#(Self.pod("kb-1"))]}"#,
+            "\(base)/pods/kb-1": Self.pod("kb-1"),
+        ])
+        let service = ElasticService(cluster: cluster, secrets: MemorySecrets())
+        let kibana = KibanaService(namespace: "logging", service: "quickstart-kb-http", port: 5601, https: true)
+        async let a = service.kibanaForward(context: "prod", service: kibana)
+        async let b = service.kibanaForward(context: "prod", service: kibana)
+        let (first, second) = try await (a, b)
+        XCTAssertGreaterThan(first, 0)
+        XCTAssertEqual(first, second, "a double click shares one forward")
+        let reused = try await service.kibanaForward(context: "prod", service: kibana)
+        XCTAssertEqual(reused, first, "reused while the pod is ready")
+
+        // A rollout replaced the pod: the next open forwards to the new one.
+        cluster.set("\(base)/pods/kb-1", nil)
+        cluster.set("\(base)/pods?labelSelector=kibana%3Dq", #"{"items":[\#(Self.pod("kb-2"))]}"#)
+        cluster.set("\(base)/pods/kb-2", Self.pod("kb-2"))
+        let replaced = try await service.kibanaForward(context: "prod", service: kibana)
+        XCTAssertNotEqual(replaced, first)
+        await service.disconnect(context: "prod")
+        let reopened = try await service.kibanaForward(context: "prod", service: kibana)
+        XCTAssertNotEqual(reopened, replaced, "disconnect closes the forward")
+        await service.disconnectAll()
+    }
+}

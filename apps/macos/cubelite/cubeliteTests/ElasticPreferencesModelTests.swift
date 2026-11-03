@@ -110,8 +110,10 @@ final class ElasticPreferencesModelTests: XCTestCase {
         await model.load(context: "prod")
         model.target.mode = .inCluster
         await model.detect()
-        XCTAssertEqual(model.detected?.map(\.name), ["quickstart-es-http"], "Kibana is not offered")
+        XCTAssertEqual(model.detected?.map(\.name), ["quickstart-es-http"])
+        XCTAssertEqual(model.detectedKibana.map(\.name), ["quickstart-kb-http"])
         model.pick(model.detected![0])
+        model.pickKibana(model.detectedKibana[0])
         XCTAssertEqual(model.authMethods.last, .eckUser)
         model.authMethod = .eckUser
         await model.save()
@@ -120,6 +122,12 @@ final class ElasticPreferencesModelTests: XCTestCase {
             eck.map(\.target),
             [.inCluster(namespace: "logging", service: "quickstart-es-http", port: 9200, https: true)])
         XCTAssertEqual(model.storedMethod, .eckUser)
+        XCTAssertEqual(
+            endpoints.endpoint(for: "prod")?.kibanaService,
+            KibanaService(namespace: "logging", service: "quickstart-kb-http", port: 5601, https: true))
+        model.target.mode = .external
+        model.target.url = "https://es.example"
+        XCTAssertNil(model.draft()?.kibanaService, "only in-cluster endpoints forward to Kibana")
     }
 
     func testValidationAndLoadingAnotherContextClearsTheForm() async {

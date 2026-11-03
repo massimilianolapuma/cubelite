@@ -13,10 +13,19 @@ struct ElasticPreferencesForm: View {
                 identifier: "preferences.elastic")
             TargetLocationSection(
                 target: model.target,
-                detected: model.detected?.map { found in
-                    DetectedChoice(
-                        id: found.id, label: "\(found.namespace)/\(found.name):\(found.port)",
-                        pick: { model.pick(found) })
+                detected: model.detected.map { es in
+                    es.map { found in
+                        DetectedChoice(
+                            id: found.id,
+                            label: "Elasticsearch \(found.namespace)/\(found.name):\(found.port)",
+                            pick: { model.pick(found) })
+                    }
+                        + model.detectedKibana.map { found in
+                            DetectedChoice(
+                                id: found.id,
+                                label: "Kibana \(found.namespace)/\(found.name):\(found.port)",
+                                pick: { model.pickKibana(found) })
+                        }
                 },
                 canDetect: model.busy == nil && model.context != nil,
                 urlPrompt: "https://my-deployment.es.example:9243", identifier: "preferences.elastic",
@@ -45,6 +54,20 @@ struct ElasticPreferencesForm: View {
             TextField("Kibana URL:", text: $model.kibanaURL, prompt: Text("optional"))
                 .accessibilityIdentifier("preferences.elastic-kibana")
             ProblemText(problem: model.kibanaProblem)
+            if model.target.mode == .inCluster, let kibana = model.kibanaService {
+                HStack {
+                    Text(
+                        "Kibana in the cluster: \(kibana.namespace)/\(kibana.service):\(kibana.port)"
+                            + (model.kibanaURL.trimmed.isEmpty
+                                ? " — opened through a port-forward" : " (the URL above wins)")
+                    )
+                    .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
+                    Spacer()
+                    Button("Clear") { model.kibanaService = nil }
+                        .buttonStyle(.borderless)
+                        .accessibilityIdentifier("preferences.elastic-kibana-clear")
+                }
+            }
         }
     }
 }

@@ -19,6 +19,13 @@ enum HistoryRange: String, CaseIterable, Sendable {
 }
 
 /// One page of history for the log panel (ElasticService in the app).
+/// Port-forwards to an in-cluster Kibana (ElasticService in the app).
+protocol KibanaForwarding: Sendable {
+    func kibanaForward(context: String, service: KibanaService) async throws -> UInt16
+}
+
+extension ElasticService: KibanaForwarding {}
+
 protocol LogHistorySearching: Sendable {
     func search(context: String, endpoint: EsEndpoint, query: HistoryQuery) async throws
         -> HistoryPage
@@ -95,9 +102,14 @@ final class LogHistory {
     /// container) or, with `shown == false` (Live), the current container
     /// over the last hour; nil without a Kibana URL.
     func kibanaURL(shown: Bool) -> URL? {
-        guard let endpoint = endpoint(), let base = endpoint.kibanaURL,
-            !base.trimmingCharacters(in: .whitespaces).isEmpty
-        else { return nil }
+        guard let base = endpoint()?.kibanaURL else { return nil }
+        return kibanaURL(shown: shown, base: base)
+    }
+
+    /// Discover on `base` (a configured URL or a forwarded in-cluster Kibana).
+    func kibanaURL(shown: Bool, base: String) -> URL? {
+        let base = base.trimmingCharacters(in: .whitespaces)
+        guard let endpoint = endpoint(), !base.isEmpty else { return nil }
         let shownParams = shown ? params : nil
         let text = Elastic.kibanaDiscoverURL(
             kibanaBase: base.trimmingCharacters(in: .whitespaces), preset: endpoint.preset,

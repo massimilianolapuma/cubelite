@@ -62,6 +62,15 @@ actor ElasticService {
     private let configuration: URLSessionConfiguration
     private let pool = ConnectionPool<EsEndpoint>()
 
+    /// Port-forwards to in-cluster Kibanas (#519), one per context and
+    /// service; a request in flight is shared, so a double click waits.
+    private struct KibanaKey: Hashable {
+        let context: String
+        let service: KibanaService
+    }
+    private var kibanaForwards: [KibanaKey: (tunnel: IntegrationTunnel, port: UInt16, pod: String)] = [:]
+    private var kibanaPending: [KibanaKey: Task<UInt16, Error>] = [:]
+
     /// - Parameter configuration: base session configuration (tests inject
     ///   `URLProtocol` stubs through it).
     init(
@@ -103,7 +112,7 @@ actor ElasticService {
         }
         let binding = auth == .none ? "" : try Elastic.binding(endpoint)
         try await elastic { try await vault.save(context: context, binding: binding, auth: auth) }
-        await pool.disconnect(context: context)
+        await disconnect(context: context)
     }
 
     /// Uses ECK's `elastic` user for this in-cluster endpoint: checks it can
@@ -185,14 +194,63 @@ actor ElasticService {
         }
     }
 
-    /// Closes the context's connection (and its port-forward).
+    /// Closes the context's connection, its port-forward and its Kibana forwards.
     func disconnect(context: String) async {
+        closeKibana { $0.context == context }
         await pool.disconnect(context: context)
     }
 
     /// Closes every connection (app quit, kubeconfig reload).
     func disconnectAll() async {
+        closeKibana { _ in true }
         await pool.disconnectAll()
+    }
+
+    // MARK: Kibana
+
+    /// Local port of a loopback forward to an in-cluster Kibana (#519),
+    /// reused while its pod is ready; a rollout or eviction forwards to the
+    /// new pod.
+    func kibanaForward(context: String, service: KibanaService) async throws -> UInt16 {
+        let key = KibanaKey(context: context, service: service)
+        if let pending = kibanaPending[key] { return try await pending.value }
+        if let open = kibanaForwards[key] {
+            if await Integration.podReady(
+                cluster: cluster, context: context, namespace: service.namespace, pod: open.pod)
+            {
+                return open.port
+            }
+            // Another call may already be replacing it.
+            if let pending = kibanaPending[key] { return try await pending.value }
+            open.tunnel.close()
+            kibanaForwards[key] = nil
+        }
+        let cluster = self.cluster
+        let task = Task { () throws -> UInt16 in
+            let opened = try await self.elastic {
+                try await Integration.openServiceTunnel(
+                    cluster: cluster, context: context, namespace: service.namespace,
+                    service: service.service, port: service.port)
+            }
+            self.storeKibana(key, opened)
+            return opened.port
+        }
+        kibanaPending[key] = task
+        defer { kibanaPending[key] = nil }
+        return try await task.value
+    }
+
+    private func storeKibana(
+        _ key: KibanaKey, _ opened: (tunnel: IntegrationTunnel, port: UInt16, pod: String)
+    ) {
+        kibanaForwards[key]?.tunnel.close()
+        kibanaForwards[key] = opened
+    }
+
+    private func closeKibana(where matches: (KibanaKey) -> Bool) {
+        for key in kibanaForwards.keys where matches(key) {
+            kibanaForwards.removeValue(forKey: key)?.tunnel.close()
+        }
     }
 
     // MARK: - Private
@@ -237,7 +295,7 @@ actor ElasticService {
                     ? try await eckCredentials(context: context, namespace: namespace, service: service)
                     : auth)
             // Opened last: nothing to forward when the secrets cannot be read.
-            let (tunnel, local) = try await elastic {
+            let (tunnel, local, _) = try await elastic {
                 try await Integration.openServiceTunnel(
                     cluster: cluster, context: context, namespace: namespace, service: service,
                     port: port)
