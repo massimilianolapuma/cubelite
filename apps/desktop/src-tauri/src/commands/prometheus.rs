@@ -9,14 +9,15 @@
 use cubelite_core::integration;
 use cubelite_core::prometheus::transport::{self, DetectedPrometheus, PromConnection, PromInfo};
 use cubelite_core::prometheus::{
-    grafana_explore_url, GrafanaService, MetricsRange, MetricsRequest, MetricsResult, PromAuth,
-    PromEndpoint, PromError, PromTarget, Sparklines,
+    grafana_explore_url, metrics_queries, Chart, GrafanaService, MetricsRange, MetricsRequest,
+    MetricsResult, PromAuth, PromEndpoint, PromError, PromTarget, Sparklines, Workload,
 };
 use tauri::State;
 
 use super::cache::{ConnCache, ConnKey, ServiceForwards};
 use super::elastic::kube;
 use super::vault::{self, blocking as keychain};
+use super::web_ui::{http_base, open_in_browser};
 
 const KEYCHAIN_SERVICE: &str = "cubelite.prometheus";
 
@@ -244,13 +245,9 @@ fn explore_url(
     queries: &[String],
     range: MetricsRange,
 ) -> Result<String, String> {
-    let mut base =
-        url::Url::parse(grafana_url.trim()).map_err(|e| format!("Invalid Grafana URL: {e}"))?;
+    let mut base = http_base(grafana_url, "Grafana")?;
     base.set_query(None);
     base.set_fragment(None);
-    if !matches!(base.scheme(), "http" | "https") {
-        return Err("Grafana URL must start with http:// or https://".to_string());
-    }
     Ok(grafana_explore_url(
         base.as_str(),
         datasource,
@@ -260,9 +257,28 @@ fn explore_url(
     ))
 }
 
-/// Opens Grafana Explore with `queries` in the default browser. The URL is
-/// built here and must be http(s), so the webview cannot open other schemes
-/// through this command (same accepted risk as Open in Kibana).
+/// The CPU chart's query for a workload, per container (#526).
+fn workload_cpu_query(
+    namespace: String,
+    workload: Workload,
+    cluster: Option<&str>,
+    range: MetricsRange,
+) -> Vec<String> {
+    let request = MetricsRequest {
+        namespace,
+        workload,
+        range,
+        per_container: true,
+    };
+    metrics_queries(&request, cluster)
+        .into_iter()
+        .filter(|(chart, _)| *chart == Chart::Cpu)
+        .map(|(_, query)| query)
+        .collect()
+}
+
+/// Opens Grafana Explore with `queries` in the default browser (the URL is
+/// built here, see `web_ui`).
 #[tauri::command]
 pub fn open_grafana_explore(
     app: tauri::AppHandle,
@@ -271,16 +287,53 @@ pub fn open_grafana_explore(
     queries: Vec<String>,
     range: MetricsRange,
 ) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
     let target = explore_url(&grafana_url, datasource.as_deref(), &queries, range)?;
-    app.opener()
-        .open_url(target, None::<&str>)
-        .map_err(|e| format!("Cannot open the browser: {e}"))
+    open_in_browser(&app, target)
+}
+
+/// Opens Grafana Explore with a workload's CPU query, without loading its
+/// metrics first (detail header link, #526).
+#[tauri::command]
+pub fn open_grafana_workload(
+    app: tauri::AppHandle,
+    grafana_url: String,
+    datasource: Option<String>,
+    cluster: Option<String>,
+    namespace: String,
+    workload: Workload,
+    range: MetricsRange,
+) -> Result<(), String> {
+    let queries = workload_cpu_query(namespace, workload, cluster.as_deref(), range);
+    let target = explore_url(&grafana_url, datasource.as_deref(), &queries, range)?;
+    open_in_browser(&app, target)
+}
+
+/// Opens Grafana's home page (#526).
+#[tauri::command]
+pub fn open_grafana_home(app: tauri::AppHandle, grafana_url: String) -> Result<(), String> {
+    let base = http_base(&grafana_url, "Grafana")?;
+    open_in_browser(&app, base.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workload_cpu_query_selects_the_workload() {
+        let queries = workload_cpu_query(
+            "shop".into(),
+            Workload::Deployment { name: "api".into() },
+            Some("eu"),
+            MetricsRange::Hour,
+        );
+        assert_eq!(queries.len(), 1);
+        let q = &queries[0];
+        assert!(q.starts_with("sum by (container) (rate(container_cpu_usage_seconds_total{"));
+        assert!(q.contains(r#"namespace="shop""#), "{q}");
+        assert!(q.contains("pod=~\"api-"), "{q}");
+        assert!(q.contains(r#"cluster="eu""#), "{q}");
+    }
 
     #[test]
     fn explore_url_accepts_http_only() {
@@ -294,5 +347,13 @@ mod tests {
         assert!(url.starts_with("https://grafana.example/explore?"));
         assert!(explore_url("javascript:alert(1)", None, &[], MetricsRange::Hour).is_err());
         assert!(explore_url("not a url", None, &[], MetricsRange::Hour).is_err());
+        let clean = explore_url(
+            "https://u:p@g.example/?x=1#y",
+            None,
+            &[],
+            MetricsRange::Hour,
+        )
+        .expect("url");
+        assert!(clean.starts_with("https://g.example/explore?"), "{clean}");
     }
 }

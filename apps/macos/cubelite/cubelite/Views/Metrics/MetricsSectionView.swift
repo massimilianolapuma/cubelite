@@ -17,6 +17,7 @@ struct ChartLine: Identifiable {
 struct MetricsSectionView: View {
 
     @Environment(PrometheusStore.self) private var store: PrometheusStore?
+    @Environment(AppSettings.self) private var settings: AppSettings?
     let context: String?
     let namespace: String
     let workload: Workload
@@ -64,7 +65,17 @@ struct MetricsSectionView: View {
                     querying: querying)
             }
             .accessibilityIdentifier("detail.metrics")
+        } else if showsSetupHint {
+            MetricsSetupHint(context: context)
         }
+    }
+
+    /// No Prometheus for this context yet: offer setting it up (#526).
+    private var showsSetupHint: Bool {
+        IntegrationHints.showsSetup(
+            available: context != nil && store?.querying != nil,
+            configured: store?.endpoint(for: context) != nil,
+            hints: settings?.integrationHints ?? false)
     }
 
     private func header(_ endpoint: PromEndpoint) -> some View {

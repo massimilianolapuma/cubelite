@@ -8,8 +8,16 @@
 	import { HISTORY_RANGES, isHistoryRange } from '#lib/elastic.ts';
 	import { elastic } from '#lib/stores/elastic.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
-	import { webUiBase } from '#lib/integration.ts';
-	import { kibanaPortForward, openKibanaDiscover, type EsEndpoint } from '#lib/tauri.ts';
+	import { settings } from '#lib/stores/settings.svelte.ts';
+	import { ACCENT_LINK_CLASS } from '#lib/integration.ts';
+	import {
+		HISTORY_HINT,
+		canOpenKibana,
+		kibanaBase,
+		showsIntegrationHint,
+		toastErrors
+	} from '#lib/integration-links.ts';
+	import { openKibanaDiscover } from '#lib/tauri.ts';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
@@ -52,38 +60,29 @@
 	$effect(() => {
 		if (!endpoint && session.source === 'history') session.setSource('live');
 	});
+	// Without Elasticsearch, History stays visible but disabled, with a way to set it up (#526).
+	const historyHint = $derived(showsIntegrationHint(endpoint, settings.integrationHints.value));
+	const HINT_SOURCES = [SOURCES[0], { ...SOURCES[1], disabled: true, title: HISTORY_HINT }];
 
-	// A configured URL wins; else an in-cluster Kibana through a port-forward (#505).
-	// A configured URL wins; else an in-cluster Kibana through a port-forward.
-	const canOpenKibana = $derived(
-		!!endpoint?.kibanaUrl?.trim() || (endpoint?.target.kind === 'in-cluster' && !!endpoint.kibanaService)
-	);
-
-	/** The configured Kibana URL, else the in-cluster Kibana's forwarded port. */
-	async function kibanaBase(ep: EsEndpoint): Promise<string | null> {
-		const context = app.activeCluster;
-		if (!context) return null;
-		return webUiBase(ep.kibanaUrl, ep.kibanaService, (s) => kibanaPortForward(app.kubeconfigPath, context, s));
-	}
+	const canOpen = $derived(canOpenKibana(endpoint));
 
 	async function openKibana() {
 		overflowOpen = false;
-		if (!endpoint) return;
-		try {
-			const kibanaUrl = await kibanaBase(endpoint);
+		const ep = endpoint;
+		if (!ep) return;
+		await toastErrors(async () => {
+			const kibanaUrl = await kibanaBase(ep);
 			if (!kibanaUrl) return;
 			await openKibanaDiscover({
 				kibanaUrl,
-				preset: endpoint.preset,
+				preset: ep.preset,
 				namespace: session.namespace,
 				pod: session.pod,
 				container: session.merged ? null : session.container,
 				from: session.source === 'history' ? session.history.range : 'now-1h',
 				to: 'now'
 			});
-		} catch (e) {
-			toasts.push(errorMessage(e), 'err');
-		}
+		});
 	}
 
 	// The panel keeps one `LogSearch` for its active session; re-run the
@@ -236,6 +235,15 @@
 				value={session.source}
 				onChange={(v) => session.setSource(v)}
 			/>
+		</span>
+	{:else if historyHint}
+		<span class="flex items-center gap-1.5" title={HISTORY_HINT} data-testid="logpanel-history-hint">
+			<SegmentedControl segments={HINT_SOURCES} value="live" label="Log source" />
+			{#if !detached}
+				<button type="button" class={ACCENT_LINK_CLASS} onclick={() => app.openPreferences('elasticsearch')}>
+					Set up
+				</button>
+			{/if}
 		</span>
 	{/if}
 
@@ -392,7 +400,7 @@
 				>
 					<Check size={12} strokeWidth={2} class={logPanel.wrap ? '' : 'invisible'} />Wrap lines
 				</button>
-				{#if canOpenKibana}
+				{#if canOpen}
 					<div class="my-1 border-t border-border-default"></div>
 					<button
 						type="button"

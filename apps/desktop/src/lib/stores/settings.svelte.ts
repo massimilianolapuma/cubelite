@@ -96,6 +96,8 @@ export const settings = {
   accent: persisted<Accent>("accent", "blue", isAccent),
   skipTls: persisted<boolean>("skipTls", false, isBoolean),
   onboardingSeen: persisted<boolean>("onboardingSeen", false, isBoolean),
+  /** Placeholders for integrations that are not configured yet (#526). */
+  integrationHints: persisted<boolean>("integrationHints", true, isBoolean),
   /** Custom kubeconfig file list; empty = follow KUBECONFIG / ~/.kube. */
   kubeconfigPaths: persisted<string[]>("kubeconfigPaths", [], isStringArray),
   /** contextName → identity color key; written back on context discovery. */

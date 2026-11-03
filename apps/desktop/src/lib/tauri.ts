@@ -894,6 +894,23 @@ export function openKibanaDiscover(args: {
   return invoke("open_kibana_discover", args);
 }
 
+/** Opens Kibana Discover for a deployment's pods, matched by name prefix (#526). */
+export function openKibanaDeployment(args: {
+  kibanaUrl: string;
+  preset: FieldPreset;
+  namespace: string;
+  deployment: string;
+  from: string;
+  to: string;
+}): Promise<void> {
+  return invoke("open_kibana_deployment", args);
+}
+
+/** Opens Kibana Discover without a filter (#526). */
+export function openKibanaHome(kibanaUrl: string): Promise<void> {
+  return invoke("open_kibana_home", { kibanaUrl });
+}
+
 // ── Prometheus / Grafana (#484, #509) ────────────────────────────────────
 
 /** Where an integration's API lives (same shape for every integration). */
@@ -1041,4 +1058,21 @@ export function openGrafanaExplore(args: {
   range: MetricsRange;
 }): Promise<void> {
   return invoke("open_grafana_explore", args);
+}
+
+/** Opens Grafana Explore with a workload's CPU query (built in Rust, #526). */
+export function openGrafanaWorkload(args: {
+  grafanaUrl: string;
+  datasource: string | null;
+  cluster: string | null;
+  namespace: string;
+  workload: Workload;
+  range: MetricsRange;
+}): Promise<void> {
+  return invoke("open_grafana_workload", args);
+}
+
+/** Opens Grafana's home page (#526). */
+export function openGrafanaHome(grafanaUrl: string): Promise<void> {
+  return invoke("open_grafana_home", { grafanaUrl });
 }

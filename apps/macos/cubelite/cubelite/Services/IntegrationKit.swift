@@ -669,4 +669,42 @@ extension Integration {
         if !(url ?? "").trimmingCharacters(in: .whitespaces).isEmpty { return true }
         return canForward && forwardedUI(url: url, target: target, service: service) != nil
     }
+
+    /// Base of a web UI (Kibana #519, Grafana #525): the configured URL, else
+    /// the in-cluster service through `forward` (on 127.0.0.1, where the
+    /// forward listens); nil when there is neither.
+    static func webUIBase(
+        url: String?, target: IntegrationTarget, service: ServiceRef?,
+        forward: (@Sendable (ServiceRef) async throws -> UInt16)?
+    ) async throws -> String? {
+        if let configured = url?.trimmingCharacters(in: .whitespaces), !configured.isEmpty {
+            return configured
+        }
+        guard let service = forwardedUI(url: url, target: target, service: service), let forward else {
+            return nil
+        }
+        return service.loopbackBase(port: try await forward(service))
+    }
+
+    /// `text` as a URL when it is http(s): web UI links never open other
+    /// schemes, and credentials typed into the URL never reach the browser.
+    static func webURL(_ text: String) -> URL? {
+        guard let url = URL(string: text), ["http", "https"].contains(url.scheme?.lowercased()) else {
+            return nil
+        }
+        guard url.user != nil || url.password != nil else { return url }
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        components.user = nil
+        components.password = nil
+        return components.url
+    }
+
+    /// `base` without its query, fragment, trailing slashes or surrounding
+    /// spaces, ready for a path to be appended.
+    static func trimmedBase(_ base: String) -> String {
+        var out = base.trimmingCharacters(in: .whitespaces)
+        if let cut = out.firstIndex(where: { $0 == "?" || $0 == "#" }) { out = String(out[..<cut]) }
+        while out.hasSuffix("/") { out.removeLast() }
+        return out
+    }
 }

@@ -26,6 +26,9 @@ export const VIEWS = [
 
 export type View = (typeof VIEWS)[number];
 
+/** Preferences sections that can be opened directly (#526). */
+export type PreferencesSection = "integrations" | "elasticsearch" | "prometheus";
+
 export function isView(v: unknown): v is View {
   return typeof v === "string" && (VIEWS as readonly string[]).includes(v);
 }
@@ -50,7 +53,15 @@ class AppState {
 
   paletteOpen = $state(false);
   preferencesOpen = $state(false);
+  /** Part of Preferences to scroll to when it opens; cleared once shown. */
+  preferencesSection = $state<PreferencesSection | null>(null);
   onboardingOpen = $state(false);
+
+  /** Opens Preferences, optionally on one of its sections (#526). */
+  openPreferences(section: PreferencesSection | null = null): void {
+    this.preferencesSection = section;
+    this.preferencesOpen = true;
+  }
 
   /**
    * Close handlers of mounted `Modal`s, innermost last. Component-owned

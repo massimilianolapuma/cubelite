@@ -123,9 +123,7 @@ final class LogHistory {
             kibanaBase: base.trimmingCharacters(in: .whitespaces), preset: endpoint.preset,
             namespace: namespace, pod: pod, container: shownParams?.container ?? container(),
             from: (shownParams?.range ?? (shown ? range : .last1h)).rawValue, to: "now")
-        guard let url = URL(string: text), ["http", "https"].contains(url.scheme?.lowercased())
-        else { return nil }
-        return url
+        return Integration.webURL(text)
     }
 
     /// First page for the current range, text and container (replaces the lines).

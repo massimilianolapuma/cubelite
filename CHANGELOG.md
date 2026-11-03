@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Discoverable history, metrics, Kibana and Grafana** (desktop and macOS,
+  #526): without Elasticsearch the log panel still shows Live · History,
+  with History disabled ("Connect Elasticsearch in Settings → Integrations
+  to see older logs") and a Set up link; without Prometheus the pod and
+  deployment details show a compact Metrics placeholder with Set up
+  Prometheus and Hide. Both follow a new "Show integration hints in panels"
+  setting (Settings → Integrations, on by default). The pod and deployment
+  details add "Logs in Kibana" (Discover on the pod, or on a deployment's
+  pods by name prefix) and "Metrics in Grafana" (Explore on the workload's
+  CPU) when the context's Kibana or Grafana can be opened, and the command
+  palette adds Open Kibana, Open Grafana and Integrations settings.
 - **Open an in-cluster Grafana** (desktop and macOS, #525): Detect in the
   Prometheus preferences now lists Grafana services too (kube-prometheus-stack's
   `monitoring/<release>-grafana`) and can pick one; without a Grafana URL,

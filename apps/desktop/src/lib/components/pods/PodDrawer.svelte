@@ -11,6 +11,7 @@
 	import ShellModal from '#lib/components/pods/ShellModal.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
 	import MetricsSection from '#lib/components/metrics/MetricsSection.svelte';
+	import WorkloadLinks from '#lib/components/integrations/WorkloadLinks.svelte';
 	import StatusPill from '#lib/components/ui/StatusPill.svelte';
 	import { podStatusLabel, podTone } from '#lib/status.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
@@ -81,8 +82,9 @@
 
 <Drawer title={pod.name} {onClose}>
 	<div class="flex flex-col gap-4">
-		<div>
+		<div class="flex flex-wrap items-center justify-between gap-2">
 			<StatusPill label={podStatusLabel(pod)} tone={pillTone} />
+			<WorkloadLinks namespace={pod.namespace} workload={{ kind: 'pod', name: pod.name }} />
 		</div>
 
 		<div class="grid grid-cols-2 gap-x-4 gap-y-2.5">

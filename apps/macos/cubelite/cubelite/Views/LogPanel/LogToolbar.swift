@@ -5,6 +5,7 @@ import SwiftUI
 struct LogToolbar: View {
 
     @Environment(LogSessionStore.self) private var store
+    @Environment(AppSettings.self) private var settings: AppSettings?
     @Environment(\.isDetachedLogContext) private var isDetachedContext
     @Environment(\.openWindow) private var openWindow
     let session: LogSession
@@ -18,7 +19,11 @@ struct LogToolbar: View {
                 previousChip
             }
             if session.historyEndpoint != nil {
-                sourcePicker
+                sourcePicker(available: true)
+            } else if session.offersHistorySetup(hints: settings?.integrationHints ?? false) {
+                // No Elasticsearch yet: History shown disabled, with Set up (#526).
+                sourcePicker(available: false)
+                IntegrationSetupButton(title: "Set up", pane: .elasticsearch, context: session.context)
             }
             if session.showsHistory, let history = session.history {
                 HistoryQueryControls(history: history)
@@ -263,21 +268,23 @@ struct LogToolbar: View {
         .accessibilityIdentifier("logpanel.previous")
     }
 
-    /// Live stream or Elasticsearch history (#503); shown only when the
-    /// context has an Elasticsearch endpoint.
-    private var sourcePicker: some View {
+    /// Live stream or Elasticsearch history (#503). Without an endpoint
+    /// History is disabled and explains how to get it (#526).
+    private func sourcePicker(available: Bool) -> some View {
         Picker(
             "Log source",
-            selection: Binding(get: { session.source }, set: { session.setSource($0) })
+            selection: Binding(
+                get: { session.source },
+                set: { if available { session.setSource($0) } })
         ) {
             Text("Live").tag(LogSession.Source.live)
-            Text("History").tag(LogSession.Source.history)
+            Text("History").tag(LogSession.Source.history).disabled(!available)
         }
         .pickerStyle(.segmented)
         .labelsHidden()
         .controlSize(.small)
         .fixedSize()
-        .help("Live stream, or this pod's past logs from Elasticsearch")
+        .help(available ? "Live stream, or this pod's past logs from Elasticsearch" : IntegrationHints.historyHelp)
         .accessibilityIdentifier("logpanel.source")
     }
 

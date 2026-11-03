@@ -296,6 +296,7 @@ struct ResourceDetailView: View {
                 Text(resourceKind)
                     .typeStyle(DesignTokens.Typography.caption)
                     .foregroundStyle(.secondary)
+                IntegrationLinksRow(context: context, namespace: resourceNamespace, workload: workload)
             }
             Spacer()
             if let onClose {
@@ -323,6 +324,20 @@ struct ResourceDetailView: View {
         switch resource {
         case .pod(let p): return p.name
         case .deployment(let d): return d.name
+        }
+    }
+
+    private var resourceNamespace: String {
+        switch resource {
+        case .pod(let p): return p.namespace
+        case .deployment(let d): return d.namespace
+        }
+    }
+
+    private var workload: Workload {
+        switch resource {
+        case .pod(let p): return .pod(p.name)
+        case .deployment(let d): return .deployment(d.name)
         }
     }
 

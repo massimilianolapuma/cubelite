@@ -5,6 +5,16 @@
 	import Layers from '@lucide/svelte/icons/layers';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Settings from '@lucide/svelte/icons/settings';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import {
+		canOpenGrafana,
+		canOpenKibana,
+		openGrafanaStart,
+		openKibanaStart,
+		toastErrors
+	} from '#lib/integration-links.ts';
+	import { elastic } from '#lib/stores/elastic.svelte.ts';
+	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import Kbd from '#lib/components/ui/Kbd.svelte';
 	import { app, type View } from '#lib/stores/app.svelte.ts';
 	import { clusters } from '#lib/stores/clusters.svelte.ts';
@@ -30,8 +40,21 @@
 		{ label: 'Tail logs', icon: FileText, view: 'logs' },
 		{ label: 'Preferences', icon: Settings, view: 'overview' }
 	];
+	// Integrations of the active context (#526): open their web UIs, or set them up.
+	const es = $derived(elastic.endpointFor(app.activeCluster));
+	const prom = $derived(prometheus.active);
+	const integrationActions = $derived<Action[]>([
+		...(canOpenKibana(es)
+			? [{ label: 'Open Kibana', icon: ExternalLink, run: () => void toastErrors(() => openKibanaStart(es)) }]
+			: []),
+		...(canOpenGrafana(prom)
+			? [{ label: 'Open Grafana', icon: ExternalLink, run: () => void toastErrors(() => openGrafanaStart(prom)) }]
+			: []),
+		{ label: 'Integrations settings', icon: Settings, run: () => app.openPreferences('integrations') }
+	]);
 	const actions = $derived<Action[]>([
 		...staticActions,
+		...integrationActions,
 		...(app.selectedPod
 			? [
 					{
