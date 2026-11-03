@@ -20,6 +20,7 @@ struct SparklineView: View {
             .chartLegend(.hidden)
             .frame(width: 48, height: 14)
             .accessibilityLabel(label)
+            .accessibilityValue(MetricsMath.latest(points).map { String(format: "%.3g", $0) } ?? "no data")
         }
     }
 }

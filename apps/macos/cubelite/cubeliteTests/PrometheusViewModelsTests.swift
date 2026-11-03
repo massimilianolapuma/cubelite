@@ -104,6 +104,7 @@ final class PrometheusPreferencesModelTests: XCTestCase {
         model.target.mode = .off
         await model.save()
         XCTAssertNil(endpoints.endpoint(for: "prod"))
+        XCTAssertNil(model.storedMethod, "nothing stored any more")
         let calls = await backend.saved
         XCTAssertEqual(calls.map(\.1), [.none])
     }
@@ -129,6 +130,11 @@ private actor StubQuerying: PrometheusQuerying {
     var sparklineReply: Result<Sparklines, Error> = .success(Sparklines())
     var gate: CheckedContinuation<Void, Never>?
     var holdNext = false
+    var failNext: Error?
+    var cancelSparklines = false
+
+    func failMetrics(_ error: Error) { failNext = error }
+    func setCancelSparklines(_ on: Bool) { cancelSparklines = on }
 
     func setSparklines(_ reply: Result<Sparklines, Error>) { sparklineReply = reply }
     func hold() { holdNext = true }
@@ -136,6 +142,10 @@ private actor StubQuerying: PrometheusQuerying {
 
     func metrics(context: String, endpoint: PromEndpoint, request: MetricsRequest) async throws -> MetricsResult {
         metricCalls.append(request)
+        if let failNext {
+            self.failNext = nil
+            throw failNext
+        }
         if holdNext {
             holdNext = false
             await withCheckedContinuation { gate = $0 }
@@ -148,6 +158,7 @@ private actor StubQuerying: PrometheusQuerying {
 
     func sparklines(context: String, endpoint: PromEndpoint, namespace: String?) async throws -> Sparklines {
         sparklineCalls.append(context)
+        if cancelSparklines { throw CancellationError() }
         return try sparklineReply.get()
     }
 }
@@ -207,6 +218,30 @@ final class MetricsModelsTests: XCTestCase {
         model.range = .week
         await model.load(context: "prod", endpoint: endpoint, namespace: "shop", workload: .pod("b"), querying: querying)
         XCTAssertEqual(model.resultRange, .week)
+    }
+
+    func testErrorsClearAndCancelledSparklinesRetryAtOnce() async throws {
+        let querying = StubQuerying()
+        let endpoint = PromEndpoint(target: .external(url: "https://p.example"))
+        let model = MetricsSectionModel()
+        await querying.failMetrics(PromError.connect("timed out after 15 s"))
+        model.range = .week
+        await model.load(context: "prod", endpoint: endpoint, namespace: "shop", workload: .pod("a"), querying: querying)
+        XCTAssertNotNil(model.error)
+        model.range = .hour
+        await model.load(context: "prod", endpoint: endpoint, namespace: "shop", workload: .pod("a"), querying: querying)
+        XCTAssertNil(model.error, "a later success clears the error")
+        XCTAssertNotNil(model.result)
+
+        let prom = try store(querying)
+        let t0 = Date(timeIntervalSince1970: 2_000_000)
+        await querying.setCancelSparklines(true)
+        await prom.loadSparklines(context: "prod", namespace: "shop", now: t0)
+        XCTAssertNil(prom.sparklineError, "a cancelled load is not an error")
+        await querying.setCancelSparklines(false)
+        await prom.loadSparklines(context: "prod", namespace: "shop", now: t0.addingTimeInterval(1))
+        let calls = await querying.sparklineCalls
+        XCTAssertEqual(calls.count, 2, "not throttled after a cancelled load")
     }
 
     func testMetricsMath() {

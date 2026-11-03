@@ -1,32 +1,7 @@
 import SwiftUI
 
 /// Settings → Integrations → Prometheus (#512, spec §5.3).
-struct PrometheusPreferencesPane: View {
-
-    @Environment(PrometheusEndpointStore.self) private var endpoints
-    let backend: any PrometheusPreferencesBackend
-    let context: String?
-
-    @State private var model: PrometheusPreferencesModel?
-
-    var body: some View {
-        Group {
-            if let model {
-                PrometheusPreferencesForm(model: model)
-            } else {
-                ProgressView()
-            }
-        }
-        .task(id: context) {
-            if model == nil {
-                model = PrometheusPreferencesModel(backend: backend, endpoints: endpoints)
-            }
-            await model?.load(context: context)
-        }
-    }
-}
-
-private struct PrometheusPreferencesForm: View {
+struct PrometheusPreferencesForm: View {
 
     @Bindable var model: PrometheusPreferencesModel
 

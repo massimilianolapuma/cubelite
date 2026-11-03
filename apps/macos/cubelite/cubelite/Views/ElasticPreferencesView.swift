@@ -1,32 +1,7 @@
 import SwiftUI
 
 /// Settings → Integrations → Elasticsearch (#503, spec §5.2).
-struct ElasticPreferencesPane: View {
-
-    @Environment(ElasticEndpointStore.self) private var endpoints
-    let backend: any ElasticPreferencesBackend
-    let context: String?
-
-    @State private var model: ElasticPreferencesModel?
-
-    var body: some View {
-        Group {
-            if let model {
-                ElasticPreferencesForm(model: model)
-            } else {
-                ProgressView()
-            }
-        }
-        .task(id: context) {
-            if model == nil {
-                model = ElasticPreferencesModel(backend: backend, endpoints: endpoints)
-            }
-            await model?.load(context: context)
-        }
-    }
-}
-
-private struct ElasticPreferencesForm: View {
+struct ElasticPreferencesForm: View {
 
     @Bindable var model: ElasticPreferencesModel
 

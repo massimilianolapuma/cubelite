@@ -14,8 +14,13 @@ struct IntegrationsPreferencesTab: View {
     let elastic: (any ElasticPreferencesBackend)?
     let prometheus: (any PrometheusPreferencesBackend)?
 
+    @Environment(ElasticEndpointStore.self) private var elasticEndpoints
+    @Environment(PrometheusEndpointStore.self) private var prometheusEndpoints
     @State private var context: String?
     @State private var shown = Shown.elasticsearch
+    /// Kept across pane switches so typed edits survive.
+    @State private var elasticModel: ElasticPreferencesModel?
+    @State private var prometheusModel: PrometheusPreferencesModel?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,10 +41,20 @@ struct IntegrationsPreferencesTab: View {
             .padding(.top, 12)
             switch shown {
             case .elasticsearch:
-                if let elastic { ElasticPreferencesPane(backend: elastic, context: context) }
+                if let elasticModel { ElasticPreferencesForm(model: elasticModel) }
             case .prometheus:
-                if let prometheus { PrometheusPreferencesPane(backend: prometheus, context: context) }
+                if let prometheusModel { PrometheusPreferencesForm(model: prometheusModel) }
             }
+        }
+        .task(id: context) {
+            if elasticModel == nil, let elastic {
+                elasticModel = ElasticPreferencesModel(backend: elastic, endpoints: elasticEndpoints)
+            }
+            if prometheusModel == nil, let prometheus {
+                prometheusModel = PrometheusPreferencesModel(backend: prometheus, endpoints: prometheusEndpoints)
+            }
+            await elasticModel?.load(context: context)
+            await prometheusModel?.load(context: context)
         }
         .task(id: clusterState.contexts) {
             // Contexts may load after Settings opened.

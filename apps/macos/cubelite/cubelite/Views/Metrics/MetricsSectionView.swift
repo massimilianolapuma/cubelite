@@ -23,6 +23,16 @@ struct MetricsSectionView: View {
 
     @State private var model = MetricsSectionModel()
 
+    /// What the charts depend on: any change reloads them.
+    private struct LoadKey: Hashable {
+        let context: String
+        let namespace: String
+        let workload: Workload
+        let endpoint: PromEndpoint
+        let range: MetricsRange
+        let perContainer: Bool
+    }
+
     private static let palette: [Color] = [
         DesignTokens.accentDefault, DesignTokens.clusterTeal, DesignTokens.clusterViolet,
         DesignTokens.clusterAmber, DesignTokens.clusterPink, DesignTokens.clusterBlue,
@@ -35,7 +45,11 @@ struct MetricsSectionView: View {
                 content(endpoint)
             }
             .padding(.top, 16)
-            .task(id: "\(context)|\(namespace)|\(workload)|\(model.range.rawValue)|\(model.perContainer)") {
+            .task(
+                id: LoadKey(
+                    context: context, namespace: namespace, workload: workload, endpoint: endpoint,
+                    range: model.range, perContainer: model.perContainer)
+            ) {
                 await model.load(
                     context: context, endpoint: endpoint, namespace: namespace, workload: workload,
                     querying: querying)
@@ -199,6 +213,29 @@ private struct MetricChartView: View {
 
     private var hasData: Bool { lines.contains { $0.points.contains { $0.value != nil } } }
 
+    /// Runs of points without gaps: a missing sample (NaN, pod down) breaks the line.
+    private struct Segment: Identifiable {
+        let id: String
+        let line: ChartLine
+        let points: [(time: Double, value: Double)]
+    }
+
+    private var segments: [Segment] {
+        lines.flatMap { line -> [Segment] in
+            var out: [Segment] = []
+            var run: [(time: Double, value: Double)] = []
+            func flush() {
+                if !run.isEmpty { out.append(Segment(id: "\(line.id)#\(out.count)", line: line, points: run)) }
+                run = []
+            }
+            for point in line.points {
+                if let value = point.value { run.append((point.time, value)) } else { flush() }
+            }
+            flush()
+            return out
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
@@ -236,16 +273,14 @@ private struct MetricChartView: View {
 
     private var chart: some View {
         Charts.Chart {
-            ForEach(lines) { line in
-                ForEach(line.points.indices, id: \.self) { index in
-                    if let value = line.points[index].value {
-                        LineMark(
-                            x: .value("Time", Date(timeIntervalSince1970: line.points[index].time)),
-                            y: .value(title, value),
-                            series: .value("Line", line.id))
-                            .foregroundStyle(line.color)
-                            .lineStyle(StrokeStyle(lineWidth: 1.25, dash: line.dashed ? [3, 3] : []))
-                    }
+            ForEach(segments) { segment in
+                ForEach(segment.points.indices, id: \.self) { index in
+                    LineMark(
+                        x: .value("Time", Date(timeIntervalSince1970: segment.points[index].time)),
+                        y: .value(title, segment.points[index].value),
+                        series: .value("Line", segment.id))
+                        .foregroundStyle(segment.line.color)
+                        .lineStyle(StrokeStyle(lineWidth: 1.25, dash: segment.line.dashed ? [3, 3] : []))
                 }
             }
             if let hovered {
@@ -283,6 +318,7 @@ private struct MetricChartView: View {
                             guard let frame = proxy.plotFrame else { return }
                             let x = location.x - geometry[frame].origin.x
                             hovered = (proxy.value(atX: x, as: Date.self))?.timeIntervalSince1970
+                                .clamped(to: Double(result.start)...Double(result.end))
                         case .ended:
                             hovered = nil
                         }
@@ -296,7 +332,9 @@ private struct MetricChartView: View {
     private var legend: some View {
         HStack(spacing: 10) {
             if let hovered {
-                Text(Date(timeIntervalSince1970: hovered), format: .dateTime.hour().minute())
+                Text(
+                    Date(timeIntervalSince1970: hovered),
+                    format: range == .week ? .dateTime.weekday().hour().minute() : .dateTime.hour().minute())
                     .typeStyle(DesignTokens.Typography.micro.monospaced, color: DesignTokens.textTertiary)
             }
             ForEach(lines) { line in
@@ -314,5 +352,11 @@ private struct MetricChartView: View {
         guard let hovered else { return name }
         let nearest = line.points.min { abs($0.time - hovered) < abs($1.time - hovered) }
         return "\(name) \(nearest?.value.map { MetricsMath.format($0, unit) } ?? "—")"
+    }
+}
+
+extension Double {
+    fileprivate func clamped(to range: ClosedRange<Double>) -> Double {
+        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }

@@ -29,10 +29,16 @@ struct DeploymentListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: "\(clusterState.currentContext ?? "")|\(clusterState.selectedNamespace ?? "*")|\(clusterState.deployments.count)") {
-            await prometheus?.loadSparklines(
-                context: clusterState.currentContext, namespace: clusterState.selectedNamespace)
+        .task(id: prometheus?.scope(context: clusterState.currentContext, namespace: clusterState.selectedNamespace)) {
+            await loadSparklines()
         }
+        // A refresh re-asks; the store throttles to once every 30 s.
+        .onChange(of: clusterState.deployments.map(\.id)) { Task { await loadSparklines() } }
+    }
+
+    private func loadSparklines() async {
+        await prometheus?.loadSparklines(
+            context: clusterState.currentContext, namespace: clusterState.selectedNamespace)
     }
 
     // MARK: - States
@@ -52,7 +58,8 @@ struct DeploymentListView: View {
     // MARK: - Table
 
     private var deploymentTable: some View {
-        Table(sortedRows, selection: $selectedDeploymentID, sortOrder: resourcePreferences.sortOrder(for: "deployments", of: DeploymentInfo.self)) {
+        let cpu = cpuByDeployment()
+        return Table(sortedRows, selection: $selectedDeploymentID, sortOrder: resourcePreferences.sortOrder(for: "deployments", of: DeploymentInfo.self)) {
             TableColumn("") { dep in
                 DeploymentStatusDot(ready: dep.readyReplicas, desired: dep.replicas)
             }
@@ -76,7 +83,7 @@ struct DeploymentListView: View {
             TableColumn("Ready", value: \.sortKeyStatus) { dep in
                 HStack(spacing: 6) {
                     replicasBadge(ready: dep.readyReplicas, desired: dep.replicas)
-                    SparklineView(points: cpu(of: dep), label: "CPU, last hour")
+                    SparklineView(points: cpu[dep.id], label: "CPU, last hour")
                         .help("CPU of the current pods, last hour, from Prometheus")
                 }
             }
@@ -88,17 +95,21 @@ struct DeploymentListView: View {
 
     // MARK: - Helpers
 
-    /// Last hour of CPU summed over the deployment's current pods (#512).
-    private func cpu(of dep: DeploymentInfo) -> [MetricPoint]? {
-        guard let prometheus, prometheus.sparklines != nil, let selector = dep.selector,
-            !selector.isEmpty
-        else { return nil }
-        let series = clusterState.pods
-            .filter { pod in
-                pod.namespace == dep.namespace && selector.allSatisfy { pod.labels?[$0.key] == $0.value }
-            }
-            .compactMap { prometheus.cpu(namespace: $0.namespace, pod: $0.name) }
-        return series.isEmpty ? nil : MetricsMath.sum(series)
+    /// Last hour of CPU summed over each deployment's current pods (#512),
+    /// computed once per render of the table.
+    private func cpuByDeployment() -> [String: [MetricPoint]] {
+        guard let prometheus, prometheus.sparklines != nil else { return [:] }
+        var podsByNamespace: [String: [PodInfo]] = [:]
+        for pod in clusterState.pods { podsByNamespace[pod.namespace, default: []].append(pod) }
+        var out: [String: [MetricPoint]] = [:]
+        for dep in clusterState.deployments {
+            guard let selector = dep.selector, !selector.isEmpty else { continue }
+            let series = (podsByNamespace[dep.namespace] ?? [])
+                .filter { pod in selector.allSatisfy { pod.labels?[$0.key] == $0.value } }
+                .compactMap { prometheus.cpu(namespace: $0.namespace, pod: $0.name) }
+            if !series.isEmpty { out[dep.id] = MetricsMath.sum(series) }
+        }
+        return out
     }
 
     private func replicasBadge(ready: Int, desired: Int) -> some View {

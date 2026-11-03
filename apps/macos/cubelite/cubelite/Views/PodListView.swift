@@ -33,10 +33,16 @@ struct PodListView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Last hour of CPU and memory from Prometheus, after the rows (#512).
-        .task(id: "\(clusterState.currentContext ?? "")|\(clusterState.selectedNamespace ?? "*")|\(clusterState.pods.count)") {
-            await prometheus?.loadSparklines(
-                context: clusterState.currentContext, namespace: clusterState.selectedNamespace)
+        .task(id: prometheus?.scope(context: clusterState.currentContext, namespace: clusterState.selectedNamespace)) {
+            await loadSparklines()
         }
+        // A refresh re-asks; the store throttles to once every 30 s.
+        .onChange(of: clusterState.pods.map(\.id)) { Task { await loadSparklines() } }
+    }
+
+    private func loadSparklines() async {
+        await prometheus?.loadSparklines(
+            context: clusterState.currentContext, namespace: clusterState.selectedNamespace)
     }
 
     // MARK: - States

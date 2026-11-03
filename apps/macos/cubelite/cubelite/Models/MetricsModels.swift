@@ -26,7 +26,7 @@ final class PrometheusStore {
 
     private(set) var sparklines: Sparklines?
     private(set) var sparklineError: String?
-    @ObservationIgnored private var scope: String?
+    @ObservationIgnored private var scope: Scope?
     @ObservationIgnored private var loadedAt: Date?
 
     init(endpoints: PrometheusEndpointStore, querying: (any PrometheusQuerying)?) {
@@ -44,12 +44,9 @@ final class PrometheusStore {
     /// answer for it is dropped.
     func loadSparklines(context: String?, namespace: String?, now: Date = Date()) async {
         let endpoint = endpoint(for: context)
-        let key: String? = {
-            guard let context, let endpoint, let data = try? JSONEncoder().encode(endpoint) else {
-                return nil
-            }
-            return "\(context)|\(namespace ?? "*")|\(String(decoding: data, as: UTF8.self))"
-        }()
+        let key: Scope? =
+            context != nil && endpoint != nil
+            ? Scope(context: context, namespace: namespace, endpoint: endpoint) : nil
         if key != scope {
             scope = key
             loadedAt = nil
@@ -64,9 +61,23 @@ final class PrometheusStore {
             guard key == scope else { return }
             sparklines = data
             sparklineError = nil
+        } catch is CancellationError {
+            // The view went away mid-load: let the next call load at once.
+            if key == scope { loadedAt = nil }
         } catch {
             if key == scope { sparklineError = error.localizedDescription }
         }
+    }
+
+    /// Identity of what the lists show (reload when it changes).
+    struct Scope: Hashable {
+        let context: String?
+        let namespace: String?
+        let endpoint: PromEndpoint?
+    }
+
+    func scope(context: String?, namespace: String?) -> Scope {
+        Scope(context: context, namespace: namespace, endpoint: endpoint(for: context))
     }
 
     func cpu(namespace: String, pod: String) -> [MetricPoint]? {
@@ -107,6 +118,7 @@ final class MetricsSectionModel {
         }
         generation += 1
         let mine = generation
+        error = nil
         let request = MetricsRequest(
             namespace: namespace, workload: workload, range: range, perContainer: perContainer)
         isLoading = true

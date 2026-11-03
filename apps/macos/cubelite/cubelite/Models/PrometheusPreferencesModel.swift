@@ -176,7 +176,11 @@ final class PrometheusPreferencesModel {
             // Stored even if the form moved to another context meanwhile.
             self.endpoints.setEndpoint(endpoint, for: context)
             guard context == self.context else { return }
-            if let endpoint { await self.refreshStoredMethod(endpoint) }
+            if let endpoint {
+                await self.refreshStoredMethod(endpoint)
+            } else {
+                self.storedMethod = nil
+            }
             self.outcome = FormOutcome(
                 ok: true, text: endpoint == nil ? "Prometheus off for \(context)" : "Prometheus saved for \(context)")
         }

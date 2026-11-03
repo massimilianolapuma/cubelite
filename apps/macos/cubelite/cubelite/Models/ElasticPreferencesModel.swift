@@ -204,7 +204,11 @@ final class ElasticPreferencesModel {
             // the keychain already matches this endpoint.
             endpoints.setEndpoint(endpoint, for: context)
             guard context == self.context else { return }
-            if let endpoint { await refreshStoredMethod(endpoint) }
+            if let endpoint {
+                await refreshStoredMethod(endpoint)
+            } else {
+                storedMethod = nil
+            }
             outcome = Outcome(
                 ok: true,
                 text: endpoint == nil
