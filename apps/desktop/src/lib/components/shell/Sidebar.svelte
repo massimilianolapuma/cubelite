@@ -1,65 +1,10 @@
 <script lang="ts">
 	import { app, type View } from '#lib/stores/app.svelte.ts';
 	import { isExtraKind, resources } from '#lib/stores/resources.svelte.ts';
+	import { navigation } from '#lib/stores/navigation.svelte.ts';
 
-	interface NavItem {
-		view: View;
-		label: string;
-	}
-	interface Section {
-		label: string;
-		dot: string;
-		items: NavItem[];
-	}
-
-	// Group dot colors per spec: workloads blue, network violet, config amber, observe teal.
-	const sections: Section[] = [
-		{
-			label: 'Cluster',
-			dot: 'var(--color-accent)',
-			items: [
-				{ view: 'overview', label: 'Overview' },
-				{ view: 'nodes', label: 'Nodes' }
-			]
-		},
-		{
-			label: 'Workloads',
-			dot: 'var(--color-cluster-blue)',
-			items: [
-				{ view: 'pods', label: 'Pods' },
-				{ view: 'deployments', label: 'Deployments' },
-				{ view: 'statefulsets', label: 'StatefulSets' },
-				{ view: 'jobs', label: 'Jobs' },
-				{ view: 'cronjobs', label: 'CronJobs' },
-				{ view: 'helm', label: 'Helm Releases' }
-			]
-		},
-		{
-			label: 'Network',
-			dot: 'var(--color-cluster-violet)',
-			items: [
-				{ view: 'services', label: 'Services' },
-				{ view: 'ingresses', label: 'Ingresses' }
-			]
-		},
-		{
-			label: 'Config',
-			dot: 'var(--color-status-warn)',
-			items: [
-				{ view: 'configmaps', label: 'ConfigMaps' },
-				{ view: 'secrets', label: 'Secrets' },
-				{ view: 'pvcs', label: 'PVCs' }
-			]
-		},
-		{
-			label: 'Observe',
-			dot: 'var(--color-cluster-teal)',
-			items: [
-				{ view: 'events', label: 'Events' },
-				{ view: 'logs', label: 'Logs' }
-			]
-		}
-	];
+	// Order and visibility come from Preferences (#496).
+	const sections = $derived(navigation.sections);
 
 	const issueCount = $derived(resources.issuePods.length);
 	const warningCount = $derived(resources.warningEvents.length);
@@ -95,7 +40,7 @@
 </script>
 
 <aside class="flex w-[198px] shrink-0 flex-col gap-4 overflow-y-auto bg-surface-panel px-2 py-3">
-	{#each sections as section (section.label)}
+	{#each sections as section (section.id)}
 		<div>
 			<div class="type-section mb-1 px-2.5 text-text-tertiary">{section.label}</div>
 			{#each section.items as item (item.view)}

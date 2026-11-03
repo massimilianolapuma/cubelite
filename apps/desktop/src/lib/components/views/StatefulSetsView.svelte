@@ -1,4 +1,8 @@
 <script lang="ts">
+	import SortHeader from '#lib/components/ui/SortHeader.svelte';
+	import { sortRows } from '#lib/list-sort.ts';
+	import { lists } from '#lib/stores/lists.svelte.ts';
+	import { replicaTone } from '#lib/status.ts';
 	import { formatAge } from '#lib/age.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
@@ -9,6 +13,9 @@
 	});
 
 	const grid = 'grid-template-columns: 2.6fr 0.7fr 0.9fr 0.55fr;';
+
+	// Default sort from Preferences, header click overrides for the session (#496).
+	const sorted = $derived(sortRows(resources.statefulsets, lists.specFor('statefulsets'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp, status: (x) => replicaTone(x.replicas, x.ready_replicas) }));
 </script>
 
 <div class="flex flex-col gap-3 p-4">
@@ -19,16 +26,16 @@
 	{:else}
 		<div class="overflow-hidden rounded-lg border border-border-default">
 			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
-				<span class="type-colhead">Name</span>
+				<SortHeader list="statefulsets" field="name" label="Name" />
 				<span class="type-colhead">Ready</span>
-				<span class="type-colhead">Status</span>
-				<span class="type-colhead">Age</span>
+				<SortHeader list="statefulsets" field="status" label="Status" />
+				<SortHeader list="statefulsets" field="age" label="Age" />
 			</div>
 			<div class="bg-surface-panel">
 				{#if resources.statefulsets.length === 0}
 					<p class="py-8 text-center text-xs text-text-disabled">No stateful sets found.</p>
 				{:else}
-					{#each resources.statefulsets as item (item.namespace + '/' + item.name)}
+					{#each sorted as item (item.namespace + '/' + item.name)}
 						<div
 							class="grid items-center gap-x-3 border-b border-border-faint px-3 last:border-b-0 hover:bg-surface-row-hover"
 							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
