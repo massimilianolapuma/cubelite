@@ -150,6 +150,51 @@ final class AppSettings {
         if let context { integrationContext = context }
     }
 
+    // MARK: - Integration suggestions (#527)
+
+    /// Integrations whose suggestion banner was dismissed, per context
+    /// (`elasticsearch`, `prometheus`); Settings → Integrations clears them.
+    private(set) var integrationDismissals: [String: [String]] = [:] {
+        didSet {
+            if let data = try? JSONEncoder().encode(integrationDismissals) {
+                defaults.set(data, forKey: Keys.integrationDismissals)
+            }
+        }
+    }
+
+    func isDismissed(_ pane: IntegrationPane, context: String) -> Bool {
+        integrationDismissals[context]?.contains(pane.key) ?? false
+    }
+
+    func dismiss(_ panes: [IntegrationPane], context: String) {
+        let kept = integrationDismissals[context] ?? []
+        integrationDismissals[context] = kept + panes.map(\.key).filter { !kept.contains($0) }
+    }
+
+    func clearDismissals(context: String) {
+        integrationDismissals[context] = nil
+    }
+
+    /// Services the banner's Review hands to Settings → Integrations, which
+    /// pre-fills its forms with them without saving (not persisted).
+    private(set) var pendingSuggestion: PendingSuggestion?
+
+    func suggest(_ found: DetectedIntegrations, context: String) {
+        pendingSuggestion = PendingSuggestion(context: context, found: found)
+    }
+
+    /// The pending suggestion for `context`, consumed.
+    func takeSuggestion(for context: String?) -> DetectedIntegrations? {
+        guard let pending = pendingSuggestion, pending.context == context else { return nil }
+        pendingSuggestion = nil
+        return pending.found
+    }
+
+    struct PendingSuggestion: Equatable, Sendable {
+        let context: String
+        let found: DetectedIntegrations
+    }
+
     // MARK: - Init
 
     /// Where settings persist; injectable so parallel test processes never
@@ -189,6 +234,11 @@ final class AppSettings {
         {
             contextNamespaces = decoded
         }
+        if let data = d.data(forKey: Keys.integrationDismissals),
+            let decoded = try? JSONDecoder().decode([String: [String]].self, from: data)
+        {
+            integrationDismissals = decoded
+        }
         if let data = d.data(forKey: Keys.lastNamespaces),
             let decoded = try? JSONDecoder().decode([String: String].self, from: data)
         {
@@ -204,9 +254,12 @@ final class AppSettings {
     }
 
     /// Integrations configured in the Integrations tab.
-    enum IntegrationPane: String, CaseIterable {
+    enum IntegrationPane: String, CaseIterable, Sendable {
         case elasticsearch = "Elasticsearch"
         case prometheus = "Prometheus"
+
+        /// Persisted name (dismissals, same as the desktop's).
+        var key: String { self == .elasticsearch ? "elasticsearch" : "prometheus" }
     }
 
     /// Color scheme preference.
@@ -255,5 +308,6 @@ final class AppSettings {
         static let contextNamespaces = "contextNamespaces"
         static let lastNamespaces = "lastNamespaces"
         static let integrationHints = "integrationHints"
+        static let integrationDismissals = "integrationDismissals"
     }
 }

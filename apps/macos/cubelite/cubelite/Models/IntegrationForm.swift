@@ -144,6 +144,9 @@ enum IntegrationForm {
     static let movedMessage =
         "The endpoint or TLS setting changed: enter the credentials again (or choose No authentication)."
 
+    /// Shown when the banner's Review pre-filled the form (#527).
+    static let suggestedMessage = "Found in this cluster: Test, then Save."
+
     /// Whether `draft` is bound differently from `saved` (stored secrets
     /// only work with the endpoint they were saved for).
     static func moved(saved: (IntegrationTarget, Bool)?, draft: (IntegrationTarget, Bool)) -> Bool {

@@ -143,6 +143,30 @@ final class PrometheusPreferencesModel {
         grafanaService = found.serviceRef
     }
 
+    /// Fills the form with a service found when the context connected
+    /// (#527): in cluster and its Grafana. Nothing is saved, and a saved
+    /// endpoint is never replaced.
+    func suggest(_ found: DetectedPrometheus, grafana: DetectedPrometheus?) {
+        guard saved == nil else { return }
+        target.mode = .inCluster
+        pick(found)
+        if let grafana { pickGrafana(grafana) }
+        outcome = FormOutcome(ok: true, text: IntegrationForm.suggestedMessage)
+    }
+
+    /// Tests the form's endpoint, then saves it; nothing is saved when the
+    /// test fails (#527). The failure reason, or nil once saved.
+    func testThenSave() async -> String? {
+        guard let context, let endpoint = draft() else { return "Nothing to save" }
+        do {
+            _ = try await backend.test(context: context, endpoint: endpoint, auth: typedAuth())
+        } catch {
+            return error.localizedDescription
+        }
+        await save()
+        return outcome.flatMap { $0.ok ? nil : $0.text }
+    }
+
     // MARK: Actions
 
     func detect() async {

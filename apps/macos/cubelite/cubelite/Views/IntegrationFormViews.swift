@@ -43,12 +43,20 @@ struct IntegrationsPreferencesTab: View {
                 if let prometheusModel { PrometheusPreferencesForm(model: prometheusModel) }
             }
             Divider()
-            Toggle("Show integration hints in panels", isOn: Bindable(settings).integrationHints)
-                .help("Offer setting up Elasticsearch and Prometheus where their data would appear")
-                .accessibilityIdentifier("preferences.integration-hints")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
+            HStack {
+                Toggle("Show integration hints in panels", isOn: Bindable(settings).integrationHints)
+                    .help("Offer setting up Elasticsearch and Prometheus where their data would appear")
+                    .accessibilityIdentifier("preferences.integration-hints")
+                Spacer()
+                if let context, settings.integrationDismissals[context] != nil {
+                    Button("Suggest detected integrations again") { settings.clearDismissals(context: context) }
+                        .buttonStyle(.link)
+                        .typeStyle(DesignTokens.Typography.caption)
+                        .accessibilityIdentifier("preferences.integration-suggestions-reset")
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
         }
         .task(id: context) {
             if elasticModel == nil, let elastic {
@@ -59,7 +67,9 @@ struct IntegrationsPreferencesTab: View {
             }
             await elasticModel?.load(context: context)
             await prometheusModel?.load(context: context)
+            applySuggestion()
         }
+        .onChange(of: settings.pendingSuggestion) { _, _ in applySuggestion() }
         .onAppear { adoptRequestedContext() }
         .onChange(of: settings.integrationContext) { _, _ in adoptRequestedContext() }
         .task(id: clusterState.contexts) {
@@ -69,6 +79,16 @@ struct IntegrationsPreferencesTab: View {
                 context = requested ?? clusterState.currentContext ?? clusterState.contexts.first
             }
         }
+    }
+
+    /// Pre-fills the forms with what the banner's Review found (#527).
+    private func applySuggestion() {
+        // Kept until the forms show that context.
+        guard let elasticModel, let prometheusModel, elasticModel.context == context,
+            prometheusModel.context == context, let found = settings.takeSuggestion(for: context)
+        else { return }
+        if let es = found.elasticsearch { elasticModel.suggest(es, kibana: found.kibana) }
+        if let prom = found.prometheus { prometheusModel.suggest(prom, grafana: found.grafana) }
     }
 
     /// Edits the context of the panel that opened Settings (#526).
