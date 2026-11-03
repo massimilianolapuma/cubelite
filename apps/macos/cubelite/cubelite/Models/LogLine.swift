@@ -30,16 +30,19 @@ struct LogLine: Identifiable, Equatable, Sendable {
             time = timestamp?.components(separatedBy: "T").last
             message = String(raw[raw.index(after: space)...])
         }
+        return LogLine(
+            id: id, time: time, level: detectLevel(message), message: message,
+            container: container, timestamp: timestamp)
+    }
+
+    /// Severity guessed from keywords in the message.
+    static func detectLevel(_ message: String) -> Level {
         let upper = message.uppercased()
-        let level: Level =
-            upper.contains("ERROR") || upper.contains("FATAL") || upper.contains("PANIC")
+        return upper.contains("ERROR") || upper.contains("FATAL") || upper.contains("PANIC")
             ? .error
             : upper.contains("WARN")
                 ? .warn
                 : upper.contains("DEBUG") || upper.contains("TRACE") ? .debug : .info
-        return LogLine(
-            id: id, time: time, level: level, message: message, container: container,
-            timestamp: timestamp)
     }
 }
 
