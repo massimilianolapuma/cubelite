@@ -31,6 +31,7 @@
 pub mod client;
 pub mod context;
 pub mod error;
+pub mod exec;
 pub mod helm;
 pub mod kubeconfig;
 pub mod logs;

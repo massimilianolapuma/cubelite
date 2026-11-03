@@ -14,6 +14,10 @@ declare global {
     /** Test hook: looks up the stream id the mock last handed out for a
      * `stream_pod_log` call with this container name (see `emitPodLogLine`). */
     __streamIdFor?: (container: string) => string | null;
+    /** Test hook: arguments of the last `start_exec` call. */
+    __lastExec?: Record<string, unknown>;
+    /** Test hook: every `exec_send` payload, in order. */
+    __execSent?: string[];
     /** Test hook: arguments of the last `apply_resource_yaml` call. */
     __lastApply?: Record<string, unknown>;
   }
@@ -199,6 +203,15 @@ export function tauriMockScript(): string {
       }
       case "export_log": return "/home/test/Downloads/" + args.filename;
       case "get_resource_yaml": return "kind: Pod\\nmetadata:\\n  name: " + args.name + "\\n";
+      case "start_exec": {
+        window.__lastExec = args;
+        return null;
+      }
+      case "exec_send": {
+        window.__execSent = [...(window.__execSent ?? []), args.data];
+        return null;
+      }
+      case "stop_exec": return null;
       case "apply_resource_yaml": {
         window.__lastApply = args;
         return null;
