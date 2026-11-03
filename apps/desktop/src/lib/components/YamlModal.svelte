@@ -1,10 +1,12 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
 	import Copy from '@lucide/svelte/icons/copy';
+	import Pencil from '@lucide/svelte/icons/pencil';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Modal from '#lib/components/ui/Modal.svelte';
 	import { errorMessage } from '#lib/errors.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
-	import { getResourceYaml, type YamlResourceType } from '#lib/tauri.ts';
+	import { applyResourceYaml, getResourceYaml, type YamlResourceType } from '#lib/tauri.ts';
 
 	let {
 		resourceType,
@@ -21,6 +23,12 @@
 	let yaml = $state<string | null>(null);
 	let error = $state<string | null>(null);
 	let copied = $state(false);
+
+	// Edit & apply (#487): the draft replaces the resource (kubectl replace).
+	let editing = $state(false);
+	let draft = $state('');
+	let applying = $state(false);
+	let applyError = $state<string | null>(null);
 
 	$effect(() => {
 		yaml = null;
@@ -43,28 +51,99 @@
 			// Clipboard may be unavailable; the selection still works.
 		}
 	}
+
+	function startEditing() {
+		if (yaml === null) return;
+		draft = yaml;
+		applyError = null;
+		editing = true;
+	}
+
+	function cancelEditing() {
+		editing = false;
+		applyError = null;
+	}
+
+	async function apply() {
+		const kc = app.kubeconfigPath;
+		const cluster = app.activeCluster;
+		if (!kc || !cluster || applying) return;
+		applying = true;
+		applyError = null;
+		try {
+			await applyResourceYaml(kc, resourceType, namespace, name, draft, cluster);
+			onClose();
+		} catch (e: unknown) {
+			applyError = errorMessage(e);
+		} finally {
+			applying = false;
+		}
+	}
+
+	/** Tab indents with two spaces instead of leaving the editor. */
+	function onEditorKeydown(event: KeyboardEvent) {
+		if (event.key !== 'Tab' || event.shiftKey) return;
+		event.preventDefault();
+		const area = event.currentTarget as HTMLTextAreaElement;
+		const { selectionStart: start, selectionEnd: end } = area;
+		draft = `${draft.slice(0, start)}  ${draft.slice(end)}`;
+		queueMicrotask(() => area.setSelectionRange(start + 2, start + 2));
+	}
+
+	const secondary =
+		'focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110 disabled:opacity-45';
 </script>
 
 <Modal title="{name}.yaml" width={720} {onClose}>
 	<div class="flex flex-col gap-2">
-		<div class="flex justify-end">
-			<button
-				type="button"
-				disabled={!yaml}
-				class="focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110 disabled:opacity-45"
-				onclick={() => void copy()}
-			>
-				{#if copied}
-					<Check class="h-3 w-3 text-status-ok" />
-					Copied
-				{:else}
-					<Copy class="h-3 w-3" />
-					Copy
-				{/if}
-			</button>
+		<div class="flex justify-end gap-2">
+			{#if editing}
+				<button type="button" class={secondary} disabled={applying} onclick={cancelEditing}>
+					Cancel
+				</button>
+				<button
+					type="button"
+					disabled={applying}
+					class="focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md bg-accent px-2.5 font-medium text-surface-window hover:brightness-110 disabled:opacity-45"
+					onclick={() => void apply()}
+				>
+					{#if applying}
+						<LoaderCircle class="h-3 w-3 animate-spin" />
+						Applying…
+					{:else}
+						Apply
+					{/if}
+				</button>
+			{:else}
+				<button type="button" disabled={!yaml} class={secondary} onclick={startEditing}>
+					<Pencil class="h-3 w-3" />
+					Edit
+				</button>
+				<button type="button" disabled={!yaml} class={secondary} onclick={() => void copy()}>
+					{#if copied}
+						<Check class="h-3 w-3 text-status-ok" />
+						Copied
+					{:else}
+						<Copy class="h-3 w-3" />
+						Copy
+					{/if}
+				</button>
+			{/if}
 		</div>
 
-		{#if error}
+		{#if editing}
+			{#if applyError}
+				<p class="type-caption text-status-err" role="alert">{applyError}</p>
+			{/if}
+			<textarea
+				bind:value={draft}
+				aria-label="Manifest YAML"
+				spellcheck="false"
+				autocapitalize="off"
+				class="focus-ring type-log h-[60vh] w-full resize-none rounded-lg border border-border-faint bg-surface-sunken p-3 text-text-log"
+				onkeydown={onEditorKeydown}
+			></textarea>
+		{:else if error}
 			<p class="py-8 text-center text-xs text-status-err">{error}</p>
 		{:else if yaml === null}
 			<p class="py-8 text-center text-xs text-text-disabled">Loading…</p>

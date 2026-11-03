@@ -10,7 +10,7 @@ use k8s_openapi::api::core::v1::{
 };
 use k8s_openapi::api::networking::v1::Ingress;
 use kube::{
-    api::{DeleteParams, ListParams, Patch, PatchParams},
+    api::{DeleteParams, ListParams, Patch, PatchParams, PostParams},
     config::{KubeConfigOptions, Kubeconfig},
     Api, Client, Config,
 };
@@ -599,6 +599,44 @@ impl KubeClient {
         }
     }
 
+    /// Replace one resource with an edited YAML manifest (PUT, `kubectl
+    /// replace` semantics, like the native app's manifest sheet).
+    ///
+    /// The manifest must be a mapping of the target's kind whose
+    /// `metadata.name` is `name` (and `metadata.namespace`, when present,
+    /// `namespace`). The `resourceVersion` it carries gives optimistic
+    /// concurrency: a concurrent change makes the API answer 409.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] for an invalid or mismatched
+    /// manifest, a kind without YAML support, a conflict (friendly message)
+    /// or any other API failure.
+    pub async fn apply_resource_yaml(
+        &self,
+        resource_type: ResourceType,
+        namespace: &str,
+        name: &str,
+        yaml: &str,
+    ) -> Result<(), KubeconfigError> {
+        let client = self.inner.clone();
+        match resource_type {
+            ResourceType::Pod => replace_yaml::<Pod>(client, namespace, name, yaml).await,
+            ResourceType::Deployment => {
+                replace_yaml::<Deployment>(client, namespace, name, yaml).await
+            }
+            ResourceType::Service => replace_yaml::<Service>(client, namespace, name, yaml).await,
+            ResourceType::ConfigMap => {
+                replace_yaml::<ConfigMap>(client, namespace, name, yaml).await
+            }
+            ResourceType::Secret => replace_yaml::<Secret>(client, namespace, name, yaml).await,
+            ResourceType::Ingress => replace_yaml::<Ingress>(client, namespace, name, yaml).await,
+            ResourceType::Namespace => Err(KubeconfigError::ClientError {
+                reason: "Editing is not supported for namespaces".to_string(),
+            }),
+        }
+    }
+
     /// List events in `namespace`, or across all namespaces when `None`,
     /// sorted most-recent first.
     ///
@@ -716,6 +754,83 @@ where
             reason: e.to_string(),
         })?;
     to_clean_yaml(&obj)
+}
+
+/// Parse `yaml` and PUT it over `namespace/name`.
+async fn replace_yaml<K>(
+    client: Client,
+    namespace: &str,
+    name: &str,
+    yaml: &str,
+) -> Result<(), KubeconfigError>
+where
+    K: kube::Resource<Scope = k8s_openapi::NamespaceResourceScope>
+        + Clone
+        + serde::Serialize
+        + serde::de::DeserializeOwned
+        + std::fmt::Debug,
+    <K as kube::Resource>::DynamicType: Default,
+{
+    let obj: K = parse_manifest(yaml, namespace, name)?;
+    let api: Api<K> = Api::namespaced(client, namespace);
+    api.replace(name, &PostParams::default(), &obj)
+        .await
+        .map(|_| ())
+        .map_err(apply_error)
+}
+
+/// Parse an edited manifest into `K`, rejecting anything that would not
+/// replace exactly the target object: not a mapping, another kind, another
+/// name, or another namespace. Renames and moves are not supported.
+fn parse_manifest<K>(yaml: &str, namespace: &str, name: &str) -> Result<K, KubeconfigError>
+where
+    K: kube::Resource + serde::de::DeserializeOwned,
+    <K as kube::Resource>::DynamicType: Default,
+{
+    let invalid = |reason: String| KubeconfigError::ClientError { reason };
+    let value: serde_yaml::Value = serde_yaml::from_str(yaml)
+        .map_err(|e| invalid(format!("The manifest is not valid YAML: {e}")))?;
+    if !value.is_mapping() {
+        return Err(invalid("The manifest must be a YAML mapping".to_string()));
+    }
+    let expected_kind = K::kind(&K::DynamicType::default()).to_string();
+    if let Some(kind) = value.get("kind") {
+        if kind.as_str() != Some(expected_kind.as_str()) {
+            return Err(invalid(format!(
+                "The manifest kind must stay {expected_kind}"
+            )));
+        }
+    }
+    let obj: K = serde_yaml::from_value(value)
+        .map_err(|e| invalid(format!("The manifest is not a valid {expected_kind}: {e}")))?;
+    if obj.meta().name.as_deref() != Some(name) {
+        return Err(invalid(format!(
+            "metadata.name must stay \"{name}\" (renaming is not supported)"
+        )));
+    }
+    if obj
+        .meta()
+        .namespace
+        .as_deref()
+        .is_some_and(|ns| ns != namespace)
+    {
+        return Err(invalid(format!(
+            "metadata.namespace must stay \"{namespace}\" (moving is not supported)"
+        )));
+    }
+    Ok(obj)
+}
+
+/// Map a replace failure to a message for the YAML editor.
+fn apply_error(error: kube::Error) -> KubeconfigError {
+    let reason = match &error {
+        kube::Error::Api(status) if status.code == 409 => {
+            "The resource changed since you opened it. Reload and edit again.".to_string()
+        }
+        kube::Error::Api(status) if !status.message.is_empty() => status.message.clone(),
+        _ => error.to_string(),
+    };
+    KubeconfigError::ClientError { reason }
 }
 
 /// Serialize an API object to YAML with noisy server-side bookkeeping
@@ -1181,5 +1296,90 @@ users:
         );
         let seen = requests(client, server).await;
         assert!(seen[0].uri.starts_with("/api/v1/namespaces/team/events?"));
+    }
+
+    // -- apply_resource_yaml (#487) ------------------------------------------
+
+    const CM: &str = "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: app\n  namespace: dev\n  resourceVersion: \"42\"\ndata:\n  key: value\n";
+
+    fn reason(err: KubeconfigError) -> String {
+        match err {
+            KubeconfigError::ClientError { reason } => reason,
+            other => panic!("unexpected error {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_manifest_accepts_the_target_object() {
+        let cm: ConfigMap = parse_manifest(CM, "dev", "app").expect("valid");
+        assert_eq!(cm.metadata.resource_version.as_deref(), Some("42"));
+        assert_eq!(
+            cm.data.and_then(|d| d.get("key").cloned()).as_deref(),
+            Some("value")
+        );
+    }
+
+    #[test]
+    fn parse_manifest_accepts_missing_kind_and_namespace() {
+        let yaml = "metadata:\n  name: app\ndata: {}\n";
+        assert!(parse_manifest::<ConfigMap>(yaml, "dev", "app").is_ok());
+    }
+
+    #[test]
+    fn parse_manifest_rejects_invalid_yaml_and_non_mappings() {
+        let broken = reason(parse_manifest::<ConfigMap>("data: [\n", "dev", "app").unwrap_err());
+        assert!(
+            broken.starts_with("The manifest is not valid YAML"),
+            "{broken}"
+        );
+        let list = reason(parse_manifest::<ConfigMap>("- a\n- b\n", "dev", "app").unwrap_err());
+        assert_eq!(list, "The manifest must be a YAML mapping");
+    }
+
+    #[test]
+    fn parse_manifest_rejects_another_kind_name_or_namespace() {
+        let kind = CM.replace("kind: ConfigMap", "kind: Secret");
+        assert_eq!(
+            reason(parse_manifest::<ConfigMap>(&kind, "dev", "app").unwrap_err()),
+            "The manifest kind must stay ConfigMap"
+        );
+        let renamed = CM.replace("name: app", "name: other");
+        assert!(
+            reason(parse_manifest::<ConfigMap>(&renamed, "dev", "app").unwrap_err())
+                .starts_with("metadata.name must stay \"app\"")
+        );
+        let moved = CM.replace("namespace: dev", "namespace: prod");
+        assert!(
+            reason(parse_manifest::<ConfigMap>(&moved, "dev", "app").unwrap_err())
+                .starts_with("metadata.namespace must stay \"dev\"")
+        );
+    }
+
+    #[test]
+    fn parse_manifest_rejects_fields_of_the_wrong_type() {
+        let bad = CM.replace("key: value", "key: [1, 2]");
+        assert!(
+            reason(parse_manifest::<ConfigMap>(&bad, "dev", "app").unwrap_err())
+                .starts_with("The manifest is not a valid ConfigMap")
+        );
+    }
+
+    #[test]
+    fn apply_error_maps_conflicts_and_api_messages() {
+        let status = |code: u16, message: &str| {
+            kube::Error::Api(Box::new(kube::core::Status {
+                code,
+                message: message.to_string(),
+                ..Default::default()
+            }))
+        };
+        assert_eq!(
+            reason(apply_error(status(409, "Operation cannot be fulfilled"))),
+            "The resource changed since you opened it. Reload and edit again."
+        );
+        assert_eq!(
+            reason(apply_error(status(422, "spec.replicas: Invalid value"))),
+            "spec.replicas: Invalid value"
+        );
     }
 }
