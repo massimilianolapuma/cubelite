@@ -145,8 +145,8 @@ private struct NavigationPreferencesTab: View {
             let arranged = preferences.navigation.arranged
             ForEach(Array(arranged.enumerated()), id: \.element.section) { index, entry in
                 Section {
-                    ForEach(Array(entry.types.enumerated()), id: \.element) { position, type in
-                        row(type, position: position, count: entry.types.count)
+                    ForEach(Array(entry.types.enumerated()), id: \.element) { item in
+                        NavigationTypeRow(type: item.element, position: item.offset, count: entry.types.count)
                     }
                 } header: {
                     sectionHeader(entry.section, index: index, count: arranged.count)
@@ -190,8 +190,25 @@ private struct NavigationPreferencesTab: View {
         }
     }
 
-    @ViewBuilder
-    private func row(_ type: ResourceType, position: Int, count: Int) -> some View {
+    private func moveButtons(
+        label: String, canUp: Bool, canDown: Bool, up: @escaping () -> Void,
+        down: @escaping () -> Void
+    ) -> some View {
+        MoveButtons(label: label, canUp: canUp, canDown: canDown, up: up, down: down)
+    }
+}
+
+/// One resource type in the Navigation tab: move buttons and visibility.
+/// A concrete view type keeps `ForEach` from resolving to Swift Charts'
+/// overload on older toolchains.
+private struct NavigationTypeRow: View {
+
+    @Environment(ResourcePreferences.self) private var preferences
+    let type: ResourceType
+    let position: Int
+    let count: Int
+
+    var body: some View {
         let hidden = preferences.navigation.isHidden(type)
         HStack {
             Label(type.rawValue, systemImage: type.systemImage)
@@ -202,7 +219,7 @@ private struct NavigationPreferencesTab: View {
                     .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
             } else {
                 let firstMovable = type.navID == "nodes" ? 1 : 0
-                moveButtons(
+                MoveButtons(
                     label: type.rawValue, canUp: position > firstMovable, canDown: position < count - 1,
                     up: { preferences.moveType(type, by: -1) },
                     down: { preferences.moveType(type, by: 1) })
@@ -220,11 +237,17 @@ private struct NavigationPreferencesTab: View {
             }
         }
     }
+}
 
-    private func moveButtons(
-        label: String, canUp: Bool, canDown: Bool, up: @escaping () -> Void,
-        down: @escaping () -> Void
-    ) -> some View {
+/// Up/down buttons moving a section or a resource type.
+private struct MoveButtons: View {
+    let label: String
+    let canUp: Bool
+    let canDown: Bool
+    let up: () -> Void
+    let down: () -> Void
+
+    var body: some View {
         HStack(spacing: 2) {
             Button(action: up) { Image(systemName: "chevron.up") }
                 .disabled(!canUp)
