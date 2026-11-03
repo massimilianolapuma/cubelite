@@ -7,11 +7,16 @@
 //! page inside the app.
 
 /// `raw` parsed as an http(s) URL; `what` names it in the error ("Kibana").
+/// A user or password in it is dropped: credentials live in the keychain
+/// and must never reach the browser's history.
 pub(super) fn http_base(raw: &str, what: &str) -> Result<url::Url, String> {
-    let base = url::Url::parse(raw.trim()).map_err(|e| format!("Invalid {what} URL: {e}"))?;
+    let mut base = url::Url::parse(raw.trim()).map_err(|e| format!("Invalid {what} URL: {e}"))?;
     if !matches!(base.scheme(), "http" | "https") {
         return Err(format!("{what} URL must start with http:// or https://"));
     }
+    // Cannot fail on an http(s) URL, which always has a host.
+    let _ = base.set_username("");
+    let _ = base.set_password(None);
     Ok(base)
 }
 
@@ -36,5 +41,11 @@ mod tests {
             "Kibana URL must start with http:// or https://"
         );
         assert!(http_base("not a url", "Grafana").is_err());
+    }
+
+    #[test]
+    fn http_base_drops_credentials() {
+        let base = http_base("https://elastic:s3cret@kb.example:5601/x", "Kibana").expect("url");
+        assert_eq!(base.as_str(), "https://kb.example:5601/x");
     }
 }

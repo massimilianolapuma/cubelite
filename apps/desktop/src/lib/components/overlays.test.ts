@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, within } from "@testing-library/svelte";
+import { tick } from "svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
@@ -249,11 +250,33 @@ describe("PreferencesModal", () => {
     Element.prototype.scrollIntoView = function (this: Element) {
       scrolled.push(this);
     };
+    // Content loading above the section resizes the page: the scroll follows.
+    let resized: (() => void) | null = null;
+    const disconnect = vi.fn();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          resized = callback;
+        }
+        observe() {}
+        disconnect = disconnect;
+      },
+    );
     app.openPreferences("prometheus");
-    render(PreferencesModal);
+    const { unmount } = render(PreferencesModal);
     expect(app.preferencesOpen).toBe(true);
     expect(app.preferencesSection).toBeNull();
+    await tick();
+    expect(scrolled).toHaveLength(1);
     expect(scrolled[0]?.querySelector('[data-testid="prometheus-prefs"]')).not.toBeNull();
+    resized!();
+    expect(scrolled).toHaveLength(2);
+    expect(scrolled[1]).toBe(scrolled[0]);
+    unmount();
+    expect(disconnect).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+    render(PreferencesModal);
     await fireEvent.click(screen.getByRole("switch", { name: "Show integration hints in panels" }));
     expect(settings.integrationHints.value).toBe(false);
     await fireEvent.click(screen.getByRole("switch", { name: "Show integration hints in panels" }));

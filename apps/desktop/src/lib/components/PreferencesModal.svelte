@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick, untrack } from 'svelte';
 	import { setMode } from 'mode-watcher';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { addPaths, originLabel, removePath, seedIfEmpty } from '#lib/kubeconfig-list.ts';
@@ -34,12 +35,27 @@
 		elasticsearch: null,
 		prometheus: null
 	});
+	let content = $state<HTMLElement | null>(null);
+	/** How long the scroll follows content that loads above the section. */
+	const FOLLOW_MS = 1000;
 	$effect(() => {
-		const wanted = app.preferencesSection;
+		// Read once (the modal mounts per opening) so clearing it does not re-run this.
+		const wanted = untrack(() => app.preferencesSection);
 		const el = wanted ? sections[wanted] : null;
-		if (!el) return;
-		el.scrollIntoView?.({ block: 'start' });
-		app.preferencesSection = null;
+		if (!el || !content) return;
+		untrack(() => (app.preferencesSection = null));
+		const scroll = () => el.scrollIntoView?.({ block: 'start' });
+		void tick().then(scroll);
+		// Sections above (kubeconfig list, detected services) fill in
+		// asynchronously and push the target down: follow them briefly.
+		if (typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver(scroll);
+		observer.observe(content);
+		const stop = setTimeout(() => observer.disconnect(), FOLLOW_MS);
+		return () => {
+			clearTimeout(stop);
+			observer.disconnect();
+		};
 	});
 
 	let updateChecked = $state(false);
@@ -132,7 +148,7 @@
 </script>
 
 <Modal title="Preferences" onClose={close}>
-	<div class="flex flex-col gap-5">
+	<div bind:this={content} class="flex flex-col gap-5">
 		<section class="flex items-center justify-between gap-4">
 			<div>
 				<div class="type-body text-text-primary">Appearance</div>

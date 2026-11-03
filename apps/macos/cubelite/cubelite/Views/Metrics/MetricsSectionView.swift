@@ -66,7 +66,7 @@ struct MetricsSectionView: View {
             }
             .accessibilityIdentifier("detail.metrics")
         } else if showsSetupHint {
-            MetricsSetupHint()
+            MetricsSetupHint(context: context)
         }
     }
 

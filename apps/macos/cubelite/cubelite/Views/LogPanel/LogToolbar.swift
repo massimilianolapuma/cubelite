@@ -23,7 +23,7 @@ struct LogToolbar: View {
             } else if session.offersHistorySetup(hints: settings?.integrationHints ?? false) {
                 // No Elasticsearch yet: History shown disabled, with Set up (#526).
                 sourcePicker(available: false)
-                IntegrationSetupButton(title: "Set up", pane: .elasticsearch)
+                IntegrationSetupButton(title: "Set up", pane: .elasticsearch, context: session.context)
             }
             if session.showsHistory, let history = session.history {
                 HistoryQueryControls(history: history)

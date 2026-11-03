@@ -23,13 +23,15 @@ enum WebUI {
 struct IntegrationSetupButton: View {
     let title: String
     let pane: AppSettings.IntegrationPane
+    /// The panel's context, which the Integrations tab then edits.
+    let context: String?
 
     @Environment(AppSettings.self) private var settings: AppSettings?
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Button(title) {
-            settings?.showIntegrationSettings(pane)
+            settings?.showIntegrationSettings(pane, context: context)
             openSettings()
         }
         .buttonStyle(.link)
@@ -42,6 +44,8 @@ struct IntegrationSetupButton: View {
 /// Stand-in for the Metrics section when the context has no Prometheus
 /// (#526): what it would show, a link to set it up, and Hide.
 struct MetricsSetupHint: View {
+    let context: String?
+
     @Environment(AppSettings.self) private var settings: AppSettings?
 
     var body: some View {
@@ -59,7 +63,7 @@ struct MetricsSetupHint: View {
             }
             Text(IntegrationHints.metricsCaption)
                 .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
-            IntegrationSetupButton(title: "Set up Prometheus", pane: .prometheus)
+            IntegrationSetupButton(title: "Set up Prometheus", pane: .prometheus, context: context)
         }
         .padding(.top, 16)
         .accessibilityIdentifier("detail.metrics-hint")

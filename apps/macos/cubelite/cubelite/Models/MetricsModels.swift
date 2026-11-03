@@ -82,7 +82,9 @@ final class PrometheusStore {
 
     /// Grafana's home page (command palette, #526).
     func grafanaHomeURL(context: String, endpoint: PromEndpoint) async throws -> URL? {
-        try await grafanaBase(context: context, endpoint: endpoint).flatMap(Integration.webURL)
+        try await grafanaBase(context: context, endpoint: endpoint).flatMap {
+            Integration.webURL(Integration.trimmedBase($0))
+        }
     }
 
     /// The configured Grafana URL, else the in-cluster Grafana's forward.

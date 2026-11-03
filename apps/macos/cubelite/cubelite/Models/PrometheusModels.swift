@@ -315,12 +315,19 @@ enum Prometheus {
 
     /// Regex for a deployment's pods: `name-<hash>-<suffix>`, or for long
     /// names the truncated `generateName` prefix followed by the suffix.
-    static func deploymentPods(_ name: String) -> String {
+    /// `literal` escapes the name for the regex dialect (RE2 for PromQL,
+    /// Lucene for Kibana links, #526).
+    static func deploymentPods(_ name: String, literal: (String) -> String = regexLiteral) -> String {
         if name.count + 12 <= generatedPrefixMax {
-            return "\(regexLiteral(name))-\(safe){6,10}-\(safe){5}"
+            return "\(literal(name))-\(safe){6,10}-\(safe){5}"
         }
         let kept = String(name.prefix(generatedPrefixMax))
-        return "\(regexLiteral(kept))(-\(safe){0,10}-?)?\(safe){5}"
+        return "\(literal(kept))(-\(safe){0,10}-?)?\(safe){5}"
+    }
+
+    /// Regex for a StatefulSet's pods: `name-<ordinal>`.
+    static func statefulSetPods(_ name: String, literal: (String) -> String = regexLiteral) -> String {
+        "\(literal(name))-[0-9]+"
     }
 
     /// Label matchers for a workload: namespace, pod and the optional `cluster`.
@@ -329,7 +336,7 @@ enum Prometheus {
         switch workload {
         case .pod(let name): pod = "pod=\(escape(name))"
         case .deployment(let name): pod = "pod=~\(escape(deploymentPods(name)))"
-        case .statefulSet(let name): pod = "pod=~\(escape("\(regexLiteral(name))-[0-9]+"))"
+        case .statefulSet(let name): pod = "pod=~\(escape(statefulSetPods(name)))"
         }
         var out = "namespace=\(escape(namespace)), \(pod)"
         if let c = cluster?.trimmingCharacters(in: .whitespaces), !c.isEmpty {
@@ -486,9 +493,7 @@ enum Prometheus {
         ]
         if let ds { pane.insert(JSONMember(key: "datasource", value: .string(ds)), at: 0) }
         let panes = JSONValue.object([JSONMember(key: "a", value: .object(pane))]).compactText
-        var base = grafanaBase.trimmingCharacters(in: .whitespaces)
-        while base.hasSuffix("/") { base.removeLast() }
-        return "\(base)/explore?schemaVersion=1&panes=\(Integration.percentEncode(panes))"
+        return "\(Integration.trimmedBase(grafanaBase))/explore?schemaVersion=1&panes=\(Integration.percentEncode(panes))"
     }
 
     /// refId A, B, …, Z, AA, …

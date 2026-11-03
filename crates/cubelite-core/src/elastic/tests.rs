@@ -251,8 +251,10 @@ fn decode(url: &str) -> String {
     String::from_utf8(out).expect("utf8")
 }
 
+const SAFE: &str = "[bcdfghjklmnpqrstvwxz2456789]";
+
 #[test]
-fn deployment_discover_url_matches_the_pod_name_prefix() {
+fn deployment_discover_url_is_a_lucene_regexp_on_the_pods() {
     let url = kibana_deployment_discover_url(
         "https://kb.example/",
         FieldPreset::Ecs,
@@ -264,37 +266,64 @@ fn deployment_discover_url_matches_the_pod_name_prefix() {
     assert!(url.starts_with("https://kb.example/app/discover#/?_g="));
     let decoded = decode(&url);
     assert!(decoded.contains("_g=(time:(from:'now-1h',to:'now'))"));
-    assert!(
-        decoded.contains("query:'kubernetes.namespace:\"shop\" and kubernetes.pod.name:api-*'"),
-        "{decoded}"
+    let expected = format!(
+        "(query:(language:lucene,query:'kubernetes.namespace:\"shop\" AND kubernetes.pod.name:/api-{SAFE}{{6,10}}-{SAFE}{{5}}/'))"
     );
-    let fluent = decode(&kibana_deployment_discover_url(
-        "http://k",
-        FieldPreset::FluentBit,
-        "shop",
-        "a b(c)",
-        "now-1h",
-        "now",
-    ));
+    assert!(decoded.contains(&expected), "{decoded}");
+    let fluent = deployment_lucene_query(FieldPreset::FluentBit, "shop", "a.b/c#d");
     assert!(
-        fluent.contains("kubernetes.pod_name:a\\ b\\(c\\)-*"),
+        fluent.starts_with(
+            "kubernetes.namespace_name:\"shop\" AND kubernetes.pod_name:/a\\.b\\/c\\#d-"
+        ),
         "special characters escaped: {fluent}"
     );
 }
 
-#[test]
-fn deployment_pod_prefix_is_cut_like_generated_names() {
-    assert_eq!(deployment_pod_prefix("api"), "api-");
-    let long = "x".repeat(70);
-    assert_eq!(deployment_pod_prefix(&long), "x".repeat(58));
+/// The pod regexp of a deployment's Lucene query, anchored like Lucene's.
+fn pods_regex(deployment: &str) -> regex::Regex {
+    let query = deployment_lucene_query(FieldPreset::Ecs, "shop", deployment);
+    let start = query.find(":/").expect("regexp") + 2;
+    let body = query[start..].strip_suffix('/').expect("closing slash");
+    regex::Regex::new(&format!("^(?:{body})$")).expect("regex")
 }
 
 #[test]
-fn discover_home_has_no_filter() {
+fn deployment_query_matches_only_the_deployment_pods() {
+    let re = pods_regex("api");
+    assert!(re.is_match("api-7d9f8b6c5-x7k2p"));
+    assert!(
+        !re.is_match("api-gateway-x7k2p-abcde"),
+        "another deployment"
+    );
+    assert!(!re.is_match("api-0"), "a StatefulSet pod");
+    assert!(!re.is_match("api-migrate-28374652-x7k2p"), "a CronJob pod");
+    // Long names: Kubernetes cuts the generated name at 58 characters.
+    let long = "x".repeat(70);
+    let re = pods_regex(&long);
+    assert!(re.is_match(&format!("{}x7k2p", "x".repeat(58))));
+    assert!(!re.is_match(&format!("{}-x7k2p", "y".repeat(58))));
+}
+
+#[test]
+fn discover_links_drop_the_base_query_and_fragment() {
     assert_eq!(
         kibana_discover_home(" https://kb.example/ "),
         "https://kb.example/app/discover#/"
     );
+    assert_eq!(
+        kibana_discover_home("https://kb/?x=1"),
+        "https://kb/app/discover#/"
+    );
+    assert!(kibana_discover_url(
+        "https://kb/kibana/#/x",
+        FieldPreset::Ecs,
+        "n",
+        "p",
+        None,
+        "a",
+        "b"
+    )
+    .starts_with("https://kb/kibana/app/discover#/?_g="));
 }
 
 fn service(json: serde_json::Value) -> Service {

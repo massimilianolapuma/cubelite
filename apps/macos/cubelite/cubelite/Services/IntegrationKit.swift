@@ -682,17 +682,24 @@ extension Integration {
         return service.loopbackBase(port: try await forward(service))
     }
 
-    /// `text` as a URL when it is http(s): web UI links never open other schemes.
+    /// `text` as a URL when it is http(s): web UI links never open other
+    /// schemes, and credentials typed into the URL never reach the browser.
     static func webURL(_ text: String) -> URL? {
         guard let url = URL(string: text), ["http", "https"].contains(url.scheme?.lowercased()) else {
             return nil
         }
-        return url
+        guard url.user != nil || url.password != nil else { return url }
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        components.user = nil
+        components.password = nil
+        return components.url
     }
 
-    /// `base` without trailing slashes or surrounding spaces.
+    /// `base` without its query, fragment, trailing slashes or surrounding
+    /// spaces, ready for a path to be appended.
     static func trimmedBase(_ base: String) -> String {
         var out = base.trimmingCharacters(in: .whitespaces)
+        if let cut = out.firstIndex(where: { $0 == "?" || $0 == "#" }) { out = String(out[..<cut]) }
         while out.hasSuffix("/") { out.removeLast() }
         return out
     }

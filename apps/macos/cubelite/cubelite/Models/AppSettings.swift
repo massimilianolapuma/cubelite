@@ -138,10 +138,16 @@ final class AppSettings {
     /// Integration shown in the Integrations tab (not persisted).
     var integrationPane: IntegrationPane = .elasticsearch
 
-    /// Selects the Integrations tab on `pane`; the caller then opens Settings.
-    func showIntegrationSettings(_ pane: IntegrationPane? = nil) {
+    /// Context the Integrations tab edits, requested by the panel that opened
+    /// it (not persisted); nil leaves the tab's own choice.
+    var integrationContext: String?
+
+    /// Selects the Integrations tab on `pane` for `context` (the panel's
+    /// active context); the caller then opens Settings.
+    func showIntegrationSettings(_ pane: IntegrationPane?, context: String?) {
         preferencesTab = .integrations
         if let pane { integrationPane = pane }
+        if let context { integrationContext = context }
     }
 
     // MARK: - Init

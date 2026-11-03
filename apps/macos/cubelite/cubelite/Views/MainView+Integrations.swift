@@ -20,7 +20,7 @@ extension MainView {
         case .openGrafana:
             WebUI.open({ try await links.grafanaURL() }) { reportIntegrationFailure("Grafana", $0) }
         case .integrationsSettings:
-            appSettings.showIntegrationSettings()
+            appSettings.showIntegrationSettings(nil, context: selectedContext)
             openSettings()
         }
     }

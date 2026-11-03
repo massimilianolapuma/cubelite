@@ -347,5 +347,13 @@ mod tests {
         assert!(url.starts_with("https://grafana.example/explore?"));
         assert!(explore_url("javascript:alert(1)", None, &[], MetricsRange::Hour).is_err());
         assert!(explore_url("not a url", None, &[], MetricsRange::Hour).is_err());
+        let clean = explore_url(
+            "https://u:p@g.example/?x=1#y",
+            None,
+            &[],
+            MetricsRange::Hour,
+        )
+        .expect("url");
+        assert!(clean.starts_with("https://g.example/explore?"), "{clean}");
     }
 }

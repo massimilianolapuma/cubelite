@@ -60,12 +60,20 @@ struct IntegrationsPreferencesTab: View {
             await elasticModel?.load(context: context)
             await prometheusModel?.load(context: context)
         }
+        .onAppear { adoptRequestedContext() }
+        .onChange(of: settings.integrationContext) { _, _ in adoptRequestedContext() }
         .task(id: clusterState.contexts) {
             // Contexts may load after Settings opened.
             if context == nil || !clusterState.contexts.contains(context ?? "") {
-                context = clusterState.currentContext ?? clusterState.contexts.first
+                let requested = settings.integrationContext.flatMap { clusterState.contexts.contains($0) ? $0 : nil }
+                context = requested ?? clusterState.currentContext ?? clusterState.contexts.first
             }
         }
+    }
+
+    /// Edits the context of the panel that opened Settings (#526).
+    private func adoptRequestedContext() {
+        if let requested = settings.integrationContext { context = requested }
     }
 }
 
