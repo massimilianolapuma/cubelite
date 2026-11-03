@@ -115,18 +115,18 @@ describe("LogsView JSON view (#461)", () => {
     '{"level":"warn","msg":"disk almost full","disk":"/var","pct":91}';
 
   beforeEach(() => {
-    window.localStorage.removeItem("cubelite.logs.jsonView");
-    logs.jsonView = false;
+    window.localStorage.removeItem("cubelite.logs.viewMode");
+    logs.viewMode = "raw";
   });
 
-  it("header toggle flips logs.jsonView and persists it", async () => {
+  it("header mode control selects a mode and persists it", async () => {
     render(LogsView);
-    const toggle = screen.getByRole("button", { name: "JSON view" });
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
-    await fireEvent.click(toggle);
-    expect(logs.jsonView).toBe(true);
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
-    expect(window.localStorage.getItem("cubelite.logs.jsonView")).toBe("true");
+    const json = screen.getByRole("radio", { name: "JSON" });
+    expect(json).toHaveAttribute("aria-checked", "false");
+    await fireEvent.click(json);
+    expect(logs.viewMode).toBe("json");
+    expect(json).toHaveAttribute("aria-checked", "true");
+    expect(window.localStorage.getItem("cubelite.logs.viewMode")).toBe('"json"');
   });
 
   it("toggle off: a JSON line renders raw", async () => {
@@ -138,7 +138,7 @@ describe("LogsView JSON view (#461)", () => {
   });
 
   it("toggle on: humanised row with JSON level, click expands the tree, Clear collapses", async () => {
-    logs.jsonView = true;
+    logs.viewMode = "json";
     render(LogsView);
     await new Promise((r) => setTimeout(r, 0));
     logs.push(line({ message: json }));

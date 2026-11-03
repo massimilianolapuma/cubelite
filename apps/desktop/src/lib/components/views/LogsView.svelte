@@ -3,7 +3,8 @@
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { matchesSelector, parseLabelSelector } from '#lib/k8s-match.ts';
-	import Braces from '@lucide/svelte/icons/braces';
+	import type { LogViewMode } from '#lib/log-ecs.ts';
+	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import LogLineRow from '#lib/components/logpanel/LogLineRow.svelte';
 
 	/** Backend streams at most this many pods (MAX_LOG_PODS in Rust). */
@@ -54,6 +55,12 @@
 		{ value: 'error', label: 'ERROR', color: 'var(--color-status-err)' }
 	];
 
+
+	const VIEW_MODES: { value: LogViewMode; label: string }[] = [
+		{ value: 'raw', label: 'Raw' },
+		{ value: 'json', label: 'JSON' },
+		{ value: 'ecs', label: 'ECS' }
+	];
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col gap-3 p-4">
@@ -98,19 +105,10 @@
 			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
 		/>
 
-		<!-- JSON view: own preference, independent of the log panel's (#461) -->
-		<button
-			type="button"
-			class="focus-ring flex h-7 w-7 items-center justify-center rounded-md hover:text-text-secondary"
-			style={logs.jsonView ? 'color: var(--color-accent);' : 'color: var(--color-text-tertiary);'}
-			title="JSON view"
-			aria-label="JSON view"
-			aria-pressed={logs.jsonView}
-			data-testid="logs-json-view"
-			onclick={() => (logs.jsonView = !logs.jsonView)}
-		>
-			<Braces size={14} strokeWidth={1.5} />
-		</button>
+		<!-- view mode: own preference, independent of the log panel's (#461, #492) -->
+		<span data-testid="logs-view-mode" title="Log view: raw text, humanised JSON or Elastic Common Schema">
+			<SegmentedControl segments={VIEW_MODES} bind:value={logs.viewMode} />
+		</span>
 
 		<button
 			type="button"
@@ -156,7 +154,7 @@
 						timestamps={true}
 						wrap={true}
 						source={{ name: line.pod, color: 'var(--color-text-secondary)', wide: true }}
-						jsonView={logs.jsonView}
+						mode={logs.viewMode}
 						expanded={logs.expanded.has(line.id)}
 						ontoggle={() => logs.toggleExpanded(line.id)}
 					/>

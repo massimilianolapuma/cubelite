@@ -8,6 +8,7 @@
  * the UI under log flood. While paused nothing flushes at all.
  */
 
+import { isLogViewMode, type LogViewMode } from "#lib/log-ecs.ts";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { SvelteSet } from "svelte/reactivity";
 import { stopLogs, streamLogs, type LogLine, type PodRef } from "#lib/tauri.ts";
@@ -41,12 +42,15 @@ class LogsStore {
   expanded = new SvelteSet<number>();
 
   /** Humanise JSON lines; own preference, independent of the log panel's. */
-  #jsonView = persisted<boolean>("logs.jsonView", false, isBoolean);
-  get jsonView(): boolean {
-    return this.#jsonView.value;
+  /** Pre-#492 boolean toggle, read once to seed `viewMode`. */
+  #legacyJsonView = persisted<boolean>("logs.jsonView", false, isBoolean);
+  #viewMode = persisted<LogViewMode>("logs.viewMode", this.#legacyJsonView.value ? "json" : "raw", isLogViewMode);
+  /** Raw, JSON (#454) or ECS (#492) rendering of the lines. */
+  get viewMode(): LogViewMode {
+    return this.#viewMode.value;
   }
-  set jsonView(v: boolean) {
-    this.#jsonView.value = v;
+  set viewMode(v: LogViewMode) {
+    this.#viewMode.value = v;
   }
 
   #streamId: string | null = null;
