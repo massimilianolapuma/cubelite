@@ -185,58 +185,53 @@ final class CrossClusterStateLimitedClustersTests: XCTestCase {
 @MainActor
 final class AppSettingsContextNamespacesTests: XCTestCase {
 
+    /// A domain of its own, emptied for each test (#482).
+    private lazy var defaults = TestDefaults.fresh(for: Self.self)
+
     private let testKey = "contextNamespaces"
 
-    override func setUp() {
-        super.setUp()
-        UserDefaults.standard.removeObject(forKey: testKey)
-    }
 
-    override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: testKey)
-        super.tearDown()
-    }
 
     func testContextNamespaces_defaultIsEmpty() {
-        let sut = AppSettings()
+        let sut = AppSettings(defaults: defaults)
         XCTAssertTrue(sut.contextNamespaces.isEmpty)
     }
 
     func testContextNamespaces_setAndPersist() {
-        let sut = AppSettings()
+        let sut = AppSettings(defaults: defaults)
         sut.contextNamespaces["rancher-prod"] = ["default", "monitoring"]
 
         // Re-read from UserDefaults via a fresh instance
-        let reloaded = AppSettings()
+        let reloaded = AppSettings(defaults: defaults)
         XCTAssertEqual(reloaded.contextNamespaces["rancher-prod"], ["default", "monitoring"])
     }
 
     func testContextNamespaces_multipleContexts() {
-        let sut = AppSettings()
+        let sut = AppSettings(defaults: defaults)
         sut.contextNamespaces["prod"] = ["default"]
         sut.contextNamespaces["staging"] = ["default", "kube-system"]
 
-        let reloaded = AppSettings()
+        let reloaded = AppSettings(defaults: defaults)
         XCTAssertEqual(reloaded.contextNamespaces.count, 2)
         XCTAssertEqual(reloaded.contextNamespaces["prod"], ["default"])
         XCTAssertEqual(reloaded.contextNamespaces["staging"], ["default", "kube-system"])
     }
 
     func testContextNamespaces_overwriteExisting() {
-        let sut = AppSettings()
+        let sut = AppSettings(defaults: defaults)
         sut.contextNamespaces["prod"] = ["default"]
         sut.contextNamespaces["prod"] = ["monitoring", "app"]
 
-        let reloaded = AppSettings()
+        let reloaded = AppSettings(defaults: defaults)
         XCTAssertEqual(reloaded.contextNamespaces["prod"], ["monitoring", "app"])
     }
 
     func testContextNamespaces_removeContext() {
-        let sut = AppSettings()
+        let sut = AppSettings(defaults: defaults)
         sut.contextNamespaces["prod"] = ["default"]
         sut.contextNamespaces["prod"] = nil
 
-        let reloaded = AppSettings()
+        let reloaded = AppSettings(defaults: defaults)
         XCTAssertNil(reloaded.contextNamespaces["prod"])
     }
 }
@@ -246,43 +241,38 @@ final class AppSettingsContextNamespacesTests: XCTestCase {
 @MainActor
 final class AppSettingsSkipTLSTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
-        UserDefaults.standard.removeObject(forKey: AppSettings.Keys.skipTLSVerification)
-    }
+    /// A domain of its own, emptied for each test (#482).
+    private lazy var defaults = TestDefaults.fresh(for: Self.self)
 
-    override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: AppSettings.Keys.skipTLSVerification)
-        super.tearDown()
-    }
+
 
     func testSkipTLS_defaultIsFalse() {
-        let sut = AppSettings()
+        let sut = AppSettings(defaults: defaults)
         XCTAssertFalse(sut.skipTLSVerification)
     }
 
     func testSkipTLS_enablePersistsAcrossInstances() {
-        let sut = AppSettings()
+        let sut = AppSettings(defaults: defaults)
         sut.skipTLSVerification = true
 
-        let reloaded = AppSettings()
+        let reloaded = AppSettings(defaults: defaults)
         XCTAssertTrue(reloaded.skipTLSVerification, "skipTLSVerification must survive a fresh AppSettings init")
     }
 
     func testSkipTLS_disablePersistsAcrossInstances() {
-        let sut = AppSettings()
+        let sut = AppSettings(defaults: defaults)
         sut.skipTLSVerification = true
         sut.skipTLSVerification = false
 
-        let reloaded = AppSettings()
+        let reloaded = AppSettings(defaults: defaults)
         XCTAssertFalse(reloaded.skipTLSVerification)
     }
 
     func testSkipTLS_userDefaultsRawValue_matchesProperty() {
-        let sut = AppSettings()
+        let sut = AppSettings(defaults: defaults)
         sut.skipTLSVerification = true
 
-        let raw = UserDefaults.standard.bool(forKey: AppSettings.Keys.skipTLSVerification)
+        let raw = defaults.bool(forKey: AppSettings.Keys.skipTLSVerification)
         XCTAssertTrue(raw, "UserDefaults must contain the updated value")
     }
 }
