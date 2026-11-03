@@ -1,7 +1,8 @@
 //! Pieces shared by the HTTP integrations (Elasticsearch #483, Prometheus
 //! #484): where an endpoint lives, what stored credentials are bound to,
-//! the rules for external URLs, the in-cluster port-forward tunnel and
-//! sending an authenticated request.
+//! the rules for external URLs, the in-cluster port-forward tunnel,
+//! sending an authenticated request and finding the integrations' services
+//! when a context connects (#527).
 
 use std::time::Duration;
 
@@ -12,7 +13,9 @@ use kube::{Api, Client};
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 
+use crate::elastic::transport::{self as es, DetectedService};
 use crate::portforward::forward_pod_port;
+use crate::prometheus::transport::{self as prom, DetectedPrometheus};
 
 /// Per-request timeout of the integrations.
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
@@ -360,6 +363,88 @@ pub fn http_builder(skip_tls_verify: bool) -> reqwest::ClientBuilder {
         .danger_accept_invalid_certs(skip_tls_verify)
 }
 
+/// The services the integrations would use, found in one listing of the
+/// cluster's services when a context connects (#527): what the banner
+/// offers to enable.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Detected {
+    /// Elasticsearch, preferring ECK's `{cluster}-es-http`.
+    pub elasticsearch: Option<DetectedService>,
+    /// Kibana, preferring Elasticsearch's namespace.
+    pub kibana: Option<DetectedService>,
+    /// Prometheus, preferring `prometheus-operated`.
+    pub prometheus: Option<DetectedPrometheus>,
+    /// Grafana, preferring Prometheus's namespace.
+    pub grafana: Option<DetectedPrometheus>,
+}
+
+/// The first of `found` by `(preferred, namespace, name)`: `preferred`
+/// services come first, then the order is alphabetical.
+fn first<T>(
+    found: impl Iterator<Item = T>,
+    preferred: impl Fn(&T) -> bool,
+    names: impl Fn(&T) -> (String, String),
+) -> Option<T> {
+    found.min_by_key(|d| {
+        let (namespace, name) = names(d);
+        (!preferred(d), namespace, name)
+    })
+}
+
+/// Picks one service per integration from a service list with the
+/// Elasticsearch and Prometheus classifiers: ECK's `-es-http` and
+/// `prometheus-operated` first, else the first by namespace and name; Kibana
+/// and Grafana prefer the namespace of the service they go with.
+pub fn pick_services(services: &[Service]) -> Detected {
+    let es_found: Vec<DetectedService> = services.iter().filter_map(es::classify).collect();
+    let prom_found: Vec<DetectedPrometheus> = services.iter().filter_map(prom::classify).collect();
+    let es_of = |kind: &'static str| es_found.iter().filter(move |d| d.kind == kind).cloned();
+    let prom_of = |kind: &'static str| prom_found.iter().filter(move |d| d.kind == kind).cloned();
+    let es_names = |d: &DetectedService| (d.namespace.clone(), d.name.clone());
+    let prom_names = |d: &DetectedPrometheus| (d.namespace.clone(), d.name.clone());
+
+    let elasticsearch = first(
+        es_of("elasticsearch"),
+        |d| d.name.ends_with("-es-http"),
+        es_names,
+    );
+    let kibana = first(
+        es_of("kibana"),
+        |d| elasticsearch.as_ref().map(|e| &e.namespace) == Some(&d.namespace),
+        es_names,
+    );
+    let prometheus = first(
+        prom_of("prometheus"),
+        |d| d.name == "prometheus-operated",
+        prom_names,
+    );
+    let grafana = first(
+        prom_of("grafana"),
+        |d| prometheus.as_ref().map(|p| &p.namespace) == Some(&d.namespace),
+        prom_names,
+    );
+    Detected {
+        elasticsearch,
+        kibana,
+        prometheus,
+        grafana,
+    }
+}
+
+/// Lists the services of every namespace once and picks the integrations'
+/// ([`pick_services`]). Only the Kubernetes API is contacted: no traffic to
+/// Elasticsearch or Prometheus and no secrets. A user who may not list
+/// services across namespaces (403) gets nothing found, not an error.
+pub async fn detect_all(client: Client) -> Result<Detected, String> {
+    let services: Api<Service> = Api::all(client);
+    match services.list(&ListParams::default()).await {
+        Ok(list) => Ok(pick_services(&list.items)),
+        Err(kube::Error::Api(status)) if status.code == 403 => Ok(Detected::default()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -434,5 +519,219 @@ mod tests {
         assert!(check_external_url("http://es.example", true).is_err());
         assert!(check_external_url("https://u:p@es.example", false).is_err());
         assert!(check_external_url("ftp://es.example", false).is_err());
+    }
+
+    fn svc(
+        namespace: &str,
+        name: &str,
+        labels: serde_json::Value,
+        ports: serde_json::Value,
+    ) -> Service {
+        serde_json::from_value(serde_json::json!({
+            "metadata": { "name": name, "namespace": namespace, "labels": labels },
+            "spec": { "ports": ports }
+        }))
+        .expect("service")
+    }
+
+    /// A cluster with ECK, kube-prometheus-stack, a second Elasticsearch
+    /// chart, a second Grafana and unrelated services.
+    fn mixed_services() -> Vec<Service> {
+        use serde_json::json;
+        let eck = |kind: &str| json!({ "common.k8s.elastic.co/type": kind });
+        vec![
+            svc(
+                "default",
+                "kubernetes",
+                json!({}),
+                json!([{ "name": "https", "port": 443 }]),
+            ),
+            svc(
+                "a-search",
+                "elasticsearch-master",
+                json!({ "app": "elasticsearch-master" }),
+                json!([{ "name": "http", "port": 9200 }]),
+            ),
+            svc(
+                "logging",
+                "quickstart-es-transport",
+                eck("elasticsearch"),
+                json!([{ "name": "tls-transport", "port": 9300 }]),
+            ),
+            svc(
+                "logging",
+                "quickstart-es-default",
+                eck("elasticsearch"),
+                json!([{ "name": "https", "port": 9200 }]),
+            ),
+            svc(
+                "logging",
+                "quickstart-es-http",
+                eck("elasticsearch"),
+                json!([{ "name": "https", "port": 9200 }]),
+            ),
+            svc(
+                "a-search",
+                "kibana",
+                json!({ "app.kubernetes.io/name": "kibana" }),
+                json!([{ "name": "http", "port": 5601 }]),
+            ),
+            svc(
+                "logging",
+                "quickstart-kb-http",
+                eck("kibana"),
+                json!([{ "name": "https", "port": 5601 }]),
+            ),
+            svc(
+                "a-metrics",
+                "prometheus-server",
+                json!({ "app": "prometheus" }),
+                json!([{ "name": "http", "port": 80 }]),
+            ),
+            svc(
+                "monitoring",
+                "kps-kube-prometheus-stack-prometheus",
+                json!({}),
+                json!([{ "name": "http-web", "port": 9090 }]),
+            ),
+            svc(
+                "monitoring",
+                "prometheus-operated",
+                json!({ "operated-prometheus": "true" }),
+                json!([{ "name": "http-web", "port": 9090 }]),
+            ),
+            svc(
+                "monitoring",
+                "kps-kube-prometheus-stack-alertmanager",
+                json!({}),
+                json!([{ "name": "http-web", "port": 9093 }]),
+            ),
+            svc(
+                "a-metrics",
+                "grafana",
+                json!({ "app.kubernetes.io/name": "grafana" }),
+                json!([{ "name": "service", "port": 80 }]),
+            ),
+            svc(
+                "monitoring",
+                "kps-grafana",
+                json!({ "app.kubernetes.io/name": "grafana" }),
+                json!([{ "name": "http-web", "port": 80 }]),
+            ),
+        ]
+    }
+
+    #[test]
+    fn pick_services_prefers_eck_operated_and_companions_next_to_them() {
+        let found = pick_services(&mixed_services());
+        let es = found.elasticsearch.expect("elasticsearch");
+        assert_eq!(
+            (es.namespace.as_str(), es.name.as_str(), es.port, es.https),
+            ("logging", "quickstart-es-http", 9200, true)
+        );
+        let kb = found.kibana.expect("kibana");
+        assert_eq!(
+            (kb.namespace.as_str(), kb.name.as_str(), kb.https),
+            ("logging", "quickstart-kb-http", true)
+        );
+        let prom = found.prometheus.expect("prometheus");
+        assert_eq!(
+            (prom.namespace.as_str(), prom.name.as_str(), prom.port),
+            ("monitoring", "prometheus-operated", 9090)
+        );
+        let grafana = found.grafana.expect("grafana");
+        assert_eq!(
+            (
+                grafana.namespace.as_str(),
+                grafana.name.as_str(),
+                grafana.port
+            ),
+            ("monitoring", "kps-grafana", 80)
+        );
+    }
+
+    #[test]
+    fn pick_services_falls_back_to_the_first_by_namespace_and_name() {
+        let without_preferred: Vec<Service> = mixed_services()
+            .into_iter()
+            .filter(|s| {
+                let name = s.metadata.name.as_deref().unwrap_or_default();
+                !name.starts_with("quickstart") && name != "prometheus-operated"
+            })
+            .collect();
+        let found = pick_services(&without_preferred);
+        let name = |d: Option<(String, String)>| d.expect("found");
+        assert_eq!(
+            name(found.elasticsearch.map(|d| (d.namespace, d.name))),
+            ("a-search".into(), "elasticsearch-master".into())
+        );
+        assert_eq!(
+            name(found.kibana.map(|d| (d.namespace, d.name))),
+            ("a-search".into(), "kibana".into())
+        );
+        assert_eq!(
+            name(found.prometheus.map(|d| (d.namespace, d.name))),
+            ("a-metrics".into(), "prometheus-server".into())
+        );
+        assert_eq!(
+            name(found.grafana.map(|d| (d.namespace, d.name))),
+            ("a-metrics".into(), "grafana".into())
+        );
+        assert_eq!(pick_services(&[]), Detected::default());
+    }
+
+    /// A kube client whose API server answers every request with `status`
+    /// and `body`, recording the paths it was asked for.
+    fn api_server(
+        status: u16,
+        body: serde_json::Value,
+    ) -> (Client, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use http::{Request, Response};
+        use kube::client::Body;
+        let paths = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = paths.clone();
+        let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+        tokio::spawn(async move {
+            let mut handle = std::pin::pin!(handle);
+            while let Some((request, send)) = handle.next_request().await {
+                seen.lock()
+                    .expect("paths")
+                    .push(request.uri().path().to_string());
+                let response = Response::builder()
+                    .status(status)
+                    .body(Body::from(body.to_string().into_bytes()))
+                    .expect("response");
+                send.send_response(response);
+            }
+        });
+        (Client::new(service, "default"), paths)
+    }
+
+    #[tokio::test]
+    async fn detect_all_lists_services_once_and_reads_nothing_else() {
+        let list = serde_json::json!({
+            "apiVersion": "v1", "kind": "ServiceList", "metadata": {},
+            "items": mixed_services(),
+        });
+        let (client, paths) = api_server(200, list);
+        let found = detect_all(client).await.expect("detect");
+        assert!(found.elasticsearch.is_some() && found.kibana.is_some());
+        assert!(found.prometheus.is_some() && found.grafana.is_some());
+        assert_eq!(*paths.lock().expect("paths"), ["/api/v1/services"]);
+    }
+
+    #[tokio::test]
+    async fn detect_all_gives_up_silently_when_forbidden() {
+        let forbidden = serde_json::json!({
+            "kind": "Status", "apiVersion": "v1", "status": "Failure", "reason": "Forbidden", "code": 403,
+            "message": "services is forbidden: User \"dev\" cannot list resource \"services\" at the cluster scope",
+        });
+        let (client, _) = api_server(403, forbidden);
+        assert_eq!(detect_all(client).await, Ok(Detected::default()));
+        let (client, _) = api_server(
+            500,
+            serde_json::json!({ "kind": "Status", "code": 500, "message": "boom" }),
+        );
+        assert!(detect_all(client).await.is_err());
     }
 }
