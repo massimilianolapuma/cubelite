@@ -145,8 +145,12 @@ private struct NavigationPreferencesTab: View {
             let arranged = preferences.navigation.arranged
             ForEach(Array(arranged.enumerated()), id: \.element.section) { index, entry in
                 Section {
-                    ForEach(Array(entry.types.enumerated()), id: \.element) { item in
-                        NavigationTypeRow(type: item.element, position: item.offset, count: entry.types.count)
+                    // Explicit generics: with Swift Charts imported, older
+                    // toolchains otherwise pick the ChartContent overload.
+                    ForEach<[NavigationTypeRow.Item], ResourceType, NavigationTypeRow>(
+                        NavigationTypeRow.items(entry.types), id: \.type
+                    ) { item in
+                        NavigationTypeRow(type: item.type, position: item.position, count: entry.types.count)
                     }
                 } header: {
                     sectionHeader(entry.section, index: index, count: arranged.count)
@@ -199,9 +203,16 @@ private struct NavigationPreferencesTab: View {
 }
 
 /// One resource type in the Navigation tab: move buttons and visibility.
-/// A concrete view type keeps `ForEach` from resolving to Swift Charts'
-/// overload on older toolchains.
 private struct NavigationTypeRow: View {
+
+    struct Item {
+        let type: ResourceType
+        let position: Int
+    }
+
+    static func items(_ types: [ResourceType]) -> [Item] {
+        types.enumerated().map { Item(type: $0.element, position: $0.offset) }
+    }
 
     @Environment(ResourcePreferences.self) private var preferences
     let type: ResourceType
