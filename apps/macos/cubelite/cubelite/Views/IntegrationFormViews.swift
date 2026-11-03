@@ -209,3 +209,30 @@ struct ProblemText: View {
         }
     }
 }
+
+/// The in-cluster web UI picked from Detect (Kibana #519, Grafana #525):
+/// opened through a port-forward unless a URL is configured.
+struct InClusterUIRow: View {
+    /// `Kibana`, `Grafana`.
+    let name: String
+    let service: ServiceRef
+    /// A configured URL wins over the service.
+    let urlSet: Bool
+    let identifier: String
+    let onClear: () -> Void
+
+    var body: some View {
+        HStack {
+            Text(
+                "\(name) in the cluster: \(service.namespace)/\(service.service):\(service.port)"
+                    + (urlSet ? " (the URL above wins)" : " — opened through a port-forward")
+            )
+            .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
+            .help("The forward opens \(name) at its root; if \(name) is served under a sub-path, set its URL instead.")
+            Spacer()
+            Button("Clear", action: onClear)
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier(identifier)
+        }
+    }
+}

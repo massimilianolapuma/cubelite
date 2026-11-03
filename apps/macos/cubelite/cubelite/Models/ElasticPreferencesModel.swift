@@ -168,7 +168,8 @@ final class ElasticPreferencesModel {
             detected = found.filter { $0.kind == .elasticsearch }
             detectedKibana = found.filter { $0.kind == .kibana }
             if detected?.isEmpty ?? true {
-                outcome = Outcome(ok: false, text: "No Elasticsearch service found in this cluster.")
+                let kibana = !detectedKibana.isEmpty ? " (only Kibana was found)" : ""
+                outcome = Outcome(ok: false, text: "No Elasticsearch service found in this cluster\(kibana).")
             }
         } catch {
             if context == self.context { outcome = Outcome(ok: false, text: error.localizedDescription) }

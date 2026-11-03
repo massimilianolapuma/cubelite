@@ -23,6 +23,7 @@ declare global {
     __kibanaForwards?: number;
     __lastPromMetrics?: Record<string, unknown>;
     __grafanaOpened?: Record<string, unknown>;
+    __grafanaForwards?: Record<string, unknown>[];
     /** Test hook: arguments of the last `apply_resource_yaml` call. */
     __lastApply?: Record<string, unknown>;
   }
@@ -252,6 +253,10 @@ export function tauriMockScript(): string {
       case "open_grafana_explore": {
         window.__grafanaOpened = args;
         return null;
+      }
+      case "grafana_port_forward": {
+        window.__grafanaForwards = [...(window.__grafanaForwards ?? []), args];
+        return 43000;
       }
       case "kibana_port_forward": {
         window.__kibanaForwards = (window.__kibanaForwards ?? 0) + 1;

@@ -51,6 +51,21 @@ extension IntegrationTarget: Codable {
     }
 }
 
+/// A web UI service in the cluster picked from Detect (Kibana #519, Grafana
+/// #525), opened through a port-forward when there is no URL. Same JSON as
+/// the desktop's `ServiceRef`.
+struct ServiceRef: Codable, Hashable, Sendable {
+    let namespace: String
+    let service: String
+    let port: Int
+    let https: Bool
+
+    /// `http(s)://127.0.0.1:<port>`: a forward to it listens on IPv4 loopback.
+    func loopbackBase(port local: UInt16) -> String {
+        "\(https ? "https" : "http")://127.0.0.1:\(local)"
+    }
+}
+
 /// Why a shared integration helper refused; each integration reports it
 /// with its own wording (`ElasticError`, `PromError`).
 enum IntegrationFailure: Error, Equatable {

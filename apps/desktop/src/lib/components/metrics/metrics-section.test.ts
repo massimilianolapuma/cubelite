@@ -7,12 +7,15 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   prometheusMetrics: vi.fn(),
   prometheusSparklines: vi.fn(),
   openGrafanaExplore: vi.fn(async () => {}),
+  grafanaPortForward: vi.fn(async () => 43000),
 }));
 
 import MetricsSection from "./MetricsSection.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { prometheus, SPARKLINE_INTERVAL_MS } from "#lib/stores/prometheus.svelte.ts";
+import { toasts } from "#lib/stores/toasts.svelte.ts";
 import {
+  grafanaPortForward,
   openGrafanaExplore,
   prometheusMetrics,
   prometheusSparklines,
@@ -108,6 +111,53 @@ describe("MetricsSection (#510)", () => {
       queries: ["q-memory", "q-memory-request", "q-memory-limit"],
       range: "1h",
     });
+  });
+
+  it("opens an in-cluster Grafana through a port-forward when there is no URL (#525)", async () => {
+    const grafanaService = { namespace: "monitoring", service: "kps-grafana", port: 80, https: false };
+    prometheus.setEndpoint("prod", { ...endpoint, grafanaUrl: null, grafanaService });
+    vi.mocked(prometheusMetrics).mockResolvedValue(result());
+    render(MetricsSection, { namespace: "shop", workload: { kind: "pod", name: "api-0" } });
+    await fireEvent.click(await screen.findByRole("button", { name: "Open CPU in Grafana" }));
+    await waitFor(() =>
+      expect(openGrafanaExplore).toHaveBeenCalledWith({
+        grafanaUrl: "http://127.0.0.1:43000",
+        datasource: "prom",
+        queries: ["q-cpu", "q-cpu-request", "q-cpu-limit"],
+        range: "1h",
+      }),
+    );
+    expect(grafanaPortForward).toHaveBeenCalledWith("/k", "prod", grafanaService);
+  });
+
+  it("hides Open in Grafana without a URL or an in-cluster Grafana", async () => {
+    const grafanaService = { namespace: "monitoring", service: "kps-grafana", port: 80, https: false };
+    // An external Prometheus never forwards to a stored in-cluster Grafana.
+    prometheus.setEndpoint("prod", {
+      ...endpoint,
+      target: { kind: "external", url: "https://p.example" },
+      grafanaUrl: null,
+      grafanaService,
+    });
+    vi.mocked(prometheusMetrics).mockResolvedValue(result());
+    render(MetricsSection, { namespace: "shop", workload: { kind: "pod", name: "api-0" } });
+    await waitFor(() => expect(screen.getAllByTestId("metrics-chart")).toHaveLength(4));
+    expect(screen.queryByRole("button", { name: "Open CPU in Grafana" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Grafana" })).not.toBeInTheDocument();
+  });
+
+  it("reports a failed forward", async () => {
+    prometheus.setEndpoint("prod", {
+      ...endpoint,
+      grafanaUrl: null,
+      grafanaService: { namespace: "monitoring", service: "kps-grafana", port: 80, https: false },
+    });
+    vi.mocked(prometheusMetrics).mockResolvedValue(result());
+    vi.mocked(grafanaPortForward).mockRejectedValueOnce("no ready pod behind monitoring/kps-grafana");
+    render(MetricsSection, { namespace: "shop", workload: { kind: "pod", name: "api-0" } });
+    await fireEvent.click(await screen.findByRole("button", { name: "Grafana" }));
+    await waitFor(() => expect(toasts.items.at(-1)?.message).toContain("no ready pod"));
+    expect(openGrafanaExplore).not.toHaveBeenCalled();
   });
 
   it("shows the connection error once", async () => {

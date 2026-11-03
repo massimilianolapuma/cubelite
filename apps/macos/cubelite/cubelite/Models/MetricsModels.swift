@@ -12,6 +12,13 @@ protocol PrometheusQuerying: Sendable {
 
 extension PrometheusService: PrometheusQuerying {}
 
+/// Port-forwards to an in-cluster Grafana (PrometheusService in the app).
+protocol GrafanaForwarding: Sendable {
+    func grafanaForward(context: String, service: GrafanaService) async throws -> UInt16
+}
+
+extension PrometheusService: GrafanaForwarding {}
+
 /// Prometheus endpoints and list sparklines for the views (#512). Sparklines
 /// load after the rows, at most every 30 s per scope, and fail silently
 /// (the reason is kept for the column help).
@@ -23,19 +30,60 @@ final class PrometheusStore {
 
     let endpoints: PrometheusEndpointStore
     let querying: (any PrometheusQuerying)?
+    /// Opens in-cluster Grafanas without a configured URL (#525).
+    let grafana: (any GrafanaForwarding)?
 
     private(set) var sparklines: Sparklines?
     private(set) var sparklineError: String?
     @ObservationIgnored private var scope: Scope?
     @ObservationIgnored private var loadedAt: Date?
 
-    init(endpoints: PrometheusEndpointStore, querying: (any PrometheusQuerying)?) {
+    init(
+        endpoints: PrometheusEndpointStore, querying: (any PrometheusQuerying)?,
+        grafana: (any GrafanaForwarding)? = nil
+    ) {
         self.endpoints = endpoints
         self.querying = querying
+        self.grafana = grafana
     }
 
     func endpoint(for context: String?) -> PromEndpoint? {
         querying == nil ? nil : endpoints.endpoint(for: context)
+    }
+
+    /// Whether Open in Grafana is offered: a Grafana URL, or an in-cluster
+    /// Grafana service the app can forward to.
+    func canOpenGrafana(_ endpoint: PromEndpoint) -> Bool {
+        Integration.canOpenUI(
+            url: endpoint.grafanaURL, target: endpoint.target, service: endpoint.grafanaService,
+            canForward: grafana != nil)
+    }
+
+    /// Grafana Explore with `queries` over `range`: on the configured URL,
+    /// else on the in-cluster Grafana through a port-forward (127.0.0.1,
+    /// where it listens); nil when there is neither or the URL is not http(s).
+    func grafanaExploreURL(
+        context: String, endpoint: PromEndpoint, queries: [String], range: MetricsRange
+    ) async throws -> URL? {
+        let base: String
+        if let url = endpoint.grafanaURL?.trimmingCharacters(in: .whitespaces), !url.isEmpty {
+            base = url
+        } else if let service = Integration.forwardedUI(
+            url: endpoint.grafanaURL, target: endpoint.target, service: endpoint.grafanaService),
+            let grafana
+        {
+            base = service.loopbackBase(
+                port: try await grafana.grafanaForward(context: context, service: service))
+        } else {
+            return nil
+        }
+        let text = Prometheus.grafanaExploreURL(
+            grafanaBase: base, datasource: endpoint.grafanaDatasource, queries: queries,
+            from: range.grafanaFrom, to: "now")
+        guard let url = URL(string: text), ["http", "https"].contains(url.scheme?.lowercased()) else {
+            return nil
+        }
+        return url
     }
 
     /// Loads the last hour of CPU and memory for `namespace` (nil = every

@@ -226,6 +226,29 @@ fn auth_tags_headers_and_debug_hide_secrets() {
     .expect("endpoint");
     assert_eq!(endpoint.cluster, None);
     assert!(!endpoint.skip_tls_verify);
+    assert_eq!(
+        endpoint.grafana_service, None,
+        "endpoints saved before #525"
+    );
+    let with_grafana: PromEndpoint = serde_json::from_value(json!({
+        "target": { "kind": "in-cluster", "namespace": "monitoring", "service": "prometheus-operated", "port": 9090, "https": false },
+        "grafanaService": { "namespace": "monitoring", "service": "kps-grafana", "port": 80, "https": false }
+    }))
+    .expect("endpoint with grafana");
+    let grafana = with_grafana.grafana_service.expect("grafana service");
+    assert_eq!(
+        serde_json::to_value(&grafana).expect("json"),
+        json!({ "namespace": "monitoring", "service": "kps-grafana", "port": 80, "https": false })
+    );
+    assert_eq!(
+        grafana.target(),
+        PromTarget::InCluster {
+            namespace: "monitoring".into(),
+            service: "kps-grafana".into(),
+            port: 80,
+            https: false
+        }
+    );
 }
 
 #[test]
@@ -299,8 +322,13 @@ fn classify_finds_prometheus_servers_only() {
     }));
     let found = classify(&operated).expect("operated");
     assert_eq!(
-        (found.namespace.as_str(), found.port, found.https),
-        ("monitoring", 9090, false)
+        (
+            found.kind.as_str(),
+            found.namespace.as_str(),
+            found.port,
+            found.https
+        ),
+        ("prometheus", "monitoring", 9090, false)
     );
     let chart = service(json!({
         "metadata": { "name": "kps-prometheus", "labels": { "app": "kube-prometheus-stack-prometheus" } },
@@ -330,12 +358,58 @@ fn classify_finds_prometheus_servers_only() {
     );
 }
 
+#[test]
+fn classify_finds_grafana_too() {
+    // kube-prometheus-stack's Grafana (#525).
+    let kps = service(json!({
+        "metadata": { "name": "kps-grafana", "namespace": "monitoring", "labels": { "app.kubernetes.io/name": "grafana" } },
+        "spec": { "ports": [{ "name": "http-web", "port": 80, "targetPort": "grafana" }] }
+    }));
+    let found = classify(&kps).expect("kps grafana");
+    assert_eq!(
+        (
+            found.kind.as_str(),
+            found.namespace.as_str(),
+            found.name.as_str(),
+            found.port,
+            found.https
+        ),
+        ("grafana", "monitoring", "kps-grafana", 80, false)
+    );
+    // By name, on Grafana's own port among others.
+    let named = service(json!({
+        "metadata": { "name": "grafana", "namespace": "observability" },
+        "spec": { "ports": [{ "name": "metrics", "port": 9100 }, { "name": "http", "port": 3000 }] }
+    }));
+    assert_eq!(
+        classify(&named).map(|d| (d.kind, d.port)),
+        Some(("grafana".to_string(), 3000))
+    );
+    let https = service(json!({
+        "metadata": { "name": "team-grafana" },
+        "spec": { "ports": [{ "name": "https", "port": 443 }] }
+    }));
+    assert!(classify(&https).expect("https grafana").https);
+    for other in [
+        "grafana-image-renderer",
+        "grafana-headless",
+        "grafana-operator",
+    ] {
+        let s = service(json!({
+            "metadata": { "name": other, "labels": { "app.kubernetes.io/name": "grafana" } },
+            "spec": { "ports": [{ "port": 3000 }] }
+        }));
+        assert!(classify(&s).is_none(), "{other}");
+    }
+}
+
 fn external(url: &str) -> PromEndpoint {
     PromEndpoint {
         target: PromTarget::External { url: url.into() },
         cluster: Some("aks-prod".into()),
         grafana_url: None,
         grafana_datasource: None,
+        grafana_service: None,
         skip_tls_verify: false,
     }
 }

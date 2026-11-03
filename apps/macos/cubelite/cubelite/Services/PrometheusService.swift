@@ -90,6 +90,8 @@ actor PrometheusService {
     private let configuration: URLSessionConfiguration
     private let azure: AzureCLIToken
     private let pool = ConnectionPool<PromEndpoint>()
+    /// Port-forwards to in-cluster Grafanas (#525).
+    private let grafana: ServiceForwards
     private var routes: [String: (endpoint: PromEndpoint, route: Route)] = [:]
     /// Contexts whose cached connection uses an Azure CLI token.
     private var azureContexts: Set<String> = []
@@ -104,19 +106,23 @@ actor PrometheusService {
         self.vault = IntegrationVault(store: secrets, none: .none)
         self.configuration = configuration
         self.azure = azure
+        self.grafana = ServiceForwards(cluster: cluster)
     }
 
     // MARK: Discovery and credentials
 
-    /// Prometheus servers in every namespace the user can list,
-    /// `prometheus-operated` (kube-prometheus-stack) first.
+    /// Prometheus servers and Grafanas in every namespace the user can list:
+    /// Prometheus first (`prometheus-operated`, kube-prometheus-stack's, at
+    /// the top), then Grafana.
     func detect(context: String) async throws -> [DetectedPrometheus] {
         let list: IntegrationK8s.List<IntegrationK8s.Service> = try await prom {
             try await Integration.get("/api/v1/services", context: context, from: cluster)
         }
+        func rank(_ d: DetectedPrometheus) -> Int {
+            d.kind == .grafana ? 2 : d.name == "prometheus-operated" ? 0 : 1
+        }
         return list.items.compactMap(Prometheus.classify).sorted {
-            ($0.name == "prometheus-operated" ? 0 : 1, $0.namespace, $0.name)
-                < ($1.name == "prometheus-operated" ? 0 : 1, $1.namespace, $1.name)
+            (rank($0), $0.namespace, $0.name) < (rank($1), $1.namespace, $1.name)
         }
     }
 
@@ -137,10 +143,12 @@ actor PrometheusService {
         await disconnect(context: context)
     }
 
-    /// Closes the context's connection (and its port-forward).
+    /// Closes the context's connection (and its port-forward) and its
+    /// Grafana forwards.
     func disconnect(context: String) async {
         routes[context] = nil
         azureContexts.remove(context)
+        await grafana.close(context: context)
         await pool.disconnect(context: context)
     }
 
@@ -148,7 +156,21 @@ actor PrometheusService {
     func disconnectAll() async {
         routes.removeAll()
         azureContexts.removeAll()
+        await grafana.closeAll()
         await pool.disconnectAll()
+    }
+
+    // MARK: Grafana
+
+    /// Local port of a loopback forward to an in-cluster Grafana (#525),
+    /// shared and reused as `ServiceForwards` describes.
+    func grafanaForward(context: String, service: GrafanaService) async throws -> UInt16 {
+        try await prom { try await grafana.port(context: context, service: service) }
+    }
+
+    /// The pod a context's Grafana forward goes to (tests).
+    func grafanaPod(context: String, service: GrafanaService) async -> String? {
+        await grafana.pod(context: context, service: service)
     }
 
     // MARK: Queries

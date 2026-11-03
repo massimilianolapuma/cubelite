@@ -6,9 +6,17 @@ private actor StubPromBackend: PrometheusPreferencesBackend {
     var saved: [(PromEndpoint, PromAuth)] = []
     var tested: [PromAuth?] = []
     var stored: [String: String] = [:]
+    var disconnected: [String] = []
 
     func detect(context: String) async throws -> [DetectedPrometheus] {
-        [DetectedPrometheus(namespace: "monitoring", name: "prometheus-operated", port: 9090, https: false)]
+        [
+            DetectedPrometheus(namespace: "monitoring", name: "prometheus-operated", port: 9090, https: false),
+            DetectedPrometheus(kind: .grafana, namespace: "monitoring", name: "kps-grafana", port: 80, https: false),
+        ]
+    }
+
+    func disconnect(context: String) async {
+        disconnected.append(context)
     }
 
     func test(context: String, endpoint: PromEndpoint, auth: PromAuth?) async throws -> PromInfo {
@@ -60,6 +68,33 @@ final class PrometheusPreferencesModelTests: XCTestCase {
                 grafanaURL: "https://grafana.example"))
         let saved = await backend.saved
         XCTAssertEqual(saved.map(\.1), [.none])
+    }
+
+    func testDetectedGrafanaIsKeptForInClusterEndpoints() async {
+        let backend = StubPromBackend()
+        let model = PrometheusPreferencesModel(backend: backend, endpoints: endpoints)
+        await model.load(context: "prod")
+        model.target.mode = .inCluster
+        await model.detect()
+        XCTAssertEqual(model.detected?.map(\.name), ["prometheus-operated"])
+        XCTAssertEqual(model.detectedGrafana.map(\.name), ["kps-grafana"])
+        model.pick(model.detected![0])
+        model.pickGrafana(model.detectedGrafana[0])
+        let grafana = GrafanaService(namespace: "monitoring", service: "kps-grafana", port: 80, https: false)
+        XCTAssertEqual(model.grafanaService, grafana)
+        await model.save()
+        XCTAssertEqual(endpoints.endpoint(for: "prod")?.grafanaService, grafana)
+        let disconnected = await backend.disconnected
+        XCTAssertEqual(disconnected, ["prod"], "saving closes the context's old forwards")
+
+        await model.load(context: "prod")
+        XCTAssertEqual(model.grafanaService, grafana, "loaded back")
+        XCTAssertTrue(model.detectedGrafana.isEmpty)
+        model.target.mode = .external
+        model.target.url = "https://p.example"
+        XCTAssertNil(model.draft()?.grafanaService, "only in-cluster endpoints forward to Grafana")
+        await model.load(context: "dev")
+        XCTAssertNil(model.grafanaService, "nothing from another context")
     }
 
     func testAzureCLIOnlyForAzureMonitorAndKeptAcrossModes() async throws {
@@ -257,5 +292,85 @@ final class MetricsModelsTests: XCTestCase {
         XCTAssertEqual(MetricsMath.format(1_048_576, .bytes), "1Mi")
         XCTAssertEqual(MetricsMath.format(2048, .bytesPerSecond), "2Ki/s")
         XCTAssertEqual(MetricsMath.format(2.6, .count), "3")
+    }
+}
+
+/// Records Grafana forwards (#525).
+private actor StubGrafana: GrafanaForwarding {
+    var calls: [GrafanaService] = []
+    var failure: Error?
+
+    func fail(_ error: Error) { failure = error }
+
+    func grafanaForward(context: String, service: GrafanaService) async throws -> UInt16 {
+        calls.append(service)
+        if let failure { throw failure }
+        return 43000
+    }
+}
+
+@MainActor
+final class GrafanaExploreURLTests: XCTestCase {
+
+    private let grafanaService = GrafanaService(namespace: "monitoring", service: "kps-grafana", port: 80, https: false)
+    private let inCluster = IntegrationTarget.inCluster(
+        namespace: "monitoring", service: "prometheus-operated", port: 9090, https: false)
+
+    private func makeStore(_ grafana: StubGrafana?) throws -> PrometheusStore {
+        let suite = "GrafanaExploreURLTests"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        return PrometheusStore(
+            endpoints: PrometheusEndpointStore(defaults: defaults), querying: StubQuerying(), grafana: grafana)
+    }
+
+    func testAConfiguredURLWinsOverTheInClusterGrafana() async throws {
+        let grafana = StubGrafana()
+        let store = try makeStore(grafana)
+        let endpoint = PromEndpoint(
+            target: inCluster, grafanaURL: " https://grafana.example ", grafanaService: grafanaService)
+        XCTAssertTrue(store.canOpenGrafana(endpoint))
+        let url = try await store.grafanaExploreURL(
+            context: "prod", endpoint: endpoint, queries: ["up"], range: .hour)
+        XCTAssertTrue(try XCTUnwrap(url).absoluteString.hasPrefix("https://grafana.example/explore?"))
+        let calls = await grafana.calls
+        XCTAssertTrue(calls.isEmpty, "no forward with a URL")
+    }
+
+    func testWithoutAURLTheInClusterGrafanaIsForwarded() async throws {
+        let grafana = StubGrafana()
+        let store = try makeStore(grafana)
+        let endpoint = PromEndpoint(target: inCluster, grafanaDatasource: "prom", grafanaService: grafanaService)
+        XCTAssertTrue(store.canOpenGrafana(endpoint))
+        let url = try await store.grafanaExploreURL(
+            context: "prod", endpoint: endpoint, queries: ["up"], range: .sixHours)
+        let text = try XCTUnwrap(url).absoluteString
+        XCTAssertTrue(text.hasPrefix("http://127.0.0.1:43000/explore?"), text)
+        XCTAssertTrue(text.contains("now-6h"), text)
+        let calls = await grafana.calls
+        XCTAssertEqual(calls, [grafanaService])
+
+        await grafana.fail(PromError.connect("no ready pod behind monitoring/kps-grafana"))
+        do {
+            _ = try await store.grafanaExploreURL(context: "prod", endpoint: endpoint, queries: ["up"], range: .hour)
+            XCTFail("expected the forward's error")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("no ready pod"))
+        }
+    }
+
+    func testNoGrafanaWithoutAURLOrAnInClusterService() async throws {
+        let grafana = StubGrafana()
+        let store = try makeStore(grafana)
+        let external = PromEndpoint(target: .external(url: "https://p.example"), grafanaService: grafanaService)
+        XCTAssertFalse(store.canOpenGrafana(external), "external endpoints never forward")
+        let none = try await store.grafanaExploreURL(
+            context: "prod", endpoint: external, queries: ["up"], range: .hour)
+        XCTAssertNil(none)
+        XCTAssertFalse(store.canOpenGrafana(PromEndpoint(target: inCluster)))
+        let noForwarder = try makeStore(nil)
+        XCTAssertFalse(noForwarder.canOpenGrafana(PromEndpoint(target: inCluster, grafanaService: grafanaService)))
+        let calls = await grafana.calls
+        XCTAssertTrue(calls.isEmpty)
     }
 }

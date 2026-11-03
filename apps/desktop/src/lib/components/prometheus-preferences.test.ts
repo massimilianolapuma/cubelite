@@ -8,12 +8,19 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   prometheusTest: vi.fn(),
   prometheusSaveAuth: vi.fn(async () => {}),
   prometheusAuthMethod: vi.fn(async () => "none"),
+  prometheusDisconnect: vi.fn(async () => {}),
 }));
 
 import PrometheusPreferences from "./PrometheusPreferences.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { prometheus } from "#lib/stores/prometheus.svelte.ts";
-import { prometheusAuthMethod, prometheusDetect, prometheusSaveAuth, prometheusTest } from "#lib/tauri.ts";
+import {
+  prometheusAuthMethod,
+  prometheusDetect,
+  prometheusDisconnect,
+  prometheusSaveAuth,
+  prometheusTest,
+} from "#lib/tauri.ts";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -26,12 +33,12 @@ beforeEach(() => {
 describe("PrometheusPreferences (#510)", () => {
   it("detects an in-cluster Prometheus and saves it with cluster credentials", async () => {
     vi.mocked(prometheusDetect).mockResolvedValueOnce([
-      { namespace: "monitoring", name: "prometheus-operated", port: 9090, https: false },
+      { kind: "prometheus", namespace: "monitoring", name: "prometheus-operated", port: 9090, https: false },
     ]);
     render(PrometheusPreferences);
     await fireEvent.click(screen.getByRole("radio", { name: "In cluster" }));
     await fireEvent.click(screen.getByRole("button", { name: "Detect" }));
-    await fireEvent.click(await screen.findByRole("button", { name: "Use" }));
+    await fireEvent.click(await screen.findByRole("button", { name: /Use prometheus/ }));
     expect(screen.getByLabelText("Service")).toHaveValue("prometheus-operated");
     expect(screen.queryByLabelText("Authentication")).not.toBeInTheDocument();
     expect(screen.getByText(/with your cluster credentials/)).toBeInTheDocument();
@@ -43,9 +50,47 @@ describe("PrometheusPreferences (#510)", () => {
         cluster: null,
         grafanaUrl: "https://grafana.example",
         grafanaDatasource: null,
+        grafanaService: null,
         skipTlsVerify: false,
       }),
     );
+  });
+
+  it("picks the detected Grafana, opened through a port-forward without a URL (#525)", async () => {
+    vi.mocked(prometheusDetect).mockResolvedValueOnce([
+      { kind: "prometheus", namespace: "monitoring", name: "prometheus-operated", port: 9090, https: false },
+      { kind: "grafana", namespace: "monitoring", name: "kps-grafana", port: 80, https: false },
+    ]);
+    render(PrometheusPreferences);
+    await fireEvent.click(screen.getByRole("radio", { name: "In cluster" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Detect" }));
+    await fireEvent.click(await screen.findByRole("button", { name: /Use prometheus/ }));
+    await fireEvent.click(screen.getByRole("button", { name: /Use grafana monitoring\/kps-grafana/ }));
+    expect(screen.getByLabelText("Service")).toHaveValue("prometheus-operated");
+    expect(screen.getByTestId("grafana-service")).toHaveTextContent(
+      "Grafana in the cluster: monitoring/kps-grafana:80 — opened through a port-forward",
+    );
+    await fireEvent.input(screen.getByLabelText("Grafana URL"), { target: { value: "https://grafana.example" } });
+    expect(screen.getByTestId("grafana-service")).toHaveTextContent("(the URL above wins)");
+    await fireEvent.input(screen.getByLabelText("Grafana URL"), { target: { value: "" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(prometheus.endpointFor("prod")?.grafanaService).toEqual({
+        namespace: "monitoring",
+        service: "kps-grafana",
+        port: 80,
+        https: false,
+      }),
+    );
+    // Saving closes the context's old forwards.
+    await waitFor(() => expect(prometheusDisconnect).toHaveBeenCalledWith("prod"));
+
+    // Only in-cluster endpoints use it.
+    await fireEvent.click(screen.getByRole("radio", { name: "External" }));
+    expect(screen.queryByTestId("grafana-service")).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("radio", { name: "In cluster" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Clear the in-cluster Grafana" }));
+    expect(screen.queryByTestId("grafana-service")).not.toBeInTheDocument();
   });
 
   it("tests and saves an Azure Monitor endpoint with the Azure CLI", async () => {

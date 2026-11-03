@@ -87,12 +87,7 @@ struct EsEndpoint: Hashable, Sendable, Codable {
 }
 
 /// A Kibana service in the cluster (from Detect); same JSON as the desktop.
-struct KibanaService: Codable, Hashable, Sendable {
-    let namespace: String
-    let service: String
-    let port: Int
-    let https: Bool
-}
+typealias KibanaService = ServiceRef
 
 /// Credentials for an endpoint. Never printed: `description`, `debugDescription`
 /// and the mirror name only the method.

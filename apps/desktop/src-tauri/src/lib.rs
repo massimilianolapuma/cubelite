@@ -18,9 +18,9 @@ use commands::kubernetes::{
     PortForwardState, WatchState,
 };
 use commands::prometheus::{
-    open_grafana_explore, prometheus_auth_method, prometheus_detect, prometheus_disconnect,
-    prometheus_metrics, prometheus_save_auth, prometheus_sparklines, prometheus_test,
-    PrometheusState,
+    grafana_port_forward, open_grafana_explore, prometheus_auth_method, prometheus_detect,
+    prometheus_disconnect, prometheus_metrics, prometheus_save_auth, prometheus_sparklines,
+    prometheus_test, PrometheusState,
 };
 
 /// Entry point for the Tauri application.
@@ -51,6 +51,7 @@ pub fn run() {
             prometheus_save_auth,
             prometheus_auth_method,
             prometheus_disconnect,
+            grafana_port_forward,
             open_grafana_explore,
             elastic_test,
             elastic_search,

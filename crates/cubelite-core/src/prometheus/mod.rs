@@ -32,10 +32,18 @@ pub struct PromEndpoint {
     /// Grafana datasource UID or name; empty uses Grafana's default.
     #[serde(default)]
     pub grafana_datasource: Option<String>,
+    /// In-cluster Grafana service, opened through a port-forward when there
+    /// is no Grafana URL (#525).
+    #[serde(default)]
+    pub grafana_service: Option<GrafanaService>,
     /// Accept any certificate (opt-in, for self-signed endpoints without a CA).
     #[serde(default)]
     pub skip_tls_verify: bool,
 }
+
+/// A Grafana service in the cluster (from Detect; kube-prometheus-stack's
+/// is `monitoring/<release>-grafana:80`, plain HTTP).
+pub type GrafanaService = crate::integration::ServiceRef;
 
 /// Credentials for an endpoint.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Default)]

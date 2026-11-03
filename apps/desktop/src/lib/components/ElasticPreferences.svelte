@@ -1,6 +1,8 @@
 <script lang="ts">
 	import AuthFields from '#lib/components/integrations/AuthFields.svelte';
+	import DetectedServices from '#lib/components/integrations/DetectedServices.svelte';
 	import FormActions from '#lib/components/integrations/FormActions.svelte';
+	import InClusterUi from '#lib/components/integrations/InClusterUi.svelte';
 	import TargetFields from '#lib/components/integrations/TargetFields.svelte';
 	import { DEFAULT_INDEX_PATTERN, newEndpoint } from '#lib/elastic.ts';
 	import { errorMessage } from '#lib/errors.ts';
@@ -11,6 +13,7 @@
 		TargetForm,
 		describeTarget,
 		saveCredentials,
+		serviceRef,
 		urlProblem,
 		type FormResult
 	} from '#lib/integration-form.svelte.ts';
@@ -20,6 +23,7 @@
 	import {
 		elasticAuthMethod,
 		elasticDetect,
+		elasticDisconnect,
 		elasticSaveAuth,
 		elasticTest,
 		elasticUseEckCredentials,
@@ -177,6 +181,8 @@
 			}
 			auth.clearSecrets();
 			elastic.setEndpoint(ctx, endpoint);
+			// A changed endpoint or Kibana service must not keep old forwards.
+			await elasticDisconnect(ctx);
 			if (endpoint) await refreshStoredMethod(endpoint);
 			toasts.push(endpoint ? `Elasticsearch saved for ${ctx}` : `Elasticsearch off for ${ctx}`, 'ok');
 		});
@@ -244,17 +250,13 @@
 				<input class={INPUT_CLASS} aria-label="Kibana URL" placeholder="Kibana URL (optional), e.g. https://kibana.example.com" bind:value={kibanaUrl} />
 				{#if kibanaError}<p class="type-caption text-status-err">{kibanaError}</p>{/if}
 				{#if form.mode === 'in-cluster' && kibanaService}
-					<div class="flex items-center gap-2" data-testid="kibana-service">
-						<span class="type-caption flex-1 truncate text-text-tertiary">
-							Kibana in the cluster: {kibanaService.namespace}/{kibanaService.service}:{kibanaService.port}
-							{kibanaUrl.trim() ? '(the URL above wins)' : '— opened through a port-forward'}
-						</span>
-						<button
-							type="button"
-							class="focus-ring type-caption rounded-sm text-text-tertiary hover:text-text-secondary"
-							onclick={() => (kibanaService = null)}>Clear</button
-						>
-					</div>
+					<InClusterUi
+						name="Kibana"
+						service={kibanaService}
+						urlSet={kibanaUrl.trim() !== ''}
+						testid="kibana-service"
+						onClear={() => (kibanaService = null)}
+					/>
 				{/if}
 
 				<AuthFields fields={auth} options={authOptions} {secretMethods}>
@@ -286,29 +288,9 @@
 </section>
 
 {#snippet detectedList()}
-	{#if detected}
-		{#if detected.length === 0}
-			<p class="type-caption text-text-tertiary">No Elasticsearch or Kibana service found.</p>
-		{:else}
-			<ul class="flex flex-col gap-0.5" aria-label="Detected services">
-				{#each detected as svc (svc.namespace + '/' + svc.name)}
-					<li class="flex items-center gap-2">
-						<span class="type-data-sm flex-1 truncate text-text-secondary">
-							{svc.kind} · {svc.namespace}/{svc.name}:{svc.port}{svc.https ? ' (https)' : ''}
-						</span>
-						<button
-							type="button"
-							class="focus-ring type-caption rounded-sm text-accent hover:brightness-110"
-							aria-label="Use {svc.kind} {svc.namespace}/{svc.name}"
-							onclick={() =>
-								svc.kind === 'elasticsearch'
-									? form.pick(svc)
-									: (kibanaService = { namespace: svc.namespace, service: svc.name, port: svc.port, https: svc.https })}
-							>Use</button
-						>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	{/if}
+	<DetectedServices
+		services={detected}
+		empty="No Elasticsearch or Kibana service found."
+		onUse={(svc) => (svc.kind === 'elasticsearch' ? form.pick(svc) : (kibanaService = serviceRef(svc)))}
+	/>
 {/snippet}

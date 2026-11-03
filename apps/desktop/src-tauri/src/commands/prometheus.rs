@@ -9,21 +9,32 @@
 use cubelite_core::integration;
 use cubelite_core::prometheus::transport::{self, DetectedPrometheus, PromConnection, PromInfo};
 use cubelite_core::prometheus::{
-    grafana_explore_url, MetricsRange, MetricsRequest, MetricsResult, PromAuth, PromEndpoint,
-    PromError, PromTarget, Sparklines,
+    grafana_explore_url, GrafanaService, MetricsRange, MetricsRequest, MetricsResult, PromAuth,
+    PromEndpoint, PromError, PromTarget, Sparklines,
 };
 use tauri::State;
 
-use super::cache::{ConnCache, ConnKey};
+use super::cache::{ConnCache, ConnKey, ServiceForwards};
 use super::elastic::kube;
 use super::vault::{self, blocking as keychain};
 
 const KEYCHAIN_SERVICE: &str = "cubelite.prometheus";
 
-/// Open connections per (kubeconfig, context).
+/// Open connections per (kubeconfig, context), and the port-forwards to
+/// in-cluster Grafanas (#525).
 #[derive(Default)]
 pub struct PrometheusState {
     connections: ConnCache<PromEndpoint, PromConnection>,
+    grafana: ServiceForwards,
+}
+
+impl PrometheusState {
+    /// Closes the context's connections and Grafana forwards (credentials
+    /// saved, disconnect).
+    async fn forget(&self, context: &str) {
+        self.connections.forget(context).await;
+        self.grafana.forget(context).await;
+    }
 }
 
 fn binding(endpoint: &PromEndpoint) -> Result<String, String> {
@@ -184,7 +195,7 @@ pub async fn prometheus_save_auth(
     }
     let c = context.clone();
     keychain(move || store_auth(&c, &endpoint, &auth)).await?;
-    state.connections.forget(&context).await;
+    state.forget(&context).await;
     Ok(())
 }
 
@@ -204,14 +215,26 @@ pub async fn prometheus_auth_method(
     .to_string())
 }
 
-/// Closes the cached connections of `context` (their port-forwards too).
+/// Closes the cached connections of `context` (their port-forwards too)
+/// and its Grafana forwards.
 #[tauri::command]
 pub async fn prometheus_disconnect(
     state: State<'_, PrometheusState>,
     context: String,
 ) -> Result<(), String> {
-    state.connections.forget(&context).await;
+    state.forget(&context).await;
     Ok(())
+}
+
+/// Port-forward to an in-cluster Grafana (#525), reused while its pod is ready.
+#[tauri::command]
+pub async fn grafana_port_forward(
+    state: State<'_, PrometheusState>,
+    kubeconfig_path: String,
+    context: String,
+    service: GrafanaService,
+) -> Result<u16, String> {
+    state.grafana.port(kubeconfig_path, context, service).await
 }
 
 /// Grafana Explore URL for `queries` over the last `range`.

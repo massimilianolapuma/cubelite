@@ -39,6 +39,34 @@ pub enum Target {
     },
 }
 
+/// A web UI service in the cluster picked from Detect (Kibana #505,
+/// Grafana #525), opened through a port-forward when there is no URL.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServiceRef {
+    /// Namespace.
+    pub namespace: String,
+    /// Service name.
+    pub service: String,
+    /// Service port.
+    pub port: u16,
+    /// Whether it speaks HTTPS.
+    pub https: bool,
+}
+
+impl ServiceRef {
+    /// The service as an in-cluster target (its names are checked with
+    /// [`check_target`]).
+    pub fn target(&self) -> Target {
+        Target::InCluster {
+            namespace: self.namespace.clone(),
+            service: self.service.clone(),
+            port: self.port,
+            https: self.https,
+        }
+    }
+}
+
 /// What stored credentials are bound to: the endpoint's origin (external
 /// scheme + host + port, or the in-cluster service) and whether TLS
 /// verification was off. Secrets are only sent to the same binding, so a

@@ -9,6 +9,7 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   elasticSaveAuth: vi.fn(async () => {}),
   elasticAuthMethod: vi.fn(async () => "none"),
   elasticUseEckCredentials: vi.fn(async () => "eck-user"),
+  elasticDisconnect: vi.fn(async () => {}),
 }));
 
 import ElasticPreferences from "./ElasticPreferences.svelte";
@@ -17,6 +18,7 @@ import { elastic } from "#lib/stores/elastic.svelte.ts";
 import {
   elasticAuthMethod,
   elasticDetect,
+  elasticDisconnect,
   elasticSaveAuth,
   elasticTest,
   elasticUseEckCredentials,
@@ -61,6 +63,8 @@ describe("ElasticPreferences (#501)", () => {
         https: true,
       }),
     );
+    // Saving closes the context's old forwards.
+    await waitFor(() => expect(elasticDisconnect).toHaveBeenCalledWith("prod"));
   });
 
   it("tests with the typed API key, saves the endpoint and sends the secret only to the keychain", async () => {
