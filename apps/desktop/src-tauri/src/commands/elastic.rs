@@ -8,7 +8,7 @@
 use cubelite_core::elastic::transport::{self, DetectedService, EsConnection, EsInfo};
 use cubelite_core::elastic::{
     kibana_discover_url as discover_url, ElasticError, EsAuth, EsEndpoint, EsTarget, FieldPreset,
-    HistoryPage, HistoryQuery,
+    HistoryPage, HistoryQuery, KibanaService,
 };
 use cubelite_core::integration;
 use cubelite_core::KubeClient;
@@ -216,6 +216,43 @@ pub async fn elastic_disconnect(
 ) -> Result<(), String> {
     state.forget(&context).await;
     Ok(())
+}
+
+/// Port-forwards to a ready pod behind an in-cluster Kibana service (#505)
+/// and registers it with the port-forward sessions; the frontend opens
+/// Discover on `localhost:<localPort>`.
+#[tauri::command]
+pub async fn kibana_port_forward(
+    app: tauri::AppHandle,
+    kubeconfig_path: String,
+    context: String,
+    service: KibanaService,
+) -> Result<super::kubernetes::ForwardStartResult, String> {
+    use tauri::Manager;
+    let target = EsTarget::InCluster {
+        namespace: service.namespace.clone(),
+        service: service.service.clone(),
+        port: service.port,
+        https: service.https,
+    };
+    integration::check_target(&target)?;
+    let client = kube(&kubeconfig_path, &context).await?.client();
+    let tunnel = integration::open_service_tunnel(
+        &client,
+        &service.namespace,
+        &service.service,
+        service.port,
+    )
+    .await
+    .map_err(|e| match e {
+        integration::TunnelError::Config(t) | integration::TunnelError::Connect(t) => t,
+    })?;
+    let (local_port, handle) = tunnel.detach();
+    let id = app
+        .state::<super::kubernetes::PortForwardState>()
+        .register(handle)
+        .await;
+    Ok(super::kubernetes::ForwardStartResult { id, local_port })
 }
 
 /// Kibana Discover URL for a pod's logs.

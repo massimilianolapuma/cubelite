@@ -734,8 +734,12 @@ export type EsEndpoint = {
   indexPattern: string;
   preset: FieldPreset;
   kibanaUrl: string | null;
+  /** In-cluster Kibana opened through a port-forward when there is no URL (#505). */
+  kibanaService?: KibanaService | null;
   skipTlsVerify: boolean;
 };
+
+export type KibanaService = { namespace: string; service: string; port: number; https: boolean };
 
 export type EsAuth =
   | { method: "none" }
@@ -825,6 +829,15 @@ export function elasticUseEckCredentials(
   endpoint: EsEndpoint,
 ): Promise<EsAuthMethod> {
   return invoke<EsAuthMethod>("elastic_use_eck_credentials", { kubeconfigPath, context, endpoint });
+}
+
+/** Port-forwards to an in-cluster Kibana service; registered with the port-forward sessions. */
+export function kibanaPortForward(
+  kubeconfigPath: string,
+  context: string,
+  service: KibanaService,
+): Promise<ForwardStartResult> {
+  return invoke<ForwardStartResult>("kibana_port_forward", { kubeconfigPath, context, service });
 }
 
 export function elasticDisconnect(context: string): Promise<void> {

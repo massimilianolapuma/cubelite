@@ -20,6 +20,7 @@ declare global {
     __execSent?: string[];
     __lastElasticSearch?: Record<string, unknown>;
     __kibanaOpened?: Record<string, unknown>;
+    __kibanaForwards?: number;
     __lastPromMetrics?: Record<string, unknown>;
     __grafanaOpened?: Record<string, unknown>;
     /** Test hook: arguments of the last `apply_resource_yaml` call. */
@@ -251,6 +252,10 @@ export function tauriMockScript(): string {
       case "open_grafana_explore": {
         window.__grafanaOpened = args;
         return null;
+      }
+      case "kibana_port_forward": {
+        window.__kibanaForwards = (window.__kibanaForwards ?? 0) + 1;
+        return { id: "kb-1", localPort: 45601 };
       }
       case "open_kibana_discover": {
         window.__kibanaOpened = args;

@@ -191,12 +191,23 @@ pub enum TunnelError {
 pub struct ServiceTunnel {
     /// Local port on 127.0.0.1.
     pub local_port: u16,
-    handle: JoinHandle<()>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl ServiceTunnel {
+    /// Hands the forward over to a caller that manages its lifetime (the
+    /// app's port-forward sessions): it is no longer stopped on drop.
+    pub fn detach(mut self) -> (u16, JoinHandle<()>) {
+        let handle = self.handle.take().unwrap_or_else(|| tokio::spawn(async {}));
+        (self.local_port, handle)
+    }
 }
 
 impl Drop for ServiceTunnel {
     fn drop(&mut self) {
-        self.handle.abort();
+        if let Some(handle) = self.handle.take() {
+            handle.abort();
+        }
     }
 }
 
@@ -231,7 +242,10 @@ pub async fn open_service_tunnel(
         forward_pod_port(client.clone(), namespace.to_string(), pod_name, 0, remote)
             .await
             .map_err(|e| TunnelError::Connect(e.to_string()))?;
-    Ok(ServiceTunnel { local_port, handle })
+    Ok(ServiceTunnel {
+        local_port,
+        handle: Some(handle),
+    })
 }
 
 /// A request's outcome before the integration reads it.

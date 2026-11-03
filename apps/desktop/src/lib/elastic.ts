@@ -18,7 +18,14 @@ export function isHistoryRange(v: unknown): v is HistoryRange {
 }
 
 export function newEndpoint(target: EsEndpoint["target"]): EsEndpoint {
-  return { target, indexPattern: DEFAULT_INDEX_PATTERN, preset: "ecs", kibanaUrl: null, skipTlsVerify: false };
+  return {
+    target,
+    indexPattern: DEFAULT_INDEX_PATTERN,
+    preset: "ecs",
+    kibanaUrl: null,
+    kibanaService: null,
+    skipTlsVerify: false,
+  };
 }
 
 /** One-line description of an endpoint for status lines. */

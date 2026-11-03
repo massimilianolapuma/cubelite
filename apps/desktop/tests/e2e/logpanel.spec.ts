@@ -171,3 +171,30 @@ test("History reads a pod's logs from Elasticsearch and opens Kibana (#501)", as
   await expect(page.getByText("● Following")).toBeVisible();
 });
 
+
+test("Open in Kibana forwards to an in-cluster Kibana without a URL (#505)", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "cubelite.elastic.endpoints",
+      JSON.stringify({
+        "prod-aks": {
+          target: { kind: "in-cluster", namespace: "logging", service: "quickstart-es-http", port: 9200, https: true },
+          indexPattern: "logs-*",
+          preset: "ecs",
+          kibanaUrl: null,
+          kibanaService: { namespace: "logging", service: "quickstart-kb-http", port: 5601, https: true },
+          skipTlsVerify: false,
+        },
+      }),
+    );
+  });
+  await boot(page);
+  await openLogPanel(page, "api-0");
+  for (let i = 0; i < 2; i++) {
+    await page.getByLabel("More log options").click();
+    await page.getByRole("button", { name: "Open in Kibana" }).click();
+  }
+  const opened = await page.evaluate(() => window.__kibanaOpened);
+  expect(opened).toMatchObject({ kibanaUrl: "https://localhost:45601", pod: "api-0" });
+  expect(await page.evaluate(() => window.__kibanaForwards)).toBe(1);
+});

@@ -67,6 +67,16 @@ pub struct ForwardStartResult {
     pub local_port: u16,
 }
 
+impl PortForwardState {
+    /// Registers a forward started elsewhere (Kibana, #505) so it is listed,
+    /// stopped and cleaned up like the user's own; returns its session ID.
+    pub(crate) async fn register(&self, handle: JoinHandle<()>) -> String {
+        let id = FORWARD_COUNTER.fetch_add(1, Ordering::SeqCst).to_string();
+        self.handles.lock().await.insert(id.clone(), handle);
+        id
+    }
+}
+
 /// Starts forwarding `127.0.0.1:<local_port>` → `<pod>:<remote_port>`.
 ///
 /// `local_port == 0` auto-assigns a free port; the bound port is returned.
@@ -95,12 +105,7 @@ pub async fn start_port_forward(
     .await
     .map_err(|e| e.to_string())?;
 
-    let id = FORWARD_COUNTER.fetch_add(1, Ordering::SeqCst).to_string();
-    app.state::<PortForwardState>()
-        .handles
-        .lock()
-        .await
-        .insert(id.clone(), handle);
+    let id = app.state::<PortForwardState>().register(handle).await;
 
     Ok(ForwardStartResult {
         id,

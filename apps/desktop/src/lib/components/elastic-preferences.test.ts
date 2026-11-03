@@ -43,11 +43,24 @@ describe("ElasticPreferences (#501)", () => {
     ]);
     await chooseInCluster();
     await fireEvent.click(screen.getByRole("button", { name: "Detect" }));
-    await fireEvent.click(await screen.findByRole("button", { name: "Use" }));
+    await fireEvent.click(await screen.findByRole("button", { name: /Use elasticsearch/ }));
     expect(screen.getByLabelText("Namespace")).toHaveValue("logging");
     expect(screen.getByLabelText("Service")).toHaveValue("quickstart-es-http");
     expect(screen.getByLabelText("Port")).toHaveValue(9200);
     expect(elasticDetect).toHaveBeenCalledWith("/k", "prod");
+
+    // The detected Kibana is opened through a port-forward when no URL is set (#505).
+    await fireEvent.click(screen.getByRole("button", { name: /Use kibana/ }));
+    expect(screen.getByTestId("kibana-service")).toHaveTextContent("logging/quickstart-kb-http:5601");
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(elastic.endpointFor("prod")?.kibanaService).toEqual({
+        namespace: "logging",
+        service: "quickstart-kb-http",
+        port: 5601,
+        https: true,
+      }),
+    );
   });
 
   it("tests with the typed API key, saves the endpoint and sends the secret only to the keychain", async () => {

@@ -9,6 +9,7 @@
 	import { elastic } from '#lib/stores/elastic.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { openKibanaDiscover } from '#lib/tauri.ts';
+	import { portforward } from '#lib/stores/portforward.svelte.ts';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
@@ -52,12 +53,19 @@
 		if (!endpoint && session.source === 'history') session.setSource('live');
 	});
 
+	// A configured URL wins; else an in-cluster Kibana through a port-forward (#505).
+	const canOpenKibana = $derived(!!endpoint?.kibanaUrl || !!endpoint?.kibanaService);
+
 	async function openKibana() {
 		overflowOpen = false;
-		if (!endpoint?.kibanaUrl) return;
+		if (!endpoint) return;
+		const kibanaUrl =
+			endpoint.kibanaUrl ??
+			(endpoint.kibanaService ? await portforward.kibanaBase(endpoint.kibanaService) : null);
+		if (!kibanaUrl) return;
 		try {
 			await openKibanaDiscover({
-				kibanaUrl: endpoint.kibanaUrl,
+				kibanaUrl,
 				preset: endpoint.preset,
 				namespace: session.namespace,
 				pod: session.pod,
@@ -376,7 +384,7 @@
 				>
 					<Check size={12} strokeWidth={2} class={logPanel.wrap ? '' : 'invisible'} />Wrap lines
 				</button>
-				{#if endpoint?.kibanaUrl}
+				{#if canOpenKibana}
 					<div class="my-1 border-t border-border-default"></div>
 					<button
 						type="button"
