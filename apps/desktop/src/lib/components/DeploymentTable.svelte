@@ -10,6 +10,12 @@
 	import type { DeploymentInfo } from '#lib/tauri.ts';
 	import { deploymentStatus, toneColor } from '#lib/status.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
+	import Sparkline from '#lib/components/metrics/Sparkline.svelte';
+	import { matchesSelector } from '#lib/k8s-match.ts';
+	import { sumPoints } from '#lib/metrics.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
 
 	let {
 		deployments,
@@ -21,8 +27,32 @@
 		onRowClick?: (dep: DeploymentInfo) => void;
 	} = $props();
 
-	// NAME / READY / STATUS / AGE / REPLICAS · ACTIONS
-	const grid = 'grid-template-columns: 2.2fr 0.6fr 0.9fr 0.55fr 1.4fr;';
+	// NAME / READY / STATUS / AGE / [CPU · 1h] / REPLICAS · ACTIONS
+	const withCpu = $derived(prometheus.active !== null);
+	const grid = $derived(
+		withCpu
+			? 'grid-template-columns: 2.2fr 0.6fr 0.9fr 0.55fr 0.6fr 1.4fr;'
+			: 'grid-template-columns: 2.2fr 0.6fr 0.9fr 0.55fr 1.4fr;'
+	);
+
+	// Last hour of CPU from Prometheus, summed over each deployment's pods (#510).
+	$effect(() => {
+		void deployments;
+		void prometheus.loadSparklines(app.namespace);
+	});
+	// Current pods only: a rollout within the hour shows the new pods' part.
+	const cpuByDeployment = $derived.by(() => {
+		const out: Record<string, ReturnType<typeof sumPoints>> = {};
+		if (!withCpu || !prometheus.sparklines) return out;
+		for (const dep of deployments) {
+			const series = resources.pods
+				.filter((p) => p.namespace === dep.namespace && matchesSelector(p.labels, dep.selector))
+				.map((p) => prometheus.cpuFor(p.namespace, p.name))
+				.filter((s) => s !== null);
+			if (series.length > 0) out[`${dep.namespace}/${dep.name}`] = sumPoints(series);
+		}
+		return out;
+	});
 
 	/** Replica segments shown next to the stepper (more render as "+N"). */
 	const MAX_SEGMENTS = 8;
@@ -41,6 +71,9 @@
 		<span class="type-colhead">Ready</span>
 		<SortHeader list="deployments" field="status" label="Status" />
 		<SortHeader list="deployments" field="age" label="Age" />
+		{#if withCpu}
+			<span class="type-colhead" title="last hour, from Prometheus">CPU · 1h</span>
+		{/if}
 		<span class="type-colhead">Replicas · Actions</span>
 	</div>
 	<div class="bg-surface-panel">
@@ -73,6 +106,9 @@
 						<span class="type-data-sm" style="color: {toneColor[status.tone]};">{status.label}</span>
 					</span>
 					<span class="type-data-sm text-text-secondary">{formatAge(dep.creation_timestamp)}</span>
+					{#if withCpu}
+						<span class="flex items-center"><Sparkline points={cpuByDeployment[`${dep.namespace}/${dep.name}`] ?? null} label="CPU, last hour" /></span>
+					{/if}
 					<span class="flex items-center gap-1.5">
 						<span class="flex items-center overflow-hidden rounded-md border border-border-default">
 							<button

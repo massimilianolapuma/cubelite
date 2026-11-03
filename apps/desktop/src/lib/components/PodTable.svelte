@@ -9,6 +9,9 @@
 	import { podStatusLabel, podTone, toneColor } from '#lib/status.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+	import Sparkline from '#lib/components/metrics/Sparkline.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import { formatBytes, formatCpu } from '#lib/units.ts';
 
 	let {
@@ -26,6 +29,15 @@
 	// Spec grid: NAME / STATUS / READY / AGE / CPU / MEMORY / RESTARTS
 	const grid = 'grid-template-columns: 2.4fr 0.9fr 0.7fr 0.55fr 0.6fr 0.7fr 0.5fr;';
 
+	// Last hour of CPU and memory from Prometheus, after the rows (#510).
+	$effect(() => {
+		void pods;
+		void prometheus.loadSparklines(app.namespace);
+	});
+	const sparkTitle = $derived(
+		prometheus.sparklineError ? `sparklines unavailable: ${prometheus.sparklineError}` : 'sparkline: last hour, from Prometheus'
+	);
+
 	// Default sort from Preferences, header click overrides for the session (#496).
 	const sorted = $derived(sortRows(pods, lists.specFor('pods'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp, status: (x) => podTone(x), restarts: (x) => x.restarts }));
 </script>
@@ -36,8 +48,8 @@
 		<SortHeader list="pods" field="status" label="Status" />
 		<span class="type-colhead">Ready</span>
 		<SortHeader list="pods" field="age" label="Age" />
-		<span class="type-colhead">CPU</span>
-		<span class="type-colhead">Memory</span>
+		<span class="type-colhead" title={prometheus.active ? sparkTitle : undefined}>CPU</span>
+		<span class="type-colhead" title={prometheus.active ? sparkTitle : undefined}>Memory</span>
 		<SortHeader list="pods" field="restarts" label="Restarts" />
 	</div>
 	<div class="bg-surface-panel">
@@ -78,11 +90,21 @@
 						{pod.ready_containers}/{pod.total_containers}
 					</span>
 					<span class="type-data-sm text-text-secondary">{formatAge(pod.creation_timestamp)}</span>
-					<span class="type-data-sm {usage ? 'text-text-secondary' : 'text-text-disabled'}">
-						{usage ? formatCpu(usage.cpu_millis) : '—'}
+					<span class="flex items-center gap-1.5">
+						<span class="type-data-sm {usage ? 'text-text-secondary' : 'text-text-disabled'}">
+							{usage ? formatCpu(usage.cpu_millis) : '—'}
+						</span>
+						{#if prometheus.active}
+							<Sparkline points={prometheus.cpuFor(pod.namespace, pod.name)} label="CPU, last hour" />
+						{/if}
 					</span>
-					<span class="type-data-sm {usage ? 'text-text-secondary' : 'text-text-disabled'}">
-						{usage ? formatBytes(usage.memory_bytes) : '—'}
+					<span class="flex items-center gap-1.5">
+						<span class="type-data-sm {usage ? 'text-text-secondary' : 'text-text-disabled'}">
+							{usage ? formatBytes(usage.memory_bytes) : '—'}
+						</span>
+						{#if prometheus.active}
+							<Sparkline points={prometheus.memoryFor(pod.namespace, pod.name)} label="Memory, last hour" />
+						{/if}
 					</span>
 					<span class="flex items-center justify-between gap-1.5">
 						<span

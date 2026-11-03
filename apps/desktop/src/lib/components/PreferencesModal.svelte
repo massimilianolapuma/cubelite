@@ -8,6 +8,7 @@
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import NavigationPreferences from '#lib/components/NavigationPreferences.svelte';
 	import ElasticPreferences from '#lib/components/ElasticPreferences.svelte';
+	import PrometheusPreferences from '#lib/components/PrometheusPreferences.svelte';
 	import { errorMessage } from '#lib/errors.ts';
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -229,6 +230,8 @@
 		<NavigationPreferences />
 
 		<ElasticPreferences />
+
+		<PrometheusPreferences />
 
 		<section>
 			<div class="mb-1.5 flex items-baseline justify-between gap-3">

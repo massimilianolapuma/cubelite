@@ -855,3 +855,133 @@ export function openKibanaDiscover(args: {
 }): Promise<void> {
   return invoke("open_kibana_discover", args);
 }
+
+// ── Prometheus / Grafana (#484, #509) ────────────────────────────────────
+
+/** Where an integration's API lives (same shape for every integration). */
+export type IntegrationTarget = EsTarget;
+
+/** A context's Prometheus endpoint; secrets are never part of it (OS keychain). */
+export type PromEndpoint = {
+  target: IntegrationTarget;
+  /** Value of the `cluster` label added to every query (shared workspaces). */
+  cluster: string | null;
+  grafanaUrl: string | null;
+  /** Grafana datasource UID or name; null uses Grafana's default. */
+  grafanaDatasource: string | null;
+  skipTlsVerify: boolean;
+};
+
+export type PromAuth =
+  | { method: "none" }
+  | { method: "basic"; username: string; password: string }
+  | { method: "bearer"; token: string }
+  /** Azure Monitor: token from the Azure CLI at connect time (never stored). */
+  | { method: "azure-cli" };
+
+export type PromAuthMethod = PromAuth["method"];
+
+export type MetricsRange = "1h" | "6h" | "24h" | "7d";
+
+export type Workload =
+  | { kind: "pod"; name: string }
+  | { kind: "deployment"; name: string }
+  | { kind: "stateful-set"; name: string };
+
+export type Chart =
+  | "cpu"
+  | "cpu-request"
+  | "cpu-limit"
+  | "memory"
+  | "memory-request"
+  | "memory-limit"
+  | "restarts"
+  /** Restarts over the whole range, computed by Prometheus (one point). */
+  | "restarts-total"
+  | "network-rx"
+  | "network-tx";
+
+export type MetricsRequest = {
+  namespace: string;
+  workload: Workload;
+  range: MetricsRange;
+  perContainer: boolean;
+};
+
+/** `[unix seconds, value | null]` (null: NaN/Inf, the line breaks). */
+export type Point = [number, number | null];
+
+export type Series = { label: string; points: Point[] };
+
+export type ChartData = { chart: Chart; query: string; series: Series[]; error: string | null };
+
+export type MetricsResult = { start: number; end: number; step: number; charts: ChartData[] };
+
+/** Last hour per `namespace/pod`. */
+export type Sparklines = { cpu: Record<string, Point[]>; memory: Record<string, Point[]> };
+
+export type PromInfo = {
+  version: string;
+  cadvisor: boolean;
+  kubeStateMetrics: boolean;
+  clusters: string[];
+};
+
+export type DetectedPrometheus = { namespace: string; name: string; port: number; https: boolean };
+
+export function prometheusDetect(kubeconfigPath: string, context: string): Promise<DetectedPrometheus[]> {
+  return invoke<DetectedPrometheus[]>("prometheus_detect", { kubeconfigPath, context });
+}
+
+/** `auth` tests credentials before saving them; omitted uses the stored ones. */
+export function prometheusTest(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: PromEndpoint,
+  auth?: PromAuth,
+): Promise<PromInfo> {
+  return invoke<PromInfo>("prometheus_test", { kubeconfigPath, context, endpoint, auth: auth ?? null });
+}
+
+export function prometheusMetrics(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: PromEndpoint,
+  request: MetricsRequest,
+): Promise<MetricsResult> {
+  return invoke<MetricsResult>("prometheus_metrics", { kubeconfigPath, context, endpoint, request });
+}
+
+/** `namespace` null covers every namespace. */
+export function prometheusSparklines(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: PromEndpoint,
+  namespace: string | null,
+): Promise<Sparklines> {
+  return invoke<Sparklines>("prometheus_sparklines", { kubeconfigPath, context, endpoint, namespace });
+}
+
+/** Saves credentials in the OS keychain, bound to the endpoint (`none` deletes them). */
+export function prometheusSaveAuth(context: string, endpoint: PromEndpoint, auth: PromAuth): Promise<void> {
+  return invoke("prometheus_save_auth", { context, endpoint, auth });
+}
+
+/** The stored method for this endpoint (never the secret). */
+export function prometheusAuthMethod(context: string, endpoint: PromEndpoint): Promise<PromAuthMethod> {
+  return invoke<PromAuthMethod>("prometheus_auth_method", { context, endpoint });
+}
+
+export function prometheusDisconnect(context: string): Promise<void> {
+  return invoke("prometheus_disconnect", { context });
+}
+
+/** Opens Grafana Explore with `queries` (built in Rust, http(s) only). */
+export function openGrafanaExplore(args: {
+  grafanaUrl: string;
+  datasource: string | null;
+  queries: string[];
+  range: MetricsRange;
+}): Promise<void> {
+  return invoke("open_grafana_explore", args);
+}

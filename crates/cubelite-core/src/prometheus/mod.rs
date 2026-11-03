@@ -202,9 +202,11 @@ pub enum Chart {
     MemoryRequest,
     /// Memory limits (bytes).
     MemoryLimit,
-    /// Cumulative restart counter; the range total is the sum of its
-    /// increases (a new pod starts again from 0).
+    /// Cumulative restart counter (the line; a new pod starts again from 0).
     Restarts,
+    /// Restarts over the whole range, computed per pod and container by
+    /// Prometheus (counter resets and replaced pods handled), one point.
+    RestartsTotal,
     /// Received bytes per second (pod level).
     NetworkRx,
     /// Transmitted bytes per second (pod level).
@@ -213,7 +215,7 @@ pub enum Chart {
 
 impl Chart {
     /// Every chart, in display order.
-    pub const ALL: [Chart; 9] = [
+    pub const ALL: [Chart; 10] = [
         Chart::Cpu,
         Chart::CpuRequest,
         Chart::CpuLimit,
@@ -221,6 +223,7 @@ impl Chart {
         Chart::MemoryRequest,
         Chart::MemoryLimit,
         Chart::Restarts,
+        Chart::RestartsTotal,
         Chart::NetworkRx,
         Chart::NetworkTx,
     ];
@@ -310,6 +313,12 @@ pub fn chart_query(chart: Chart, sel: &str, per_container: bool, window: u64) ->
         }
         Chart::Memory => format!("container_memory_working_set_bytes{{{sel}, {containers}}}"),
         Chart::Restarts => format!("kube_pod_container_status_restarts_total{{{sel}}}"),
+        // `window` is the whole range here (see `metrics_queries`).
+        Chart::RestartsTotal => {
+            return format!(
+                "sum(increase(kube_pod_container_status_restarts_total{{{sel}}}[{window}s]))"
+            )
+        }
         Chart::NetworkRx => {
             return format!("sum(rate(container_network_receive_bytes_total{{{sel}}}[{window}s]))")
         }
@@ -348,7 +357,16 @@ pub fn metrics_queries(request: &MetricsRequest, cluster: Option<&str>) -> Vec<(
         .map(|&chart| {
             (
                 chart,
-                chart_query(chart, &sel, request.per_container, window),
+                chart_query(
+                    chart,
+                    &sel,
+                    request.per_container,
+                    if chart == Chart::RestartsTotal {
+                        request.range.seconds()
+                    } else {
+                        window
+                    },
+                ),
             )
         })
         .collect()
@@ -395,9 +413,9 @@ pub struct MetricsResult {
 /// CPU and memory of the last hour per pod, for list sparklines.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Sparklines {
-    /// Cores per pod.
+    /// Cores per `namespace/pod`.
     pub cpu: BTreeMap<String, Vec<(f64, Option<f64>)>>,
-    /// Working-set bytes per pod.
+    /// Working-set bytes per `namespace/pod`.
     pub memory: BTreeMap<String, Vec<(f64, Option<f64>)>>,
 }
 
@@ -406,18 +424,20 @@ pub const SPARKLINE_RANGE: u64 = 3_600;
 /// Sparkline step.
 pub const SPARKLINE_STEP: u64 = 120;
 
-/// The two sparkline queries of a namespace (CPU, memory), `by (pod)`.
-pub fn sparkline_queries(namespace: &str, cluster: Option<&str>) -> (String, String) {
-    let mut sel = format!("namespace={}", escape(namespace));
-    if let Some(c) = cluster.map(str::trim).filter(|c| !c.is_empty()) {
-        sel.push_str(&format!(", cluster={}", escape(c)));
+/// The two sparkline queries (CPU, memory) of a namespace, or of every
+/// namespace with `None`, `by (namespace, pod)`.
+pub fn sparkline_queries(namespace: Option<&str>, cluster: Option<&str>) -> (String, String) {
+    let mut matchers = vec![r#"container!="", container!="POD""#.to_string()];
+    if let Some(ns) = namespace {
+        matchers.insert(0, format!("namespace={}", escape(ns)));
     }
-    let containers = r#"container!="", container!="POD""#;
+    if let Some(c) = cluster.map(str::trim).filter(|c| !c.is_empty()) {
+        matchers.push(format!("cluster={}", escape(c)));
+    }
+    let sel = matchers.join(", ");
     (
-        format!(
-            "sum by (pod) (rate(container_cpu_usage_seconds_total{{{sel}, {containers}}}[5m]))"
-        ),
-        format!("sum by (pod) (container_memory_working_set_bytes{{{sel}, {containers}}})"),
+        format!("sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{{{sel}}}[5m]))"),
+        format!("sum by (namespace, pod) (container_memory_working_set_bytes{{{sel}}})"),
     )
 }
 
@@ -433,8 +453,9 @@ fn sample(v: &Value) -> Option<(f64, Option<f64>)> {
 }
 
 /// Parses a `query_range` (matrix) or `query` (vector) `data` object into
-/// series labelled by `label` (`container`, `pod`, or none for a sum).
-pub fn parse_series(data: &Value, label: Option<&str>) -> Result<Vec<Series>, PromError> {
+/// series labelled by the values of `labels` joined with `/` (`container`,
+/// `namespace/pod`, or empty for a sum).
+pub fn parse_series(data: &Value, labels: &[&str]) -> Result<Vec<Series>, PromError> {
     let result = data
         .get("result")
         .and_then(Value::as_array)
@@ -442,10 +463,16 @@ pub fn parse_series(data: &Value, label: Option<&str>) -> Result<Vec<Series>, Pr
     let mut series: Vec<Series> = result
         .iter()
         .map(|item| {
-            let name = label
-                .and_then(|l| item.get("metric")?.get(l)?.as_str())
-                .unwrap_or("")
-                .to_string();
+            let name = labels
+                .iter()
+                .map(|l| {
+                    item.get("metric")
+                        .and_then(|m| m.get(*l))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                })
+                .collect::<Vec<_>>()
+                .join("/");
             let points = match (item.get("values"), item.get("value")) {
                 (Some(Value::Array(values)), _) => values.iter().filter_map(sample).collect(),
                 (_, Some(v)) => sample(v).into_iter().collect(),
