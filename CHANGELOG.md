@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Edit & apply manifests** (desktop, #487): the YAML modal gets an Edit
+  mode; Apply replaces the resource (`kubectl replace` semantics, like the
+  native app), with conflicts and validation errors shown inline.
+
 - **JSON view for structured logs** (desktop, #454): a `{}` toggle in the log
   toolbar (off by default, remembered) renders JSON log lines as
   `LEVEL  message  key=value …`, taking the level from the line itself, and a
@@ -25,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Kubeconfigs without `kind` are accepted** (desktop + macOS, #481): like
   kubectl, a file with no `kind` loads when it has at least one cluster,
   context or user; a `kind` other than `Config` is still rejected.
+- **JSON view for structured logs** (macOS, #477): native parity of the
+  desktop JSON view in the log panel (`{}` toggle, remembered) and in the
+  aggregated Logs view (own toggle; rows now share the panel's row and show
+  the full pod name). Key order and large integers are kept exact.
 - **Overview stat cards open their view** (macOS, #464): same as the desktop;
   the four tiles are buttons that raise on hover and select Nodes, Pods,
   Deployments and Events.

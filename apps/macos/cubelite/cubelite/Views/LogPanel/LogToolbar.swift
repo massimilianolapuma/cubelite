@@ -21,6 +21,7 @@ struct LogToolbar: View {
             Spacer()
             tailMenu
             followButton
+            jsonViewButton
             if !isDetachedContext {
                 detachButton
             }
@@ -313,6 +314,31 @@ struct LogToolbar: View {
         .accessibilityLabel("Follow log stream")
         .accessibilityValue(session.isFollowing ? "Following" : "Paused")
         .accessibilityIdentifier("logpanel.follow")
+    }
+
+    /// Humanises JSON log lines (#477); shared by every session and the
+    /// pop-out windows, remembered across launches.
+    private var jsonViewButton: some View {
+        Button {
+            store.jsonView.toggle()
+        } label: {
+            Image(systemName: "curlybraces")
+                .scaledFont(size: 11, weight: store.jsonView ? .semibold : .regular)
+                .foregroundStyle(
+                    store.jsonView ? DesignTokens.accentDefault : DesignTokens.textSecondary)
+                .frame(width: 26)
+                .frame(minHeight: 28)
+                .background(
+                    store.jsonView ? DesignTokens.surfaceRaised : .clear,
+                    in: RoundedRectangle(cornerRadius: DesignTokens.radiusSm))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("JSON view")
+        .accessibilityLabel("JSON view")
+        .accessibilityValue(store.jsonView ? "On" : "Off")
+        .accessibilityAddTraits(store.jsonView ? .isSelected : [])
+        .accessibilityIdentifier("logpanel.json-view")
     }
 
     /// Pops the session out into its own OS window (#298). Hidden inside
