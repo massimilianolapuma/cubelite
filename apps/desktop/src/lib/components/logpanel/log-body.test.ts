@@ -190,16 +190,16 @@ describe("LogBody", () => {
 describe("JSON view (#454)", () => {
   const json = '{"level":"warn","msg":"order accepted","orderId":"A-1931","meta":{"a":1}}';
   afterEach(() => {
-    logPanel.jsonView = false;
+    logPanel.viewMode = "raw";
   });
   it("renders raw lines unchanged with the toggle on", async () => {
-    logPanel.jsonView = true;
+    logPanel.viewMode = "json";
     render(LogBody, { props: { session: sessionWith(["plain text"]) } });
     expect(await screen.findByText("plain text")).toBeInTheDocument();
     expect(screen.queryByTestId("json-row")).toBeNull();
   });
   it("humanises a JSON line: message, tail and JSON level", async () => {
-    logPanel.jsonView = true;
+    logPanel.viewMode = "json";
     render(LogBody, { props: { session: sessionWith([json]) } });
     const row = await screen.findByTestId("json-row");
     expect(row).toHaveTextContent("order accepted");
@@ -213,7 +213,7 @@ describe("JSON view (#454)", () => {
     expect(await screen.findByText(json)).toBeInTheDocument();
   });
   it("click expands the tree and toggles session.expanded", async () => {
-    logPanel.jsonView = true;
+    logPanel.viewMode = "json";
     const s = sessionWith([json]);
     render(LogBody, { props: { session: s } });
     const row = await screen.findByTestId("json-row");
@@ -226,7 +226,7 @@ describe("JSON view (#454)", () => {
     expect(screen.queryByTestId("json-tree")).toBeNull();
   });
   it("expanding while following keeps follow and scrolls to the end", async () => {
-    logPanel.jsonView = true;
+    logPanel.viewMode = "json";
     const s = sessionWith([json]);
     expect(s.following).toBe(true);
     render(LogBody, { props: { session: s } });
@@ -245,7 +245,7 @@ describe("JSON view (#454)", () => {
     await waitFor(() => expect(spy).toHaveBeenCalledWith(0, { align: "end" }));
   });
   it("highlights the search query inside the humanised message", async () => {
-    logPanel.jsonView = true;
+    logPanel.viewMode = "json";
     const s = sessionWith([json]);
     logPanel.search.attach(() => s.ring.lines);
     vi.useFakeTimers();
@@ -255,5 +255,47 @@ describe("JSON view (#454)", () => {
     render(LogBody, { props: { session: s } });
     const mark = await screen.findByText("accepted");
     expect(mark.tagName).toBe("MARK");
+  });
+});
+
+describe("ECS view (#492)", () => {
+  const json = '{"level":"warn","msg":"order accepted","service":"shop-api","orderId":"A-1931","trace_id":"t1"}';
+  afterEach(() => {
+    logPanel.viewMode = "raw";
+  });
+  it("renders a JSON line as an ECS row: service chip, message, tail without metadata", async () => {
+    logPanel.viewMode = "ecs";
+    render(LogBody, { props: { session: sessionWith([json]) } });
+    const row = await screen.findByTestId("ecs-row");
+    expect(screen.getByTestId("ecs-service")).toHaveTextContent("shop-api");
+    expect(row).toHaveTextContent("order accepted");
+    expect(row).toHaveTextContent("order accepted trace.id=t1 orderId=A-1931");
+    expect(row).not.toHaveTextContent("kubernetes.pod.name");
+    expect(screen.getByText("warn")).toBeInTheDocument();
+  });
+  it("renders plain lines as expandable ECS rows", async () => {
+    logPanel.viewMode = "ecs";
+    render(LogBody, { props: { session: sessionWith(["plain text"]) } });
+    const row = await screen.findByTestId("ecs-row");
+    expect(row).toHaveTextContent("plain text");
+    await fireEvent.click(row);
+    const table = screen.getByTestId("ecs-table");
+    expect(table.querySelector('[data-field="message"]')).toHaveTextContent("plain text");
+    expect(table.querySelector('[data-field="kubernetes.pod.name"]')).toHaveTextContent("api-0added");
+  });
+  it("expands into a sorted field table with Copy ECS", async () => {
+    logPanel.viewMode = "ecs";
+    const writeText = vi.fn<(text: string) => Promise<void>>(async () => {});
+    Object.assign(navigator, { clipboard: { writeText } });
+    const s = sessionWith([json]);
+    render(LogBody, { props: { session: s } });
+    await fireEvent.click(await screen.findByTestId("ecs-row"));
+    const keys = [...screen.getByTestId("ecs-table").querySelectorAll("tr")].map((tr) => tr.dataset.field);
+    expect(keys[0]).toBe("@timestamp");
+    expect(keys).toEqual([...keys].sort());
+    expect(s.expanded.size).toBe(1);
+    await fireEvent.click(screen.getByRole("button", { name: "Copy ECS" }));
+    const copied = JSON.parse(writeText.mock.calls[0]![0]);
+    expect(copied).toMatchObject({ log: { level: "warn" }, service: { name: "shop-api" }, trace: { id: "t1" } });
   });
 });

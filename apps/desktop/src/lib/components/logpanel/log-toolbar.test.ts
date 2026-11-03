@@ -266,6 +266,32 @@ describe("LogToolbar export", () => {
     );
   });
 
+  it("ECS mode exports NDJSON with a .ndjson filename (#492)", async () => {
+    const { exportLog } = await import("#lib/tauri.ts");
+    vi.mocked(exportLog).mockResolvedValueOnce("/tmp/api-0_worker.ndjson");
+    logPanel.viewMode = "ecs";
+    const s = new LogSession("default", "api-0");
+    s.container = "worker";
+    s.ring.append([
+      { pod: "api-0", namespace: "default", time: "2026-08-04T10:00:00Z", level: "warn", message: "hello" },
+    ]);
+    render(LogToolbar, { props: { session: s } });
+    await fireEvent.click(screen.getByLabelText("More log options"));
+    await fireEvent.click(screen.getByText("Export visible…"));
+    logPanel.viewMode = "raw";
+
+    const [filename, contents] = vi.mocked(exportLog).mock.calls.at(-1)!;
+    expect(filename).toBe("api-0_worker.ndjson");
+    expect(contents.endsWith("\n")).toBe(true);
+    expect(JSON.parse(contents.trim())).toMatchObject({
+      "@timestamp": "2026-08-04T10:00:00Z",
+      log: { level: "warn" },
+      message: "hello",
+      kubernetes: { namespace: "default", pod: { name: "api-0" } },
+      container: { name: "worker" },
+    });
+  });
+
   it("export visible respects filter mode — only serializes matching lines", async () => {
     const { exportLog } = await import("#lib/tauri.ts");
     vi.mocked(exportLog).mockResolvedValueOnce("/tmp/api-0_worker.log");
@@ -382,21 +408,21 @@ describe("detach button (#298)", () => {
   });
 });
 
-describe("JSON view toggle (#454)", () => {
+describe("view mode control (#454, #492)", () => {
   afterEach(() => {
-    logPanel.jsonView = false;
+    logPanel.viewMode = "raw";
   });
-  it("is off by default and flips logPanel.jsonView with aria-pressed", async () => {
+  it("shows Raw, JSON and ECS, Raw selected by default", () => {
     render(LogToolbar, { props: { session: sessionWith(["x"]) } });
-    const btn = screen.getByRole("button", { name: "JSON view" });
-    expect(btn).toHaveAttribute("aria-pressed", "false");
-    await fireEvent.click(btn);
-    expect(logPanel.jsonView).toBe(true);
-    expect(btn).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("radio", { name: "Raw" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "JSON" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("radio", { name: "ECS" })).toHaveAttribute("aria-checked", "false");
   });
-  it("persists under logPanel.jsonView", async () => {
+  it("selects a mode and persists it under logPanel.viewMode", async () => {
     render(LogToolbar, { props: { session: sessionWith(["x"]) } });
-    await fireEvent.click(screen.getByRole("button", { name: "JSON view" }));
-    expect(window.localStorage.getItem("cubelite.logPanel.jsonView")).toBe("true");
+    await fireEvent.click(screen.getByRole("radio", { name: "ECS" }));
+    expect(logPanel.viewMode).toBe("ecs");
+    expect(screen.getByRole("radio", { name: "ECS" })).toHaveAttribute("aria-checked", "true");
+    expect(window.localStorage.getItem("cubelite.logPanel.viewMode")).toBe('"ecs"');
   });
 });

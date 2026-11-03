@@ -193,7 +193,8 @@
 							source={session.merged && line.container
 								? { name: line.container, color: identityColorFor(session.containers, line.container) }
 								: null}
-							jsonView={logPanel.jsonView}
+							mode={logPanel.viewMode}
+							container={session.merged ? null : session.container}
 							expanded={session.expanded.has(line.id)}
 							ontoggle={() => session.toggleExpanded(line.id)}
 						/>

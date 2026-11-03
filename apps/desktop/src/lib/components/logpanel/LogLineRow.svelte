@@ -3,7 +3,9 @@
 	import type { LogLevel } from '#lib/tauri.ts';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import { parseJsonLine } from '#lib/log-json.ts';
+	import { ecsRow, toEcs, type LogViewMode } from '#lib/log-ecs.ts';
 	import JsonTree from './JsonTree.svelte';
+	import EcsFieldTable from './EcsFieldTable.svelte';
 
 	let {
 		line,
@@ -11,7 +13,8 @@
 		wrap,
 		search = null,
 		source = null,
-		jsonView = false,
+		mode = 'raw',
+		container = null,
 		expanded = false,
 		ontoggle
 	}: {
@@ -21,7 +24,10 @@
 		search?: { query: string; active: boolean } | null;
 		/** `wide` widens the column for pod names (aggregated Logs view). */
 		source?: { name: string; color: string; wide?: boolean } | null;
-		jsonView?: boolean;
+		/** Raw, JSON (#454) or ECS (#492) rendering. */
+		mode?: LogViewMode;
+		/** Container for the ECS `container.name` when the line carries no tag. */
+		container?: string | null;
 		expanded?: boolean;
 		ontoggle?: () => void;
 	} = $props();
@@ -45,8 +51,10 @@
 	}
 
 	const segments = $derived(segmentsOf(line.message));
-	const view = $derived(jsonView ? parseJsonLine(line.message) : null);
-	const shownLevel = $derived(view?.level ?? line.level);
+	const view = $derived(mode === 'json' ? parseJsonLine(line.message) : null);
+	const ecs = $derived(mode === 'ecs' ? toEcs(line, container) : null);
+	const ecsSummary = $derived(ecs ? ecsRow(ecs) : null);
+	const shownLevel = $derived(ecs?.level ?? view?.level ?? line.level);
 
 	const levelColor: Record<LogLevel, string> = {
 		debug: 'var(--color-text-tertiary)',
@@ -99,7 +107,41 @@
 	{/each}
 {/snippet}
 
-{#if view}
+{#if ecs && ecsSummary}
+	<div style={rowStyle(shownLevel)}>
+		<div class="flex items-baseline gap-2.5 px-2.5 py-px">
+			{@render gutter()}
+			<button
+				type="button"
+				aria-expanded={expanded}
+				data-testid="ecs-row"
+				class="focus-ring min-w-0 cursor-pointer text-left type-log text-text-log {wrap
+					? 'break-all whitespace-pre-wrap'
+					: 'whitespace-pre'}"
+				onclick={() => ontoggle?.()}
+			>
+				<ChevronRight size={10} class="inline-block align-baseline {expanded ? 'rotate-90' : ''}" />
+				{#if ecsSummary.service}<span
+						data-testid="ecs-service"
+						class="mr-1.5 rounded-sm bg-surface-raised px-1 type-micro font-mono text-text-secondary"
+						>{ecsSummary.service}</span
+					>{/if}{@render marks(segmentsOf(ecsSummary.message))}
+				{#each ecsSummary.tail as item, n (item.key)}
+					<span class="whitespace-pre">{n === 0 ? ' ' : '  '}</span><span class="type-micro font-mono"
+						><span class="text-text-tertiary">{item.key}</span>=<span class="text-text-secondary"
+							>{@render marks(segmentsOf(item.value))}</span
+						></span
+					>
+				{/each}
+			</button>
+		</div>
+		{#if expanded}
+			<div class="bg-surface-raised px-2.5 py-1">
+				<EcsFieldTable doc={ecs} raw={line.message} />
+			</div>
+		{/if}
+	</div>
+{:else if view}
 	<div style={rowStyle(shownLevel)}>
 		<div class="flex items-baseline gap-2.5 px-2.5 py-px">
 			{@render gutter()}

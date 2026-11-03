@@ -161,17 +161,24 @@ describe("start/stop", () => {
 
 describe("JSON view (#461)", () => {
   beforeEach(() => {
-    window.localStorage.removeItem("cubelite.logs.jsonView");
-    logs.jsonView = false;
+    window.localStorage.removeItem("cubelite.logs.viewMode");
+    logs.viewMode = "raw";
   });
 
-  it("jsonView defaults to off and persists under its own key", () => {
-    expect(logs.jsonView).toBe(false);
-    logs.jsonView = true;
-    expect(window.localStorage.getItem("cubelite.logs.jsonView")).toBe("true");
-    expect(
-      window.localStorage.getItem("cubelite.logPanel.jsonView"),
-    ).toBeNull();
+  it("viewMode defaults to raw and persists under its own key", () => {
+    expect(logs.viewMode).toBe("raw");
+    logs.viewMode = "ecs";
+    expect(window.localStorage.getItem("cubelite.logs.viewMode")).toBe('"ecs"');
+    expect(window.localStorage.getItem("cubelite.logPanel.viewMode")).toBeNull();
+  });
+
+  it("seeds viewMode from the pre-#492 jsonView toggle", async () => {
+    window.localStorage.removeItem("cubelite.logs.viewMode");
+    window.localStorage.setItem("cubelite.logs.jsonView", "true");
+    vi.resetModules();
+    const fresh = await import("./logs.svelte");
+    expect(fresh.logs.viewMode).toBe("json");
+    window.localStorage.removeItem("cubelite.logs.jsonView");
   });
 
   it("toggleExpanded flips a line id; clear() and start() drop every expansion", async () => {

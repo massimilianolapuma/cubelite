@@ -4,7 +4,8 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
-	import Braces from '@lucide/svelte/icons/braces';
+	import { ecsNdjson, type LogViewMode } from '#lib/log-ecs.ts';
+	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { logWindows } from '#lib/stores/logWindows.svelte.ts';
@@ -49,13 +50,18 @@
 
 	function exportFilename(full: boolean): string {
 		const container = session.merged ? 'all' : (session.container ?? 'unknown');
-		return `${session.pod}_${container}${full ? '_full' : ''}.log`;
+		const ext = logPanel.viewMode === 'ecs' ? 'ndjson' : 'log';
+		return `${session.pod}_${container}${full ? '_full' : ''}.${ext}`;
 	}
 
 	async function doExport(lines: KeyedLogLine[], full: boolean) {
 		overflowOpen = false;
 		const filename = exportFilename(full);
-		const contents = logPanel.serialize(lines);
+		// ECS mode exports one ECS document per line (NDJSON, #492).
+		const contents =
+			logPanel.viewMode === 'ecs'
+				? ecsNdjson(lines, session.merged ? null : session.container)
+				: logPanel.serialize(lines);
 		try {
 			const path = await exportLog(filename, contents);
 			toasts.push(`Exported to ${path}`, 'ok');
@@ -88,6 +94,12 @@
 			else (event.currentTarget as HTMLInputElement).blur();
 		}
 	}
+
+	const VIEW_MODES: { value: LogViewMode; label: string }[] = [
+		{ value: 'raw', label: 'Raw' },
+		{ value: 'json', label: 'JSON' },
+		{ value: 'ecs', label: 'ECS' }
+	];
 </script>
 
 <div class="flex h-9 shrink-0 items-center gap-2 border-b border-border-default bg-surface-raised px-2.5">
@@ -227,19 +239,10 @@
 		{session.following ? '● Following' : '⏸ Paused'}
 	</button>
 
-	<!-- JSON view -->
-	<button
-		type="button"
-		class="focus-ring flex h-7 w-7 items-center justify-center rounded-md hover:text-text-secondary"
-		style={logPanel.jsonView ? 'color: var(--color-accent);' : 'color: var(--color-text-tertiary);'}
-		title="JSON view"
-		aria-label="JSON view"
-		aria-pressed={logPanel.jsonView}
-		data-testid="logpanel-json-view"
-		onclick={() => (logPanel.jsonView = !logPanel.jsonView)}
-	>
-		<Braces size={14} strokeWidth={1.5} />
-	</button>
+	<!-- view mode: raw / JSON / ECS (#492) -->
+	<span data-testid="logpanel-view-mode" title="Log view: raw text, humanised JSON or Elastic Common Schema">
+		<SegmentedControl segments={VIEW_MODES} bind:value={logPanel.viewMode} />
+	</span>
 
 	<!-- pop out to separate window -->
 	{#if !detached}

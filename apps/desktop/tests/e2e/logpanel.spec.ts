@@ -91,7 +91,7 @@ test("JSON view humanises structured lines and expands them on click (#454)", as
   );
   await expect(page.getByText(json)).toBeVisible();
 
-  await page.getByRole("button", { name: "JSON view" }).click();
+  await page.getByTestId("logpanel-view-mode").getByRole("radio", { name: "JSON" }).click();
   const row = page.getByTestId("json-row");
   await expect(row).toContainText("e2e-json-boom");
   await expect(row).toContainText("orderId=A-1931");
@@ -101,6 +101,36 @@ test("JSON view humanises structured lines and expands them on click (#454)", as
   await expect(page.getByTestId("json-tree")).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy raw" })).toBeVisible();
 
-  await page.getByRole("button", { name: "JSON view" }).click();
+  await page.getByTestId("logpanel-view-mode").getByRole("radio", { name: "Raw" }).click();
   await expect(page.getByText(json)).toBeVisible();
+});
+
+test("ECS view converts lines and expands a Kibana-like field table (#492)", async ({ page }) => {
+  await boot(page);
+  await openLogPanel(page, "api-0");
+  const json = '{"level":"warn","msg":"e2e-ecs-line","service":"shop-api","trace_id":"t-42"}';
+  await page.evaluate(
+    (message) =>
+      window.__emitTauriEvent?.("pod-log-line:1", {
+        pod: "api-0",
+        namespace: "default",
+        time: "2026-08-04T10:00:00Z",
+        level: "info",
+        message,
+      }),
+    json,
+  );
+  await expect(page.getByText(json)).toBeVisible();
+
+  await page.getByTestId("logpanel-view-mode").getByRole("radio", { name: "ECS" }).click();
+  const row = page.getByTestId("ecs-row");
+  await expect(row).toContainText("e2e-ecs-line");
+  await expect(row).toContainText("trace.id=t-42");
+  await expect(page.getByTestId("ecs-service")).toHaveText("shop-api");
+
+  await row.click();
+  const table = page.getByTestId("ecs-table");
+  await expect(table.locator('[data-field="log.level"]')).toContainText("warn");
+  await expect(table.locator('[data-field="kubernetes.namespace"]')).toContainText("default");
+  await expect(page.getByRole("button", { name: "Copy ECS" })).toBeVisible();
 });
