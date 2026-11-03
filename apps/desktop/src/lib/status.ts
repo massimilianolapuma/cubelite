@@ -55,17 +55,11 @@ export function nodeTone(status: string): StatusTone {
   return status === "Ready" ? "ok" : "err";
 }
 
+/** Mirrors the PVC row colour: Bound ok, Lost err, anything else warn. */
 export function pvcTone(status: string | null): StatusTone {
-  switch (status) {
-    case "Bound":
-      return "ok";
-    case "Pending":
-      return "warn";
-    case "Lost":
-      return "err";
-    default:
-      return "neutral";
-  }
+  if (status === "Bound") return "ok";
+  if (status === "Lost") return "err";
+  return "warn";
 }
 
 export function helmTone(status: string | null): StatusTone {

@@ -68,6 +68,15 @@ describe("list sort (#496)", () => {
     expect(restarts).toHaveAttribute("data-sort", "none");
   });
 
+  it("first click on the default's own field flips instead of doing nothing", async () => {
+    lists.defaultSort = { field: "name", dir: "asc" };
+    render(PodTable, { props: { pods } });
+    await fireEvent.click(screen.getByRole("button", { name: /^Sort by Name/ }));
+    expect(rowNames()).toEqual(["pod-10", "pod-2", "pod-1"]);
+    await fireEvent.click(screen.getByRole("button", { name: /^Sort by Name/ }));
+    expect(rowNames()).toEqual(["pod-1", "pod-2", "pod-10"]);
+  });
+
   it("status puts problems first and the override clears on cluster switch", async () => {
     render(PodTable, { props: { pods } });
     await fireEvent.click(screen.getByRole("button", { name: /^Sort by Status/ }));

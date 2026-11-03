@@ -3,7 +3,7 @@
  * per-list session override set by clicking a column header (cleared on
  * cluster switch and relaunch).
  */
-import { DEFAULT_SORT, firstDir, isSortSpec, type SortField, type SortSpec } from "#lib/list-sort.ts";
+import { DEFAULT_SORT, firstDir, isSortSpec, type SortDir, type SortField, type SortSpec } from "#lib/list-sort.ts";
 import { persisted } from "./settings.svelte";
 
 class ListsStore {
@@ -27,10 +27,18 @@ class ListsStore {
    * click flips it, a third returns to the Preferences default.
    */
   clickHeader(list: string, field: SortField): void {
+    const flip = (dir: SortDir): SortDir => (dir === "asc" ? "desc" : "asc");
     const current = this.overrides[list];
+    let spec: SortSpec | null;
+    if (!current || current.field !== field) spec = { field, dir: firstDir(field) };
+    else if (current.dir === firstDir(field)) spec = { field, dir: flip(current.dir) };
+    else spec = null;
+    // A click must always change the list: if the next state equals what is shown
+    // (the default already sorts by this field), flip instead.
+    const shown = this.specFor(list);
+    if (spec && spec.field === shown.field && spec.dir === shown.dir) spec = { field, dir: flip(spec.dir) };
     const next = { ...this.overrides };
-    if (!current || current.field !== field) next[list] = { field, dir: firstDir(field) };
-    else if (current.dir === firstDir(field)) next[list] = { field, dir: current.dir === "asc" ? "desc" : "asc" };
+    if (spec) next[list] = spec;
     else delete next[list];
     this.overrides = next;
   }
