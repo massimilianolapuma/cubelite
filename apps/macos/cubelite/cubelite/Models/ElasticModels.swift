@@ -50,23 +50,28 @@ struct EsEndpoint: Hashable, Sendable, Codable {
     var preset: FieldPreset = .ecs
     /// Kibana base URL, when known.
     var kibanaURL: String?
+    /// In-cluster Kibana opened through a port-forward when there is no URL (#519).
+    var kibanaService: KibanaService?
     /// Accept any certificate (opt-in, for self-signed endpoints without a CA).
     var skipTLSVerify = false
 
     private enum CodingKeys: String, CodingKey {
         case target, indexPattern, preset
         case kibanaURL = "kibanaUrl"
+        case kibanaService
         case skipTLSVerify = "skipTlsVerify"
     }
 
     init(
         target: EsTarget, indexPattern: String = Self.defaultIndexPattern,
-        preset: FieldPreset = .ecs, kibanaURL: String? = nil, skipTLSVerify: Bool = false
+        preset: FieldPreset = .ecs, kibanaURL: String? = nil, kibanaService: KibanaService? = nil,
+        skipTLSVerify: Bool = false
     ) {
         self.target = target
         self.indexPattern = indexPattern
         self.preset = preset
         self.kibanaURL = kibanaURL
+        self.kibanaService = kibanaService
         self.skipTLSVerify = skipTLSVerify
     }
 
@@ -76,8 +81,17 @@ struct EsEndpoint: Hashable, Sendable, Codable {
         indexPattern = try c.decode(String.self, forKey: .indexPattern)
         preset = try c.decodeIfPresent(FieldPreset.self, forKey: .preset) ?? .ecs
         kibanaURL = try c.decodeIfPresent(String.self, forKey: .kibanaURL)
+        kibanaService = try c.decodeIfPresent(KibanaService.self, forKey: .kibanaService)
         skipTLSVerify = try c.decodeIfPresent(Bool.self, forKey: .skipTLSVerify) ?? false
     }
+}
+
+/// A Kibana service in the cluster (from Detect); same JSON as the desktop.
+struct KibanaService: Codable, Hashable, Sendable {
+    let namespace: String
+    let service: String
+    let port: Int
+    let https: Bool
 }
 
 /// Credentials for an endpoint. Never printed: `description`, `debugDescription`

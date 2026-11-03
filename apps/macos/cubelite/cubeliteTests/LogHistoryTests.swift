@@ -162,7 +162,9 @@ final class LogSessionHistoryTests: XCTestCase {
             creationTimestamp: nil)
     }
 
-    private func store(_ searcher: StubSearcher, endpoint: EsEndpoint?) -> (
+    private func store(
+        _ searcher: StubSearcher, endpoint: EsEndpoint?, kibana: (any KibanaForwarding)? = nil
+    ) -> (
         LogSessionStore, ElasticEndpointStore
     ) {
         let suite = "LogSessionHistoryTests"
@@ -174,7 +176,7 @@ final class LogSessionHistoryTests: XCTestCase {
         return (
             LogSessionStore(
                 streamer: streamer, defaults: defaults,
-                elastic: LogHistoryAccess(searcher: searcher, endpoints: endpoints)),
+                elastic: LogHistoryAccess(searcher: searcher, endpoints: endpoints, kibana: kibana)),
             endpoints
         )
     }
@@ -247,6 +249,45 @@ final class LogSessionHistoryTests: XCTestCase {
         session.historyEndpointChanged()
         XCTAssertEqual(session.source, .live)
         XCTAssertEqual(session.history?.started, false)
+        logs.closeAll()
+    }
+
+    func testKibanaOpensTheURLOrForwardsToTheService() async throws {
+        actor Forwarder: KibanaForwarding {
+            var calls: [KibanaService] = []
+            func kibanaForward(context: String, service: KibanaService) async throws -> UInt16 {
+                calls.append(service)
+                return 45601
+            }
+        }
+        let service = KibanaService(namespace: "logging", service: "quickstart-kb-http", port: 5601, https: true)
+        let forwarder = Forwarder()
+        let inCluster = EsEndpoint(
+            target: .inCluster(namespace: "logging", service: "quickstart-es-http", port: 9200, https: true),
+            kibanaService: service)
+        let (logs, endpoints) = store(StubSearcher([]), endpoint: inCluster, kibana: forwarder)
+        logs.open(pod: pod(), context: "prod")
+        let session = try XCTUnwrap(logs.activeSession)
+        XCTAssertTrue(session.canOpenKibana)
+        let forwarded = try await session.kibanaDiscoverURL()
+        XCTAssertTrue(
+            forwarded?.absoluteString.hasPrefix("https://127.0.0.1:45601/app/discover#/") ?? false,
+            "\(String(describing: forwarded))")
+        let calls = await forwarder.calls
+        XCTAssertEqual(calls, [service])
+
+        var withURL = inCluster
+        withURL.kibanaURL = "https://kb.example"
+        endpoints.setEndpoint(withURL, for: "prod")
+        let configured = try await session.kibanaDiscoverURL()
+        XCTAssertTrue(configured?.absoluteString.hasPrefix("https://kb.example/") ?? false, "the URL wins")
+        let after = await forwarder.calls
+        XCTAssertEqual(after.count, 1)
+
+        var neither = inCluster
+        neither.kibanaService = nil
+        endpoints.setEndpoint(neither, for: "prod")
+        XCTAssertFalse(session.canOpenKibana)
         logs.closeAll()
     }
 

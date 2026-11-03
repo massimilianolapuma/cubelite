@@ -50,6 +50,30 @@ final class LiveIntegrationsTests: XCTestCase {
                 size: 50))
         XCTAssertFalse(older.lines.isEmpty, "load older")
         XCTAssertLessThanOrEqual(older.lines.first?.time ?? "", page.lines.last?.time ?? "")
+
+        // In-cluster Kibana through the service's forward (#519).
+        let kb = try XCTUnwrap(found.first { $0.kind == .kibana })
+        let kibana = KibanaService(namespace: kb.namespace, service: kb.name, port: kb.port, https: kb.https)
+        let port = try await service.kibanaForward(context: context, service: kibana)
+        let again = try await service.kibanaForward(context: context, service: kibana)
+        XCTAssertEqual(port, again)
+        let probe = try XCTUnwrap(URL(string: "\(kb.https ? "https" : "http")://127.0.0.1:\(port)/api/status"))
+        // Verified TLS: ECK's CA, and the service name the certificate carries.
+        let caSecret = try await api.getIfPresent(
+            path: "/api/v1/namespaces/\(kb.namespace)/secrets/\(kb.name)-certs-public", inContext: context)
+        let secret = try XCTUnwrap(caSecret)
+        let pem = try XCTUnwrap(try JSONDecoder().decode(IntegrationK8s.Secret.self, from: secret).value("ca.crt"))
+        let der = try XCTUnwrap(Integration.firstPEMCertificate(pem))
+        let anchor = try XCTUnwrap(SecCertificateCreateWithData(nil, der as CFData))
+        let verified = URLSession(
+            configuration: .ephemeral,
+            delegate: IntegrationTrustDelegate(
+                hostname: Integration.serviceHost(namespace: kb.namespace, service: kb.name), anchor: anchor,
+                insecure: false),
+            delegateQueue: nil)
+        let (_, response) = try await verified.data(from: probe)
+        XCTAssertTrue([200, 401].contains((response as? HTTPURLResponse)?.statusCode ?? 0))
+        verified.invalidateAndCancel()
         await service.disconnectAll()
     }
 

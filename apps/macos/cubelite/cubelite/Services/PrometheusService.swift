@@ -467,7 +467,7 @@ actor PrometheusService {
         context: String, endpoint: PromEndpoint, namespace: String, service: String, port: Int,
         https: Bool
     ) async throws -> Connection {
-        let (tunnel, local) = try await prom {
+        let (tunnel, local, _) = try await prom {
             try await Integration.openServiceTunnel(
                 cluster: cluster, context: context, namespace: namespace, service: service, port: port)
         }

@@ -374,9 +374,9 @@ struct LogToolbar: View {
                 .accessibilityIdentifier("logpanel.timestamps")
             Toggle("Wrap lines", isOn: Bindable(store).wrapLines)
                 .accessibilityIdentifier("logpanel.wrap")
-            if let kibana = session.history?.kibanaURL(shown: session.showsHistory) {
+            if session.canOpenKibana {
                 Divider()
-                Button("Open in Kibana") { NSWorkspace.shared.open(kibana) }
+                Button("Open in Kibana") { openKibana() }
                     .accessibilityIdentifier("logpanel.open-kibana")
             }
             Divider()
@@ -399,6 +399,19 @@ struct LogToolbar: View {
         .fixedSize()
         .accessibilityLabel("More log options")
         .accessibilityIdentifier("logpanel.overflow")
+    }
+
+    /// Opens Discover, forwarding to an in-cluster Kibana when needed (#519).
+    private func openKibana() {
+        Task {
+            do {
+                if let url = try await session.kibanaDiscoverURL() {
+                    NSWorkspace.shared.open(url)
+                }
+            } catch {
+                store.showToast("Kibana: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// Kubernetes metadata of this session's lines for the ECS conversion.

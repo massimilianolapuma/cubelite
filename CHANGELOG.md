@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Open an in-cluster Kibana on macOS** (#519): Detect in Settings →
+  Integrations → Elasticsearch can pick the cluster's Kibana service;
+  without a Kibana URL, Open in Kibana forwards to it (one loopback forward
+  per context, reused while its pod is ready, closed on disconnect) and
+  opens Discover on 127.0.0.1.
 - **Open an in-cluster Kibana** (desktop, #505): Detect in Preferences →
   Elasticsearch can pick the cluster's Kibana service; without a Kibana URL,
   Open in Kibana port-forwards to it (one forward per context, reused while

@@ -374,7 +374,7 @@ extension Integration {
     static func openServiceTunnel(
         cluster: any IntegrationClusterAccess, context: String, namespace: String,
         service: String, port: Int
-    ) async throws -> (IntegrationTunnel, UInt16) {
+    ) async throws -> (tunnel: IntegrationTunnel, port: UInt16, pod: String) {
         try checkNames(namespace: namespace, service: service)
         let svc: IntegrationK8s.Service = try await get(
             "/api/v1/namespaces/\(namespace)/services/\(service)", context: context, from: cluster)
@@ -393,10 +393,24 @@ extension Integration {
             throw IntegrationFailure.config("Service \(namespace)/\(service) has no port \(port)")
         }
         let podSegment = try pathSegment(podName)
-        return try await IntegrationTunnel.open {
+        let (tunnel, port) = try await IntegrationTunnel.open {
             try await cluster.portForwardWebSocket(
                 namespace: namespace, pod: podSegment, remotePort: remote, inContext: context)
         }
+        return (tunnel, port, podName)
+    }
+
+    /// Whether `pod` still exists, runs and is ready (a forward to it is
+    /// still usable; a rollout or eviction replaces the pod).
+    static func podReady(
+        cluster: any IntegrationClusterAccess, context: String, namespace: String, pod: String
+    ) async -> Bool {
+        guard let segment = try? pathSegment(pod),
+            let data = try? await cluster.getIfPresent(
+                path: "/api/v1/namespaces/\(namespace)/pods/\(segment)", inContext: context),
+            let decoded = try? JSONDecoder().decode(IntegrationK8s.Pod.self, from: data)
+        else { return false }
+        return readyPod([decoded]) != nil
     }
 }
 

@@ -150,6 +150,15 @@ final class ElasticModelsTests: XCTestCase {
             .inCluster(namespace: "logging", service: "quickstart-es-http", port: 9200, https: true))
         XCTAssertEqual(endpoint.preset, .ecs)
         XCTAssertFalse(endpoint.skipTLSVerify)
+        XCTAssertNil(endpoint.kibanaService, "endpoints saved before #519")
+        let withKibana = try JSONDecoder().decode(
+            EsEndpoint.self,
+            from: Data(
+                #"{"target":{"kind":"external","url":"https://es.example"},"indexPattern":"logs-*","kibanaService":{"namespace":"logging","service":"quickstart-kb-http","port":5601,"https":true}}"#
+                    .utf8))
+        XCTAssertEqual(
+            withKibana.kibanaService,
+            KibanaService(namespace: "logging", service: "quickstart-kb-http", port: 5601, https: true))
         let external = EsEndpoint(
             target: .external(url: "https://es.example"), preset: .fluentBit,
             kibanaURL: "https://kb.example", skipTLSVerify: true)
