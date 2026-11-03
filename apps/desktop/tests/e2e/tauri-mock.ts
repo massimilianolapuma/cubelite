@@ -18,6 +18,8 @@ declare global {
     __lastExec?: Record<string, unknown>;
     /** Test hook: every `exec_send` payload, in order. */
     __execSent?: string[];
+    __lastElasticSearch?: Record<string, unknown>;
+    __kibanaOpened?: Record<string, unknown>;
     /** Test hook: arguments of the last `apply_resource_yaml` call. */
     __lastApply?: Record<string, unknown>;
   }
@@ -212,6 +214,25 @@ export function tauriMockScript(): string {
         return null;
       }
       case "stop_exec": return null;
+      case "elastic_search": {
+        window.__lastElasticSearch = args;
+        return {
+          total: 2,
+          totalIsLowerBound: false,
+          next: null,
+          lines: [
+            { time: "2026-11-03T08:00:02Z", level: "error", message: "e2e-history-newest", container: "worker",
+              document: JSON.stringify({ "@timestamp": "2026-11-03T08:00:02Z", message: "e2e-history-newest", log: { level: "error" }, service: { name: "shop-api" }, ecs: { version: "8.11.0" } }) },
+            { time: "2026-11-03T08:00:01Z", level: "info", message: "e2e-history-older", container: "worker",
+              document: JSON.stringify({ "@timestamp": "2026-11-03T08:00:01Z", message: "e2e-history-older" }) },
+          ],
+        };
+      }
+      case "elastic_auth_method": return "none";
+      case "open_kibana_discover": {
+        window.__kibanaOpened = args;
+        return null;
+      }
       case "apply_resource_yaml": {
         window.__lastApply = args;
         return null;

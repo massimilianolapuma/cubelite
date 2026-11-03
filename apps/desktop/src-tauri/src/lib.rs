@@ -3,7 +3,8 @@ pub mod env;
 
 use commands::elastic::{
     elastic_auth_method, elastic_detect, elastic_disconnect, elastic_save_auth, elastic_search,
-    elastic_test, elastic_use_eck_credentials, kibana_discover_url, ElasticState,
+    elastic_test, elastic_use_eck_credentials, kibana_discover_url, open_kibana_discover,
+    ElasticState,
 };
 use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
 use commands::kubernetes::{
@@ -27,6 +28,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(WatchState::default())
         .manage(KubeconfigWatchState::default())
         .manage(LogState::default())
@@ -42,6 +44,7 @@ pub fn run() {
             elastic_use_eck_credentials,
             elastic_disconnect,
             kibana_discover_url,
+            open_kibana_discover,
             list_pods,
             list_namespaces,
             list_deployments,

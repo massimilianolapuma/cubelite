@@ -14,6 +14,7 @@ import { LogRing } from "./logRing.svelte";
 import { FLUSH_MS } from "./logs.svelte";
 import { ContainerStream, type StreamParams, type StreamStatus } from "./containerStream.svelte";
 import type { KeyedLogLine } from "./logs.svelte";
+import { HISTORY_ID_BASE, LogHistory } from "./logHistory.svelte";
 
 export const RING_CAP = 5000;
 export const DEFAULT_TAIL = 500;
@@ -61,6 +62,22 @@ export class LogSession {
   ring = new LogRing(RING_CAP);
   /** Line ids (KeyedLogLine.id) whose JSON view is expanded. */
   expanded = new SvelteSet<number>();
+  /** What the panel shows: the live stream or Elasticsearch history (#501).
+   * The live stream keeps running (and buffering) while History is shown. */
+  source = $state<"live" | "history">("live");
+  /** Elasticsearch history of this pod; queries the selected container. */
+  readonly history: LogHistory;
+
+  /** Lines of the active source (render, search, export). */
+  get lines(): KeyedLogLine[] {
+    return this.source === "history" ? this.history.lines : this.ring.lines;
+  }
+
+  /** Switches the source; the first switch to History loads a page. */
+  setSource(source: "live" | "history"): void {
+    this.source = source;
+    if (source === "history" && !this.history.started) void this.history.reload();
+  }
 
   #streams = $state<ContainerStream[]>([]);
   #openError = $state<string | null>(null);
@@ -100,6 +117,15 @@ export class LogSession {
     this.pod = pod;
     this.key = `${namespace}/${pod}`;
     this.container = initialContainer;
+    this.history = new LogHistory(
+      namespace,
+      pod,
+      () => (this.container === ALL_CONTAINERS ? null : this.container),
+      // A reload replaces every history line: drop their expansions.
+      () => {
+        for (const id of this.expanded) if (id >= HISTORY_ID_BASE) this.expanded.delete(id);
+      },
+    );
     if (seed) {
       this.previous = seed.previous;
       this.tailLines = seed.tailLines;

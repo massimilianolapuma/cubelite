@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Log history from Elasticsearch** (desktop, #501, part of #483): with an
+  Elasticsearch endpoint set for the cluster (Preferences → Elasticsearch:
+  detect in-cluster services or enter an external URL, credentials kept in
+  the OS keychain, Test connection), the log panel gets a Live · History
+  switch: a pod's past logs with time range, query, Load older and the
+  Raw · JSON · ECS modes rendering the stored documents; "Open in Kibana"
+  opens Discover filtered on the pod.
 - **Elasticsearch client** (core + desktop backend, #500, part of #483): the
   core can search a pod's log history in Elasticsearch (in-cluster through
   a port-forward with the ECK CA trusted, or an external endpoint), map hits

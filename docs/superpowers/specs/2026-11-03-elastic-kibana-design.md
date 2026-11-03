@@ -124,6 +124,10 @@ tab; desktop: new section in the Preferences modal.
 
 ### 5.3 Open in Kibana
 
+(v1, #501: only with a configured Kibana URL; the in-cluster port-forward
+below is follow-up #505. The URL is built and opened from Rust, which
+accepts http(s) only; the webview has no generic "open URL" permission.)
+
 Discover URL built with `_g=(time:(from:…,to:…))` and a KQL query
 `kubernetes.namespace:"ns" and kubernetes.pod.name:"pod"` (field names from
 the preset). External Kibana: the configured URL. In-cluster Kibana without a
