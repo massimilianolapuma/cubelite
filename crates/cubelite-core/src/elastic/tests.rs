@@ -156,6 +156,22 @@ fn auth_serialises_with_a_method_tag() {
     .expect("endpoint");
     assert_eq!(endpoint.preset, FieldPreset::Ecs);
     assert!(!endpoint.skip_tls_verify);
+    assert_eq!(endpoint.kibana_service, None, "endpoints saved before #505");
+    let with_kibana: EsEndpoint = serde_json::from_value(json!({
+        "target": { "kind": "external", "url": "https://es.example" },
+        "indexPattern": "logs-*",
+        "kibanaService": { "namespace": "logging", "service": "quickstart-kb-http", "port": 5601, "https": true }
+    }))
+    .expect("endpoint with kibana");
+    assert_eq!(
+        with_kibana.kibana_service,
+        Some(KibanaService {
+            namespace: "logging".into(),
+            service: "quickstart-kb-http".into(),
+            port: 5601,
+            https: true
+        })
+    );
 }
 
 #[test]
@@ -296,6 +312,7 @@ fn external(url: &str) -> EsEndpoint {
         index_pattern: "logs-*".into(),
         preset: FieldPreset::Ecs,
         kibana_url: None,
+        kibana_service: None,
         skip_tls_verify: false,
     }
 }

@@ -27,7 +27,8 @@
 		type EsAuth,
 		type EsAuthMethod,
 		type EsEndpoint,
-		type FieldPreset
+		type FieldPreset,
+		type KibanaService
 	} from '#lib/tauri.ts';
 
 	// Preferences → Integrations → Elasticsearch for the active context
@@ -42,6 +43,8 @@
 	let indexPattern = $state(DEFAULT_INDEX_PATTERN);
 	let preset = $state<FieldPreset>('ecs');
 	let kibanaUrl = $state('');
+	/** In-cluster Kibana picked from Detect (#505). */
+	let kibanaService = $state<KibanaService | null>(null);
 
 	let detected = $state<DetectedService[] | null>(null);
 	let busy = $state<'detect' | 'test' | 'save' | 'eck' | null>(null);
@@ -60,12 +63,14 @@
 			indexPattern = DEFAULT_INDEX_PATTERN;
 			preset = 'ecs';
 			kibanaUrl = '';
+			kibanaService = null;
 			return;
 		}
 		form.load(e.target, e.skipTlsVerify);
 		indexPattern = e.indexPattern;
 		preset = e.preset;
 		kibanaUrl = e.kibanaUrl ?? '';
+		kibanaService = e.kibanaService ?? null;
 		void refreshStoredMethod(e);
 	});
 
@@ -92,6 +97,7 @@
 			indexPattern: indexPattern.trim() || DEFAULT_INDEX_PATTERN,
 			preset,
 			kibanaUrl: kibanaUrl.trim() || null,
+			kibanaService: form.mode === 'in-cluster' ? kibanaService : null,
 			skipTlsVerify: form.skipTlsVerify
 		};
 	}
@@ -237,6 +243,19 @@
 				</div>
 				<input class={INPUT_CLASS} aria-label="Kibana URL" placeholder="Kibana URL (optional), e.g. https://kibana.example.com" bind:value={kibanaUrl} />
 				{#if kibanaError}<p class="type-caption text-status-err">{kibanaError}</p>{/if}
+				{#if form.mode === 'in-cluster' && kibanaService}
+					<div class="flex items-center gap-2" data-testid="kibana-service">
+						<span class="type-caption flex-1 truncate text-text-tertiary">
+							Kibana in the cluster: {kibanaService.namespace}/{kibanaService.service}:{kibanaService.port}
+							{kibanaUrl.trim() ? '(the URL above wins)' : '— opened through a port-forward'}
+						</span>
+						<button
+							type="button"
+							class="focus-ring type-caption rounded-sm text-text-tertiary hover:text-text-secondary"
+							onclick={() => (kibanaService = null)}>Clear</button
+						>
+					</div>
+				{/if}
 
 				<AuthFields fields={auth} options={authOptions} {secretMethods}>
 					{#snippet extra()}
@@ -277,9 +296,16 @@
 						<span class="type-data-sm flex-1 truncate text-text-secondary">
 							{svc.kind} · {svc.namespace}/{svc.name}:{svc.port}{svc.https ? ' (https)' : ''}
 						</span>
-						{#if svc.kind === 'elasticsearch'}
-							<button type="button" class="focus-ring type-caption rounded-sm text-accent hover:brightness-110" onclick={() => form.pick(svc)}>Use</button>
-						{/if}
+						<button
+							type="button"
+							class="focus-ring type-caption rounded-sm text-accent hover:brightness-110"
+							aria-label="Use {svc.kind} {svc.namespace}/{svc.name}"
+							onclick={() =>
+								svc.kind === 'elasticsearch'
+									? form.pick(svc)
+									: (kibanaService = { namespace: svc.namespace, service: svc.name, port: svc.port, https: svc.https })}
+							>Use</button
+						>
 					</li>
 				{/each}
 			</ul>

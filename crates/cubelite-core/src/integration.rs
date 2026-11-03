@@ -162,6 +162,16 @@ pub fn ready_pod(pods: &[Pod]) -> Option<&Pod> {
     })
 }
 
+/// Whether `pod` still exists, runs and is ready (a forward to it is still
+/// usable; a rollout or eviction replaces the pod).
+pub async fn pod_ready(client: &Client, namespace: &str, pod: &str) -> bool {
+    let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
+    match pods.get_opt(pod).await {
+        Ok(Some(p)) => ready_pod(std::slice::from_ref(&p)).is_some(),
+        _ => false,
+    }
+}
+
 /// `k=v,k2=v2` label selector from a service selector.
 fn selector_string(service: &Service) -> Option<String> {
     let selector = service.spec.as_ref()?.selector.as_ref()?;
@@ -191,7 +201,16 @@ pub enum TunnelError {
 pub struct ServiceTunnel {
     /// Local port on 127.0.0.1.
     pub local_port: u16,
+    /// The pod the forward goes to (a rollout replaces it).
+    pub pod: String,
     handle: JoinHandle<()>,
+}
+
+impl ServiceTunnel {
+    /// Whether the forward still accepts connections.
+    pub fn is_running(&self) -> bool {
+        !self.handle.is_finished()
+    }
 }
 
 impl Drop for ServiceTunnel {
@@ -227,11 +246,20 @@ pub async fn open_service_tunnel(
     let remote = target_port(&svc, port, pod).ok_or_else(|| {
         TunnelError::Config(format!("Service {namespace}/{service} has no port {port}"))
     })?;
-    let (local_port, handle) =
-        forward_pod_port(client.clone(), namespace.to_string(), pod_name, 0, remote)
-            .await
-            .map_err(|e| TunnelError::Connect(e.to_string()))?;
-    Ok(ServiceTunnel { local_port, handle })
+    let (local_port, handle) = forward_pod_port(
+        client.clone(),
+        namespace.to_string(),
+        pod_name.clone(),
+        0,
+        remote,
+    )
+    .await
+    .map_err(|e| TunnelError::Connect(e.to_string()))?;
+    Ok(ServiceTunnel {
+        local_port,
+        pod: pod_name,
+        handle,
+    })
 }
 
 /// A request's outcome before the integration reads it.

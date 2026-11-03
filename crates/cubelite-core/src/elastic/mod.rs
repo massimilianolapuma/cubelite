@@ -76,9 +76,27 @@ pub struct EsEndpoint {
     /// Kibana base URL, when known.
     #[serde(default)]
     pub kibana_url: Option<String>,
+    /// In-cluster Kibana service, opened through a port-forward when there
+    /// is no Kibana URL (#505).
+    #[serde(default)]
+    pub kibana_service: Option<KibanaService>,
     /// Accept any certificate (opt-in, for self-signed endpoints without a CA).
     #[serde(default)]
     pub skip_tls_verify: bool,
+}
+
+/// A Kibana service in the cluster (from Detect).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KibanaService {
+    /// Namespace.
+    pub namespace: String,
+    /// Service name.
+    pub service: String,
+    /// Service port (5601).
+    pub port: u16,
+    /// Whether it speaks HTTPS (ECK default).
+    pub https: bool,
 }
 
 /// Credentials for an endpoint.

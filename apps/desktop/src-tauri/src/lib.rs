@@ -3,8 +3,8 @@ pub mod env;
 
 use commands::elastic::{
     elastic_auth_method, elastic_detect, elastic_disconnect, elastic_save_auth, elastic_search,
-    elastic_test, elastic_use_eck_credentials, kibana_discover_url, open_kibana_discover,
-    ElasticState,
+    elastic_test, elastic_use_eck_credentials, kibana_discover_url, kibana_port_forward,
+    open_kibana_discover, ElasticState,
 };
 use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
 use commands::kubernetes::{
@@ -43,6 +43,7 @@ pub fn run() {
         .manage(PrometheusState::default())
         .invoke_handler(tauri::generate_handler![
             elastic_detect,
+            kibana_port_forward,
             prometheus_detect,
             prometheus_test,
             prometheus_metrics,
