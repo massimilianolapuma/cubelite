@@ -1,4 +1,8 @@
 <script lang="ts">
+	import SortHeader from '#lib/components/ui/SortHeader.svelte';
+	import { sortRows } from '#lib/list-sort.ts';
+	import { lists } from '#lib/stores/lists.svelte.ts';
+	import { helmTone } from '#lib/status.ts';
 	import { formatAge } from '#lib/age.ts';
 	import StatusPill from '#lib/components/ui/StatusPill.svelte';
 	import type { PillTone } from '#lib/components/ui/StatusPill.svelte';
@@ -19,6 +23,9 @@
 	}
 
 	const grid = 'grid-template-columns: 1.6fr 1fr 0.4fr 1fr 1.4fr 0.6fr;';
+
+	// Default sort from Preferences, header click overrides for the session (#496).
+	const sorted = $derived(sortRows(resources.helmReleases, lists.specFor('helm'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.updated, status: (x) => helmTone(x.status) }));
 </script>
 
 <div class="flex flex-col gap-3 p-4">
@@ -29,18 +36,18 @@
 	{:else}
 		<div class="overflow-hidden rounded-lg border border-border-default">
 			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
-				<span class="type-colhead">Name</span>
-				<span class="type-colhead">Namespace</span>
+				<SortHeader list="helm" field="name" label="Name" />
+				<SortHeader list="helm" field="namespace" label="Namespace" />
 				<span class="type-colhead">Rev</span>
-				<span class="type-colhead">Status</span>
+				<SortHeader list="helm" field="status" label="Status" />
 				<span class="type-colhead">Chart</span>
-				<span class="type-colhead">Updated</span>
+				<SortHeader list="helm" field="age" label="Updated" />
 			</div>
 			<div class="bg-surface-panel">
 				{#if resources.helmReleases.length === 0}
 					<p class="py-8 text-center text-xs text-text-disabled">No Helm releases found.</p>
 				{:else}
-					{#each resources.helmReleases as release (release.namespace + '/' + release.name)}
+					{#each sorted as release (release.namespace + '/' + release.name)}
 						<div
 							class="grid items-center gap-x-3 border-b border-border-faint px-3 last:border-b-0 hover:bg-surface-row-hover"
 							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import SortHeader from '#lib/components/ui/SortHeader.svelte';
+	import { sortRows } from '#lib/list-sort.ts';
+	import { lists } from '#lib/stores/lists.svelte.ts';
 	import CornerDownLeft from '@lucide/svelte/icons/corner-down-left';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import { formatAge } from '#lib/age.ts';
@@ -22,23 +25,26 @@
 
 	// Spec grid: NAME / STATUS / READY / AGE / CPU / MEMORY / RESTARTS
 	const grid = 'grid-template-columns: 2.4fr 0.9fr 0.7fr 0.55fr 0.6fr 0.7fr 0.5fr;';
+
+	// Default sort from Preferences, header click overrides for the session (#496).
+	const sorted = $derived(sortRows(pods, lists.specFor('pods'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp, status: (x) => podTone(x), restarts: (x) => x.restarts }));
 </script>
 
 <div class="overflow-hidden rounded-lg border border-border-default">
 	<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
-		<span class="type-colhead">Name</span>
-		<span class="type-colhead">Status</span>
+		<SortHeader list="pods" field="name" label="Name" />
+		<SortHeader list="pods" field="status" label="Status" />
 		<span class="type-colhead">Ready</span>
-		<span class="type-colhead">Age</span>
+		<SortHeader list="pods" field="age" label="Age" />
 		<span class="type-colhead">CPU</span>
 		<span class="type-colhead">Memory</span>
-		<span class="type-colhead">Restarts</span>
+		<SortHeader list="pods" field="restarts" label="Restarts" />
 	</div>
 	<div class="bg-surface-panel">
 		{#if pods.length === 0}
 			<p class="py-8 text-center text-xs text-text-disabled">No pods found.</p>
 		{:else}
-			{#each pods as pod (pod.namespace + '/' + pod.name)}
+			{#each sorted as pod (pod.namespace + '/' + pod.name)}
 				{@const tone = podTone(pod)}
 				{@const isSelected = selected?.name === pod.name && selected?.namespace === pod.namespace}
 				{@const usage = resources.metricsFor(pod.namespace, pod.name)}
