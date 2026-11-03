@@ -30,6 +30,7 @@
 
 pub mod client;
 pub mod context;
+pub mod elastic;
 pub mod error;
 pub mod exec;
 pub mod helm;

@@ -1,6 +1,10 @@
 pub mod commands;
 pub mod env;
 
+use commands::elastic::{
+    elastic_auth_method, elastic_detect, elastic_disconnect, elastic_save_auth, elastic_search,
+    elastic_test, elastic_use_eck_credentials, kibana_discover_url, ElasticState,
+};
 use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
 use commands::kubernetes::{
     apply_resource_yaml, cluster_capacity, delete_pod, exec_send, export_log, get_current_context,
@@ -28,7 +32,16 @@ pub fn run() {
         .manage(LogState::default())
         .manage(PortForwardState::default())
         .manage(ExecState::default())
+        .manage(ElasticState::default())
         .invoke_handler(tauri::generate_handler![
+            elastic_detect,
+            elastic_test,
+            elastic_search,
+            elastic_save_auth,
+            elastic_auth_method,
+            elastic_use_eck_credentials,
+            elastic_disconnect,
+            kibana_discover_url,
             list_pods,
             list_namespaces,
             list_deployments,

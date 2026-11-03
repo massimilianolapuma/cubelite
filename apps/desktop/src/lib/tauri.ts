@@ -717,3 +717,126 @@ export function startPortForward(
 export function stopPortForward(id: string): Promise<void> {
   return invoke("stop_port_forward", { id });
 }
+
+// ── Elasticsearch / Kibana (#483, #500) ──────────────────────────────────
+
+export type EsTarget =
+  | { kind: "in-cluster"; namespace: string; service: string; port: number; https: boolean }
+  | { kind: "external"; url: string };
+
+export type FieldPreset = "ecs" | "fluent-bit";
+
+/** A context's endpoint; secrets are never part of it (OS keychain). */
+export type EsEndpoint = {
+  target: EsTarget;
+  indexPattern: string;
+  preset: FieldPreset;
+  kibanaUrl: string | null;
+  skipTlsVerify: boolean;
+};
+
+export type EsAuth =
+  | { method: "none" }
+  | { method: "basic"; username: string; password: string }
+  | { method: "api-key"; key: string }
+  | { method: "bearer"; token: string }
+  /** ECK's `elastic` user, read from the cluster at each connection (never stored). */
+  | { method: "eck-user" };
+
+export type EsAuthMethod = EsAuth["method"];
+
+export type HistoryQuery = {
+  namespace: string;
+  pod: string;
+  container: string | null;
+  /** RFC 3339 or date math (`now-1h`). */
+  from: string;
+  to: string;
+  text: string | null;
+  searchAfter: unknown[] | null;
+  size: number | null;
+};
+
+export type HistoryLine = {
+  time: string | null;
+  level: LogLevel;
+  message: string;
+  container: string | null;
+  /** Stored `_source`, compact JSON. */
+  document: string;
+};
+
+export type HistoryPage = {
+  lines: HistoryLine[];
+  total: number | null;
+  totalIsLowerBound: boolean;
+  next: unknown[] | null;
+};
+
+export type EsInfo = { version: string; clusterName: string; health: string | null; indices: number | null };
+
+export type DetectedService = {
+  kind: "elasticsearch" | "kibana";
+  namespace: string;
+  name: string;
+  port: number;
+  https: boolean;
+};
+
+export function elasticDetect(kubeconfigPath: string, context: string): Promise<DetectedService[]> {
+  return invoke<DetectedService[]>("elastic_detect", { kubeconfigPath, context });
+}
+
+/** `auth` tests credentials before saving; omit it to use the stored ones. */
+export function elasticTest(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: EsEndpoint,
+  auth?: EsAuth,
+): Promise<EsInfo> {
+  return invoke<EsInfo>("elastic_test", { kubeconfigPath, context, endpoint, auth: auth ?? null });
+}
+
+export function elasticSearch(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: EsEndpoint,
+  query: HistoryQuery,
+): Promise<HistoryPage> {
+  return invoke<HistoryPage>("elastic_search", { kubeconfigPath, context, endpoint, query });
+}
+
+/** Stores `auth` in the OS keychain, bound to `endpoint`'s origin and TLS setting. */
+export function elasticSaveAuth(context: string, endpoint: EsEndpoint, auth: EsAuth): Promise<void> {
+  return invoke("elastic_save_auth", { context, endpoint, auth });
+}
+
+/** Stored method for this endpoint; `none` when the stored credentials belong to another one. */
+export function elasticAuthMethod(context: string, endpoint: EsEndpoint): Promise<EsAuthMethod> {
+  return invoke<EsAuthMethod>("elastic_auth_method", { context, endpoint });
+}
+
+/** Stores ECK's `elastic` user for this in-cluster endpoint; returns the stored method. */
+export function elasticUseEckCredentials(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: EsEndpoint,
+): Promise<EsAuthMethod> {
+  return invoke<EsAuthMethod>("elastic_use_eck_credentials", { kubeconfigPath, context, endpoint });
+}
+
+export function elasticDisconnect(context: string): Promise<void> {
+  return invoke("elastic_disconnect", { context });
+}
+
+export function kibanaDiscoverUrl(args: {
+  kibanaUrl: string;
+  preset: FieldPreset;
+  namespace: string;
+  pod: string;
+  container: string | null;
+  from: string;
+  to: string;
+}): Promise<string> {
+  return invoke<string>("kibana_discover_url", args);
+}
