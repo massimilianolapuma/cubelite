@@ -131,11 +131,31 @@ async fn kibana_answers_through_a_service_tunnel() {
         .await
         .expect("tunnel");
     assert!(integration::pod_ready(&client, &kb.namespace, &tunnel.pod).await);
-    let http = integration::http_builder(true).build().expect("http");
+    // Verified TLS: ECK's CA for the Kibana service, and the service name
+    // (what the certificate names) resolved to the tunnel.
+    let secrets: kube::Api<k8s_openapi::api::core::v1::Secret> =
+        kube::Api::namespaced(client.clone(), &kb.namespace);
+    let ca = secrets
+        .get(&format!("{}-certs-public", kb.name))
+        .await
+        .expect("Kibana CA secret")
+        .data
+        .and_then(|d| d.get("ca.crt").map(|b| b.0.clone()))
+        .expect("ca.crt");
+    let host = integration::service_host(&kb.namespace, &kb.name);
+    let http = integration::http_builder(false)
+        .add_root_certificate(reqwest::Certificate::from_pem(&ca).expect("CA"))
+        .no_proxy()
+        .resolve(
+            &host,
+            std::net::SocketAddr::from(([127, 0, 0, 1], tunnel.local_port)),
+        )
+        .build()
+        .expect("http");
     let scheme = if kb.https { "https" } else { "http" };
     let response = http
         .get(format!(
-            "{scheme}://127.0.0.1:{}/api/status",
+            "{scheme}://{host}:{}/api/status",
             tunnel.local_port
         ))
         .send()
