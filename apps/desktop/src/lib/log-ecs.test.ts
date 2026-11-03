@@ -177,6 +177,15 @@ describe("nested output", () => {
     ).toEqual({ a: 1, "a.b": 2, "x..y": 3 });
   });
 
+  it("treats __proto__ and constructor as plain keys (no prototype pollution)", () => {
+    const doc = toEcs(line('{"msg":"m","__proto__":{"polluted":1},"constructor":{"prototype":{"bad":2}}}'));
+    const nested = ecsNested(doc);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).bad).toBeUndefined();
+    expect(JSON.parse(ecsJson(doc))).toMatchObject({ constructor: { prototype: { bad: 2 } } });
+    expect(Object.keys(nested)).toContain("__proto__");
+  });
+
   it("keeps large integers exact", () => {
     expect(ecsJson(toEcs(line('{"msg":"m","id":12345678901234567890}')))).toContain('"id":12345678901234567890');
   });

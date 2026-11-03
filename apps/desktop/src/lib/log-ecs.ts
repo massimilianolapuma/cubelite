@@ -177,7 +177,10 @@ export function toEcs(line: Pick<LogLine, "time" | "level" | "message" | "namesp
 
 /** Nested form (`{"log":{"level":…}}`), what Elasticsearch stores. */
 export function ecsNested(doc: EcsDocument): JsonObject {
-  const root: JsonObject = {};
+  // Null-prototype objects and own-property checks: log keys such as
+  // `__proto__` or `constructor` must stay plain keys (no prototype pollution).
+  const make = (): JsonObject => Object.create(null) as JsonObject;
+  const root = make();
   for (const { key, value } of doc.fields) {
     const parts = key.split(".");
     if (parts.some((p) => p === "")) {
@@ -187,8 +190,8 @@ export function ecsNested(doc: EcsDocument): JsonObject {
     let node: JsonObject = root;
     let placed = false;
     for (let i = 0; i < parts.length - 1; i++) {
-      const next = node[parts[i]];
-      if (next === undefined) node[parts[i]] = {};
+      const next = Object.hasOwn(node, parts[i]) ? node[parts[i]] : undefined;
+      if (next === undefined) node[parts[i]] = make();
       else if (!isPlainObject(next)) {
         // A scalar already sits on the path: keep the rest of the key dotted.
         node[parts.slice(i).join(".")] = value;
