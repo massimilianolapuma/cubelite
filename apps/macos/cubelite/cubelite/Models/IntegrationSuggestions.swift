@@ -20,8 +20,8 @@ struct OperatorRule: Sendable {
     let group: String
     /// Plural resource name in the API path.
     let resource: String
-    /// Selector label naming the instance (same-instance aliases).
-    let instanceLabel: String
+    /// Selector labels naming the instance the service selects.
+    let instanceLabels: [String]
     /// Whether the classifier finds a main-kind service.
     let isMain: @Sendable (IntegrationK8s.Service) -> Bool
     /// Conventional name (ranking only).
@@ -29,13 +29,13 @@ struct OperatorRule: Sendable {
 
     static let elasticsearch = OperatorRule(
         main: "elasticsearch", ownerKind: "Elasticsearch", group: "elasticsearch.k8s.elastic.co",
-        resource: "elasticsearches", instanceLabel: "elasticsearch.k8s.elastic.co/cluster-name",
+        resource: "elasticsearches", instanceLabels: ["elasticsearch.k8s.elastic.co/cluster-name"],
         isMain: { Elastic.classify($0)?.kind == .elasticsearch },
         conventional: { $0.hasSuffix("-es-http") || $0.hasSuffix("-kb-http") })
 
     static let prometheus = OperatorRule(
         main: "prometheus", ownerKind: "Prometheus", group: "monitoring.coreos.com",
-        resource: "prometheuses", instanceLabel: "operator.prometheus.io/name",
+        resource: "prometheuses", instanceLabels: ["operator.prometheus.io/name", "prometheus"],
         isMain: { Prometheus.classify($0)?.kind == .prometheus },
         conventional: { $0 == "prometheus-operated" })
 
@@ -44,6 +44,19 @@ struct OperatorRule: Sendable {
         (service.metadata.ownerReferences ?? []).first { owner in
             owner.kind == ownerKind && owner.apiVersion.split(separator: "/").first.map(String.init) == group
         }
+    }
+
+    /// Whether `service`'s selector names the instance `name` by one of
+    /// the instance labels.
+    func selectsInstance(_ service: IntegrationK8s.Service, named name: String?) -> Bool {
+        guard let name, let selector = service.spec?.selector else { return false }
+        return instanceLabels.contains { selector[$0] == name }
+    }
+
+    /// Key of a verified service in the set `pick` reads: per rule, so a
+    /// service verified for one integration never counts for the other.
+    func verifiedKey(namespace: String, name: String) -> String {
+        "\(main):\(namespace)/\(name)"
     }
 
     /// The custom resource an owner reference names, in the service's namespace.
@@ -90,9 +103,9 @@ struct DetectedIntegrations: Equatable, Sendable {
     static let maxVerified = 3
 
     /// Picks the integrations' services with the Elasticsearch and
-    /// Prometheus classifiers. `verified` holds the `namespace/name` of
-    /// services whose operator owner was checked ([`detect`]); labels and
-    /// names only rank.
+    /// Prometheus classifiers. `verified` holds the keys
+    /// (`OperatorRule.verifiedKey`) of services whose operator owner was
+    /// checked ([`detect`]); labels and names only rank.
     static func pick(services: [IntegrationK8s.Service], verified: Set<String>) -> DetectedIntegrations {
         let es = rank(
             services.compactMap { s in Elastic.classify(s).map { ($0, s) } }, rule: .elasticsearch,
@@ -115,12 +128,16 @@ struct DetectedIntegrations: Equatable, Sendable {
 
     /// Ranks: the main kind first, then verified, well-known namespace,
     /// conventional name, namespace and name. The web UI comes only from
-    /// the best service's namespace. One-click needs a verified best and
-    /// every other main-kind service an alias of the same instance.
+    /// the best service's namespace. One-click needs a verified best whose
+    /// owner reference is its controller and whose selector names that
+    /// instance, and every other main-kind service an alias: same namespace,
+    /// selector naming the same instance.
     private static func rank<T: RankedService>(
         _ found: [(T, IntegrationK8s.Service)], rule: OperatorRule, verified: Set<String>
     ) -> Ranked<T> {
-        func isVerified(_ d: T) -> Bool { d.kindName == rule.main && verified.contains("\(d.namespace)/\(d.name)") }
+        func isVerified(_ d: T) -> Bool {
+            d.kindName == rule.main && verified.contains(rule.verifiedKey(namespace: d.namespace, name: d.name))
+        }
         func key(_ d: T) -> (Int, Int, Int, Int, String, String) {
             let (wellKnown, conventional, namespace, name) = rule.unverifiedKey(namespace: d.namespace, name: d.name)
             return (d.kindName == rule.main ? 0 : 1, isVerified(d) ? 0 : 1, wellKnown, conventional, namespace, name)
@@ -131,15 +148,17 @@ struct DetectedIntegrations: Equatable, Sendable {
             return Ranked(main: nil, webUI: nil, oneClick: false, all: all)
         }
         let webUI = sorted.first { $0.0.kindName != rule.main && $0.0.namespace == best.0.namespace }?.0
-        let instance = rule.owner(of: best.1)?.name
+        let owner = rule.owner(of: best.1)
+        let instance = owner?.name
         let others = sorted.filter {
             $0.0.kindName == rule.main && ($0.0.namespace, $0.0.name) != (best.0.namespace, best.0.name)
         }
         let aliasesOnly = others.allSatisfy { other in
-            instance != nil && other.0.namespace == best.0.namespace
-                && other.1.spec?.selector?[rule.instanceLabel] == instance
+            other.0.namespace == best.0.namespace && rule.selectsInstance(other.1, named: instance)
         }
-        return Ranked(main: best.0, webUI: webUI, oneClick: isVerified(best.0) && aliasesOnly, all: all)
+        let controlled = owner?.controller == true && rule.selectsInstance(best.1, named: instance)
+        return Ranked(
+            main: best.0, webUI: webUI, oneClick: isVerified(best.0) && controlled && aliasesOnly, all: all)
     }
 
     /// Lists the services of every namespace once and verifies the owners
@@ -161,7 +180,7 @@ struct DetectedIntegrations: Equatable, Sendable {
             for (service, owner) in claims(list.items, rule: rule) {
                 let namespace = service.metadata.namespace ?? ""
                 if await isVerified(owner, namespace: namespace, rule: rule, context: context, cluster: cluster) {
-                    verified.insert("\(namespace)/\(service.metadata.name ?? "")")
+                    verified.insert(rule.verifiedKey(namespace: namespace, name: service.metadata.name ?? ""))
                 }
             }
         }

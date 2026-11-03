@@ -72,6 +72,8 @@ enum IntegrationK8s {
         var kind: String
         var name: String?
         var uid: String?
+        /// The owner manages the object (its controller).
+        var controller: Bool?
     }
 
     enum IntOrString: Decodable, Sendable, Equatable {

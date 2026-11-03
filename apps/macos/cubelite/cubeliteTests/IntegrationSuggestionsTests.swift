@@ -120,16 +120,27 @@ private struct Row {
         #"{"metadata":{"namespace":"\#(namespace)","name":"\#(name)","labels":\#(labels),"ownerReferences":\#(owners)},"spec":{"ports":\#(ports),"selector":\#(selector)}}"#
     }
 
-    static func owner(_ kind: String, _ apiVersion: String, name: String = "x", uid: String = "1") -> String {
-        #"[{"apiVersion":"\#(apiVersion)","kind":"\#(kind)","name":"\#(name)","uid":"\#(uid)"}]"#
+    /// An owner reference; `controller` nil leaves the field out.
+    static func owner(
+        _ kind: String, _ apiVersion: String, name: String = "x", uid: String = "1", controller: Bool? = true
+    ) -> String {
+        let flag = controller.map { #","controller":\#($0)"# } ?? ""
+        return #"[{"apiVersion":"\#(apiVersion)","kind":"\#(kind)","name":"\#(name)","uid":"\#(uid)"\#(flag)}]"#
     }
 
-    static func esOwner(_ name: String = "quickstart", uid: String = "es-uid") -> String {
-        owner("Elasticsearch", "elasticsearch.k8s.elastic.co/v1", name: name, uid: uid)
+    static func esOwner(_ name: String = "quickstart", uid: String = "es-uid", controller: Bool? = true) -> String {
+        owner("Elasticsearch", "elasticsearch.k8s.elastic.co/v1", name: name, uid: uid, controller: controller)
     }
 
-    static func promOwner(_ name: String = "kps-kube-prometheus-stack-prometheus", uid: String = "prom-uid") -> String {
-        owner("Prometheus", "monitoring.coreos.com/v1", name: name, uid: uid)
+    static func promOwner(
+        _ name: String = "kps-kube-prometheus-stack-prometheus", uid: String = "prom-uid", controller: Bool? = true
+    ) -> String {
+        owner("Prometheus", "monitoring.coreos.com/v1", name: name, uid: uid, controller: controller)
+    }
+
+    /// ECK's selector on `{name}-es-http`.
+    static func eckSelector(_ name: String = "quickstart") -> String {
+        #"{"elasticsearch.k8s.elastic.co/cluster-name":"\#(name)"}"#
     }
 }
 
@@ -163,7 +174,8 @@ final class IntegrationSuggestionsTests: XCTestCase {
         Row(namespace: "monitoring", name: "kps-kube-prometheus-stack-prometheus", ports: web9090,
             selector: #"{"app.kubernetes.io/name":"prometheus","operator.prometheus.io/name":"kps-kube-prometheus-stack-prometheus"}"#),
         Row(namespace: "monitoring", name: "prometheus-operated", labels: #"{"operated-prometheus":"true"}"#,
-            ports: web9090, owners: Row.promOwner(), selector: #"{"app.kubernetes.io/name":"prometheus"}"#),
+            ports: web9090, owners: Row.promOwner(),
+            selector: #"{"app.kubernetes.io/name":"prometheus","prometheus":"kps-kube-prometheus-stack-prometheus"}"#),
         Row(namespace: "monitoring", name: "kps-kube-prometheus-stack-alertmanager",
             ports: #"[{"name":"http-web","port":9093}]"#),
         Row(namespace: "monitoring", name: "kps-grafana", labels: #"{"app.kubernetes.io/name":"grafana"}"#,
@@ -181,7 +193,9 @@ final class IntegrationSuggestionsTests: XCTestCase {
             ports: #"[{"name":"service","port":80}]"#),
     ]
 
-    private static let verifiedStack: Set<String> = ["logging/quickstart-es-http", "monitoring/prometheus-operated"]
+    private static let verifiedStack: Set<String> = [
+        "elasticsearch:logging/quickstart-es-http", "prometheus:monitoring/prometheus-operated",
+    ]
 
     private static func listJSON(_ rows: [Row]) -> String {
         #"{"items":[\#(rows.map(\.json).joined(separator: ","))]}"#
@@ -240,18 +254,90 @@ final class IntegrationSuggestionsTests: XCTestCase {
             Row(namespace: "team-x", name: "prom-b", labels: #"{"app":"prometheus"}"#, ports: Self.web9090,
                 owners: Row.promOwner("b")),
         ]
-        let found = try Self.pick(rows, verified: ["team-x/prom-b"])
+        let found = try Self.pick(rows, verified: ["prometheus:team-x/prom-b"])
         XCTAssertEqual(found.prometheus?.name, "prom-b")
         XCTAssertFalse(found.prometheusOneClick, "prom-a is another Prometheus")
         XCTAssertEqual(try Self.pick(rows).prometheus?.name, "prom-a")
         XCTAssertEqual(try Self.pick([]), DetectedIntegrations())
     }
 
+    func testVerificationCountsOnlyForItsOwnRule() throws {
+        // Verified as an Elasticsearch: never a verified Prometheus.
+        let crossed = try Self.pick(Self.stack, verified: [
+            "elasticsearch:logging/quickstart-es-http", "elasticsearch:monitoring/prometheus-operated",
+        ])
+        XCTAssertTrue(crossed.elasticsearchOneClick)
+        XCTAssertFalse(crossed.prometheusOneClick)
+        XCTAssertFalse(try Self.pick(Self.stack, verified: ["logging/quickstart-es-http"]).elasticsearchOneClick,
+                       "unkeyed entries count for no rule")
+    }
+
+    func testOneClickNeedsAControllerOwnerAndASelectorNamingIt() throws {
+        let lone = { (owners: String, selector: String) in
+            [Row(namespace: "logging", name: "quickstart-es-http", ports: Self.https9200, owners: owners,
+                 selector: selector)]
+        }
+        let verified: Set<String> = ["elasticsearch:logging/quickstart-es-http"]
+        XCTAssertTrue(try Self.pick(lone(Row.esOwner(), Row.eckSelector()), verified: verified).elasticsearchOneClick)
+        XCTAssertFalse(
+            try Self.pick(lone(Row.esOwner(controller: false), Row.eckSelector()), verified: verified)
+                .elasticsearchOneClick, "controller false")
+        XCTAssertFalse(
+            try Self.pick(lone(Row.esOwner(controller: nil), Row.eckSelector()), verified: verified)
+                .elasticsearchOneClick, "controller absent")
+        XCTAssertFalse(
+            try Self.pick(lone(Row.esOwner(), Row.eckSelector("other")), verified: verified).elasticsearchOneClick,
+            "selects another instance")
+        XCTAssertFalse(
+            try Self.pick(lone(Row.esOwner(), "{}"), verified: verified).elasticsearchOneClick, "no selector")
+
+        // Prometheus: `operator.prometheus.io/name` or `prometheus` names it.
+        let prom = { (selector: String) in
+            [Row(namespace: "monitoring", name: "prometheus-operated", ports: Self.web9090, owners: Row.promOwner("k"),
+                 selector: selector)]
+        }
+        let promVerified: Set<String> = ["prometheus:monitoring/prometheus-operated"]
+        XCTAssertTrue(try Self.pick(prom(#"{"prometheus":"k"}"#), verified: promVerified).prometheusOneClick)
+        XCTAssertTrue(
+            try Self.pick(prom(#"{"operator.prometheus.io/name":"k"}"#), verified: promVerified).prometheusOneClick)
+        XCTAssertFalse(
+            try Self.pick(prom(#"{"app.kubernetes.io/name":"prometheus"}"#), verified: promVerified)
+                .prometheusOneClick)
+    }
+
+    func testAnotherServiceClaimingTheSameOwnerIsNoAlias() throws {
+        let rows = [
+            Row(namespace: "logging", name: "quickstart-es-http", ports: Self.https9200, owners: Row.esOwner(),
+                selector: Row.eckSelector()),
+            Row(namespace: "logging", name: "elasticsearch-copy", ports: Self.https9200, owners: Row.esOwner()),
+        ]
+        let found = try Self.pick(rows, verified: ["elasticsearch:logging/quickstart-es-http"])
+        XCTAssertEqual(found.elasticsearch?.name, "quickstart-es-http")
+        XCTAssertFalse(found.elasticsearchOneClick, "same owner, but its selector names no instance")
+    }
+
+    /// As on minikube (checked with kubectl): the operator's governing
+    /// `prometheus-operated` has an owner without `controller` and selects
+    /// every Prometheus of the namespace; the chart's service has no owner.
+    func testKubePrometheusStackAsDeployedIsReviewOnly() throws {
+        let rows = [
+            Row(namespace: "monitoring", name: "prometheus-operated", labels: #"{"operated-prometheus":"true"}"#,
+                ports: Self.web9090, owners: Row.promOwner(controller: nil),
+                selector: #"{"app.kubernetes.io/name":"prometheus"}"#),
+            Row(namespace: "monitoring", name: "kps-kube-prometheus-stack-prometheus", ports: Self.web9090,
+                selector: #"{"app.kubernetes.io/name":"prometheus","operator.prometheus.io/name":"kps-kube-prometheus-stack-prometheus"}"#),
+        ]
+        let found = try Self.pick(rows, verified: ["prometheus:monitoring/prometheus-operated"])
+        XCTAssertEqual(found.prometheus?.name, "prometheus-operated")
+        XCTAssertFalse(found.prometheusOneClick)
+    }
+
     func testWebUIComesOnlyFromTheBestServicesNamespace() throws {
         let found = try Self.pick([
-            Row(namespace: "logging", name: "quickstart-es-http", ports: Self.https9200, owners: Row.esOwner()),
+            Row(namespace: "logging", name: "quickstart-es-http", ports: Self.https9200, owners: Row.esOwner(),
+                selector: Row.eckSelector()),
             Row(namespace: "a-search", name: "kibana", labels: #"{"app.kubernetes.io/name":"kibana"}"#),
-        ], verified: ["logging/quickstart-es-http"])
+        ], verified: ["elasticsearch:logging/quickstart-es-http"])
         XCTAssertNotNil(found.elasticsearch)
         XCTAssertNil(found.kibana, "no companion from another namespace")
         XCTAssertTrue(found.elasticsearchOneClick)
@@ -286,7 +372,7 @@ final class IntegrationSuggestionsTests: XCTestCase {
     func testLabelsAndUnverifiableOwnersAreNeverTrusted() async throws {
         let lone = { (owners: String) in
             [Row(namespace: "logging", name: "quickstart-es-http", labels: Self.eckLabels, ports: Self.https9200,
-                 owners: owners)]
+                 owners: owners, selector: Row.eckSelector())]
         }
         let labelsOnly = Self.cluster(lone("[]"))
         let found = try await DetectedIntegrations.detect(context: "prod", cluster: labelsOnly)
@@ -473,7 +559,7 @@ final class IntegrationSuggestionsTests: XCTestCase {
         // A verified Elasticsearch outside ECK's service naming: no ECK user.
         let plain = harness(Self.cluster(
             [Row(namespace: "logging", name: "elasticsearch", ports: #"[{"name":"http","port":9200}]"#,
-                 owners: Row.esOwner())]))
+                 owners: Row.esOwner(), selector: Row.eckSelector())]))
         await plain.elastic.setFailTest(true)
         await plain.store.detectIfNeeded(context: "prod")
         await plain.store.enable(context: "prod")
