@@ -8,6 +8,8 @@ struct PreferencesView: View {
 
     /// Backend used by the credential-reset action; nil hides that section.
     var kubeAPIService: KubeAPIService?
+    /// Elasticsearch backend for the Integrations tab; nil hides that tab.
+    var elasticService: (any ElasticPreferencesBackend)?
 
     var body: some View {
         TabView {
@@ -17,10 +19,14 @@ struct PreferencesView: View {
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
             NavigationPreferencesTab()
                 .tabItem { Label("Navigation", systemImage: "sidebar.left") }
+            if let elasticService {
+                IntegrationsPreferencesTab(backend: elasticService)
+                    .tabItem { Label("Integrations", systemImage: "puzzlepiece.extension") }
+            }
             AdvancedPreferencesTab(kubeAPIService: kubeAPIService)
                 .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
         }
-        .frame(width: 480, height: 360)
+        .frame(width: 480, height: 420)
         .padding()
     }
 }

@@ -12,10 +12,17 @@ struct LogSessionContentView: View {
     let bodyHeight: Double?
 
     var body: some View {
+        content
+            .onChange(of: session.historyEndpoint) { session.historyEndpointChanged() }
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             LogToolbar(session: session)
             Rectangle().fill(DesignTokens.borderFaint).frame(height: 1)
-            if session.isReconnecting {
+            if session.showsHistory, let history = session.history {
+                HistoryStripView(history: history)
+            } else if session.isReconnecting {
                 reconnectBanner(session)
             }
             if let bodyHeight {
