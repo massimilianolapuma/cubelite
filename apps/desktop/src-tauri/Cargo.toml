@@ -20,9 +20,19 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-dialog = "2"
 notify = "8"
+# Elasticsearch credentials in the OS keychain (#500): macOS Keychain,
+# Windows Credential Manager, Secret Service on Linux.
+keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dev-dependencies]
 tempfile = "3"
+
+# Encrypted Secret Service sessions on Linux, enabled on the store crate
+# itself: keyring's own `crypto-rust` feature also locks the unused zbus
+# stack into Cargo.lock.
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus-secret-service = { version = "4", features = ["crypto-rust"] }
+

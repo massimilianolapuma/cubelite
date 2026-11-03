@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Elasticsearch client** (core + desktop backend, #500, part of #483): the
+  core can search a pod's log history in Elasticsearch (in-cluster through
+  a port-forward with the ECK CA trusted, or an external endpoint), map hits
+  to log lines, read version/health and detect Elasticsearch/Kibana services;
+  the desktop app gets the Tauri commands and stores credentials in the OS
+  keychain. The UI comes in #501.
 - **Resource order and list sort** (macOS, #497): a Navigation tab in
   Preferences reorders the resource types within their groups, reorders the
   groups and hides types (Overview stays first), with the same rules as the

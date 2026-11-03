@@ -7,6 +7,9 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import {
+  elasticSaveAuth,
+  elasticSearch,
+  elasticTest,
   kubeconfigSources,
   listContexts,
   getCurrentContext,
@@ -20,6 +23,8 @@ import {
   unwatchKubeconfig,
 } from "#lib/tauri.ts";
 import type {
+  EsEndpoint,
+  HistoryQuery,
   ContextInfo,
   PodInfo,
   NamespaceInfo,
@@ -390,5 +395,41 @@ describe("kubeconfig wrapper arguments", () => {
     expect(mockedInvoke).toHaveBeenCalledWith("unwatch_kubeconfig", {
       watchId: "kw1",
     });
+  });
+});
+
+describe("Elasticsearch bindings (#500)", () => {
+  const endpoint: EsEndpoint = {
+    target: { kind: "in-cluster", namespace: "logging", service: "quickstart-es-http", port: 9200, https: true },
+    indexPattern: "logs-*",
+    preset: "ecs",
+    kibanaUrl: null,
+    skipTlsVerify: false,
+  };
+
+  it("passes camelCase args and a null auth to elastic_test", async () => {
+    mockedInvoke.mockResolvedValueOnce({ version: "8.15.0", clusterName: "c", health: "green", indices: 3 });
+    const info = await elasticTest("/k", "prod", endpoint);
+    expect(mockedInvoke).toHaveBeenCalledWith("elastic_test", { kubeconfigPath: "/k", context: "prod", endpoint, auth: null });
+    expect(info.health).toBe("green");
+  });
+
+  it("sends the query to elastic_search and the auth to elastic_save_auth", async () => {
+    mockedInvoke.mockResolvedValueOnce({ lines: [], total: 0, totalIsLowerBound: false, next: null });
+    const query: HistoryQuery = {
+      namespace: "shop",
+      pod: "api-0",
+      container: null,
+      from: "now-1h",
+      to: "now",
+      text: null,
+      searchAfter: null,
+      size: null,
+    };
+    await elasticSearch("/k", "prod", endpoint, query);
+    expect(mockedInvoke).toHaveBeenCalledWith("elastic_search", { kubeconfigPath: "/k", context: "prod", endpoint, query });
+    mockedInvoke.mockResolvedValueOnce(undefined);
+    await elasticSaveAuth("prod", { method: "api-key", key: "k" });
+    expect(mockedInvoke).toHaveBeenCalledWith("elastic_save_auth", { context: "prod", auth: { method: "api-key", key: "k" } });
   });
 });

@@ -42,7 +42,7 @@ pub struct LogLine {
 }
 
 /// Detect the severity of a raw message via common level markers.
-fn detect_level(message: &str) -> LogLevel {
+pub(crate) fn detect_level(message: &str) -> LogLevel {
     let upper = message.to_uppercase();
     if ["ERROR", "ERR:", "FATAL", "PANIC"]
         .iter()
