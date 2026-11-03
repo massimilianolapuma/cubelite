@@ -34,13 +34,18 @@ pub mod elastic;
 pub mod error;
 pub mod exec;
 pub mod helm;
+pub mod integration;
 pub mod kubeconfig;
 pub mod logs;
 pub mod metrics;
 pub mod portforward;
+pub mod prometheus;
 pub mod resources;
 pub mod types;
 pub mod watcher;
+
+#[cfg(test)]
+mod test_support;
 
 // Re-export the most commonly used items at the crate root.
 pub use client::KubeClient;

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Prometheus client** (core + desktop backend, #509, part of #484): the
+  core builds the PromQL of a pod's or deployment's CPU, memory, restarts
+  and network history, queries an in-cluster Prometheus through the API
+  server (a port-forward when the proxy is not allowed) or an external
+  endpoint (basic, bearer, or Azure Monitor with an Azure CLI token), and
+  builds Grafana Explore links. Credentials are kept in the OS keychain,
+  bound to their endpoint. The UI comes in #510. Integration plumbing is
+  now shared with Elasticsearch, and redirects are no longer followed.
 - **Log history from Elasticsearch on macOS** (#503, closes #483): Settings →
   Integrations sets a cluster's Elasticsearch endpoint (detect in-cluster
   services or enter an external URL, credentials in the keychain, Test
