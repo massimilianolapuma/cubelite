@@ -6,6 +6,9 @@
  * into the reactive buffer in batches every `FLUSH_MS` — one `$state`
  * reassignment per interval instead of one per line, which is what froze
  * the UI under log flood. While paused nothing flushes at all.
+ *
+ * The view can narrow to one workload's pods and switch to its
+ * Elasticsearch history (#529), reusing the log panel's `LogHistory`.
  */
 
 import { isLogViewMode, type LogViewMode } from "#lib/log-ecs.ts";
@@ -13,9 +16,11 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { SvelteSet } from "svelte/reactivity";
 import { stopLogs, streamLogs, type LogLine, type PodRef } from "#lib/tauri.ts";
 import { errorMessage } from "#lib/errors.ts";
+import type { HistoryMapping, LogScope } from "#lib/log-scope.ts";
 import { app } from "./app.svelte";
 import { persisted } from "./settings.svelte";
 import { toasts } from "./toasts.svelte";
+import { HISTORY_ID_BASE, LogHistory } from "./logHistory.svelte";
 
 const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
 
@@ -40,6 +45,14 @@ class LogsStore {
   streaming = $state(false);
   /** Line ids currently expanded into their JSON tree (JSON view, #461). */
   expanded = new SvelteSet<number>();
+  /** Workload the view is narrowed to (#529); null shows every pod in scope. */
+  scope = $state<LogScope | null>(null);
+  /** Live stream or Elasticsearch history; the stream keeps running in History. */
+  source = $state<"live" | "history">("live");
+  /** History of the current filter; null when the filter has no history query. */
+  history = $state<LogHistory | null>(null);
+  /** Identity of `history`'s query (cluster, namespace, workload). */
+  #historyKey = "";
 
   /** Humanise JSON lines; own preference, independent of the log panel's. */
   /** Pre-#492 boolean toggle, read once to seed `viewMode`. */
@@ -60,9 +73,14 @@ class LogsStore {
   #flushTimer: ReturnType<typeof setInterval> | null = null;
   #nextId = 0;
 
+  /** Lines of the active source. */
+  get sourceLines(): KeyedLogLine[] {
+    return this.source === "history" ? (this.history?.lines ?? []) : this.lines;
+  }
+
   get filtered(): KeyedLogLine[] {
     const text = this.textFilter.toLowerCase();
-    return this.lines.filter((line) => {
+    return this.sourceLines.filter((line) => {
       if (this.level !== "all" && line.level !== this.level) return false;
       if (text && !`${line.pod} ${line.message}`.toLowerCase().includes(text)) return false;
       return true;
@@ -115,6 +133,38 @@ class LogsStore {
       this.#stopFlushTimer();
       this.bufferedWhilePaused = this.#pending.length;
     }
+  }
+
+  /**
+   * Points History at the view's filter on `cluster` (#529). A different
+   * query replaces the history (its point in time is released); without one
+   * the view goes back to Live.
+   */
+  setHistory(mapping: HistoryMapping, cluster: string | null): void {
+    const key =
+      mapping.namespace === null || !cluster ? "" : JSON.stringify([cluster, mapping.namespace, mapping.target]);
+    if (key === this.#historyKey) return;
+    this.#historyKey = key;
+    this.history?.close();
+    this.#dropHistoryExpansions();
+    if (mapping.namespace === null || !cluster) {
+      this.history = null;
+      this.source = "live";
+      return;
+    }
+    this.history = new LogHistory(mapping.namespace, mapping.target, () => null, () => this.#dropHistoryExpansions());
+    if (this.source === "history") void this.history.reload();
+  }
+
+  /** Switches the source; the first switch to History loads a page. */
+  setSource(source: "live" | "history"): void {
+    if (source === "history" && !this.history) return;
+    this.source = source;
+    if (source === "history" && this.history && !this.history.started) void this.history.reload();
+  }
+
+  #dropHistoryExpansions(): void {
+    for (const id of this.expanded) if (id >= HISTORY_ID_BASE) this.expanded.delete(id);
   }
 
   toggleExpanded(id: number): void {

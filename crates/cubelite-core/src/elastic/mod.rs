@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::logs::{detect_level, LogLevel};
+use crate::prometheus::{workload_pods_regex, Workload};
 
 /// Where the Elasticsearch HTTP API lives (shared with the other integrations).
 pub use crate::integration::Target as EsTarget;
@@ -33,6 +34,14 @@ pub struct PresetFields {
     pub namespace: &'static str,
     /// Pod name field.
     pub pod: &'static str,
+    /// The pod name as a keyword, for regexp queries on a workload's pods
+    /// (#529): Fluent Bit's dynamic mapping makes the name `text` with a
+    /// `.keyword` subfield.
+    pub pod_keyword: &'static str,
+    /// The `batch.kubernetes.io/job-name` pod label, when the shipper stores
+    /// it under a predictable field (Filebeat / Elastic Agent dedot label
+    /// keys); a Job's history also matches it.
+    pub job_label: Option<&'static str>,
     /// Container name field.
     pub container: &'static str,
     /// Message text field.
@@ -46,12 +55,16 @@ impl FieldPreset {
             FieldPreset::Ecs => PresetFields {
                 namespace: "kubernetes.namespace",
                 pod: "kubernetes.pod.name",
+                pod_keyword: "kubernetes.pod.name",
+                job_label: Some("kubernetes.labels.batch_kubernetes_io/job-name"),
                 container: "kubernetes.container.name",
                 message: "message",
             },
             FieldPreset::FluentBit => PresetFields {
                 namespace: "kubernetes.namespace_name",
                 pod: "kubernetes.pod_name",
+                pod_keyword: "kubernetes.pod_name.keyword",
+                job_label: None,
                 container: "kubernetes.container_name",
                 message: "log",
             },
@@ -190,14 +203,20 @@ pub fn validate_index_pattern(pattern: &str) -> Result<(), ElasticError> {
     }
 }
 
-/// A page request for one pod's history.
+/// A page request for the history of one pod, a workload's pods (#529) or
+/// a whole namespace.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryQuery {
     /// Pod namespace.
     pub namespace: String,
-    /// Pod name.
+    /// Pod name; empty (with no `workload`) for every pod of the namespace.
+    #[serde(default)]
     pub pod: String,
+    /// The pods of a workload instead of `pod`: a regexp on the pod name
+    /// (see [`pod_filter`]). Takes precedence over `pod`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workload: Option<Workload>,
     /// Container filter; `None` for every container.
     #[serde(default)]
     pub container: Option<String>,
@@ -251,11 +270,9 @@ pub const MAX_PAGE: u32 = 1000;
 /// (rare).
 pub fn search_body(query: &HistoryQuery, preset: FieldPreset, pit: Option<&str>) -> Value {
     let f = preset.fields();
-    let mut filter = vec![
-        json!({ "term": { f.namespace: query.namespace } }),
-        json!({ "term": { f.pod: query.pod } }),
-        json!({ "range": { "@timestamp": { "gte": query.from, "lte": query.to } } }),
-    ];
+    let mut filter = vec![json!({ "term": { f.namespace: query.namespace } })];
+    filter.extend(pod_filter(query, preset));
+    filter.push(json!({ "range": { "@timestamp": { "gte": query.from, "lte": query.to } } }));
     if let Some(container) = query.container.as_deref().filter(|c| !c.is_empty()) {
         filter.push(json!({ "term": { f.container: container } }));
     }
@@ -296,6 +313,31 @@ pub fn search_body(query: &HistoryQuery, preset: FieldPreset, pit: Option<&str>)
     body
 }
 
+/// The pod clause of a history search: a `term` on one pod, a `regexp` on
+/// the keyword pod name for a workload's pods (the regexp Prometheus uses,
+/// so `api` never matches `api-gateway-…`; Lucene regexps match the whole
+/// term), or `None` for the whole namespace. A Job's pods also match its
+/// `job-name` label when the preset stores it.
+pub fn pod_filter(query: &HistoryQuery, preset: FieldPreset) -> Option<Value> {
+    let f = preset.fields();
+    let Some(workload) = &query.workload else {
+        return (!query.pod.is_empty()).then(|| json!({ "term": { f.pod: query.pod } }));
+    };
+    let Some(pods) = workload_pods_regex(workload, lucene_regex_literal) else {
+        return Some(json!({ "term": { f.pod: workload.name() } }));
+    };
+    let regexp = json!({ "regexp": { f.pod_keyword: { "value": pods } } });
+    match (workload, f.job_label) {
+        (Workload::Job { name }, Some(label)) => Some(json!({
+            "bool": {
+                "should": [regexp, { "term": { label: name } }],
+                "minimum_should_match": 1
+            }
+        })),
+        _ => Some(regexp),
+    }
+}
+
 /// One history line.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -308,6 +350,10 @@ pub struct HistoryLine {
     pub message: String,
     /// Container, when the document names it.
     pub container: Option<String>,
+    /// Pod, when the document names it (a workload's or namespace's history
+    /// spans several pods, #529).
+    #[serde(default)]
+    pub pod: Option<String>,
     /// The stored `_source`, compact JSON (what JSON / ECS modes render).
     pub document: String,
     /// `_index` of the hit (with `doc_id`, drops repeats between pages).
@@ -397,6 +443,7 @@ pub fn map_response(
                 time: string_field(&source, "@timestamp"),
                 level,
                 container: string_field(&source, f.container),
+                pod: string_field(&source, f.pod),
                 message: message.trim_end_matches(['\n', '\r']).to_string(),
                 document: source.to_string(),
                 doc_index: hit.get("_index").and_then(Value::as_str).map(str::to_owned),
@@ -502,33 +549,62 @@ fn lucene_regex_literal(name: &str) -> String {
         .collect()
 }
 
-/// Lucene query for a deployment's pods: ECS has no deployment field, so
-/// the pod name must match the regexp Prometheus uses for the deployment
-/// (`name-<hash>-<suffix>`, with the same alphabet and long-name cut), which
-/// keeps `name-gateway-…` or `name-0` pods out. Lucene regexps match the
-/// whole term.
-pub fn deployment_lucene_query(preset: FieldPreset, namespace: &str, deployment: &str) -> String {
-    let f = preset.fields();
-    format!(
-        "{}:{} AND {}:/{}/",
-        f.namespace,
-        kql(namespace),
-        f.pod,
-        crate::prometheus::deployment_pods_regex(deployment, lucene_regex_literal)
-    )
+/// Escapes a field name for a Lucene query string (`/` and `-` in label
+/// fields such as `batch_kubernetes_io/job-name`).
+fn lucene_field(name: &str) -> String {
+    name.chars()
+        .flat_map(|c| {
+            let plain = c.is_ascii_alphanumeric() || c == '.' || c == '_';
+            (!plain)
+                .then_some('\\')
+                .into_iter()
+                .chain(std::iter::once(c))
+        })
+        .collect()
 }
 
-/// Kibana Discover URL for a deployment's logs over `[from, to]`, a Lucene
-/// query on its pods (see [`deployment_lucene_query`], #526).
-pub fn kibana_deployment_discover_url(
+/// Lucene query for a workload's pods in `namespace` (#526, #529): ECS has
+/// no deployment field, so the pod name must match the regexp of
+/// [`pod_filter`] (same alphabet and long-name cut as Prometheus), which
+/// keeps `name-gateway-…` or `name-0` pods out. A Job also matches its
+/// `job-name` label when the preset stores it. One pod is matched by name,
+/// and `None` is the whole namespace.
+pub fn workload_lucene_query(
+    preset: FieldPreset,
+    namespace: &str,
+    workload: Option<&Workload>,
+) -> String {
+    let f = preset.fields();
+    let mut query = format!("{}:{}", f.namespace, kql(namespace));
+    let Some(workload) = workload else {
+        return query;
+    };
+    let pods = match workload_pods_regex(workload, lucene_regex_literal) {
+        Some(pods) => format!("{}:/{pods}/", f.pod_keyword),
+        None => format!("{}:{}", f.pod, kql(workload.name())),
+    };
+    match (workload, f.job_label) {
+        (Workload::Job { name }, Some(label)) => query.push_str(&format!(
+            " AND ({pods} OR {}:{})",
+            lucene_field(label),
+            kql(name)
+        )),
+        _ => query.push_str(&format!(" AND {pods}")),
+    }
+    query
+}
+
+/// Kibana Discover URL for a workload's logs over `[from, to]`, the Lucene
+/// query of [`workload_lucene_query`] (the same filter as the history).
+pub fn kibana_workload_discover_url(
     kibana_base: &str,
     preset: FieldPreset,
     namespace: &str,
-    deployment: &str,
+    workload: Option<&Workload>,
     from: &str,
     to: &str,
 ) -> String {
-    let query = deployment_lucene_query(preset, namespace, deployment);
+    let query = workload_lucene_query(preset, namespace, workload);
     discover_link(kibana_base, "lucene", &query, from, to)
 }
 

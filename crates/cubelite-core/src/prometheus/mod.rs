@@ -143,6 +143,29 @@ pub enum Workload {
         /// StatefulSet name.
         name: String,
     },
+    /// A DaemonSet's pods (`name-<suffix>`, #529).
+    DaemonSet {
+        /// DaemonSet name.
+        name: String,
+    },
+    /// A Job's pods (`name-<suffix>`, #529).
+    Job {
+        /// Job name.
+        name: String,
+    },
+}
+
+impl Workload {
+    /// The pod's or the workload's name.
+    pub fn name(&self) -> &str {
+        match self {
+            Workload::Pod { name }
+            | Workload::Deployment { name }
+            | Workload::StatefulSet { name }
+            | Workload::DaemonSet { name }
+            | Workload::Job { name } => name,
+        }
+    }
 }
 
 /// Chart ranges (spec §4).
@@ -283,22 +306,39 @@ pub(crate) fn deployment_pods_regex(name: &str, literal: fn(&str) -> String) -> 
     format!("{}(-{SAFE}{{0,10}}-?)?{SAFE}{{5}}", literal(&kept))
 }
 
-fn deployment_pods(name: &str) -> String {
-    deployment_pods_regex(name, regex_literal)
+/// Regex for pods named by `generateName: name-` (DaemonSets, Jobs): the
+/// prefix, cut at 58 characters, then the 5-character suffix.
+fn generated_pods_regex(name: &str, literal: fn(&str) -> String) -> String {
+    let prefix: String = format!("{name}-")
+        .chars()
+        .take(GENERATED_PREFIX_MAX)
+        .collect();
+    format!("{}{SAFE}{{5}}", literal(&prefix))
+}
+
+/// Regex for the pods of a workload (#529); `None` for one pod, matched by
+/// name. Shared by the Prometheus selector and the Elasticsearch history
+/// and Kibana queries.
+pub(crate) fn workload_pods_regex(
+    workload: &Workload,
+    literal: fn(&str) -> String,
+) -> Option<String> {
+    match workload {
+        Workload::Pod { .. } => None,
+        Workload::Deployment { name } => Some(deployment_pods_regex(name, literal)),
+        Workload::StatefulSet { name } => Some(format!("{}-[0-9]+", literal(name))),
+        Workload::DaemonSet { name } | Workload::Job { name } => {
+            Some(generated_pods_regex(name, literal))
+        }
+    }
 }
 
 /// Label matchers for a workload: namespace, pod (exact or regex) and the
 /// optional `cluster` label.
 pub fn selector(namespace: &str, workload: &Workload, cluster: Option<&str>) -> String {
-    let pod = match workload {
-        Workload::Pod { name } => format!("pod={}", escape(name)),
-        Workload::Deployment { name } => format!("pod=~{}", escape(&deployment_pods(name))),
-        Workload::StatefulSet { name } => {
-            format!(
-                "pod=~{}",
-                escape(&format!("{}-[0-9]+", regex_literal(name)))
-            )
-        }
+    let pod = match workload_pods_regex(workload, regex_literal) {
+        Some(pods) => format!("pod=~{}", escape(&pods)),
+        None => format!("pod={}", escape(workload.name())),
     };
     let mut out = format!("namespace={}, {pod}", escape(namespace));
     if let Some(c) = cluster.map(str::trim).filter(|c| !c.is_empty()) {

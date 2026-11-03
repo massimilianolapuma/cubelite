@@ -756,7 +756,10 @@ export type EsAuthMethod = EsAuth["method"];
 
 export type HistoryQuery = {
   namespace: string;
+  /** One pod; "" (with no `workload`) for the whole namespace. */
   pod: string;
+  /** A workload's pods instead of `pod` (#529), matched by a regexp in the core. */
+  workload?: Workload | null;
   container: string | null;
   /** RFC 3339 or date math (`now-1h`). */
   from: string;
@@ -779,6 +782,8 @@ export type HistoryLine = {
   level: LogLevel;
   message: string;
   container: string | null;
+  /** Pod the line came from, when the document names it (#529). */
+  pod?: string | null;
   /** Stored `_source`, compact JSON. */
   document: string;
   /** `_index` and `_id` of the hit (drop lines repeated between pages). */
@@ -894,16 +899,19 @@ export function openKibanaDiscover(args: {
   return invoke("open_kibana_discover", args);
 }
 
-/** Opens Kibana Discover for a deployment's pods, matched by name prefix (#526). */
-export function openKibanaDeployment(args: {
+/**
+ * Opens Kibana Discover for a workload's pods, or the whole namespace
+ * without one (#526, #529): the same filter as the history.
+ */
+export function openKibanaWorkload(args: {
   kibanaUrl: string;
   preset: FieldPreset;
   namespace: string;
-  deployment: string;
+  workload: Workload | null;
   from: string;
   to: string;
 }): Promise<void> {
-  return invoke("open_kibana_deployment", args);
+  return invoke("open_kibana_workload", args);
 }
 
 /** Opens Kibana Discover without a filter (#526). */
@@ -945,7 +953,9 @@ export type MetricsRange = "1h" | "6h" | "24h" | "7d";
 export type Workload =
   | { kind: "pod"; name: string }
   | { kind: "deployment"; name: string }
-  | { kind: "stateful-set"; name: string };
+  | { kind: "stateful-set"; name: string }
+  | { kind: "daemon-set"; name: string }
+  | { kind: "job"; name: string };
 
 export type Chart =
   | "cpu"

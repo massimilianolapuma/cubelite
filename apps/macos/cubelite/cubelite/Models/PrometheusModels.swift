@@ -159,6 +159,19 @@ enum Workload: Hashable, Sendable {
     case deployment(String)
     /// A StatefulSet's pods (`name-<ordinal>`).
     case statefulSet(String)
+    /// A DaemonSet's pods (`name-<suffix>`, #529).
+    case daemonSet(String)
+    /// A Job's pods (`name-<suffix>`, #529).
+    case job(String)
+
+    /// The pod's or the workload's name.
+    var name: String {
+        switch self {
+        case .pod(let name), .deployment(let name), .statefulSet(let name), .daemonSet(let name),
+            .job(let name):
+            name
+        }
+    }
 }
 
 /// Chart ranges (spec §4).
@@ -330,14 +343,28 @@ enum Prometheus {
         "\(literal(name))-[0-9]+"
     }
 
+    /// Regex for pods named by `generateName: name-` (DaemonSets, Jobs): the
+    /// prefix, cut at 58 characters, then the 5-character suffix.
+    static func generatedPods(_ name: String, literal: (String) -> String = regexLiteral) -> String {
+        "\(literal(String("\(name)-".prefix(generatedPrefixMax))))\(safe){5}"
+    }
+
+    /// Regex for the pods of a workload (#529); nil for one pod, matched by
+    /// name. Shared by the selector, the Elasticsearch history and Kibana
+    /// links, and the Logs view's live pods; mirrors the core's
+    /// `workload_pods_regex`.
+    static func workloadPods(_ workload: Workload, literal: (String) -> String = regexLiteral) -> String? {
+        switch workload {
+        case .pod: nil
+        case .deployment(let name): deploymentPods(name, literal: literal)
+        case .statefulSet(let name): statefulSetPods(name, literal: literal)
+        case .daemonSet(let name), .job(let name): generatedPods(name, literal: literal)
+        }
+    }
+
     /// Label matchers for a workload: namespace, pod and the optional `cluster`.
     static func selector(namespace: String, workload: Workload, cluster: String?) -> String {
-        let pod: String
-        switch workload {
-        case .pod(let name): pod = "pod=\(escape(name))"
-        case .deployment(let name): pod = "pod=~\(escape(deploymentPods(name)))"
-        case .statefulSet(let name): pod = "pod=~\(escape(statefulSetPods(name)))"
-        }
+        let pod = workloadPods(workload).map { "pod=~\(escape($0))" } ?? "pod=\(escape(workload.name))"
         var out = "namespace=\(escape(namespace)), \(pod)"
         if let c = cluster?.trimmingCharacters(in: .whitespaces), !c.isEmpty {
             out += ", cluster=\(escape(c))"

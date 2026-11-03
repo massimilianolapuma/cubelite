@@ -7,12 +7,13 @@
 
 use cubelite_core::elastic::transport::{self, DetectedService, EsConnection, EsInfo};
 use cubelite_core::elastic::{
-    kibana_deployment_discover_url, kibana_discover_home, kibana_discover_url as discover_url,
+    kibana_discover_home, kibana_discover_url as discover_url, kibana_workload_discover_url,
     ElasticError, EsAuth, EsEndpoint, EsTarget, FieldPreset, HistoryCursor, HistoryPage,
     HistoryQuery, KibanaService,
 };
 
 use cubelite_core::integration;
+use cubelite_core::prometheus::Workload;
 use cubelite_core::KubeClient;
 
 use super::vault;
@@ -312,20 +313,27 @@ pub fn open_kibana_discover(
     open_in_browser(&app, target)
 }
 
-/// Opens Kibana Discover for a deployment's pods (#526).
+/// Opens Kibana Discover for a workload's pods, or a whole namespace
+/// without one (#526, #529): the same filter as the history.
 #[tauri::command]
-pub fn open_kibana_deployment(
+pub fn open_kibana_workload(
     app: tauri::AppHandle,
     kibana_url: String,
     preset: FieldPreset,
     namespace: String,
-    deployment: String,
+    workload: Option<Workload>,
     from: String,
     to: String,
 ) -> Result<(), String> {
     let base = http_base(&kibana_url, "Kibana")?;
-    let target =
-        kibana_deployment_discover_url(base.as_str(), preset, &namespace, &deployment, &from, &to);
+    let target = kibana_workload_discover_url(
+        base.as_str(),
+        preset,
+        &namespace,
+        workload.as_ref(),
+        &from,
+        &to,
+    );
     open_in_browser(&app, target)
 }
 

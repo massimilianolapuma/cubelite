@@ -171,6 +171,42 @@ test("History reads a pod's logs from Elasticsearch and opens Kibana (#501)", as
   await expect(page.getByText("● Following")).toBeVisible();
 });
 
+test("Logs view reads a deployment's history from Elasticsearch (#529)", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "cubelite.elastic.endpoints",
+      JSON.stringify({
+        "prod-aks": {
+          target: { kind: "in-cluster", namespace: "logging", service: "quickstart-es-http", port: 9200, https: true },
+          indexPattern: "logs-*",
+          preset: "ecs",
+          kibanaUrl: "https://kibana.example",
+          skipTlsVerify: false,
+        },
+      }),
+    );
+  });
+  await boot(page);
+  await page.getByRole("complementary").getByText("Deployments", { exact: true }).click();
+  await page.getByText("api", { exact: true }).click();
+  await page.getByRole("dialog", { name: "api" }).getByRole("button", { name: "Logs", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Workload" })).toHaveValue("deployment:default/api");
+
+  await page.getByTestId("logs-source").getByRole("radio", { name: "History" }).click();
+  await expect(page.getByText("e2e-history-newest")).toBeVisible();
+  const query = await page.evaluate(() => window.__lastElasticSearch);
+  expect(query).toMatchObject({
+    context: "prod-aks",
+    query: { namespace: "default", pod: "", workload: { kind: "deployment", name: "api" }, from: "now-1h" },
+  });
+
+  await page.getByRole("button", { name: "Open in Kibana" }).click();
+  const opened = await page.evaluate(() => window.__kibanaOpened);
+  expect(opened).toMatchObject({ kibanaUrl: "https://kibana.example", workload: { kind: "deployment", name: "api" } });
+
+  await page.getByTestId("logs-source").getByRole("radio", { name: "Live" }).click();
+  await expect(page.getByText("● Following")).toBeVisible();
+});
 
 test("Open in Kibana forwards to an in-cluster Kibana without a URL (#505)", async ({ page }) => {
   await page.addInitScript(() => {

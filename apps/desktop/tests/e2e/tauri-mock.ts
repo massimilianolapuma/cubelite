@@ -262,7 +262,8 @@ export function tauriMockScript(): string {
         window.__kibanaForwards = (window.__kibanaForwards ?? 0) + 1;
         return 45601;
       }
-      case "open_kibana_discover": {
+      case "open_kibana_discover":
+      case "open_kibana_workload": {
         window.__kibanaOpened = args;
         return null;
       }

@@ -457,8 +457,8 @@ struct LogToolbar: View {
 }
 
 /// History range and Elasticsearch query (#503): Return or a new range
-/// runs the search again.
-private struct HistoryQueryControls: View {
+/// runs the search again. Shared with the Logs view (#529).
+struct HistoryQueryControls: View {
 
     let history: LogHistory
 

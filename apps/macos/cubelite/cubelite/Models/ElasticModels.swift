@@ -21,6 +21,14 @@ enum FieldPreset: String, Codable, CaseIterable, Sendable {
     struct Fields: Equatable, Sendable {
         let namespace: String
         let pod: String
+        /// The pod name as a keyword, for regexp queries on a workload's pods
+        /// (#529): Fluent Bit's dynamic mapping makes the name `text` with a
+        /// `.keyword` subfield.
+        let podKeyword: String
+        /// The `batch.kubernetes.io/job-name` label, when the shipper stores
+        /// it under a predictable field (Filebeat / Elastic Agent dedot label
+        /// keys); a Job's history also matches it.
+        let jobLabel: String?
         let container: String
         let message: String
     }
@@ -30,10 +38,13 @@ enum FieldPreset: String, Codable, CaseIterable, Sendable {
         case .ecs:
             Fields(
                 namespace: "kubernetes.namespace", pod: "kubernetes.pod.name",
+                podKeyword: "kubernetes.pod.name",
+                jobLabel: "kubernetes.labels.batch_kubernetes_io/job-name",
                 container: "kubernetes.container.name", message: "message")
         case .fluentBit:
             Fields(
                 namespace: "kubernetes.namespace_name", pod: "kubernetes.pod_name",
+                podKeyword: "kubernetes.pod_name.keyword", jobLabel: nil,
                 container: "kubernetes.container_name", message: "log")
         }
     }
@@ -201,14 +212,19 @@ extension ElasticError {
     }
 }
 
-/// A page request for one pod's history.
+/// A page request for the history of one pod, a workload's pods (#529) or
+/// a whole namespace.
 struct HistoryQuery: Equatable, Sendable {
     /// Default and maximum page size.
     static let defaultPage = 500
     static let maxPage = 1000
 
     var namespace: String
-    var pod: String
+    /// Pod name; empty (with no `workload`) for every pod of the namespace.
+    var pod = ""
+    /// The pods of a workload instead of `pod`: a regexp on the pod name
+    /// (see `Elastic.podFilter`). Takes precedence over `pod`.
+    var workload: Workload?
     /// Container filter; nil for every container.
     var container: String?
     /// RFC 3339 or Elasticsearch date math (`now-1h`) lower bound.
@@ -251,6 +267,9 @@ struct HistoryLine: Equatable, Sendable {
     var docIndex: String? = nil
     /// `_id` of the hit.
     var docID: String? = nil
+    /// Pod, when the document names it (a workload's or namespace's history
+    /// spans several pods, #529).
+    var pod: String? = nil
 }
 
 /// One page of history, newest first.
@@ -337,9 +356,9 @@ enum Elastic {
         -> JSONValue
     {
         let f = preset.fields
-        var filter: [JSONValue] = [
-            object(["term": object([f.namespace: .string(query.namespace)])]),
-            object(["term": object([f.pod: .string(query.pod)])]),
+        var filter: [JSONValue] = [object(["term": object([f.namespace: .string(query.namespace)])])]
+        if let pods = podFilter(query, preset: preset) { filter.append(pods) }
+        filter += [
             object([
                 "range": object([
                     "@timestamp": object(["gte": .string(query.from), "lte": .string(query.to)])
@@ -384,6 +403,29 @@ enum Elastic {
         return .object(members.map { JSONMember(key: $0.0, value: $0.1) })
     }
 
+    /// The pod clause of a history search: a `term` on one pod, a `regexp`
+    /// on the keyword pod name for a workload's pods (the Prometheus regexp,
+    /// so `api` never matches `api-gateway-…`; Lucene regexps match the
+    /// whole term), or nil for the whole namespace. A Job's pods also match
+    /// its `job-name` label when the preset stores it. Mirrors the core.
+    static func podFilter(_ query: HistoryQuery, preset: FieldPreset) -> JSONValue? {
+        let f = preset.fields
+        guard let workload = query.workload else {
+            return query.pod.isEmpty ? nil : object(["term": object([f.pod: .string(query.pod)])])
+        }
+        guard let pods = Prometheus.workloadPods(workload, literal: luceneRegexLiteral) else {
+            return object(["term": object([f.pod: .string(workload.name)])])
+        }
+        let regexp = object(["regexp": object([f.podKeyword: object(["value": .string(pods)])])])
+        guard case .job(let name) = workload, let label = f.jobLabel else { return regexp }
+        return object([
+            "bool": object([
+                "should": .array([regexp, object(["term": object([label: .string(name)])])]),
+                "minimum_should_match": .number("1"),
+            ])
+        ])
+    }
+
     /// Maps a `_search` response to a history page. The cursor carries the
     /// response's `pit_id` (Elasticsearch may update it between pages).
     static func mapResponse(_ response: JSONValue, preset: FieldPreset, pageSize: Int) throws
@@ -412,7 +454,7 @@ enum Elastic {
             return HistoryLine(
                 time: stringField(source, "@timestamp"), level: level, message: message,
                 container: stringField(source, f.container), document: source.compactText,
-                docIndex: docIndex, docID: docID)
+                docIndex: docIndex, docID: docID, pod: stringField(source, f.pod))
         }
         var total: Int?
         var lowerBound = false
@@ -482,29 +524,50 @@ enum Elastic {
         "\(Integration.trimmedBase(kibanaBase))/app/discover#/"
     }
 
-    /// Kibana Discover for a workload's logs over the last hour (#526): one
-    /// pod (KQL), or a deployment's or StatefulSet's pods. ECS has no
-    /// deployment field, so a Lucene query matches the pod names with the
-    /// same regex as the Prometheus selector (`api-<hash>-<suffix>`, never
-    /// `api-gateway-…`).
+    /// Kibana Discover for a workload's logs since `from` (#526, #529): one
+    /// pod (KQL), else the Lucene query of `workloadLuceneQuery` — the
+    /// history's filter.
     static func kibanaWorkloadURL(
-        kibanaBase: String, preset: FieldPreset, namespace: String, workload: Workload
+        kibanaBase: String, preset: FieldPreset, namespace: String, workload: Workload?,
+        from: String = "now-1h"
     ) -> String {
-        let pods: String
-        switch workload {
-        case .pod(let name):
+        if case .pod(let name)? = workload {
             return kibanaDiscoverURL(
                 kibanaBase: kibanaBase, preset: preset, namespace: namespace, pod: name, container: nil,
-                from: "now-1h", to: "now")
-        case .deployment(let name):
-            pods = Prometheus.deploymentPods(name, literal: luceneRegexLiteral)
-        case .statefulSet(let name):
-            pods = Prometheus.statefulSetPods(name, literal: luceneRegexLiteral)
+                from: from, to: "now")
         }
+        let query = workloadLuceneQuery(preset: preset, namespace: namespace, workload: workload)
+        return kibanaDiscoverURL(kibanaBase: kibanaBase, query: query, language: "lucene", from: from, to: "now")
+    }
+
+    /// Lucene query for a workload's pods in `namespace` (#526, #529): ECS
+    /// has no deployment field, so the pod name must match the regexp of
+    /// `podFilter` (same as the Prometheus selector: `api-<hash>-<suffix>`,
+    /// never `api-gateway-…`). A Job also matches its `job-name` label when
+    /// the preset stores it; nil is the whole namespace. Mirrors the core.
+    static func workloadLuceneQuery(preset: FieldPreset, namespace: String, workload: Workload?) -> String {
         let f = preset.fields
         // Lucene's quoted phrase escapes `\` and `"` like the KQL literal.
-        let query = "\(f.namespace):\(kql(namespace)) AND \(f.pod):/\(pods)/"
-        return kibanaDiscoverURL(kibanaBase: kibanaBase, query: query, language: "lucene", from: "now-1h", to: "now")
+        let query = "\(f.namespace):\(kql(namespace))"
+        guard let workload else { return query }
+        let pods =
+            Prometheus.workloadPods(workload, literal: luceneRegexLiteral).map { "\(f.podKeyword):/\($0)/" }
+            ?? "\(f.pod):\(kql(workload.name))"
+        if case .job(let name) = workload, let label = f.jobLabel {
+            return "\(query) AND (\(pods) OR \(luceneField(label)):\(kql(name)))"
+        }
+        return "\(query) AND \(pods)"
+    }
+
+    /// Escapes a field name for a Lucene query string (`/` and `-` in label
+    /// fields such as `batch_kubernetes_io/job-name`).
+    static func luceneField(_ name: String) -> String {
+        var out = ""
+        for c in name {
+            if !(c.isASCII && (c.isLetter || c.isNumber)) && c != "." && c != "_" { out.append("\\") }
+            out.append(c)
+        }
+        return out
     }
 
     /// Escapes Lucene regexp metacharacters so a name matches literally

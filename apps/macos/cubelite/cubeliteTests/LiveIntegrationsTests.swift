@@ -79,6 +79,25 @@ final class LiveIntegrationsTests: XCTestCase {
             }
         }
 
+        // #529: the deployment's history spans its pods (a regexp on the pod
+        // name), and every line names its pod.
+        let apiPods = Set(pods.map(\.name).filter { $0.hasPrefix("api-") })
+        let workload = try await service.search(
+            context: context, endpoint: endpoint,
+            query: HistoryQuery(
+                namespace: "shop", workload: .deployment("api"), from: "now-1h", to: "now", size: 500))
+        if let next = workload.next {
+            await service.closeCursor(context: context, endpoint: endpoint, cursor: next)
+        }
+        let seen = Set(workload.lines.compactMap(\.pod))
+        print("api pods \(apiPods.sorted()), history from \(seen.sorted())")
+        XCTAssertFalse(workload.lines.isEmpty, "history for deployment api")
+        XCTAssertTrue(workload.lines.allSatisfy { $0.pod != nil }, "every line names its pod")
+        XCTAssertTrue(seen.allSatisfy { $0.hasPrefix("api-") }, "only the deployment's pods")
+        if apiPods.count > 1 {
+            XCTAssertGreaterThan(seen.count, 1, "lines from more than one api pod: \(seen)")
+        }
+
         // In-cluster Kibana through the service's forward (#519).
         let kb = try XCTUnwrap(found.first { $0.kind == .kibana })
         let kibana = KibanaService(namespace: kb.namespace, service: kb.name, port: kb.port, https: kb.https)

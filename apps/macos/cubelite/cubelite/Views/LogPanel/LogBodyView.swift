@@ -411,8 +411,9 @@ struct LogLineRow: View {
     }
 }
 
-/// Empty History body: searching, the search error, or nothing found.
-private struct HistoryEmptyState: View {
+/// Empty History body: searching, the search error, or nothing found
+/// (also the Logs view's, #529).
+struct HistoryEmptyState: View {
     let history: LogHistory
 
     var body: some View {
@@ -424,7 +425,7 @@ private struct HistoryEmptyState: View {
                     .scaledFont(size: 12, weight: .medium, design: .monospaced)
                     .foregroundStyle(DesignTokens.textSecondary)
                 if !history.isLoading, history.started {
-                    Text("nothing in Elasticsearch for \(history.pod) in the last \(history.range.label)")
+                    Text("nothing in Elasticsearch for \(history.subject) in the last \(history.range.label)")
                         .scaledFont(size: 11)
                         .foregroundStyle(DesignTokens.textTertiary)
                 }
