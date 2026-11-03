@@ -20,6 +20,8 @@ declare global {
     __execSent?: string[];
     __lastElasticSearch?: Record<string, unknown>;
     __kibanaOpened?: Record<string, unknown>;
+    __lastPromMetrics?: Record<string, unknown>;
+    __grafanaOpened?: Record<string, unknown>;
     /** Test hook: arguments of the last `apply_resource_yaml` call. */
     __lastApply?: Record<string, unknown>;
   }
@@ -229,6 +231,27 @@ export function tauriMockScript(): string {
         };
       }
       case "elastic_auth_method": return "none";
+      case "prometheus_metrics": {
+        window.__lastPromMetrics = args;
+        const charts = ["cpu", "cpu-request", "cpu-limit", "memory", "memory-request", "memory-limit", "restarts", "network-rx", "network-tx"];
+        const value = { cpu: 0.25, "cpu-request": 0.5, "cpu-limit": 1, memory: 104857600, "memory-request": 134217728, "memory-limit": 268435456, restarts: 2, "network-rx": 2048, "network-tx": 1024 };
+        return {
+          start: 0, end: 3600, step: 15,
+          charts: charts.map((chart) => ({
+            chart,
+            query: "e2e-" + chart,
+            series: [{ label: chart.startsWith("network") ? "" : "api", points: [[0, value[chart] / 2], [1800, value[chart]], [3600, value[chart]]] }],
+            error: null,
+          })),
+        };
+      }
+      case "prometheus_sparklines":
+        return { cpu: { "default/api-0": [[0, 0.1], [120, 0.2], [240, 0.15]] }, memory: { "default/api-0": [[0, 1], [120, 2]] } };
+      case "prometheus_auth_method": return "none";
+      case "open_grafana_explore": {
+        window.__grafanaOpened = args;
+        return null;
+      }
       case "open_kibana_discover": {
         window.__kibanaOpened = args;
         return null;

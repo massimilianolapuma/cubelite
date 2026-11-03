@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Metrics history from Prometheus** (desktop, #510, part of #484): with a
+  Prometheus endpoint set for the cluster (Preferences → Prometheus: detect
+  in-cluster servers or enter an external URL — basic, bearer or Azure CLI
+  for Azure Monitor — with an optional cluster label and Grafana URL), pod
+  and deployment drawers get a Metrics section (CPU and memory with
+  requests and limits, restarts, network over 1 h – 7 d, per container or
+  total, hover values, Open in Grafana) and the Pods and Deployments lists
+  show last-hour sparklines.
 - **Prometheus client** (core + desktop backend, #509, part of #484): the
   core builds the PromQL of a pod's or deployment's CPU, memory, restarts
   and network history, queries an in-cluster Prometheus through the API

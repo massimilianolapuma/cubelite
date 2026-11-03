@@ -126,7 +126,7 @@ fn series_parse_matrix_vector_and_non_finite_values() {
         { "metric": { "container": "web" }, "values": [[1.0, "0.5"], [16.0, "NaN"], [31.0, "+Inf"]] },
         { "metric": { "container": "app" }, "values": [[1.0, "2"]] }
     ] });
-    let series = parse_series(&data, Some("container")).expect("series");
+    let series = parse_series(&data, &["container"]).expect("series");
     assert_eq!(series[0].label, "app", "sorted by label");
     assert_eq!(
         series[1].points,
@@ -134,13 +134,30 @@ fn series_parse_matrix_vector_and_non_finite_values() {
     );
     let vector =
         json!({ "resultType": "vector", "result": [{ "metric": {}, "value": [5.0, "1"] }] });
-    let summed = parse_series(&vector, None).expect("vector");
+    let summed = parse_series(&vector, &[]).expect("vector");
     assert_eq!(summed[0].label, "");
     assert_eq!(summed[0].points, vec![(5.0, Some(1.0))]);
-    assert!(parse_series(&json!({}), None).is_err());
-    assert!(parse_series(&json!({ "result": [] }), None)
+    assert!(parse_series(&json!({}), &[]).is_err());
+    assert!(parse_series(&json!({ "result": [] }), &[])
         .expect("empty")
         .is_empty());
+}
+
+#[test]
+fn sparklines_cover_one_or_every_namespace() {
+    let (cpu, memory) = sparkline_queries(Some("shop"), Some("aks"));
+    assert_eq!(
+        cpu,
+        r#"sum by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace="shop", container!="", container!="POD", cluster="aks"}[5m]))"#
+    );
+    assert!(memory.starts_with("sum by (namespace, pod) (container_memory_working_set_bytes{"));
+    let (all, _) = sparkline_queries(None, None);
+    assert!(!all.contains("namespace="));
+    let data = json!({ "result": [{ "metric": { "namespace": "shop", "pod": "api-0" }, "values": [[1.0, "1"]] }] });
+    assert_eq!(
+        parse_series(&data, &["namespace", "pod"]).expect("series")[0].label,
+        "shop/api-0"
+    );
 }
 
 #[test]

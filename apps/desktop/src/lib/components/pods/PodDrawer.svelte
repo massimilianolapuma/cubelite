@@ -10,6 +10,7 @@
 	import YamlModal from '#lib/components/YamlModal.svelte';
 	import ShellModal from '#lib/components/pods/ShellModal.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
+	import MetricsSection from '#lib/components/metrics/MetricsSection.svelte';
 	import StatusPill from '#lib/components/ui/StatusPill.svelte';
 	import { podStatusLabel, podTone } from '#lib/status.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
@@ -140,6 +141,8 @@
 				</p>
 			{/if}
 		</div>
+
+		<MetricsSection namespace={pod.namespace} workload={{ kind: 'pod', name: pod.name }} />
 
 		{#if labelEntries.length > 0}
 			<div>

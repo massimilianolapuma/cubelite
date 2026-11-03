@@ -1,7 +1,19 @@
 <script lang="ts">
-	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
-	import { DEFAULT_INDEX_PATTERN, describeEndpoint, newEndpoint } from '#lib/elastic.ts';
+	import AuthFields from '#lib/components/integrations/AuthFields.svelte';
+	import FormActions from '#lib/components/integrations/FormActions.svelte';
+	import TargetFields from '#lib/components/integrations/TargetFields.svelte';
+	import { DEFAULT_INDEX_PATTERN, newEndpoint } from '#lib/elastic.ts';
 	import { errorMessage } from '#lib/errors.ts';
+	import {
+		BUTTON_CLASS,
+		INPUT_CLASS,
+		SecretFields,
+		TargetForm,
+		describeTarget,
+		saveCredentials,
+		urlProblem,
+		type FormResult
+	} from '#lib/integration-form.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { elastic } from '#lib/stores/elastic.svelte.ts';
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
@@ -22,31 +34,18 @@
 	// (#501, spec §5.2). Secrets go straight to the OS keychain and are never
 	// read back; the form only knows which method is stored.
 
-	type Mode = 'off' | 'in-cluster' | 'external';
-
 	const context = $derived(app.activeCluster);
 	const saved = $derived(elastic.endpointFor(context));
 
-	let mode = $state<Mode>('off');
-	let namespace = $state('');
-	let service = $state('');
-	let port = $state(9200);
-	let https = $state(true);
-	let url = $state('');
+	const form = new TargetForm(9200, true);
+	const auth = new SecretFields<EsAuthMethod>();
 	let indexPattern = $state(DEFAULT_INDEX_PATTERN);
 	let preset = $state<FieldPreset>('ecs');
 	let kibanaUrl = $state('');
-	let skipTlsVerify = $state(false);
-
-	let authMethod = $state<EsAuthMethod>('none');
-	let username = $state('');
-	let password = $state('');
-	let secret = $state('');
-	let storedMethod = $state<EsAuthMethod | null>(null);
 
 	let detected = $state<DetectedService[] | null>(null);
 	let busy = $state<'detect' | 'test' | 'save' | 'eck' | null>(null);
-	let result = $state<{ ok: boolean; text: string } | null>(null);
+	let result = $state<FormResult | null>(null);
 
 	// Load the saved endpoint whenever the context changes.
 	$effect(() => {
@@ -54,35 +53,20 @@
 		void context;
 		result = null;
 		detected = null;
-		password = '';
-		secret = '';
+		auth.clearSecrets();
 		if (!e) {
 			// Nothing from the previous context may leak into this one.
-			mode = 'off';
-			namespace = '';
-			service = '';
-			port = 9200;
-			https = true;
-			url = '';
+			form.reset();
+			auth.reset();
 			indexPattern = DEFAULT_INDEX_PATTERN;
 			preset = 'ecs';
 			kibanaUrl = '';
-			skipTlsVerify = false;
-			authMethod = 'none';
-			username = '';
-			storedMethod = null;
 			return;
 		}
-		mode = e.target.kind;
-		if (e.target.kind === 'in-cluster') {
-			({ namespace, service, port, https } = e.target);
-		} else {
-			url = e.target.url;
-		}
+		form.load(e.target, e.skipTlsVerify);
 		indexPattern = e.indexPattern;
 		preset = e.preset;
 		kibanaUrl = e.kibanaUrl ?? '';
-		skipTlsVerify = e.skipTlsVerify;
 		void refreshStoredMethod(e);
 	});
 
@@ -92,103 +76,50 @@
 		try {
 			const method = await elasticAuthMethod(ctx, e);
 			// A late answer for another context must not land here.
-			if (ctx !== app.activeCluster) return;
-			storedMethod = method;
-			authMethod = method;
+			if (ctx === app.activeCluster) auth.setStored(method);
 		} catch {
-			if (ctx === app.activeCluster) storedMethod = null;
+			if (ctx === app.activeCluster) auth.stored = null;
 		}
 	}
 
-	/** Credentials embedded in a URL would bypass the keychain. */
-	function urlProblem(value: string): string | null {
-		const v = value.trim();
-		if (!v) return null;
-		try {
-			const u = new URL(v);
-			if (!['http:', 'https:'].includes(u.protocol)) return 'Use an http:// or https:// URL.';
-			if (u.username || u.password) return 'Remove the credentials from the URL; use the authentication fields.';
-			return null;
-		} catch {
-			return 'Not a valid URL.';
-		}
-	}
-
-	const urlError = $derived(mode === 'external' ? urlProblem(url) : null);
-	const kibanaError = $derived(mode !== 'off' ? urlProblem(kibanaUrl) : null);
-
-	/** What stored credentials are bound to (mirrors the backend's binding). */
-	function bindingOf(e: EsEndpoint): string {
-		const t = e.target;
-		let origin: string;
-		if (t.kind === 'external') {
-			try {
-				origin = new URL(t.url).origin;
-			} catch {
-				origin = t.url;
-			}
-		} else {
-			origin = `in-cluster:${t.namespace}/${t.service}:${t.port}:${t.https}`;
-		}
-		return `${origin}|${e.skipTlsVerify}`;
-	}
-
-	const modeSegments: { value: Mode; label: string }[] = [
-		{ value: 'off', label: 'Off' },
-		{ value: 'in-cluster', label: 'In cluster' },
-		{ value: 'external', label: 'External' }
-	];
+	const kibanaError = $derived(form.mode === 'off' ? null : urlProblem(kibanaUrl));
+	const incomplete = $derived(form.incomplete || kibanaError !== null);
 
 	function draft(): EsEndpoint | null {
-		if (mode === 'off') return null;
-		const target: EsEndpoint['target'] =
-			mode === 'in-cluster'
-				? { kind: 'in-cluster', namespace: namespace.trim(), service: service.trim(), port, https }
-				: { kind: 'external', url: url.trim() };
+		const target = form.target();
+		if (!target) return null;
 		return {
 			...newEndpoint(target),
 			indexPattern: indexPattern.trim() || DEFAULT_INDEX_PATTERN,
 			preset,
 			kibanaUrl: kibanaUrl.trim() || null,
-			skipTlsVerify
+			skipTlsVerify: form.skipTlsVerify
 		};
 	}
 
-	const incomplete = $derived.by(() => {
-		if (urlError || kibanaError) return true;
-		if (mode === 'in-cluster') return !namespace.trim() || !service.trim() || !port;
-		if (mode === 'external') return !url.trim();
-		return false;
-	});
-
 	/** Auth typed in the form, or null to use the stored one. */
 	function typedAuth(): EsAuth | null {
-		switch (authMethod) {
+		switch (auth.method) {
 			case 'none':
-				return storedMethod === 'none' ? null : { method: 'none' };
+				return auth.stored === 'none' ? null : { method: 'none' };
 			case 'basic':
-				return username && password ? { method: 'basic', username, password } : null;
+				return auth.username && auth.password
+					? { method: 'basic', username: auth.username, password: auth.password }
+					: null;
 			case 'api-key':
-				return secret ? { method: 'api-key', key: secret } : null;
+				return auth.secret ? { method: 'api-key', key: auth.secret } : null;
 			case 'bearer':
-				return secret ? { method: 'bearer', token: secret } : null;
+				return auth.secret ? { method: 'bearer', token: auth.secret } : null;
 			case 'eck-user':
 				return null;
 		}
 	}
 
-	function pick(svc: DetectedService) {
-		namespace = svc.namespace;
-		service = svc.name;
-		port = svc.port;
-		https = svc.https;
-	}
-
-	async function detect() {
-		if (!context) return;
-		busy = 'detect';
+	async function run(kind: NonNullable<typeof busy>, task: () => Promise<void>) {
+		busy = kind;
+		result = null;
 		try {
-			detected = await elasticDetect(app.kubeconfigPath, context);
+			await task();
 		} catch (e) {
 			result = { ok: false, text: errorMessage(e) };
 		} finally {
@@ -196,83 +127,80 @@
 		}
 	}
 
-	async function test() {
+	function detect() {
+		const ctx = context;
+		if (!ctx) return;
+		void run('detect', async () => {
+			detected = await elasticDetect(app.kubeconfigPath, ctx);
+		});
+	}
+
+	function test() {
 		const endpoint = draft();
-		if (!context || !endpoint) return;
-		busy = 'test';
-		result = null;
-		try {
-			const info = await elasticTest(app.kubeconfigPath, context, endpoint, typedAuth() ?? undefined);
+		const ctx = context;
+		if (!ctx || !endpoint) return;
+		void run('test', async () => {
+			const info = await elasticTest(app.kubeconfigPath, ctx, endpoint, typedAuth() ?? undefined);
 			const parts = [`Elasticsearch ${info.version}`, info.clusterName];
 			if (info.health) parts.push(`health ${info.health}`);
 			if (info.indices !== null) parts.push(`${info.indices} matching indices or data streams`);
 			result = { ok: true, text: parts.filter(Boolean).join(' · ') };
-		} catch (e) {
-			result = { ok: false, text: errorMessage(e) };
-		} finally {
-			busy = null;
-		}
+		});
 	}
 
-	async function save() {
-		if (!context) return;
+	function save() {
+		const ctx = context;
+		if (!ctx) return;
 		const endpoint = draft();
-		busy = 'save';
-		result = null;
-		try {
-			if (endpoint) {
-				const auth = typedAuth();
-				const moved = saved !== null && bindingOf(saved) !== bindingOf(endpoint);
-				if (authMethod === 'eck-user' && (storedMethod !== 'eck-user' || moved)) {
-					storedMethod = await elasticUseEckCredentials(app.kubeconfigPath, context, endpoint);
-				} else if (auth) {
-					await elasticSaveAuth(context, endpoint, auth);
-				} else if (moved && storedMethod && storedMethod !== 'none') {
-					// Stored secrets only work with the endpoint they were saved for.
-					result = {
-						ok: false,
-						text: 'The endpoint or TLS setting changed: enter the credentials again (or choose No authentication).'
-					};
-					return;
+		void run('save', async () => {
+			const refused = await saveCredentials({
+				saved,
+				endpoint,
+				typed: typedAuth(),
+				storedMethod: auth.stored,
+				none: { method: 'none' } as EsAuth,
+				save: (e, a) => elasticSaveAuth(ctx, e, a),
+				special: async (e, moved) => {
+					if (auth.method !== 'eck-user' || (auth.stored === 'eck-user' && !moved)) return false;
+					auth.stored = await elasticUseEckCredentials(app.kubeconfigPath, ctx, e);
+					return true;
 				}
-				password = '';
-				secret = '';
-			} else if (saved) {
-				// Turning it off also removes the stored secret and open connection.
-				await elasticSaveAuth(context, saved, { method: 'none' });
+			});
+			if (refused) {
+				result = refused;
+				return;
 			}
-			elastic.setEndpoint(context, endpoint);
+			auth.clearSecrets();
+			elastic.setEndpoint(ctx, endpoint);
 			if (endpoint) await refreshStoredMethod(endpoint);
-			toasts.push(endpoint ? `Elasticsearch saved for ${context}` : `Elasticsearch off for ${context}`, 'ok');
-		} catch (e) {
-			result = { ok: false, text: errorMessage(e) };
-		} finally {
-			busy = null;
-		}
+			toasts.push(endpoint ? `Elasticsearch saved for ${ctx}` : `Elasticsearch off for ${ctx}`, 'ok');
+		});
 	}
 
-	async function useEck() {
+	function useEck() {
 		const endpoint = draft();
-		if (!context || !endpoint) return;
-		busy = 'eck';
-		try {
-			storedMethod = await elasticUseEckCredentials(app.kubeconfigPath, context, endpoint);
-			authMethod = storedMethod;
+		const ctx = context;
+		if (!ctx || !endpoint) return;
+		void run('eck', async () => {
+			auth.setStored(await elasticUseEckCredentials(app.kubeconfigPath, ctx, endpoint));
 			result = {
 				ok: true,
 				text: 'ECK elastic user found (read from the cluster on each connection). Save to use this endpoint.'
 			};
-		} catch (e) {
-			result = { ok: false, text: errorMessage(e) };
-		} finally {
-			busy = null;
-		}
+		});
 	}
 
-	const input =
-		'focus-ring h-7 w-full rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled';
-	const button =
-		'focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110 disabled:opacity-50';
+	const authOptions = $derived([
+		{ value: 'none', label: 'No authentication' },
+		{ value: 'basic', label: 'User and password' },
+		{ value: 'api-key', label: 'API key' },
+		{ value: 'bearer', label: 'Bearer token' },
+		...(form.mode === 'in-cluster' ? [{ value: 'eck-user', label: 'ECK elastic user' }] : [])
+	]);
+	const secretMethods = {
+		'api-key': { label: 'API key', placeholder: 'encoded API key (id:key, base64)' },
+		bearer: { label: 'Bearer token', placeholder: 'token' }
+	};
 </script>
 
 <section data-testid="elastic-prefs">
@@ -284,123 +212,78 @@
 	</div>
 	{#if context}
 		<div class="flex flex-col gap-2 rounded-md border border-border-faint bg-surface-window px-2.5 py-2">
-			<div class="flex items-center justify-between gap-3">
-				<span class="type-caption text-text-secondary">Log history source</span>
-				<SegmentedControl segments={modeSegments} bind:value={mode} />
-			</div>
+			<TargetFields
+				{form}
+				sourceLabel="Log history source"
+				urlLabel="Elasticsearch URL"
+				urlPlaceholder="https://my-deployment.es.example.com:9243"
+				httpsLabel="HTTPS (ECK default)"
+				detectHint="Finds Elasticsearch and Kibana services in the cluster."
+				detecting={busy === 'detect'}
+				disabled={busy !== null}
+				onDetect={detect}
+			>
+				{#snippet detected()}
+					{@render detectedList()}
+				{/snippet}
+			</TargetFields>
 
-			{#if mode === 'in-cluster'}
-				<div class="flex items-center gap-2">
-					<button type="button" class={button} disabled={busy !== null} onclick={() => void detect()}>
-						{busy === 'detect' ? 'Detecting…' : 'Detect'}
-					</button>
-					<span class="type-caption text-text-tertiary">Finds Elasticsearch and Kibana services in the cluster.</span>
-				</div>
-				{#if detected}
-					{#if detected.length === 0}
-						<p class="type-caption text-text-tertiary">No Elasticsearch or Kibana service found.</p>
-					{:else}
-						<ul class="flex flex-col gap-0.5" aria-label="Detected services">
-							{#each detected as svc (svc.namespace + '/' + svc.name)}
-								<li class="flex items-center gap-2">
-									<span class="type-data-sm flex-1 truncate text-text-secondary">
-										{svc.kind} · {svc.namespace}/{svc.name}:{svc.port}{svc.https ? ' (https)' : ''}
-									</span>
-									{#if svc.kind === 'elasticsearch'}
-										<button
-											type="button"
-											class="focus-ring type-caption rounded-sm text-accent hover:brightness-110"
-											onclick={() => pick(svc)}>Use</button
-										>
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				{/if}
-				<div class="grid grid-cols-[1fr_1.4fr_5rem] gap-2">
-					<input class={input} aria-label="Namespace" placeholder="namespace" bind:value={namespace} />
-					<input class={input} aria-label="Service" placeholder="service" bind:value={service} />
-					<input class={input} aria-label="Port" type="number" min="1" max="65535" bind:value={port} />
-				</div>
-				<label class="type-caption flex items-center gap-2 text-text-secondary">
-					<input type="checkbox" bind:checked={https} /> HTTPS (ECK default)
-				</label>
-			{:else if mode === 'external'}
-				<input class={input} aria-label="Elasticsearch URL" placeholder="https://my-deployment.es.example.com:9243" bind:value={url} />
-				{#if urlError}<p class="type-caption text-status-err">{urlError}</p>{/if}
-			{/if}
-
-			{#if mode !== 'off'}
+			{#if form.mode !== 'off'}
 				<div class="grid grid-cols-[1fr_9rem] gap-2">
-					<input class={input} aria-label="Index pattern" placeholder={DEFAULT_INDEX_PATTERN} bind:value={indexPattern} />
-					<select class={input} aria-label="Log shipper" bind:value={preset}>
+					<input class={INPUT_CLASS} aria-label="Index pattern" placeholder={DEFAULT_INDEX_PATTERN} bind:value={indexPattern} />
+					<select class={INPUT_CLASS} aria-label="Log shipper" bind:value={preset}>
 						<option value="ecs" title="Elastic Agent, Filebeat: kubernetes.pod.name, message">ECS fields</option>
 						<option value="fluent-bit" title="Fluent Bit, Fluentd: kubernetes.pod_name, log">Fluent Bit fields</option>
 					</select>
 				</div>
-				<input class={input} aria-label="Kibana URL" placeholder="Kibana URL (optional), e.g. https://kibana.example.com" bind:value={kibanaUrl} />
+				<input class={INPUT_CLASS} aria-label="Kibana URL" placeholder="Kibana URL (optional), e.g. https://kibana.example.com" bind:value={kibanaUrl} />
 				{#if kibanaError}<p class="type-caption text-status-err">{kibanaError}</p>{/if}
 
-				<div class="flex items-center gap-2">
-					<select class="{input} w-40" aria-label="Authentication" bind:value={authMethod}>
-						<option value="none">No authentication</option>
-						<option value="basic">User and password</option>
-						<option value="api-key">API key</option>
-						<option value="bearer">Bearer token</option>
-						{#if mode === 'in-cluster'}<option value="eck-user">ECK elastic user</option>{/if}
-					</select>
-					{#if storedMethod && storedMethod !== 'none'}
-						<span class="type-caption text-text-tertiary">saved in the keychain: {storedMethod}</span>
-					{/if}
-				</div>
-				{#if authMethod === 'basic'}
-					<div class="grid grid-cols-2 gap-2">
-						<input class={input} aria-label="Username" placeholder="username" autocomplete="off" bind:value={username} />
-						<input class={input} aria-label="Password" type="password" placeholder={storedMethod === 'basic' ? '•••••• (saved)' : 'password'} autocomplete="off" bind:value={password} />
-					</div>
-				{:else if authMethod === 'api-key' || authMethod === 'bearer'}
-					<input
-						class={input}
-						aria-label={authMethod === 'api-key' ? 'API key' : 'Bearer token'}
-						type="password"
-						autocomplete="off"
-						placeholder={storedMethod === authMethod ? '•••••• (saved)' : authMethod === 'api-key' ? 'encoded API key (id:key, base64)' : 'token'}
-						bind:value={secret}
-					/>
-				{:else if authMethod === 'eck-user'}
-					<div class="flex items-center gap-2">
-						<button type="button" class={button} disabled={busy !== null || incomplete} onclick={() => void useEck()}>
-							{busy === 'eck' ? 'Checking…' : 'Use ECK credentials'}
-						</button>
-						<span class="type-caption text-text-tertiary">Read from the cluster on each connection, never stored.</span>
-					</div>
-				{/if}
-				<label class="type-caption flex items-center gap-2 text-text-secondary">
-					<input type="checkbox" bind:checked={skipTlsVerify} /> Skip TLS verification (self-signed, no CA)
-				</label>
+				<AuthFields fields={auth} options={authOptions} {secretMethods}>
+					{#snippet extra()}
+						{#if auth.method === 'eck-user'}
+							<div class="flex items-center gap-2">
+								<button type="button" class={BUTTON_CLASS} disabled={busy !== null || incomplete} onclick={useEck}>
+									{busy === 'eck' ? 'Checking…' : 'Use ECK credentials'}
+								</button>
+								<span class="type-caption text-text-tertiary">Read from the cluster on each connection, never stored.</span>
+							</div>
+						{/if}
+					{/snippet}
+				</AuthFields>
 			{/if}
 
-			<div class="flex items-center gap-2">
-				{#if mode !== 'off'}
-					<button type="button" class={button} disabled={busy !== null || incomplete} onclick={() => void test()}>
-						{busy === 'test' ? 'Testing…' : 'Test connection'}
-					</button>
-				{/if}
-				<button type="button" class={button} disabled={busy !== null || incomplete} onclick={() => void save()}>
-					{busy === 'save' ? 'Saving…' : 'Save'}
-				</button>
-				{#if saved}
-					<span class="type-caption truncate text-text-tertiary" title={describeEndpoint(saved)}>
-						current: {describeEndpoint(saved)}
-					</span>
-				{/if}
-			</div>
-			{#if result}
-				<p class="type-caption {result.ok ? 'text-status-ok' : 'text-status-err'}" role={result.ok ? 'status' : 'alert'}>
-					{result.text}
-				</p>
-			{/if}
+			<FormActions
+				active={form.mode !== 'off'}
+				{busy}
+				{incomplete}
+				bind:skipTlsVerify={form.skipTlsVerify}
+				current={saved ? describeTarget(saved.target) : null}
+				{result}
+				onTest={test}
+				onSave={save}
+			/>
 		</div>
 	{/if}
 </section>
+
+{#snippet detectedList()}
+	{#if detected}
+		{#if detected.length === 0}
+			<p class="type-caption text-text-tertiary">No Elasticsearch or Kibana service found.</p>
+		{:else}
+			<ul class="flex flex-col gap-0.5" aria-label="Detected services">
+				{#each detected as svc (svc.namespace + '/' + svc.name)}
+					<li class="flex items-center gap-2">
+						<span class="type-data-sm flex-1 truncate text-text-secondary">
+							{svc.kind} · {svc.namespace}/{svc.name}:{svc.port}{svc.https ? ' (https)' : ''}
+						</span>
+						{#if svc.kind === 'elasticsearch'}
+							<button type="button" class="focus-ring type-caption rounded-sm text-accent hover:brightness-110" onclick={() => form.pick(svc)}>Use</button>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	{/if}
+{/snippet}

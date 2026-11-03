@@ -149,18 +149,19 @@ pub async fn prometheus_metrics(
     result.map_err(text)
 }
 
-/// Last hour of CPU and memory per pod of `namespace` (list sparklines).
+/// Last hour of CPU and memory per pod of `namespace` (every namespace when
+/// `None`), keyed `namespace/pod` (list sparklines).
 #[tauri::command]
 pub async fn prometheus_sparklines(
     state: State<'_, PrometheusState>,
     kubeconfig_path: String,
     context: String,
     endpoint: PromEndpoint,
-    namespace: String,
+    namespace: Option<String>,
 ) -> Result<Sparklines, String> {
     let key: ConnKey = (kubeconfig_path, context);
     let conn = connection(&state, &key, &endpoint).await?;
-    let result = conn.sparklines(&endpoint, &namespace).await;
+    let result = conn.sparklines(&endpoint, namespace.as_deref()).await;
     if must_reconnect(&result) {
         state.connections.invalidate(&key, &conn).await;
     }

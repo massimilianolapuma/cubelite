@@ -326,7 +326,7 @@ impl PromConnection {
         // The first call decides reachability; the rest are best effort.
         let has = |data: Result<Value, PromError>| {
             data.ok()
-                .and_then(|d| parse_series(&d, None).ok())
+                .and_then(|d| parse_series(&d, &[]).ok())
                 .is_some_and(|s| !s.is_empty())
         };
         let cluster = endpoint
@@ -362,7 +362,7 @@ impl PromConnection {
             .query("count by (cluster) (up)")
             .await
             .ok()
-            .and_then(|d| parse_series(&d, Some("cluster")).ok())
+            .and_then(|d| parse_series(&d, &["cluster"]).ok())
             .map(|s| {
                 s.into_iter()
                     .map(|s| s.label)
@@ -389,10 +389,14 @@ impl PromConnection {
         let end = now_secs() / step * step;
         let start = end.saturating_sub(request.range.seconds());
         let queries = metrics_queries(request, endpoint.cluster.as_deref());
-        let label = request.per_container.then_some("container");
+        let label: &[&str] = if request.per_container {
+            &["container"]
+        } else {
+            &[]
+        };
         let results = join_all(queries.iter().map(|(chart, q)| async move {
-            let label = if matches!(chart, Chart::NetworkRx | Chart::NetworkTx) {
-                None
+            let label: &[&str] = if matches!(chart, Chart::NetworkRx | Chart::NetworkTx) {
+                &[]
             } else {
                 label
             };
@@ -444,11 +448,12 @@ impl PromConnection {
         })
     }
 
-    /// Last hour of CPU and memory per pod of `namespace`.
+    /// Last hour of CPU and memory per pod of `namespace` (every namespace
+    /// with `None`), keyed `namespace/pod`.
     pub async fn sparklines(
         &self,
         endpoint: &PromEndpoint,
-        namespace: &str,
+        namespace: Option<&str>,
     ) -> Result<Sparklines, PromError> {
         let end = now_secs() / SPARKLINE_STEP * SPARKLINE_STEP;
         let start = end.saturating_sub(SPARKLINE_RANGE);
@@ -458,9 +463,9 @@ impl PromConnection {
             self.query_range(&memory, start, end, SPARKLINE_STEP)
         );
         let by_pod = |data: Value| -> Result<_, PromError> {
-            Ok(parse_series(&data, Some("pod"))?
+            Ok(parse_series(&data, &["namespace", "pod"])?
                 .into_iter()
-                .filter(|s| !s.label.is_empty())
+                .filter(|s| !s.label.starts_with('/') && !s.label.ends_with('/'))
                 .map(|s| (s.label, s.points))
                 .collect())
         };

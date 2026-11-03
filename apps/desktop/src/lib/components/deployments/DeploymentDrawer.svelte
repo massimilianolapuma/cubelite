@@ -8,6 +8,7 @@
 	import Drawer from '#lib/components/ui/Drawer.svelte';
 	import YamlModal from '#lib/components/YamlModal.svelte';
 	import StatusPill from '#lib/components/ui/StatusPill.svelte';
+	import MetricsSection from '#lib/components/metrics/MetricsSection.svelte';
 	import { deploymentStatus, podStatusLabel, podTone, toneColor } from '#lib/status.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { logs } from '#lib/stores/logs.svelte.ts';
@@ -94,6 +95,8 @@
 				</div>
 			</div>
 		{/if}
+
+		<MetricsSection namespace={deployment.namespace} workload={{ kind: 'deployment', name: deployment.name }} />
 
 		<div>
 			<div class="type-section mb-1.5 text-text-tertiary">Pods</div>
