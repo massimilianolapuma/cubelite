@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Resource order and list sort** (macOS, #497): a Navigation tab in
+  Preferences reorders the resource types within their groups, reorders the
+  groups and hides types (Overview stays first), with the same rules as the
+  desktop app; a default list sort (API order, Name, Namespace, Age, Status —
+  problems first — or Restarts) applies to every resource table, and the
+  native column headers sort a list for the session.
 - **Resource order and list sort** (desktop, #496): Preferences → Navigation
   reorders the sidebar types within their sections, reorders the sections
   and hides types (Overview stays first; hidden types stay in the command

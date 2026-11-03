@@ -18,7 +18,8 @@ extension MainView {
             }
         } else if sidebarSelection != nil {
             List(selection: $selectedResourceType) {
-                ForEach(ResourceType.allCases) { type in
+                // Order and visibility from Preferences → Navigation (#497).
+                ForEach(resourcePreferences.visibleTypes) { type in
                     Label(type.rawValue, systemImage: type.systemImage)
                         .typeStyle(DesignTokens.Typography.body)
                         .tag(type)

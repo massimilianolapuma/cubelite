@@ -6,6 +6,12 @@ import SwiftUI
 struct CronJobListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [CronJobInfo] {
+        ListSort.sorted(clusterState.cronJobs, by: resourcePreferences.spec(for: "cronjobs"))
+    }
 
     var body: some View {
         Group {
@@ -23,7 +29,7 @@ struct CronJobListView: View {
     }
 
     private var table: some View {
-        Table(clusterState.cronJobs) {
+        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "cronjobs", of: CronJobInfo.self)) {
             TableColumn("") { job in
                 Circle()
                     .fill(job.suspend ? DesignTokens.statusWarn : DesignTokens.statusOk)
@@ -33,7 +39,7 @@ struct CronJobListView: View {
             }
             .width(16)
 
-            TableColumn("Name") { job in
+            TableColumn("Name", value: \.sortKeyName) { job in
                 Text(job.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
@@ -65,7 +71,7 @@ struct CronJobListView: View {
             }
             .width(100)
 
-            TableColumn("Age") { job in
+            TableColumn("Age", value: \.sortKeyAge) { job in
                 Text(job.creationTimestamp.k8sAge)
                     .foregroundStyle(DesignTokens.textTertiary)
             }

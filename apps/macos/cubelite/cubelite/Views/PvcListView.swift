@@ -6,6 +6,12 @@ import SwiftUI
 struct PvcListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [PvcInfo] {
+        ListSort.sorted(clusterState.pvcs, by: resourcePreferences.spec(for: "pvcs"))
+    }
 
     var body: some View {
         Group {
@@ -31,7 +37,7 @@ struct PvcListView: View {
     }
 
     private var table: some View {
-        Table(clusterState.pvcs) {
+        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "pvcs", of: PvcInfo.self)) {
             TableColumn("") { pvc in
                 Circle()
                     .fill(tone(pvc.status))
@@ -41,13 +47,13 @@ struct PvcListView: View {
             }
             .width(16)
 
-            TableColumn("Name") { pvc in
+            TableColumn("Name", value: \.sortKeyName) { pvc in
                 Text(pvc.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
 
-            TableColumn("Status") { pvc in
+            TableColumn("Status", value: \.sortKeyStatus) { pvc in
                 Text(pvc.status ?? "—")
                     .foregroundStyle(tone(pvc.status))
             }
@@ -79,7 +85,7 @@ struct PvcListView: View {
             }
             .width(80)
 
-            TableColumn("Age") { pvc in
+            TableColumn("Age", value: \.sortKeyAge) { pvc in
                 Text(pvc.creationTimestamp.k8sAge)
                     .foregroundStyle(DesignTokens.textTertiary)
             }

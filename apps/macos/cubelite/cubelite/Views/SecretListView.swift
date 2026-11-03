@@ -7,6 +7,12 @@ import SwiftUI
 struct SecretListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [SecretInfo] {
+        ListSort.sorted(clusterState.secrets, by: resourcePreferences.spec(for: "secrets"))
+    }
     @Binding var selectedSecretID: SecretInfo.ID?
 
     var body: some View {
@@ -41,15 +47,15 @@ struct SecretListView: View {
     // MARK: - Table
 
     private var secretTable: some View {
-        Table(clusterState.secrets, selection: $selectedSecretID) {
-            TableColumn("Name") { secret in
+        Table(sortedRows, selection: $selectedSecretID, sortOrder: resourcePreferences.sortOrder(for: "secrets", of: SecretInfo.self)) {
+            TableColumn("Name", value: \.sortKeyName) { secret in
                 Text(secret.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace") { secret in
+            TableColumn("Namespace", value: \.sortKeyNamespace) { secret in
                 Text(secret.namespace)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -69,7 +75,7 @@ struct SecretListView: View {
             }
             .width(ideal: 80)
 
-            TableColumn("Age") { secret in
+            TableColumn("Age", value: \.sortKeyAge) { secret in
                 Text(secret.creationTimestamp.k8sAge)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -150,5 +156,6 @@ private struct SecretTypeTag: View {
     ]
     return SecretListView(selectedSecretID: .constant(nil))
         .environment(state)
+        .environment(ResourcePreferences())
         .frame(width: 800, height: 400)
 }

@@ -41,6 +41,7 @@ struct MainView: View {
     @Environment(ClusterState.self) var clusterState
     @Environment(LogStore.self) var logStore
     @Environment(AppSettings.self) var appSettings
+    @Environment(ResourcePreferences.self) var resourcePreferences
     @Environment(LogSessionStore.self) var logSessionStore
     @Environment(\.openWindow) var openWindow
 
@@ -306,6 +307,7 @@ struct MainView: View {
             if newValue != nil {
                 showAllClusters = false
             }
+            resourcePreferences.resetSession()  // header sorts are per session and cluster (#497)
             clusterState.namespaces = []
             namespaceError = nil
             sidebarSelection = nil
@@ -415,6 +417,7 @@ struct AutoRefreshKey: Equatable {
         .environment(state)
         .environment(LogStore())
         .environment(AppSettings())
+        .environment(ResourcePreferences())
 }
 
 #Preview("No kubeconfig") {
@@ -425,5 +428,6 @@ struct AutoRefreshKey: Equatable {
         .environment(state)
         .environment(LogStore())
         .environment(AppSettings())
+        .environment(ResourcePreferences())
 }
 

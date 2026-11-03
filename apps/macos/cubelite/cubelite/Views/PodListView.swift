@@ -8,6 +8,12 @@ import SwiftUI
 struct PodListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [PodInfo] {
+        ListSort.sorted(clusterState.pods, by: resourcePreferences.spec(for: "pods"))
+    }
     @Binding var selectedPodID: PodInfo.ID?
     /// Opens the log panel for the tapped pod (selected-row `logs ⏎` chip).
     var onOpenLogs: ((PodInfo) -> Void)?
@@ -44,13 +50,13 @@ struct PodListView: View {
     // MARK: - Table
 
     private var podTable: some View {
-        Table(clusterState.pods, selection: $selectedPodID) {
+        Table(sortedRows, selection: $selectedPodID, sortOrder: resourcePreferences.sortOrder(for: "pods", of: PodInfo.self)) {
             TableColumn("") { pod in
                 PodStatusDot(phase: pod.phase)
             }
             .width(16)
 
-            TableColumn("Name") { pod in
+            TableColumn("Name", value: \.sortKeyName) { pod in
                 HStack(spacing: 8) {
                     Text(pod.name)
                         .typeStyle(DesignTokens.Typography.data)
@@ -78,7 +84,7 @@ struct PodListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace") { pod in
+            TableColumn("Namespace", value: \.sortKeyNamespace) { pod in
                 Text(pod.namespace)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -86,21 +92,21 @@ struct PodListView: View {
             }
             .width(min: 80, ideal: 120)
 
-            TableColumn("Status") { pod in
+            TableColumn("Status", value: \.sortKeyStatus) { pod in
                 Text(pod.phase ?? "—")
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(Color.podPhase(pod.phase))
             }
             .width(min: 60, ideal: 90)
 
-            TableColumn("Restarts") { pod in
+            TableColumn("Restarts", value: \.sortKeyRestarts) { pod in
                 Text("\(pod.restarts)")
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(pod.restarts > 5 ? DesignTokens.statusWarn : Color.secondary)
             }
             .width(ideal: 70)
 
-            TableColumn("Age") { pod in
+            TableColumn("Age", value: \.sortKeyAge) { pod in
                 Text(pod.creationTimestamp.k8sAge)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -167,5 +173,6 @@ private struct PodStatusDot: View {
     ]
     return PodListView(selectedPodID: $selectedID)
         .environment(state)
+        .environment(ResourcePreferences())
         .frame(width: 700, height: 300)
 }

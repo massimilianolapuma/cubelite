@@ -8,6 +8,12 @@ import SwiftUI
 struct HelmReleaseListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [HelmReleaseInfo] {
+        ListSort.sorted(clusterState.helmReleases, by: resourcePreferences.spec(for: "helm"))
+    }
     @Binding var selectedHelmReleaseID: HelmReleaseInfo.ID?
 
     var body: some View {
@@ -42,15 +48,15 @@ struct HelmReleaseListView: View {
     // MARK: - Table
 
     private var helmReleaseTable: some View {
-        Table(clusterState.helmReleases, selection: $selectedHelmReleaseID) {
-            TableColumn("Name") { release in
+        Table(sortedRows, selection: $selectedHelmReleaseID, sortOrder: resourcePreferences.sortOrder(for: "helm", of: HelmReleaseInfo.self)) {
+            TableColumn("Name", value: \.sortKeyName) { release in
                 Text(release.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace") { release in
+            TableColumn("Namespace", value: \.sortKeyNamespace) { release in
                 Text(release.namespace)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -65,12 +71,12 @@ struct HelmReleaseListView: View {
             }
             .width(ideal: 70)
 
-            TableColumn("Status") { release in
+            TableColumn("Status", value: \.sortKeyStatus) { release in
                 HelmStatusBadge(status: release.status)
             }
             .width(min: 80, ideal: 110)
 
-            TableColumn("Age") { release in
+            TableColumn("Age", value: \.sortKeyAge) { release in
                 Text(release.creationTimestamp.k8sAge)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -135,5 +141,6 @@ private struct HelmStatusBadge: View {
     ]
     return HelmReleaseListView(selectedHelmReleaseID: .constant(nil))
         .environment(state)
+        .environment(ResourcePreferences())
         .frame(width: 700, height: 400)
 }

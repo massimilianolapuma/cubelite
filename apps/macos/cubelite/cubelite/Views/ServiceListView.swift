@@ -8,6 +8,12 @@ import SwiftUI
 struct ServiceListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [ServiceInfo] {
+        ListSort.sorted(clusterState.services, by: resourcePreferences.spec(for: "services"))
+    }
     @Binding var selectedServiceID: ServiceInfo.ID?
 
     var body: some View {
@@ -42,15 +48,15 @@ struct ServiceListView: View {
     // MARK: - Table
 
     private var serviceTable: some View {
-        Table(clusterState.services, selection: $selectedServiceID) {
-            TableColumn("Name") { service in
+        Table(sortedRows, selection: $selectedServiceID, sortOrder: resourcePreferences.sortOrder(for: "services", of: ServiceInfo.self)) {
+            TableColumn("Name", value: \.sortKeyName) { service in
                 Text(service.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace") { service in
+            TableColumn("Namespace", value: \.sortKeyNamespace) { service in
                 Text(service.namespace)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -80,7 +86,7 @@ struct ServiceListView: View {
             }
             .width(min: 100, ideal: 160)
 
-            TableColumn("Age") { service in
+            TableColumn("Age", value: \.sortKeyAge) { service in
                 Text(service.creationTimestamp.k8sAge)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -152,5 +158,6 @@ private struct ServiceTypeTag: View {
     ]
     return ServiceListView(selectedServiceID: .constant(nil))
         .environment(state)
+        .environment(ResourcePreferences())
         .frame(width: 800, height: 400)
 }

@@ -6,6 +6,12 @@ import SwiftUI
 struct IngressListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [IngressInfo] {
+        ListSort.sorted(clusterState.ingresses, by: resourcePreferences.spec(for: "ingresses"))
+    }
     @Binding var selectedIngressID: IngressInfo.ID?
 
     var body: some View {
@@ -40,15 +46,15 @@ struct IngressListView: View {
     // MARK: - Table
 
     private var ingressTable: some View {
-        Table(clusterState.ingresses, selection: $selectedIngressID) {
-            TableColumn("Name") { ingress in
+        Table(sortedRows, selection: $selectedIngressID, sortOrder: resourcePreferences.sortOrder(for: "ingresses", of: IngressInfo.self)) {
+            TableColumn("Name", value: \.sortKeyName) { ingress in
                 Text(ingress.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace") { ingress in
+            TableColumn("Namespace", value: \.sortKeyNamespace) { ingress in
                 Text(ingress.namespace)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -95,7 +101,7 @@ struct IngressListView: View {
             }
             .width(ideal: 40)
 
-            TableColumn("Age") { ingress in
+            TableColumn("Age", value: \.sortKeyAge) { ingress in
                 Text(ingress.creationTimestamp.k8sAge)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)

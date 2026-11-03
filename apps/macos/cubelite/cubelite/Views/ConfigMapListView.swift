@@ -6,6 +6,12 @@ import SwiftUI
 struct ConfigMapListView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(ResourcePreferences.self) private var resourcePreferences
+
+    /// Preferences default sort or this session's header sort (#497).
+    private var sortedRows: [ConfigMapInfo] {
+        ListSort.sorted(clusterState.configMaps, by: resourcePreferences.spec(for: "configmaps"))
+    }
     @Binding var selectedConfigMapID: ConfigMapInfo.ID?
 
     var body: some View {
@@ -40,15 +46,15 @@ struct ConfigMapListView: View {
     // MARK: - Table
 
     private var configMapTable: some View {
-        Table(clusterState.configMaps, selection: $selectedConfigMapID) {
-            TableColumn("Name") { configMap in
+        Table(sortedRows, selection: $selectedConfigMapID, sortOrder: resourcePreferences.sortOrder(for: "configmaps", of: ConfigMapInfo.self)) {
+            TableColumn("Name", value: \.sortKeyName) { configMap in
                 Text(configMap.name)
                     .typeStyle(DesignTokens.Typography.data)
                     .lineLimit(1)
             }
             .width(min: 120, ideal: 220)
 
-            TableColumn("Namespace") { configMap in
+            TableColumn("Namespace", value: \.sortKeyNamespace) { configMap in
                 Text(configMap.namespace)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -63,7 +69,7 @@ struct ConfigMapListView: View {
             }
             .width(ideal: 80)
 
-            TableColumn("Age") { configMap in
+            TableColumn("Age", value: \.sortKeyAge) { configMap in
                 Text(configMap.creationTimestamp.k8sAge)
                     .typeStyle(DesignTokens.Typography.dataSm)
                     .foregroundStyle(.secondary)
@@ -100,5 +106,6 @@ struct ConfigMapListView: View {
     ]
     return ConfigMapListView(selectedConfigMapID: .constant(nil))
         .environment(state)
+        .environment(ResourcePreferences())
         .frame(width: 800, height: 400)
 }
