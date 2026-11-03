@@ -6,6 +6,7 @@
 	import { IDENTITY_COLORS, identityVar } from '#lib/cluster-identity.ts';
 	import Modal from '#lib/components/ui/Modal.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import NavigationPreferences from '#lib/components/NavigationPreferences.svelte';
 	import { errorMessage } from '#lib/errors.ts';
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -223,6 +224,8 @@
 				</div>
 			</section>
 		{/if}
+
+		<NavigationPreferences />
 
 		<section>
 			<div class="mb-1.5 flex items-baseline justify-between gap-3">

@@ -2,6 +2,7 @@
  * Global app state: active cluster, current view, namespace filter, overlays.
  */
 
+import { lists } from "./lists.svelte";
 import type { DeploymentInfo, KubeconfigOrigin, KubeconfigSource, PodInfo } from "#lib/tauri.ts";
 
 export const VIEWS = [
@@ -71,6 +72,7 @@ class AppState {
 
   /** Reset per-cluster state on switch (spec: reset namespace, clear selections). */
   resetForClusterSwitch(): void {
+    lists.resetSession();
     this.namespace = null;
     this.selectedPod = null;
     this.selectedDeployment = null;

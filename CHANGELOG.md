@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Resource order and list sort** (desktop, #496): Preferences → Navigation
+  reorders the sidebar types within their sections, reorders the sections
+  and hides types (Overview stays first; hidden types stay in the command
+  palette). A default list sort (API order, Name, Namespace, Age, Status —
+  problems first — or Restarts) applies to every resource table, and
+  clicking a column header sorts that list for the session.
 - **ECS log view** (macOS, #493): the `{}` JSON toggle in the log panel and
   the aggregated Logs view becomes a Raw · JSON · ECS segmented control
   (an enabled JSON toggle carries over). ECS mode shows every line as its

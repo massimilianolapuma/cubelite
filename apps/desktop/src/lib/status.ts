@@ -44,3 +44,34 @@ export const toneColor: Record<StatusTone, string> = {
   err: "var(--color-status-err)",
   neutral: "var(--color-text-tertiary)",
 };
+
+// Tones for the Status sort (#496): problems sort first.
+
+export function replicaTone(replicas: number, ready: number): StatusTone {
+  return replicas > 0 && ready >= replicas ? "ok" : "warn";
+}
+
+export function nodeTone(status: string): StatusTone {
+  return status === "Ready" ? "ok" : "err";
+}
+
+export function pvcTone(status: string | null): StatusTone {
+  switch (status) {
+    case "Bound":
+      return "ok";
+    case "Pending":
+      return "warn";
+    case "Lost":
+      return "err";
+    default:
+      return "neutral";
+  }
+}
+
+export function helmTone(status: string | null): StatusTone {
+  const s = status?.toLowerCase() ?? "";
+  if (s === "deployed") return "ok";
+  if (s === "failed") return "err";
+  if (s.startsWith("pending")) return "warn";
+  return "neutral";
+}

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import SortHeader from '#lib/components/ui/SortHeader.svelte';
+	import { sortRows } from '#lib/list-sort.ts';
+	import { lists } from '#lib/stores/lists.svelte.ts';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -27,21 +30,24 @@
 	function scale(dep: DeploymentInfo, delta: number) {
 		mutations.nudgeScale(dep.namespace, dep.name, dep.replicas, delta);
 	}
+
+	// Default sort from Preferences, header click overrides for the session (#496).
+	const sorted = $derived(sortRows(deployments, lists.specFor('deployments'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp, status: (x) => deploymentStatus(x).tone }));
 </script>
 
 <div class="overflow-hidden rounded-lg border border-border-default">
 	<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
-		<span class="type-colhead">Name</span>
+		<SortHeader list="deployments" field="name" label="Name" />
 		<span class="type-colhead">Ready</span>
-		<span class="type-colhead">Status</span>
-		<span class="type-colhead">Age</span>
+		<SortHeader list="deployments" field="status" label="Status" />
+		<SortHeader list="deployments" field="age" label="Age" />
 		<span class="type-colhead">Replicas · Actions</span>
 	</div>
 	<div class="bg-surface-panel">
 		{#if deployments.length === 0}
 			<p class="py-8 text-center text-xs text-text-disabled">No deployments found.</p>
 		{:else}
-			{#each deployments as dep (dep.namespace + '/' + dep.name)}
+			{#each sorted as dep (dep.namespace + '/' + dep.name)}
 				{@const status = deploymentStatus(dep)}
 				{@const isSelected = selected?.name === dep.name && selected?.namespace === dep.namespace}
 				{@const pendingScale = mutations.pendingScale(dep.namespace, dep.name)}

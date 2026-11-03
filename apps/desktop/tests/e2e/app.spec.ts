@@ -150,3 +150,27 @@ test("All Clusters dashboard aggregates stats across contexts", async ({ page })
   await expect(page.getByText("CPU", { exact: true })).toBeVisible();
   await expect(page.getByText("connection timed out")).toBeVisible();
 });
+
+test("preferences reorder and hide sidebar types, headers sort lists (#496)", async ({ page }) => {
+  await boot(page);
+  const sidebar = page.locator("aside").first();
+  await page.getByLabel("Preferences").click();
+  await page.getByRole("button", { name: "Hide Services" }).click();
+  await page.getByRole("button", { name: "Hide Ingresses" }).click();
+  await page.getByRole("button", { name: "Move Deployments up" }).click();
+  await page.keyboard.press("Escape");
+
+  await expect(sidebar.getByText("Network")).toHaveCount(0);
+  await expect(sidebar.getByText("Services")).toHaveCount(0);
+  const items = await sidebar.locator("button").allTextContents();
+  const pos = (label: string) => items.findIndex((t) => t.trim().startsWith(label));
+  expect(pos("Deployments")).toBeLessThan(pos("Pods"));
+
+  await page.reload();
+  await expect(sidebar.getByText("Services")).toHaveCount(0);
+
+  await sidebar.getByText("Pods").click();
+  const header = page.getByRole("button", { name: /^Sort by Name/ });
+  await header.click();
+  await expect(header).toHaveAttribute("data-sort", "ascending");
+});
