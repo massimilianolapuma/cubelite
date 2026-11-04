@@ -54,18 +54,24 @@ struct EsEndpoint: Hashable, Sendable, Codable {
     var kibanaService: KibanaService?
     /// Accept any certificate (opt-in, for self-signed endpoints without a CA).
     var skipTLSVerify = false
+    /// Narrows a deployment shared by many clusters to this context's (#528).
+    var clusterFilter: ClusterFilter?
+    /// Resolved from the default shared by every context (#528): its
+    /// credentials are the default's.
+    var shared = false
 
     private enum CodingKeys: String, CodingKey {
         case target, indexPattern, preset
         case kibanaURL = "kibanaUrl"
         case kibanaService
         case skipTLSVerify = "skipTlsVerify"
+        case clusterFilter, shared
     }
 
     init(
         target: EsTarget, indexPattern: String = Self.defaultIndexPattern,
         preset: FieldPreset = .ecs, kibanaURL: String? = nil, kibanaService: KibanaService? = nil,
-        skipTLSVerify: Bool = false
+        skipTLSVerify: Bool = false, clusterFilter: ClusterFilter? = nil
     ) {
         self.target = target
         self.indexPattern = indexPattern
@@ -73,6 +79,7 @@ struct EsEndpoint: Hashable, Sendable, Codable {
         self.kibanaURL = kibanaURL
         self.kibanaService = kibanaService
         self.skipTLSVerify = skipTLSVerify
+        self.clusterFilter = clusterFilter
     }
 
     init(from decoder: Decoder) throws {
@@ -83,6 +90,8 @@ struct EsEndpoint: Hashable, Sendable, Codable {
         kibanaURL = try c.decodeIfPresent(String.self, forKey: .kibanaURL)
         kibanaService = try c.decodeIfPresent(KibanaService.self, forKey: .kibanaService)
         skipTLSVerify = try c.decodeIfPresent(Bool.self, forKey: .skipTLSVerify) ?? false
+        clusterFilter = try c.decodeIfPresent(ClusterFilter.self, forKey: .clusterFilter)
+        shared = try c.decodeIfPresent(Bool.self, forKey: .shared) ?? false
     }
 }
 
@@ -520,7 +529,10 @@ enum Elastic {
 
     /// What stored credentials are bound to (see `Integration.binding`).
     static func binding(_ endpoint: EsEndpoint) throws -> String {
-        try mapped { try Integration.binding(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify) }
+        try mapped {
+            try Integration.checkShared(endpoint.target, shared: endpoint.shared)
+            return try Integration.binding(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify)
+        }
     }
 
     /// Checks an external URL (see `Integration.checkExternalURL`); ECK's

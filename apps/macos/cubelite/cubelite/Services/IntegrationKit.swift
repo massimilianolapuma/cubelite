@@ -432,11 +432,22 @@ extension Integration {
 // MARK: - Credentials
 
 /// Credentials in the keychain, one record per kube context, bound to the
-/// endpoint they were saved for and never sent anywhere else.
+/// endpoint they were saved for and never sent anywhere else. The default
+/// endpoint shared by every context (#528) keeps its credentials once, under
+/// `Integration.defaultAccount`; a context reads them only when its resolved
+/// endpoint is the default (`shared`), and only for their binding.
 struct IntegrationVault<Auth: Codable & Equatable & Sendable>: Sendable {
     private struct Stored: Codable {
         let binding: String
         let auth: Auth
+    }
+
+    /// What applies to a binding.
+    private enum Lookup {
+        case found(Auth)
+        case nothing
+        /// The record that would apply was saved for another endpoint.
+        case otherEndpoint
     }
 
     let store: any IntegrationSecretStore
@@ -453,32 +464,45 @@ struct IntegrationVault<Auth: Codable & Equatable & Sendable>: Sendable {
     }
 
     /// Stored credentials usable with `binding`; `none` when nothing is stored.
-    func load(context: String, binding: String) async throws -> Auth {
-        guard let stored = try await read(context: context) else { return none }
-        guard stored.binding == binding else {
+    func load(context: String, binding: String, shared: Bool = false) async throws -> Auth {
+        switch try await lookup(context: context, binding: binding, shared: shared) {
+        case .found(let auth): return auth
+        case .nothing: return none
+        case .otherEndpoint:
             throw IntegrationFailure.config(
                 "The saved credentials belong to another endpoint or TLS setting; save them again for this one"
             )
         }
-        return stored.auth
     }
 
     /// The stored auth when it belongs to `binding`, else nil.
-    func stored(context: String, binding: String) async throws -> Auth? {
-        guard let stored = try await read(context: context), stored.binding == binding else {
-            return nil
+    func stored(context: String, binding: String, shared: Bool = false) async throws -> Auth? {
+        if case .found(let auth) = try await lookup(context: context, binding: binding, shared: shared) {
+            return auth
         }
-        return stored.auth
+        return nil
     }
 
-    /// Stores `auth` bound to `binding`; `none` deletes the record.
-    func save(context: String, binding: String, auth: Auth) async throws {
+    /// Stores `auth` bound to `binding` (under the default's account for a
+    /// shared endpoint); `none` deletes the record.
+    func save(context: String, shared: Bool = false, binding: String, auth: Auth) async throws {
+        let account = shared ? Integration.defaultAccount : context
         if auth == none {
-            try await store.delete(account: context)
+            try await store.delete(account: account)
         } else {
             try await store.write(
-                try JSONEncoder().encode(Stored(binding: binding, auth: auth)), account: context)
+                try JSONEncoder().encode(Stored(binding: binding, auth: auth)), account: account)
         }
+    }
+
+    /// The context's own record, else (shared endpoints only) the default's.
+    private func lookup(context: String, binding: String, shared: Bool) async throws -> Lookup {
+        let own = try await read(context: context)
+        if let own, own.binding == binding { return .found(own.auth) }
+        // Without the default, the context's own record is the only one.
+        guard shared else { return own == nil ? .nothing : .otherEndpoint }
+        guard let fallback = try await read(context: Integration.defaultAccount) else { return .nothing }
+        return fallback.binding == binding ? .found(fallback.auth) : .otherEndpoint
     }
 }
 

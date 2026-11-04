@@ -97,8 +97,9 @@ actor ElasticService {
     /// when nothing is stored or it belongs to another endpoint.
     func authMethod(context: String, endpoint: EsEndpoint) async throws -> String {
         let binding = try Elastic.binding(endpoint)
-        return try await elastic { try await vault.stored(context: context, binding: binding) }?
-            .method ?? EsAuth.none.method
+        return try await elastic {
+            try await vault.stored(context: context, binding: binding, shared: endpoint.shared)
+        }?.method ?? EsAuth.none.method
     }
 
     /// Saves `auth` for `context`, bound to `endpoint` (`none` deletes it),
@@ -109,8 +110,11 @@ actor ElasticService {
             _ = try Elastic.checkExternalURL(url, auth: auth)
         }
         let binding = auth == .none ? "" : try Elastic.binding(endpoint)
-        try await elastic { try await vault.save(context: context, binding: binding, auth: auth) }
-        await disconnect(context: context)
+        try await elastic {
+            try await vault.save(context: context, shared: endpoint.shared, binding: binding, auth: auth)
+        }
+        // The default's credentials serve every context (#528).
+        if endpoint.shared { await disconnectAll() } else { await disconnect(context: context) }
     }
 
     /// Uses ECK's `elastic` user for this in-cluster endpoint: checks it can
@@ -249,7 +253,9 @@ actor ElasticService {
     /// Stored credentials usable with `endpoint`; `.none` when nothing is stored.
     private func loadAuth(context: String, endpoint: EsEndpoint) async throws -> EsAuth {
         let binding = try Elastic.binding(endpoint)
-        return try await elastic { try await vault.load(context: context, binding: binding) }
+        return try await elastic {
+            try await vault.load(context: context, binding: binding, shared: endpoint.shared)
+        }
     }
 
     private func connect(context: String, endpoint: EsEndpoint, auth: EsAuth) async throws
@@ -432,11 +438,19 @@ actor ElasticService {
         }
     }
 
+    /// The `_search` body of a history page, narrowed to the endpoint's
+    /// cluster when it has a cluster filter (#528).
+    private static func historyBody(_ endpoint: EsEndpoint, _ query: HistoryQuery, pit: String?) -> JSONValue {
+        Elastic.addingClusterFilter(
+            Elastic.searchBody(query, preset: endpoint.preset, pit: pit), endpoint.clusterFilter,
+            preset: endpoint.preset)
+    }
+
     /// One page with plain `search_after` on the index pattern.
     private func searchPlain(_ connection: Connection, endpoint: EsEndpoint, query: HistoryQuery)
         async throws -> HistoryPage
     {
-        let body = Data(Elastic.searchBody(query, preset: endpoint.preset).compactText.utf8)
+        let body = Data(Self.historyBody(endpoint, query, pit: nil).compactText.utf8)
         let response = try await send(
             connection,
             path: "\(endpoint.indexPattern)/_search?ignore_unavailable=true&allow_no_indices=true",
@@ -478,8 +492,7 @@ actor ElasticService {
     private func searchPIT(
         _ connection: Connection, endpoint: EsEndpoint, query: HistoryQuery, pit: String
     ) async throws -> (page: HistoryPage, pit: String) {
-        let body = Data(
-            Elastic.searchBody(query, preset: endpoint.preset, pit: pit).compactText.utf8)
+        let body = Data(Self.historyBody(endpoint, query, pit: pit).compactText.utf8)
         // A PIT search names no index (the PIT holds them).
         let response = try await send(connection, path: "_search", body: body)
         var latest = pit
