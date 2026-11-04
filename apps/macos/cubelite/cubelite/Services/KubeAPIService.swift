@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Security
 
 /// Service actor for communicating with the Kubernetes API server.
@@ -354,9 +355,9 @@ actor KubeAPIService {
         do {
             (data, response) = try await session.data(for: request)
         } catch let urlError as URLError where Self.isTLSError(urlError) {
-            throw CubeliteError.tlsError(
-                reason: "Certificate validation failed for the cluster API server"
-            )
+            let reason = Self.tlsFailureReason(urlError)
+            Self.logger.error("\(reason, privacy: .public)")
+            throw CubeliteError.tlsError(reason: reason)
         } catch let urlError as URLError where Self.isConnectionError(urlError) {
             throw CubeliteError.clusterUnreachable
         } catch {
@@ -592,6 +593,7 @@ actor KubeAPIService {
                 try? await keychain.delete(tag: .bearerToken, account: base)
                 try? await keychain.delete(tag: .clientCertificate, account: base)
                 try? await keychain.delete(tag: .clientKey, account: base)
+                Self.deleteClientKeys(account: base)
             }
         }
         await execCredentials.invalidateCache()
@@ -860,6 +862,21 @@ actor KubeAPIService {
         return kind
     }
 
+    private static let logger = Logger(subsystem: "com.cubelite", category: "KubeAPIService")
+
+    /// The TLS failure message, with the `URLError` code and the stream
+    /// error when present — an `OSStatus` in the SSL domain (3), e.g. -9808
+    /// bad certificate, -9829 client certificate rejected — so a failure can
+    /// be told apart (#521).
+    static func tlsFailureReason(_ error: URLError) -> String {
+        var codes = "URLError \(error.code.rawValue)"
+        if let status = error.userInfo["_kCFStreamErrorCodeKey"] as? Int {
+            let ssl = (error.userInfo["_kCFStreamErrorDomainKey"] as? Int) == 3
+            codes += ssl ? ", OSStatus \(status)" : ", stream error \(status)"
+        }
+        return "Certificate validation failed for the cluster API server (\(codes))"
+    }
+
     /// URL error codes that indicate TLS certificate validation failure.
     static func isTLSError(_ error: URLError) -> Bool {
         switch error.code {
@@ -930,7 +947,9 @@ actor KubeAPIService {
         user: UserDetails
     ) throws -> URLSession {
         let caCertificate = try Self.loadCACertificate(from: cluster)
-        let clientIdentity = try Self.loadClientIdentity(from: user)
+        let server = cluster.server ?? ""
+        let clientIdentity = try Self.loadClientIdentity(
+            from: user, account: server.hasSuffix("/") ? String(server.dropLast()) : server)
         let insecureSkip = skipTLSVerification || (cluster.insecureSkipTlsVerify ?? false)
 
         let delegate = KubeURLSessionDelegate(
@@ -1010,7 +1029,9 @@ actor KubeAPIService {
     ///
     /// - Returns: A `SecIdentity`, or `nil` when no client certificate is configured.
     /// - Throws: `CubeliteError.clientError` on any decode, read, or keychain failure.
-    private static func loadClientIdentity(from user: UserDetails) throws -> SecIdentity? {
+    /// - Parameter account: The cluster server; the stored key is tagged per
+    ///   cluster so one cluster's import never replaces another's key (#521).
+    static func loadClientIdentity(from user: UserDetails, account: String) throws -> SecIdentity? {
         // --- Path 1: inline base64 data (client-certificate-data / client-key-data) ---
         if let certB64 = user.clientCertificateData, !certB64.isEmpty,
             let keyB64 = user.clientKeyData, !keyB64.isEmpty
@@ -1068,7 +1089,8 @@ actor KubeAPIService {
                 )
             }
 
-            return try Self.storeAndFindIdentity(certificate: certificate, privateKey: privateKey)
+            return try Self.storeAndFindIdentity(
+                certificate: certificate, privateKey: privateKey, account: account)
         }
 
         // --- Path 2: file paths (client-certificate / client-key) ---
@@ -1141,7 +1163,8 @@ actor KubeAPIService {
                 )
             }
 
-            return try Self.storeAndFindIdentity(certificate: certificate, privateKey: privateKey)
+            return try Self.storeAndFindIdentity(
+                certificate: certificate, privateKey: privateKey, account: account)
         }
 
         return nil
@@ -1165,15 +1188,65 @@ actor KubeAPIService {
     /// - Throws: `CubeliteError.clientError` on any keychain failure.
     private static func storeAndFindIdentity(
         certificate: SecCertificate,
-        privateKey: SecKey
+        privateKey: SecKey,
+        account: String
     ) throws -> SecIdentity {
-        let keyTag = Data("it.lapuma.cubelite.client-key".utf8)
+        // Several `KubeAPIService` instances in one process (the app and the
+        // services a test host creates) can import at once; serialised, one
+        // import never deletes a key another has just paired (#521).
+        try identityImportLock.withLock {
+            try storeAndFindIdentityLocked(
+                certificate: certificate, privateKey: privateKey, account: account)
+        }
+    }
+
+    /// Serialises client identity imports process-wide (#521).
+    private static let identityImportLock = NSLock()
+
+    /// Before #521 every cluster's client key shared this tag, so importing
+    /// one cluster's identity deleted another's key.
+    static let legacyClientKeyTag = Data("it.lapuma.cubelite.client-key".utf8)
+
+    /// The tag of a cluster's client key: a re-import (rotated certificate)
+    /// replaces only that cluster's key, and keys never pile up (#521).
+    static func clientKeyTag(account: String) -> Data {
+        Data("it.lapuma.cubelite.cluster-client-key.\(account)".utf8)
+    }
+
+    /// Deletes the stored client keys of `account`, and the pre-#521 shared
+    /// ones (Settings "Reset stored credentials").
+    static func deleteClientKeys(account: String) {
+        for tag in [clientKeyTag(account: account), legacyClientKeyTag] {
+            SecItemDelete(
+                [
+                    kSecClass: kSecClassKey,
+                    kSecAttrApplicationTag: tag,
+                    kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+                ] as CFDictionary)
+        }
+    }
+
+    private static func storeAndFindIdentityLocked(
+        certificate: SecCertificate,
+        privateKey: SecKey,
+        account: String
+    ) throws -> SecIdentity {
+        // Reuse a usable pairing: never delete a key that open sessions use.
+        var existing: SecIdentity?
+        if SecIdentityCreateWithCertificate(nil, certificate, &existing) == errSecSuccess,
+            let existing, identityCanSign(existing)
+        {
+            return existing
+        }
+
+        let keyTag = clientKeyTag(account: account)
 
         // Preserve the application label (SHA-1 of the public key) from the imported key so
         // that the Security framework can correlate the private key with the certificate.
         let importedKeyAttrs = SecKeyCopyAttributes(privateKey) as? [CFString: Any]
         let applicationLabel = importedKeyAttrs?[kSecAttrApplicationLabel] as? Data
 
+        // This cluster's previous key(s) only: other clusters keep theirs.
         let keySearchQuery: [CFString: Any] = [
             kSecClass: kSecClassKey,
             kSecAttrApplicationTag: keyTag,
