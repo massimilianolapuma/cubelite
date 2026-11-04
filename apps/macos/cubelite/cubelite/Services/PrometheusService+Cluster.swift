@@ -7,6 +7,7 @@ protocol PrometheusClusterQuerying: Sendable {
     func nodeMetrics(context: String, endpoint: PromEndpoint, node: String, range: MetricsRange) async throws
         -> HostMetrics
     func alerts(context: String, endpoint: PromEndpoint) async throws -> PromAlertsResult
+    func alertExpression(context: String, endpoint: PromEndpoint, alert: PromAlert) async -> String
 }
 
 extension PrometheusService: PrometheusClusterQuerying {
@@ -28,13 +29,14 @@ extension PrometheusService: PrometheusClusterQuerying {
             range: range)
     }
 
-    /// Firing alerts: `/api/v1/alerts`, else the `ALERTS` series; the rules
-    /// (best effort) give their expressions.
+    /// Firing alerts: `/api/v1/alerts`, else the `ALERTS` series. The rules
+    /// are not fetched here (about 135 KB on kube-prometheus-stack, where
+    /// Watchdog always fires): see `alertExpression`.
     func alerts(context: String, endpoint: PromEndpoint) async throws -> PromAlertsResult {
         let session = try await open(context: context, endpoint: endpoint)
         let cluster = endpoint.cluster
         do {
-            var alerts: [PromAlert]
+            let alerts: [PromAlert]
             let source: PromAlertsResult.Source
             do {
                 let body = try await get(session, "/api/v1/alerts")
@@ -45,19 +47,34 @@ extension PrometheusService: PrometheusClusterQuerying {
                 alerts = try PromAlerts.parseAlertsMetric(data)
                 source = .alertsMetric
             }
-            var rules: [PromAlertRule] = []
-            if !alerts.isEmpty {
-                let body = try? await get(session, "/api/v1/rules?type=alert&exclude_alerts=true")
-                if let body, let data = try? Prometheus.unwrapData(body) {
-                    rules = PromAlerts.parseRules(data)
-                }
-            }
-            alerts = PromAlerts.attachExprs(alerts, rules: rules, cluster: cluster)
             return PromAlertsResult(alerts: PromAlerts.finish(alerts, cluster: cluster), source: source)
         } catch let error as PromError {
             await dropConnection(context: context, session: session, after: error)
             throw error
         }
+    }
+
+    /// The alert's rule expression for Open in Grafana, else its `ALERTS`
+    /// series. The rules are fetched on the first click and kept for
+    /// `PromAlerts.rulesTTL` per context and endpoint (a failed fetch keeps
+    /// none, so a broken endpoint is not asked on every click either).
+    func alertExpression(context: String, endpoint: PromEndpoint, alert: PromAlert) async -> String {
+        let key = "\(context)|\(endpoint)"
+        let rules: [PromAlertRule]
+        if let cached = ruleCache[key], Date().timeIntervalSince(cached.at) < PromAlerts.rulesTTL {
+            rules = cached.rules
+        } else {
+            var fetched: [PromAlertRule] = []
+            if let session = try? await open(context: context, endpoint: endpoint),
+                let body = try? await get(session, "/api/v1/rules?type=alert&exclude_alerts=true"),
+                let data = try? Prometheus.unwrapData(body)
+            {
+                fetched = PromAlerts.parseRules(data)
+            }
+            ruleCache[key] = (Date(), fetched)
+            rules = fetched
+        }
+        return PromAlerts.ruleExpression(alert, rules: rules, cluster: endpoint.cluster)
     }
 
     /// The alerts endpoint is missing here (not a reachability or
@@ -95,16 +112,17 @@ extension PrometheusService: PrometheusClusterQuerying {
     }
 
     /// Runs `plan` over the last `range`: charts concurrently, each trying
-    /// its candidates in order until one has data.
+    /// its candidates in order until one has data, then the reference paired
+    /// with the winner.
     func hostMetrics(_ session: Session, plan: [HostChartPlan], range: MetricsRange) async throws -> HostMetrics {
         let step = range.step
         let end = Int(Date().timeIntervalSince1970) / step * step
         let start = end - range.seconds
-        typealias Outcome = (data: HostChartData, fatal: PromError?)
+        typealias Outcome = (charts: [HostChartData], fatal: PromError?)
         let outcomes = await withTaskGroup(of: (Int, Outcome).self) { group in
             for (index, chart) in plan.enumerated() {
                 group.addTask {
-                    (index, await self.runChart(session, chart, start: start, end: end, step: step))
+                    (index, await self.runPlan(session, chart, start: start, end: end, step: step))
                 }
             }
             var out = [Outcome?](repeating: nil, count: plan.count)
@@ -118,16 +136,36 @@ extension PrometheusService: PrometheusClusterQuerying {
             await dropConnection(context: session.context, session: session, after: first)
             throw first
         }
-        return HostMetrics(start: start, end: end, step: step, charts: outcomes.map(\.data))
+        return HostMetrics(start: start, end: end, step: step, charts: outcomes.flatMap(\.charts))
+    }
+
+    /// A plan's usage chart, then its reference from the winner's pair
+    /// (none when the winner has no pair: no line from another exporter).
+    private func runPlan(_ session: Session, _ plan: HostChartPlan, start: Int, end: Int, step: Int) async
+        -> (charts: [HostChartData], fatal: PromError?)
+    {
+        let usage = await runChart(session, plan.chart, plan.candidates, start: start, end: end, step: step)
+        guard let reference = plan.reference else { return ([usage.data], usage.fatal) }
+        let preferred = plan.referenceCandidates.lazy.compactMap { $0?.query }.first ?? ""
+        let paired = usage.winner.flatMap { plan.referenceCandidates.indices.contains($0) ? plan.referenceCandidates[$0] : nil }
+        guard let paired else {
+            let none = HostChartData(
+                chart: reference, source: nil, query: preferred, series: [],
+                error: usage.fatal?.localizedDescription)
+            return ([usage.data, none], usage.fatal)
+        }
+        let ref = await runChart(session, reference, [paired], start: start, end: end, step: step)
+        return ([usage.data, ref.data], usage.fatal)
     }
 
     /// One chart: candidates in order until one has data; a fatal answer
     /// stops the fallbacks. `fatal` is set when every candidate was fatal.
-    private func runChart(_ session: Session, _ plan: HostChartPlan, start: Int, end: Int, step: Int) async
-        -> (data: HostChartData, fatal: PromError?)
-    {
+    // swiftlint:disable:next function_parameter_count
+    private func runChart(
+        _ session: Session, _ chart: HostChart, _ candidates: [HostCandidate], start: Int, end: Int, step: Int
+    ) async -> (data: HostChartData, winner: Int?, fatal: PromError?) {
         var attempts: [(HostCandidate, Result<[MetricSeries], Error>)] = []
-        for candidate in plan.candidates {
+        for candidate in candidates {
             let result: Result<[MetricSeries], Error>
             do {
                 let data = try await queryRange(session, candidate.query, start: start, end: end, step: step)
@@ -142,9 +180,10 @@ extension PrometheusService: PrometheusClusterQuerying {
         let fatal: [PromError] = attempts.compactMap {
             if case .failure(let e as PromError) = $0.1, Self.isFatal(e) { e } else { nil }
         }
-        let preferred = plan.candidates.first?.query ?? ""
+        let preferred = candidates.first?.query ?? ""
+        let settled = HostQueries.settle(chart, preferred: preferred, attempts: attempts)
         return (
-            HostQueries.settle(plan.chart, preferred: preferred, attempts: attempts),
+            settled.data, settled.winner,
             !attempts.isEmpty && fatal.count == attempts.count ? fatal.first : nil
         )
     }

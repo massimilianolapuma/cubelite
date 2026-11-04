@@ -3,17 +3,33 @@
 //! `/api/v1/alerts` is preferred: it carries the annotations (summary) and
 //! `activeAt`. Endpoints without it (Azure Monitor, some proxies) fall back
 //! to the `ALERTS{alertstate="firing"}` series, which have the labels only.
-//! When alerts fire, the alerting rules (`/api/v1/rules?type=alert`, best
-//! effort) give each alert its expression for Open in Grafana; without them
-//! the link explores the alert's own `ALERTS` series.
+//!
+//! Open in Grafana uses the alert's rule expression, fetched only when the
+//! link is clicked: the alerting rules (`/api/v1/rules?type=alert`, about
+//! 135 KB on kube-prometheus-stack) are cached per connection for 5
+//! minutes. Without a matching rule the link explores the alert's own
+//! `ALERTS` series.
+//!
+//! With a cluster label, an alert belongs to the cluster when its `cluster`
+//! label is that cluster or absent (rules evaluated per cluster often carry
+//! no label), on every path.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::transport::PromConnection;
-use super::{escape, unwrap_data, PromEndpoint, PromError};
+use super::{escape, regex_literal, unwrap_data, PromEndpoint, PromError};
+
+/// How long a connection keeps the alerting rules.
+pub const RULES_TTL: Duration = Duration::from_secs(300);
+
+/// The alerting rules last fetched on a connection, and when.
+#[derive(Debug, Default)]
+pub struct RulesCache(tokio::sync::Mutex<Option<(Instant, Arc<Vec<AlertRule>>)>>);
 
 /// A firing alert.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,22 +96,30 @@ fn strings(v: Option<&Value>) -> BTreeMap<String, String> {
         .unwrap_or_default()
 }
 
+/// `, cluster=~"<c>|"`: the cluster's alerts and those without the label.
+fn cluster_or_absent(cluster: Option<&str>) -> String {
+    cluster
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .map(|c| format!(", cluster=~{}", escape(&format!("{}|", regex_literal(c)))))
+        .unwrap_or_default()
+}
+
 /// `ALERTS{alertname="…", alertstate="firing"}`: the fallback expression.
 pub fn alert_series_query(name: &str, cluster: Option<&str>) -> String {
-    let mut sel = format!(r#"alertname={}, alertstate="firing""#, escape(name));
-    if let Some(c) = cluster.map(str::trim).filter(|c| !c.is_empty()) {
-        sel.push_str(&format!(", cluster={}", escape(c)));
-    }
-    format!("ALERTS{{{sel}}}")
+    format!(
+        r#"ALERTS{{alertname={}, alertstate="firing"{}}}"#,
+        escape(name),
+        cluster_or_absent(cluster)
+    )
 }
 
 /// Every firing alert's series (the fallback list).
 pub fn alerts_metric_query(cluster: Option<&str>) -> String {
-    let mut sel = r#"alertstate="firing""#.to_string();
-    if let Some(c) = cluster.map(str::trim).filter(|c| !c.is_empty()) {
-        sel.push_str(&format!(", cluster={}", escape(c)));
-    }
-    format!("ALERTS{{{sel}}}")
+    format!(
+        r#"ALERTS{{alertstate="firing"{}}}"#,
+        cluster_or_absent(cluster)
+    )
 }
 
 fn alert(
@@ -178,18 +202,16 @@ pub fn parse_alert_rules(data: &Value) -> Vec<AlertRule> {
         .collect()
 }
 
-/// Gives each alert its rule's expression (same name, the rule's labels
-/// on the alert), else its `ALERTS` series.
-pub fn attach_exprs(alerts: &mut [Alert], rules: &[AlertRule], cluster: Option<&str>) {
-    for alert in alerts {
-        alert.expr = rules
-            .iter()
-            .find(|r| {
-                r.name == alert.name && r.labels.iter().all(|(k, v)| alert.labels.get(k) == Some(v))
-            })
-            .map(|r| r.query.clone())
-            .unwrap_or_else(|| alert_series_query(&alert.name, cluster));
-    }
+/// The alert's rule expression (same name, the rule's labels on the
+/// alert), else its `ALERTS` series.
+pub fn rule_expr(alert: &Alert, rules: &[AlertRule], cluster: Option<&str>) -> String {
+    rules
+        .iter()
+        .find(|r| {
+            r.name == alert.name && r.labels.iter().all(|(k, v)| alert.labels.get(k) == Some(v))
+        })
+        .map(|r| r.query.clone())
+        .unwrap_or_else(|| alert_series_query(&alert.name, cluster))
 }
 
 fn severity_rank(severity: Option<&str>) -> u8 {
@@ -203,11 +225,27 @@ fn severity_rank(severity: Option<&str>) -> u8 {
     }
 }
 
-/// Keeps the alerts of `cluster` (those without a `cluster` label too)
-/// and sorts them: most severe first, then oldest first, then by name.
+/// Whether an alert is informational (`severity="none"`: Watchdog,
+/// InfoInhibitor): listed last and muted, never counted as firing trouble.
+pub fn is_informational(alert: &Alert) -> bool {
+    alert
+        .severity
+        .as_deref()
+        .is_some_and(|s| s.eq_ignore_ascii_case("none"))
+}
+
+/// Keeps the alerts of `cluster` (those without a `cluster` label too),
+/// drops duplicates (the same labels from HA Prometheus replicas), gives
+/// each its fallback expression, and sorts them: most severe first, then
+/// oldest first, then by name.
 pub fn finish(mut alerts: Vec<Alert>, cluster: Option<&str>) -> Vec<Alert> {
     if let Some(c) = cluster.map(str::trim).filter(|c| !c.is_empty()) {
         alerts.retain(|a| a.labels.get("cluster").is_none_or(|v| v == c));
+    }
+    let mut seen = BTreeSet::new();
+    alerts.retain(|a| seen.insert(a.labels.clone()));
+    for alert in &mut alerts {
+        alert.expr = alert_series_query(&alert.name, cluster);
     }
     alerts.sort_by(|a, b| {
         severity_rank(a.severity.as_deref())
@@ -242,7 +280,7 @@ impl PromConnection {
             Ok(data) => parse_alerts_api(&data),
             Err(e) => Err(e),
         };
-        let (mut alerts, source) = match api {
+        let (alerts, source) = match api {
             Ok(alerts) => (alerts, AlertSource::AlertsApi),
             Err(e) if unsupported(&e) => {
                 let data = self.query(&alerts_metric_query(cluster)).await?;
@@ -250,20 +288,40 @@ impl PromConnection {
             }
             Err(e) => return Err(e),
         };
-        let rules = if alerts.is_empty() {
-            Vec::new()
-        } else {
-            self.get("/api/v1/rules?type=alert&exclude_alerts=true")
-                .await
-                .and_then(unwrap_data)
-                .map(|data| parse_alert_rules(&data))
-                .unwrap_or_default()
-        };
-        attach_exprs(&mut alerts, &rules, cluster);
         Ok(AlertsResult {
             alerts: finish(alerts, cluster),
             source,
         })
+    }
+
+    /// The alerting rules, cached for [`RULES_TTL`] (a failed fetch caches
+    /// none, so a broken endpoint is not asked on every click either).
+    async fn alert_rules(&self) -> Arc<Vec<AlertRule>> {
+        let mut cached = self.rules.0.lock().await;
+        if let Some((at, rules)) = cached.as_ref() {
+            if at.elapsed() < RULES_TTL {
+                return rules.clone();
+            }
+        }
+        let rules = Arc::new(
+            self.get("/api/v1/rules?type=alert&exclude_alerts=true")
+                .await
+                .and_then(unwrap_data)
+                .map(|data| parse_alert_rules(&data))
+                .unwrap_or_default(),
+        );
+        *cached = Some((Instant::now(), rules.clone()));
+        rules
+    }
+
+    /// The alert's rule expression for Open in Grafana (rules fetched on
+    /// first use, then cached), else its `ALERTS` series.
+    pub async fn alert_expr(&self, endpoint: &PromEndpoint, alert: &Alert) -> String {
+        rule_expr(
+            alert,
+            &self.alert_rules().await,
+            endpoint.cluster.as_deref(),
+        )
     }
 }
 

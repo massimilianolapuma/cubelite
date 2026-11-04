@@ -35,6 +35,9 @@ import ServicesView from "./ServicesView.svelte";
 import IngressesView from "./IngressesView.svelte";
 import ConfigMapsView from "./ConfigMapsView.svelte";
 import SecretsView from "./SecretsView.svelte";
+// Static: NodesView pulls in the node drawer and its charts (#530), whose
+// first transform must not count against the test timeout.
+import NodesView from "./NodesView.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
 
@@ -214,8 +217,7 @@ describe("workload views", () => {
     expect(screen.getByText("Progressing")).toBeInTheDocument();
   });
 
-  it("NodesView renders status, roles and version", async () => {
-    const { default: NodesView } = await import("./NodesView.svelte");
+  it("NodesView renders status, roles and version", () => {
     resources.nodeInventory = [
       { name: "node-1", status: "Ready", roles: ["control-plane"], version: "v1.30.2", creation_timestamp: null },
     ];

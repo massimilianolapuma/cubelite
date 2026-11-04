@@ -95,6 +95,9 @@ actor PrometheusService {
     private var routes: [String: (endpoint: PromEndpoint, route: Route)] = [:]
     /// Contexts whose cached connection uses an Azure CLI token.
     private var azureContexts: Set<String> = []
+    /// Alerting rules per context and endpoint, for Open in Grafana on an
+    /// alert (#530, see `alertExpression`).
+    var ruleCache: [String: (at: Date, rules: [PromAlertRule])] = [:]
 
     init(
         cluster: any IntegrationClusterAccess,

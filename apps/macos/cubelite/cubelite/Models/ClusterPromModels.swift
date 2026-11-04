@@ -10,7 +10,8 @@ struct HostPanel: Sendable {
     let usage: [HostChart]
     var labels: [String] = []
     var reference: HostChart?
-    /// Name of the reference in the summary ("alloc", "size").
+    /// Name of the reference in the summary ("capacity", "size"); "alloc"
+    /// when it comes from kube-state-metrics (allocatable).
     var referenceLabel = ""
     let emptyText: String
 
@@ -22,14 +23,14 @@ struct HostPanel: Sendable {
 
     private static func cpu(_ empty: String) -> HostPanel {
         HostPanel(
-            title: "CPU", unit: .cores, usage: [.cpu], reference: .cpuAllocatable, referenceLabel: "alloc",
+            title: "CPU", unit: .cores, usage: [.cpu], reference: .cpuAllocatable, referenceLabel: "capacity",
             emptyText: empty)
     }
 
     private static func memory(_ empty: String) -> HostPanel {
         HostPanel(
             title: "Memory", unit: .bytes, usage: [.memory], reference: .memoryAllocatable,
-            referenceLabel: "alloc", emptyText: empty)
+            referenceLabel: "capacity", emptyText: empty)
     }
 
     static let cluster = [cpu(needsCadvisor), memory(needsCadvisor)]
@@ -59,9 +60,14 @@ struct HostPanel: Sendable {
             }
         }
         if let reference, let ref = result.data(reference)?.series.first {
-            out.append((label: referenceLabel, index: 0, points: ref.points, dashed: true))
+            out.append((label: referenceName(result), index: 0, points: ref.points, dashed: true))
         }
         return out
+    }
+
+    /// The reference's name: "alloc" from kube-state-metrics, else the panel's.
+    func referenceName(_ result: HostMetrics) -> String {
+        reference.flatMap { result.data($0)?.source } == .kubeStateMetrics ? "alloc" : referenceLabel
     }
 
     /// "250m / alloc 4", or "↓ 1Ki/s ↑ 2Ki/s" for network.
@@ -71,7 +77,7 @@ struct HostPanel: Sendable {
             return "↓ \(fmt(latest(result, usage[0]))) ↑ \(fmt(latest(result, usage[1])))"
         }
         var parts = [fmt(latest(result, usage[0]))]
-        if let reference, let ref = latest(result, reference) { parts.append("\(referenceLabel) \(fmt(ref))") }
+        if let reference, let ref = latest(result, reference) { parts.append("\(referenceName(result)) \(fmt(ref))") }
         return parts.joined(separator: " / ")
     }
 
@@ -190,44 +196,68 @@ final class OverviewPromModel {
     }
 }
 
+/// The newest of overlapping loads of one subject (a pod's or a node's
+/// Metrics section, #512 #530): result, error and loading state. A late
+/// answer of an older load is dropped, and another subject clears the
+/// previous one's result at once.
+@Observable @MainActor
+final class LatestLoad<Value: Sendable, Args: Sendable> {
+    private(set) var result: Value?
+    private(set) var error: String?
+    private(set) var isLoading = false
+    /// What `result` was loaded with (its range).
+    private(set) var args: Args
+    @ObservationIgnored private var subject = ""
+    @ObservationIgnored private var generation = 0
+
+    init(_ initial: Args) {
+        args = initial
+    }
+
+    /// Loads `subject` with `args`; only the newest call lands.
+    func run(subject: String, args: Args, _ fetch: () async throws -> Value) async {
+        if subject != self.subject {
+            self.subject = subject
+            result = nil
+            error = nil
+        }
+        generation += 1
+        let mine = generation
+        error = nil
+        isLoading = true
+        defer { if mine == generation { isLoading = false } }
+        do {
+            let data = try await fetch()
+            guard mine == generation else { return }
+            result = data
+            self.args = args
+        } catch is CancellationError {
+        } catch {
+            guard mine == generation else { return }
+            self.error = error.localizedDescription
+            result = nil
+        }
+    }
+}
+
 /// State of a node's Metrics section (#530): range and the last result for
 /// the shown node; only the newest call lands.
 @Observable @MainActor
 final class NodeMetricsModel {
 
     var range = MetricsRange.hour
-    private(set) var result: HostMetrics?
-    private(set) var resultRange = MetricsRange.hour
-    private(set) var isLoading = false
-    private(set) var error: String?
-    @ObservationIgnored private var key = ""
-    @ObservationIgnored private var generation = 0
+    private let latest = LatestLoad<HostMetrics, MetricsRange>(.hour)
+    var result: HostMetrics? { latest.result }
+    var resultRange: MetricsRange { latest.args }
+    var isLoading: Bool { latest.isLoading }
+    var error: String? { latest.error }
 
     func load(
         context: String, endpoint: PromEndpoint, node: String, querying: any PrometheusClusterQuerying
     ) async {
-        let subject = "\(context)|\(node)"
-        if subject != key {
-            key = subject
-            result = nil
-            error = nil
-        }
-        generation += 1
-        let mine = generation
         let range = self.range
-        error = nil
-        isLoading = true
-        defer { if mine == generation { isLoading = false } }
-        do {
-            let data = try await querying.nodeMetrics(context: context, endpoint: endpoint, node: node, range: range)
-            guard mine == generation else { return }
-            result = data
-            resultRange = range
-        } catch is CancellationError {
-        } catch {
-            guard mine == generation else { return }
-            self.error = error.localizedDescription
-            result = nil
+        await latest.run(subject: "\(context)|\(node)", args: range) {
+            try await querying.nodeMetrics(context: context, endpoint: endpoint, node: node, range: range)
         }
     }
 }

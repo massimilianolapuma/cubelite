@@ -79,7 +79,9 @@ test("Overview cluster history and alerts, and a node's metrics (#530)", async (
   const history = page.getByTestId("cluster-history");
   await expect(history.getByTestId("metrics-chart")).toHaveCount(2);
   await expect(history.getByText("1.50 / alloc 4")).toBeVisible();
-  await expect(page.getByTestId("overview-alerts-badge")).toHaveText("2 firing");
+  // Watchdog (severity none) is listed but not counted.
+  await expect(page.getByTestId("overview-alerts-badge")).toHaveText("1 firing");
+  await expect(page.getByTestId("alerts-informational")).toHaveText("1 informational");
   const alerts = page.getByTestId("alerts-card");
   await expect(alerts.getByTestId("alert-row")).toHaveCount(2);
   await expect(alerts.getByText("Node is not ready.")).toBeVisible();

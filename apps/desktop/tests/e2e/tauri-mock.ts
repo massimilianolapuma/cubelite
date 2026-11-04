@@ -193,8 +193,9 @@ export function tauriMockScript(): string {
       case "list_cronjobs":
       case "list_statefulsets":
       case "list_pvcs":
-      case "list_nodes":
         return [];
+      case "list_nodes":
+        return [{ name: "node-1", status: "NotReady", roles: ["worker"], version: "v1.30.2", creation_timestamp: null }];
       case "list_daemonsets":
         return [{ name: "node-agent", namespace: "default" }];
       case "probe_cluster":
@@ -290,9 +291,11 @@ export function tauriMockScript(): string {
           source: "alerts-api",
           alerts: [
             { name: "KubeNodeNotReady", severity: "critical", namespace: null, pod: null, node: "node-1", summary: "Node is not ready.", activeAt: "2026-01-01T00:00:00Z", expr: "kube_node_status_condition == 0", labels: {} },
-            { name: "Watchdog", severity: "none", namespace: null, pod: null, node: null, summary: "Alerting pipeline check.", activeAt: "2026-01-01T00:00:00Z", expr: "vector(1)", labels: {} },
+            { name: "Watchdog", severity: "none", namespace: null, pod: null, node: null, summary: "Alerting pipeline check.", activeAt: "2026-01-01T00:00:00Z", expr: "ALERTS-watchdog", labels: {} },
           ],
         };
+      case "prometheus_alert_expr":
+        return args.alert && args.alert.name === "Watchdog" ? "vector(1)" : "e2e-rule";
       case "prometheus_auth_method": return "none";
       case "open_grafana_explore": {
         window.__grafanaOpened = args;

@@ -17,7 +17,9 @@
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
 	import ResourceSummaryCard from '#lib/components/ui/ResourceSummaryCard.svelte';
 	import StatCard from '#lib/components/ui/StatCard.svelte';
+	import { firingBadge } from '#lib/host-metrics.ts';
 	import { coresDetail, memoryDetail, summarize } from '#lib/overview-summary.ts';
+	import { toneColor } from '#lib/status.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { promOverview } from '#lib/stores/promOverview.svelte.ts';
 	import { resources, type ExtraKind } from '#lib/stores/resources.svelte.ts';
@@ -36,7 +38,8 @@
 		void resources.pods;
 		void promOverview.load();
 	});
-	const firing = $derived(promOverview.alerts?.length ?? 0);
+	// Informational alerts (Watchdog) neither count nor colour the badge.
+	const firing = $derived(firingBadge(promOverview.alerts));
 
 	const warnings = $derived(resources.warningEvents);
 	const capacity = $derived(resources.capacityTotals);
@@ -67,14 +70,14 @@
 <div class="flex flex-col gap-4 p-4">
 	<div class="flex items-center gap-2">
 		<h1 class="type-title">Overview</h1>
-		{#if firing > 0}
+		{#if firing.count > 0}
 			<span
 				class="type-caption rounded-full border px-2 font-mono"
-				style="color: var(--color-status-warn); border-color: var(--color-status-warn);"
+				style="color: {toneColor[firing.tone]}; border-color: {toneColor[firing.tone]};"
 				data-testid="overview-alerts-badge"
 				title="Firing alerts from Prometheus"
 			>
-				{firing} firing
+				{firing.count} firing
 			</span>
 		{/if}
 	</div>

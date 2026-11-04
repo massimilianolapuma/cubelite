@@ -468,7 +468,7 @@ async fn live_prometheus(client: &kube::Client) -> (PromEndpoint, prom::PromConn
 #[tokio::test]
 #[ignore = "needs a live cluster (CUBELITE_LIVE_CONTEXT)"]
 async fn prometheus_cluster_and_node_history_and_alerts() {
-    use cubelite_core::prometheus::nodes::HostChart;
+    use cubelite_core::prometheus::nodes::{HostChart, MetricSource};
     let Some(client) = client().await else { return };
     let (endpoint, conn) = live_prometheus(&client).await;
 
@@ -545,6 +545,20 @@ async fn prometheus_cluster_and_node_history_and_alerts() {
             .expect("chart");
         assert!(data.source.is_some(), "{chart:?} has data on {node}");
     }
+    // A reference line comes from its usage's exporter: kube-state-metrics
+    // allocatable next to cAdvisor, node-exporter capacity next to it.
+    let source = |chart: HostChart| {
+        result
+            .charts
+            .iter()
+            .find(|c| c.chart == chart)
+            .and_then(|c| c.source)
+    };
+    let expected = match source(HostChart::Cpu) {
+        Some(MetricSource::NodeExporter) => MetricSource::NodeExporter,
+        _ => MetricSource::KubeStateMetrics,
+    };
+    assert_eq!(source(HostChart::CpuAllocatable), Some(expected));
 
     // Overview alerts: kube-prometheus-stack's Watchdog always fires.
     let alerts = conn.alerts(&endpoint).await.expect("alerts");
@@ -560,5 +574,10 @@ async fn prometheus_cluster_and_node_history_and_alerts() {
         .expect("Watchdog fires");
     assert!(watchdog.active_at.is_some());
     assert!(watchdog.summary.is_some());
-    assert_eq!(watchdog.expr, "vector(1)", "the rule's expression");
+    assert!(watchdog.expr.starts_with("ALERTS{"), "no rules until asked");
+    assert_eq!(
+        conn.alert_expr(&endpoint, watchdog).await,
+        "vector(1)",
+        "the rule's expression, on demand"
+    );
 }

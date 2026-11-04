@@ -23,7 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `instance` (an IP:port) is matched to the node by `node_uname_info`'s
   host name, else by the node's `internal_ip` from `kube_node_info`. Alerts
   come from `/api/v1/alerts` (annotations, activeAt), else the `ALERTS`
-  series; expressions come from the alerting rules. Everything uses the
+  series; Open in Grafana fetches the alert's rule expression on click
+  (rules cached 5 minutes per connection). Informational alerts (severity
+  `none`: Watchdog) are listed last, muted, and not counted. A reference
+  line (allocatable, capacity, size) always comes from its usage's
+  exporter. Everything uses the
   context's Prometheus endpoint and cluster label, loads on the Overview's
   refresh at most every 30 s, and shows the "Set up Prometheus" hint without
   an endpoint. Core: `prometheus::nodes` and `prometheus::alerts`; Tauri:

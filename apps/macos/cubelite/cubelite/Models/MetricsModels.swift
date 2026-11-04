@@ -154,13 +154,12 @@ final class MetricsSectionModel {
 
     var range = MetricsRange.hour
     var perContainer = true
-    private(set) var result: MetricsResult?
+    private let latest = LatestLoad<MetricsResult, MetricsRange>(.hour)
+    var result: MetricsResult? { latest.result }
     /// Range of `result` (the selection may already be another one).
-    private(set) var resultRange = MetricsRange.hour
-    private(set) var isLoading = false
-    private(set) var error: String?
-    @ObservationIgnored private var key = ""
-    @ObservationIgnored private var generation = 0
+    var resultRange: MetricsRange { latest.args }
+    var isLoading: Bool { latest.isLoading }
+    var error: String? { latest.error }
 
     /// Loads the charts of `workload`; another pod or deployment never shows
     /// the previous one's charts, and only the newest call lands.
@@ -168,29 +167,10 @@ final class MetricsSectionModel {
         context: String, endpoint: PromEndpoint, namespace: String, workload: Workload,
         querying: any PrometheusQuerying
     ) async {
-        let subject = "\(context)|\(namespace)|\(workload)"
-        if subject != key {
-            key = subject
-            result = nil
-            error = nil
-        }
-        generation += 1
-        let mine = generation
-        error = nil
         let request = MetricsRequest(
             namespace: namespace, workload: workload, range: range, perContainer: perContainer)
-        isLoading = true
-        defer { if mine == generation { isLoading = false } }
-        do {
-            let data = try await querying.metrics(context: context, endpoint: endpoint, request: request)
-            guard mine == generation else { return }
-            result = data
-            resultRange = request.range
-        } catch is CancellationError {
-        } catch {
-            guard mine == generation else { return }
-            self.error = error.localizedDescription
-            result = nil
+        await latest.run(subject: "\(context)|\(namespace)|\(workload)", args: request.range) {
+            try await querying.metrics(context: context, endpoint: endpoint, request: request)
         }
     }
 

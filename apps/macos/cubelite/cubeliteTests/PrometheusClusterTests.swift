@@ -7,7 +7,8 @@ import XCTest
 final class HostQueriesTests: XCTestCase {
 
     private func queries(_ plan: [HostChartPlan], _ chart: HostChart) -> [String] {
-        plan.first { $0.chart == chart }?.candidates.map(\.query) ?? []
+        if let usage = plan.first(where: { $0.chart == chart }) { return usage.candidates.map(\.query) }
+        return plan.first { $0.reference == chart }?.referenceCandidates.map { $0?.query ?? "" } ?? []
     }
 
     private func sources(_ plan: [HostChartPlan], _ chart: HostChart) -> [MetricSource] {
@@ -36,7 +37,7 @@ final class HostQueriesTests: XCTestCase {
     func testNodePlanPrefersNodeExporterThenCadvisor() {
         let plan = HostQueries.nodePlan(
             node: "minikube", instances: ["192.168.49.2:9100"], cluster: "eu", range: .hour)
-        XCTAssertEqual(plan.map(\.chart), HostChart.allCases)
+        XCTAssertEqual(plan.flatMap { [$0.chart] + ($0.reference.map { [$0] } ?? []) }, HostChart.allCases)
         XCTAssertEqual(sources(plan, .cpu), [.nodeExporter, .cadvisor, .cadvisor])
         let cpu = queries(plan, .cpu)
         XCTAssertEqual(
@@ -55,7 +56,10 @@ final class HostQueriesTests: XCTestCase {
         let rx = queries(plan, .networkRx)
         XCTAssertTrue(rx[0].hasPrefix("sum(rate(node_network_receive_bytes_total{instance="))
         XCTAssertTrue(rx[0].contains(#"device!~"lo|veth.*"#))
-        XCTAssertTrue(rx[1].contains(#"container_network_receive_bytes_total{node="minikube""#))
+        XCTAssertEqual(
+            rx[1],
+            #"sum(rate(container_network_receive_bytes_total{node="minikube", cluster="eu", pod!=""}[300s]) and on (namespace, pod) kube_pod_info{host_network="false", cluster="eu"})"#,
+            "host-network pods see the node's interfaces")
         XCTAssertTrue(queries(plan, .networkTx)[0].contains("node_network_transmit_bytes_total"))
         XCTAssertTrue(queries(plan, .filesystem)[0].contains("node_filesystem_avail_bytes"))
         XCTAssertTrue(queries(plan, .filesystem)[0].contains("max by (device)"))
@@ -64,9 +68,15 @@ final class HostQueriesTests: XCTestCase {
             #"count(kube_pod_status_phase{phase="Running", cluster="eu"} == 1 and on (namespace, pod) kube_pod_info{node="minikube", cluster="eu"})"#
         )
         XCTAssertEqual(sources(plan, .pods), [.kubeStateMetrics, .kubelet, .kubelet])
+        // References pair with the usage's exporter.
+        let alloc = #"sum(kube_node_status_allocatable{node="minikube", cluster="eu", resource="cpu"})"#
         XCTAssertEqual(
             queries(plan, .cpuAllocatable),
-            [#"sum(kube_node_status_allocatable{node="minikube", cluster="eu", resource="cpu"})"#])
+            [#"count(node_cpu_seconds_total{instance="192.168.49.2:9100", cluster="eu", mode="idle"})"#, alloc, alloc])
+        XCTAssertEqual(
+            queries(plan, .memoryAllocatable)[0], #"sum(node_memory_MemTotal_bytes{instance="192.168.49.2:9100", cluster="eu"})"#)
+        XCTAssertEqual(
+            queries(plan, .filesystemCapacity)[2], #"sum(container_fs_limit_bytes{instance="minikube", cluster="eu", id="/"})"#)
     }
 
     func testNodePlanWithoutNodeExporterUsesCadvisorOnly() {
@@ -99,20 +109,24 @@ final class HostQueriesTests: XCTestCase {
     func testSettlePicksTheFirstCandidateWithData() {
         let ne = HostCandidate(source: .nodeExporter, query: "ne")
         let cad = HostCandidate(source: .cadvisor, query: "cad")
-        var data = HostQueries.settle(.cpu, preferred: "ne", attempts: [(ne, .success(series([1])))])
+        var (data, winner) = HostQueries.settle(.cpu, preferred: "ne", attempts: [(ne, .success(series([1])))])
         XCTAssertEqual(data.source, .nodeExporter)
-        data = HostQueries.settle(
+        XCTAssertEqual(winner, 0)
+        (data, winner) = HostQueries.settle(
             .cpu, preferred: "ne", attempts: [(ne, .success(series([nil]))), (cad, .success(series([0.5])))])
         XCTAssertEqual(data.source, .cadvisor)
+        XCTAssertEqual(winner, 1)
         XCTAssertEqual(data.query, "cad")
-        data = HostQueries.settle(.filesystem, preferred: "ne", attempts: [(ne, .success([])), (cad, .success([]))])
+        (data, winner) = HostQueries.settle(
+            .filesystem, preferred: "ne", attempts: [(ne, .success([])), (cad, .success([]))])
         XCTAssertNil(data.source)
+        XCTAssertNil(winner)
         XCTAssertEqual(data.query, "ne")
         XCTAssertNil(data.error)
         let boom = PromError.http(status: 422, reason: "boom")
-        data = HostQueries.settle(.cpu, preferred: "ne", attempts: [(ne, .success([])), (cad, .failure(boom))])
+        data = HostQueries.settle(.cpu, preferred: "ne", attempts: [(ne, .success([])), (cad, .failure(boom))]).data
         XCTAssertNil(data.error, "missing data, not a failure")
-        data = HostQueries.settle(.cpu, preferred: "ne", attempts: [(ne, .failure(boom)), (cad, .failure(boom))])
+        data = HostQueries.settle(.cpu, preferred: "ne", attempts: [(ne, .failure(boom)), (cad, .failure(boom))]).data
         XCTAssertEqual(data.error, "Prometheus returned 422: boom")
     }
 
@@ -139,6 +153,7 @@ final class HostQueriesTests: XCTestCase {
             ])
         let cpu = HostPanel.cluster[0]
         XCTAssertEqual(cpu.summary(result), "500m / alloc 4")
+        XCTAssertEqual(cpu.referenceName(result), "alloc")
         XCTAssertEqual(cpu.lines(result).map(\.dashed), [false, true])
         XCTAssertEqual(cpu.queries(result), ["q-cpu", "q-cpu-allocatable"])
         XCTAssertEqual(cpu.source(result), "from cAdvisor")
@@ -196,7 +211,8 @@ final class PromAlertsTests: XCTestCase {
         XCTAssertNil(alerts[0].activeAt)
         XCTAssertNil(alerts[0].labels["__name__"])
         XCTAssertNil(alerts[0].labels["alertstate"])
-        XCTAssertEqual(PromAlerts.metricQuery(cluster: "eu"), #"ALERTS{alertstate="firing", cluster="eu"}"#)
+        // The cluster's alerts and those without the label, as in `finish`.
+        XCTAssertEqual(PromAlerts.metricQuery(cluster: "eu.1"), #"ALERTS{alertstate="firing", cluster=~"eu\\.1|"}"#)
         XCTAssertEqual(PromAlerts.metricQuery(cluster: nil), #"ALERTS{alertstate="firing"}"#)
     }
 
@@ -212,10 +228,10 @@ final class PromAlertsTests: XCTestCase {
             PromAlert(
                 name: #"Unknown"Rule"#, severity: nil, namespace: nil, pod: nil, node: nil, summary: nil,
                 activeAt: nil, expr: "", labels: [:]))
-        alerts = PromAlerts.attachExprs(alerts, rules: rules, cluster: "eu")
-        XCTAssertEqual(alerts[0].expr, "vector(1)")
-        XCTAssertEqual(alerts[1].expr, "crash_warning > 0")
-        XCTAssertEqual(alerts[2].expr, #"ALERTS{alertname="Unknown\"Rule", alertstate="firing", cluster="eu"}"#)
+        let exprs = alerts.map { PromAlerts.ruleExpression($0, rules: rules, cluster: "eu") }
+        XCTAssertEqual(exprs[0], "vector(1)")
+        XCTAssertEqual(exprs[1], "crash_warning > 0")
+        XCTAssertEqual(exprs[2], #"ALERTS{alertname="Unknown\"Rule", alertstate="firing", cluster=~"eu|"}"#)
     }
 
     private func named(_ name: String, _ severity: String?, _ activeAt: String? = nil, cluster: String? = nil)
@@ -240,6 +256,24 @@ final class PromAlertsTests: XCTestCase {
             ], cluster: "eu")
         XCTAssertEqual(sorted.map(\.name), ["Crit", "A", "B", "Plain", "Watchdog"])
         XCTAssertEqual(PromAlerts.finish([named("Other", nil, cluster: "us")], cluster: nil).count, 1)
+        XCTAssertEqual(sorted[0].expr, #"ALERTS{alertname="Crit", alertstate="firing", cluster=~"eu|"}"#)
+        // HA replicas report the same alert twice: listed once (unique ids).
+        let twice = PromAlerts.finish(
+            [named("Watchdog", "none", "2026-01-01T00:00:00Z"), named("Watchdog", "none", "2026-01-01T00:00:01Z")],
+            cluster: nil)
+        XCTAssertEqual(twice.count, 1)
+    }
+
+    func testInformationalAlertsStayOutOfTheBadge() {
+        let watchdog = named("Watchdog", "none")
+        XCTAssertTrue(PromAlerts.isInformational(watchdog))
+        XCTAssertFalse(PromAlerts.isInformational(named("A", "warning")))
+        XCTAssertEqual(PromAlerts.badge([watchdog]).count, 0)
+        let mixed = PromAlerts.badge([watchdog, named("A", "warning")])
+        XCTAssertEqual(mixed.count, 1)
+        XCTAssertEqual(mixed.tone, .warn)
+        XCTAssertEqual(PromAlerts.badge([named("C", "critical"), named("A", "warning")]).tone, .err)
+        XCTAssertEqual(PromAlerts.badge(nil).count, 0)
     }
 
     func testAlertsNameAndResolveWhatTheyAreAbout() {
@@ -249,13 +283,14 @@ final class PromAlertsTests: XCTestCase {
             name: "X", severity: "warning", namespace: "shop", pod: "api-0", node: nil, summary: nil, activeAt: nil,
             expr: "", labels: [:])
         XCTAssertEqual(PromAlerts.subject(onPod), "shop/api-0")
-        XCTAssertEqual(PromAlerts.target(onPod, pods: [pod]), .pod("shop/api-0"))
-        XCTAssertNil(PromAlerts.target(onPod, pods: []), "a pod that is not loaded has no link")
+        XCTAssertEqual(PromAlerts.target(onPod, pods: [pod], nodes: []), .pod("shop/api-0"))
+        XCTAssertNil(PromAlerts.target(onPod, pods: [], nodes: []), "a pod that is not loaded has no link")
         let onNode = PromAlert(
             name: "X", severity: "critical", namespace: nil, pod: nil, node: "minikube", summary: nil, activeAt: nil,
             expr: "", labels: [:])
         XCTAssertEqual(PromAlerts.subject(onNode), "minikube")
-        XCTAssertEqual(PromAlerts.target(onNode, pods: []), .node("minikube"))
+        XCTAssertEqual(PromAlerts.target(onNode, pods: [], nodes: ["minikube"]), .node("minikube"))
+        XCTAssertNil(PromAlerts.target(onNode, pods: [], nodes: ["other"]), "a node the cluster does not list")
         XCTAssertEqual(PromAlerts.tone("critical"), .err)
         XCTAssertEqual(PromAlerts.tone("Warning"), .warn)
         XCTAssertEqual(PromAlerts.tone("none"), .neutral)
@@ -321,8 +356,10 @@ final class PrometheusClusterServiceTests: XCTestCase {
         XCTAssertEqual(result.charts.map(\.chart), HostChart.allCases)
         XCTAssertEqual(result.data(.cpu)?.source, .nodeExporter)
         XCTAssertTrue(result.data(.cpu)?.query.contains(#"instance="10.0.0.7:9100""#) ?? false)
-        XCTAssertEqual(result.data(.cpuAllocatable)?.source, .kubeStateMetrics)
+        XCTAssertEqual(result.data(.cpuAllocatable)?.source, .nodeExporter, "capacity of the usage's exporter")
+        XCTAssertTrue(result.data(.cpuAllocatable)?.query.contains(#"mode="idle""#) ?? false)
         XCTAssertEqual(result.data(.memory)?.source, .cadvisor, "no node-exporter memory: cAdvisor")
+        XCTAssertEqual(result.data(.memoryAllocatable)?.source, .kubeStateMetrics, "allocatable next to cAdvisor")
         XCTAssertNil(result.data(.filesystem)?.source)
         XCTAssertNil(result.data(.filesystem)?.error, "not available, not an error")
         let asked = IntegrationStubProtocol.requests.compactMap {
@@ -343,7 +380,7 @@ final class PrometheusClusterServiceTests: XCTestCase {
         }
     }
 
-    func testAlertsComeFromTheAlertsAPIWithRuleExpressions() async throws {
+    func testAlertsSkipTheRulesUntilGrafanaAsksThenCacheThem() async throws {
         let body = #"{"status":"success","data":\#(PromAlertsTests.alertsBody)}"#
         IntegrationStubProtocol.reset([
             "/api/v1/alerts": (200, body),
@@ -352,11 +389,17 @@ final class PrometheusClusterServiceTests: XCTestCase {
                 #"{"status":"success","data":{"groups":[{"rules":[{"type":"alerting","name":"Watchdog","query":"vector(1)","labels":{}}]}]}}"#
             ),
         ])
-        let result = try await service().alerts(context: "prod", endpoint: external)
+        let prom = service()
+        let result = try await prom.alerts(context: "prod", endpoint: external)
         XCTAssertEqual(result.source, .alertsAPI)
         XCTAssertEqual(result.alerts.map(\.name), ["KubePodCrashLooping", "Watchdog"])
-        XCTAssertEqual(result.alerts[1].expr, "vector(1)")
-        XCTAssertTrue(result.alerts[0].expr.hasPrefix(#"ALERTS{alertname="KubePodCrashLooping""#))
+        XCTAssertTrue(result.alerts[1].expr.hasPrefix(#"ALERTS{alertname="Watchdog""#))
+        XCTAssertFalse(IntegrationStubProtocol.requests.contains { $0.url.contains("/rules") }, "no rules per refresh")
+        let watchdog = await prom.alertExpression(context: "prod", endpoint: external, alert: result.alerts[1])
+        XCTAssertEqual(watchdog, "vector(1)")
+        let crash = await prom.alertExpression(context: "prod", endpoint: external, alert: result.alerts[0])
+        XCTAssertTrue(crash.hasPrefix(#"ALERTS{alertname="KubePodCrashLooping""#))
+        XCTAssertEqual(IntegrationStubProtocol.requests.filter { $0.url.contains("/rules") }.count, 1, "cached")
     }
 
     func testAlertsFallBackToTheAlertsSeries() async throws {
@@ -400,6 +443,10 @@ private actor StubClusterQuerying: PrometheusClusterQuerying {
     {
         nodeCalls.append("\(node)@\(range.rawValue)")
         return HostMetrics(start: 0, end: 3600, step: 15, charts: [])
+    }
+
+    func alertExpression(context: String, endpoint: PromEndpoint, alert: PromAlert) async -> String {
+        alert.expr
     }
 
     func alerts(context: String, endpoint: PromEndpoint) async throws -> PromAlertsResult {
@@ -471,5 +518,27 @@ final class ClusterPromModelsTests: XCTestCase {
         let calls = await stub.nodeCalls
         XCTAssertEqual(calls, ["minikube@1h", "minikube@24h"])
         XCTAssertEqual(model.resultRange, .day)
+    }
+}
+
+/// The trailing panel on Nodes (#530 review).
+final class DetailPanelChoiceTests: XCTestCase {
+
+    private let pod = SelectedResource.pod(
+        PodInfo(name: "api-0", namespace: "shop", phase: "Running", ready: true, restarts: 0, creationTimestamp: nil))
+
+    private func name(_ choice: DetailPanelChoice) -> String {
+        switch choice {
+        case .node(let node): "node \(node)"
+        case .resource: "resource"
+        case .none: "none"
+        }
+    }
+
+    func testANodeWinsOverAPodLeftSelected() {
+        XCTAssertEqual(name(.choose(resourceType: .nodes, nodeName: "minikube", resource: pod)), "node minikube")
+        XCTAssertEqual(name(.choose(resourceType: .pods, nodeName: "minikube", resource: pod)), "resource")
+        XCTAssertEqual(name(.choose(resourceType: .nodes, nodeName: nil, resource: pod)), "resource")
+        XCTAssertEqual(name(.choose(resourceType: .nodes, nodeName: nil, resource: nil)), "none")
     }
 }

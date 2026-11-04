@@ -7,6 +7,7 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   prometheusClusterUsage: vi.fn(),
   prometheusNodeMetrics: vi.fn(),
   prometheusAlerts: vi.fn(),
+  prometheusAlertExpr: vi.fn(async () => "crash > 0"),
   openGrafanaExplore: vi.fn(async () => {}),
   grafanaPortForward: vi.fn(async () => 43000),
 }));
@@ -21,6 +22,7 @@ import { resources } from "#lib/stores/resources.svelte.ts";
 import { settings } from "#lib/stores/settings.svelte.ts";
 import {
   openGrafanaExplore,
+  prometheusAlertExpr,
   prometheusAlerts,
   prometheusClusterUsage,
   prometheusNodeMetrics,
@@ -40,7 +42,9 @@ const endpoint: PromEndpoint = {
   skipTlsVerify: false,
 };
 
-function host(charts: HostChart[], source: (c: HostChart) => MetricSource | null = () => "cadvisor"): HostMetrics {
+const cadvisorAndKsm = (c: HostChart): MetricSource => (c.endsWith("allocatable") ? "kube-state-metrics" : "cadvisor");
+
+function host(charts: HostChart[], source: (c: HostChart) => MetricSource | null = cadvisorAndKsm): HostMetrics {
   return {
     start: 0,
     end: 3600,
@@ -91,10 +95,11 @@ describe("Overview alerts (#530)", () => {
     useContext();
     const pod = { name: "api-0", namespace: "shop" } as PodInfo;
     resources.pods = [pod];
+    resources.nodeInventory = [{ name: "minikube", status: "Ready", roles: [], version: null, creation_timestamp: null }];
     vi.mocked(prometheusAlerts).mockResolvedValue({
       source: "alerts-api",
       alerts: [
-        alert({ name: "KubePodCrashLooping", severity: "warning", namespace: "shop", pod: "api-0", summary: "Pod is crash looping.", expr: "crash > 0" }),
+        alert({ name: "KubePodCrashLooping", severity: "warning", namespace: "shop", pod: "api-0", summary: "Pod is crash looping.", expr: "ALERTS-crash" }),
         alert({ name: "KubeNodeNotReady", severity: "critical", node: "minikube" }),
         alert({ name: "Watchdog", summary: "pipeline check" }),
       ],
@@ -103,7 +108,10 @@ describe("Overview alerts (#530)", () => {
     render(AlertsCard);
     await promOverview.load(clock);
     await waitFor(() => expect(screen.getAllByTestId("alert-row")).toHaveLength(3));
-    expect(screen.getByTestId("alerts-count")).toHaveTextContent("3");
+    // Watchdog (severity none) is listed, muted and last, but not counted.
+    expect(screen.getByTestId("alerts-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("alerts-informational")).toHaveTextContent("1 informational");
+    expect(screen.getAllByTestId("alert-row")[2]).toHaveTextContent("Watchdog");
     expect(screen.getByText("Pod is crash looping.")).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: "shop/api-0" }));
@@ -122,6 +130,14 @@ describe("Overview alerts (#530)", () => {
         queries: ["crash > 0"],
         range: "1h",
       }),
+    );
+    // The rule's expression is asked for on click only.
+    expect(prometheusAlertExpr).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(prometheusAlertExpr).mock.calls[0][3]).toMatchObject({ name: "KubePodCrashLooping" });
+    vi.mocked(prometheusAlertExpr).mockRejectedValueOnce("rules unavailable");
+    await fireEvent.click(screen.getByRole("button", { name: "Open KubePodCrashLooping in Grafana" }));
+    await waitFor(() =>
+      expect(openGrafanaExplore).toHaveBeenLastCalledWith(expect.objectContaining({ queries: ["ALERTS-crash"] })),
     );
   });
 

@@ -199,7 +199,10 @@ final class LiveIntegrationsTests: XCTestCase {
         let watchdog = try XCTUnwrap(alerts.alerts.first { $0.name == "Watchdog" }, "Watchdog fires")
         XCTAssertNotNil(watchdog.activeAt)
         XCTAssertNotNil(watchdog.summary)
-        XCTAssertEqual(watchdog.expr, "vector(1)", "the rule's expression")
+        XCTAssertTrue(watchdog.expr.hasPrefix("ALERTS{"), "no rules until asked")
+        let expr = await service.alertExpression(context: context, endpoint: endpoint, alert: watchdog)
+        XCTAssertEqual(expr, "vector(1)", "the rule's expression, on demand")
+        XCTAssertLessThan(PromAlerts.badge(alerts.alerts).count, alerts.alerts.count, "Watchdog is not counted")
         XCTAssertNotEqual(PromAlerts.firingSince(watchdog.activeAt), "firing", "activeAt parses")
         await service.disconnectAll()
     }

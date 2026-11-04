@@ -3,10 +3,10 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import LineChart from '#lib/components/metrics/LineChart.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
-	import { errorMessage } from '#lib/errors.ts';
 	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
 	import { UI_LINK_CLASS } from '#lib/integration.ts';
 	import { observeOnce } from '#lib/in-view.ts';
+	import { LatestLoad } from '#lib/latest-load.svelte.ts';
 	import {
 		METRICS_HINT,
 		canOpenGrafana as canOpenGrafanaUi,
@@ -46,15 +46,13 @@
 	let split = $state<'container' | 'total'>('container');
 	const perContainer = $derived(split === 'container');
 	let visible = $state(false);
-	let loading = $state(false);
-	let error = $state<string | null>(null);
-	let result = $state<MetricsResult | null>(null);
+	const metrics = new LatestLoad<MetricsResult, MetricsRange>('1h');
+	const loading = $derived(metrics.loading);
+	const error = $derived(metrics.error);
+	const result = $derived(metrics.result);
 	/** Range of `result` (the selection may already be another one). */
-	let resultRange = $state<MetricsRange>('1h');
-	/** Pod or deployment the result belongs to. */
-	let resultKey = '';
+	const resultRange = $derived(metrics.args);
 	let root = $state<HTMLElement | null>(null);
-	let generation = 0;
 
 	$effect(() => (root ? observeOnce(root, () => (visible = true)) : undefined));
 
@@ -62,40 +60,11 @@
 		const context = app.activeCluster;
 		const ep = endpoint;
 		const request = { namespace, workload, range, perContainer };
-		const key = `${context}|${namespace}|${workload.kind}/${workload.name}`;
-		if (key !== resultKey) {
-			// Another pod in the same drawer: never show the previous one's charts.
-			resultKey = key;
-			result = null;
-			error = null;
-		}
+		// Another pod in the same drawer: never show the previous one's charts.
+		metrics.subject(`${context}|${namespace}|${workload.kind}/${workload.name}`);
 		if (!visible || !context || !ep) return;
-		void load(context, ep, request);
+		void metrics.run(request.range, () => prometheusMetrics(app.kubeconfigPath, context, ep, request));
 	});
-
-	async function load(
-		context: string,
-		ep: NonNullable<typeof endpoint>,
-		request: Parameters<typeof prometheusMetrics>[3]
-	) {
-		const mine = ++generation;
-		loading = true;
-		error = null;
-		try {
-			const data = await prometheusMetrics(app.kubeconfigPath, context, ep, request);
-			if (mine === generation) {
-				result = data;
-				resultRange = request.range;
-			}
-		} catch (e) {
-			if (mine === generation) {
-				error = errorMessage(e);
-				result = null;
-			}
-		} finally {
-			if (mine === generation) loading = false;
-		}
-	}
 
 	const series = (chart: Chart): Series[] => (result ? (chartData(result.charts, chart)?.series ?? []) : []);
 	const chartError = (...charts: Chart[]): string | null =>

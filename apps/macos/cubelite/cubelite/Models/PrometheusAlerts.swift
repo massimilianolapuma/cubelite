@@ -3,8 +3,10 @@ import Foundation
 // Firing alerts for the Overview (#530), mirroring
 // `crates/cubelite-core/src/prometheus/alerts.rs`. `/api/v1/alerts` is
 // preferred (annotations, activeAt); without it (Azure Monitor, some
-// proxies) the `ALERTS{alertstate="firing"}` series. The alerting rules give
-// each alert its expression for Open in Grafana, else its `ALERTS` series.
+// proxies) the `ALERTS{alertstate="firing"}` series. Open in Grafana uses
+// the alert's rule expression, fetched on click and cached for 5 minutes,
+// else its `ALERTS` series. With a cluster label, an alert belongs to the
+// cluster when its `cluster` label is that cluster or absent, on every path.
 
 /// A firing alert.
 struct PromAlert: Equatable, Sendable, Identifiable {
@@ -17,7 +19,7 @@ struct PromAlert: Equatable, Sendable, Identifiable {
     let summary: String?
     /// Firing since (RFC 3339), when the source has it.
     let activeAt: String?
-    /// PromQL for Open in Grafana.
+    /// Its `ALERTS` series; Open in Grafana asks for the rule's expression.
     var expr: String
     let labels: [String: String]
 
@@ -56,9 +58,13 @@ enum PromAlerts {
         if case .string(let s)? = value { s } else { nil }
     }
 
+    /// How long the alerting rules are kept.
+    static let rulesTTL: TimeInterval = 300
+
+    /// `, cluster=~"<c>|"`: the cluster's alerts and those without the label.
     private static func clusterMatcher(_ cluster: String?) -> String {
         guard let c = cluster?.trimmingCharacters(in: .whitespaces), !c.isEmpty else { return "" }
-        return ", cluster=\(Prometheus.escape(c))"
+        return ", cluster=~\(Prometheus.escape(Prometheus.regexLiteral(c) + "|"))"
     }
 
     /// `ALERTS{alertname="…", alertstate="firing"}`: the fallback expression.
@@ -120,17 +126,25 @@ enum PromAlerts {
         }
     }
 
-    /// Gives each alert its rule's expression (same name, the rule's labels
-    /// on the alert), else its `ALERTS` series.
-    static func attachExprs(_ alerts: [PromAlert], rules: [PromAlertRule], cluster: String?) -> [PromAlert] {
-        alerts.map { alert in
-            var out = alert
-            out.expr =
-                rules.first { rule in
-                    rule.name == alert.name && rule.labels.allSatisfy { alert.labels[$0.key] == $0.value }
-                }?.query ?? seriesQuery(name: alert.name, cluster: cluster)
-            return out
-        }
+    /// The alert's rule expression (same name, the rule's labels on the
+    /// alert), else its `ALERTS` series.
+    static func ruleExpression(_ alert: PromAlert, rules: [PromAlertRule], cluster: String?) -> String {
+        rules.first { rule in
+            rule.name == alert.name && rule.labels.allSatisfy { alert.labels[$0.key] == $0.value }
+        }?.query ?? seriesQuery(name: alert.name, cluster: cluster)
+    }
+
+    /// `severity="none"` (Watchdog, InfoInhibitor): listed last and muted,
+    /// never counted in the firing badge.
+    static func isInformational(_ alert: PromAlert) -> Bool {
+        alert.severity?.lowercased() == "none"
+    }
+
+    /// The firing badge: actionable alerts only, red with a critical one,
+    /// else amber.
+    static func badge(_ alerts: [PromAlert]?) -> (count: Int, tone: Tone) {
+        let actionable = (alerts ?? []).filter { !isInformational($0) }
+        return (actionable.count, actionable.contains { tone($0.severity) == .err } ? .err : .warn)
     }
 
     static func severityRank(_ severity: String?) -> Int {
@@ -145,11 +159,19 @@ enum PromAlerts {
     }
 
     /// Keeps the alerts of `cluster` (and those without a `cluster` label),
-    /// most severe first, then oldest first, then by name.
+    /// drops duplicates (the same labels from HA replicas), gives each its
+    /// fallback expression, and sorts them: most severe first, then oldest
+    /// first, then by name.
     static func finish(_ alerts: [PromAlert], cluster: String?) -> [PromAlert] {
         var kept = alerts
         if let c = cluster?.trimmingCharacters(in: .whitespaces), !c.isEmpty {
             kept = kept.filter { $0.labels["cluster"].map { $0 == c } ?? true }
+        }
+        var seen = Set<[String: String]>()
+        kept = kept.filter { seen.insert($0.labels).inserted }.map { alert in
+            var out = alert
+            out.expr = seriesQuery(name: alert.name, cluster: cluster)
+            return out
         }
         return kept.sorted { a, b in
             let (ra, rb) = (severityRank(a.severity), severityRank(b.severity))
@@ -190,14 +212,15 @@ enum PromAlerts {
         case node(String)
     }
 
-    /// A loaded pod, else the node by name; nil when neither resolves.
-    static func target(_ alert: PromAlert, pods: [PodInfo]) -> Target? {
+    /// A loaded pod, else a node of the loaded node list; nil when neither
+    /// resolves.
+    static func target(_ alert: PromAlert, pods: [PodInfo], nodes: [String]) -> Target? {
         if let namespace = alert.namespace, let name = alert.pod,
             let pod = pods.first(where: { $0.namespace == namespace && $0.name == name })
         {
             return .pod(pod.id)
         }
-        return alert.node.map(Target.node)
+        return alert.node.flatMap { nodes.contains($0) ? Target.node($0) : nil }
     }
 
     /// "firing 3h" from `activeAt`, or "firing" without a time. Prometheus

@@ -17,7 +17,10 @@ export type HostPanel = {
   usage: HostChart[];
   labels?: string[];
   reference?: HostChart;
-  /** Name of the reference in the summary ("alloc", "size"). */
+  /**
+   * Name of the reference in the summary ("capacity", "size"); "alloc"
+   * when it comes from kube-state-metrics (allocatable).
+   */
   referenceLabel?: string;
   emptyText: string;
 };
@@ -33,7 +36,7 @@ const CPU: HostPanel = {
   unit: "cores",
   usage: ["cpu"],
   reference: "cpu-allocatable",
-  referenceLabel: "alloc",
+  referenceLabel: "capacity",
   emptyText: NEEDS_CADVISOR,
 };
 const MEMORY: HostPanel = {
@@ -41,7 +44,7 @@ const MEMORY: HostPanel = {
   unit: "bytes",
   usage: ["memory"],
   reference: "memory-allocatable",
-  referenceLabel: "alloc",
+  referenceLabel: "capacity",
   emptyText: NEEDS_CADVISOR,
 };
 
@@ -77,6 +80,12 @@ function latestOf(result: HostMetrics, chart: HostChart): number | null {
   return series ? latest(series.points) : null;
 }
 
+/** The reference's name: "alloc" from kube-state-metrics, else the panel's. */
+export function referenceLabel(result: HostMetrics, panel: HostPanel): string {
+  const source = panel.reference ? hostData(result, panel.reference)?.source : null;
+  return source === "kube-state-metrics" ? "alloc" : (panel.referenceLabel ?? "");
+}
+
 /** Usage lines plus the dashed reference. */
 export function panelLines(result: HostMetrics, panel: HostPanel): ChartLine[] {
   const lines: ChartLine[] = panel.usage.flatMap((chart, i) =>
@@ -88,7 +97,7 @@ export function panelLines(result: HostMetrics, panel: HostPanel): ChartLine[] {
   );
   const ref = panel.reference ? hostData(result, panel.reference)?.series[0] : undefined;
   if (ref) {
-    lines.push({ label: panel.referenceLabel ?? "", color: "var(--color-text-tertiary)", points: ref.points, dashed: true });
+    lines.push({ label: referenceLabel(result, panel), color: "var(--color-text-tertiary)", points: ref.points, dashed: true });
   }
   return lines;
 }
@@ -101,7 +110,7 @@ export function panelSummary(result: HostMetrics, panel: HostPanel): string {
   }
   const parts = [fmt(latestOf(result, panel.usage[0]))];
   const ref = panel.reference ? latestOf(result, panel.reference) : null;
-  if (ref !== null) parts.push(`${panel.referenceLabel} ${fmt(ref)}`);
+  if (ref !== null) parts.push(`${referenceLabel(result, panel)} ${fmt(ref)}`);
   return parts.join(" / ");
 }
 
@@ -158,12 +167,30 @@ export function alertSubject(alert: Alert): string | null {
 /** The resource an alert row opens: a loaded pod, or a node by name. */
 export type AlertTarget = { kind: "pod"; pod: PodInfo } | { kind: "node"; name: string };
 
-export function alertTarget(alert: Alert, pods: PodInfo[]): AlertTarget | null {
+/** A loaded pod, or a node of the loaded node list; else no link. */
+export function alertTarget(alert: Alert, pods: PodInfo[], nodes: string[]): AlertTarget | null {
   if (alert.namespace && alert.pod) {
     const pod = pods.find((p) => p.namespace === alert.namespace && p.name === alert.pod);
     if (pod) return { kind: "pod", pod };
   }
-  return alert.node ? { kind: "node", name: alert.node } : null;
+  return alert.node && nodes.includes(alert.node) ? { kind: "node", name: alert.node } : null;
+}
+
+/**
+ * `severity="none"` (Watchdog, InfoInhibitor): listed last and muted, and
+ * never counted in the firing badge.
+ */
+export function isInformational(alert: Alert): boolean {
+  return alert.severity?.toLowerCase() === "none";
+}
+
+/** The firing badge: actionable alerts only, red with a critical one, else amber. */
+export function firingBadge(alerts: Alert[] | null): { count: number; tone: StatusTone } {
+  const actionable = (alerts ?? []).filter((a) => !isInformational(a));
+  return {
+    count: actionable.length,
+    tone: actionable.some((a) => alertTone(a.severity) === "err") ? "err" : "warn",
+  };
 }
 
 /** "firing 3h" from `activeAt`, or "firing" when the source has no time. */

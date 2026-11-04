@@ -51,9 +51,10 @@ struct ClusterHistoryView: View {
 }
 
 /// Firing alerts from Prometheus in the Overview (#530): severity, name,
-/// what it is about (a link to the pod or node when it resolves), summary,
-/// firing since, and Open in Grafana on the alert's expression. Without
-/// Prometheus, the setup hint (#526).
+/// what it is about (a link to the pod or node when it is loaded), summary,
+/// firing since, and Open in Grafana on the alert's rule expression (asked
+/// for on click). Informational alerts (severity "none": Watchdog) come
+/// last, muted, and are not counted. Without Prometheus, the setup hint (#526).
 struct AlertsCardView: View {
     @Environment(PrometheusStore.self) private var store: PrometheusStore?
     @Environment(AppSettings.self) private var settings: AppSettings?
@@ -89,12 +90,19 @@ struct AlertsCardView: View {
                 Text("Alerts")
                     .typeStyle(DesignTokens.Typography.colhead, color: DesignTokens.textTertiary)
                 if let alerts = model.alerts {
-                    Text("\(alerts.count)")
+                    let count = PromAlerts.badge(alerts).count
+                    let informational = alerts.count - count
+                    Text("\(count)")
                         .typeStyle(DesignTokens.Typography.micro.monospaced, color: DesignTokens.textSecondary)
                         .padding(.horizontal, 6)
                         .overlay(Capsule().strokeBorder(DesignTokens.borderDefault, lineWidth: 1))
-                        .accessibilityLabel("\(alerts.count) firing alerts")
+                        .accessibilityLabel("\(count) firing alerts")
                         .accessibilityIdentifier("overview.alerts-count")
+                    if informational > 0 {
+                        Text("\(informational) informational")
+                            .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textDisabled)
+                            .accessibilityIdentifier("overview.alerts-informational")
+                    }
                 }
             }
             if let grafanaError {
@@ -139,15 +147,31 @@ struct AlertsCardView: View {
         }
     }
 
+    /// Opens Explore on the alert's rule expression (fetched now, cached),
+    /// else its `ALERTS` series.
+    private func openGrafana(_ alert: PromAlert, endpoint: PromEndpoint) {
+        guard let store, let context else { return }
+        grafanaError = nil
+        let querying = store.querying as? any PrometheusClusterQuerying
+        WebUI.open({
+            let expr = await querying?.alertExpression(context: context, endpoint: endpoint, alert: alert) ?? alert.expr
+            return try await store.grafanaExploreURL(
+                context: context, endpoint: endpoint, queries: [expr], range: .hour)
+        }, failure: { grafanaError = $0 })
+    }
+
     private func row(_ alert: PromAlert, endpoint: PromEndpoint) -> some View {
-        let tone = Self.color(PromAlerts.tone(alert.severity))
+        let muted = PromAlerts.isInformational(alert)
+        let tone = muted ? DesignTokens.textDisabled : Self.color(PromAlerts.tone(alert.severity))
         let subject = PromAlerts.subject(alert)
-        let target = PromAlerts.target(alert, pods: clusterState.pods)
+        let target = PromAlerts.target(alert, pods: clusterState.pods, nodes: clusterState.nodes.map(\.name))
         return VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 8) {
                 Circle().fill(tone).frame(width: 6, height: 6).accessibilityHidden(true)
                 Text(alert.name)
-                    .typeStyle(DesignTokens.Typography.dataSm, color: DesignTokens.textDataBright)
+                    .typeStyle(
+                        DesignTokens.Typography.dataSm,
+                        color: muted ? DesignTokens.textTertiary : DesignTokens.textDataBright)
                     .lineLimit(1)
                 Text(alert.severity ?? "—").typeStyle(DesignTokens.Typography.caption, color: tone)
                 if let subject, let target {
@@ -167,10 +191,7 @@ struct AlertsCardView: View {
                     .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
                 if store?.canOpenGrafana(endpoint) == true {
                     Button {
-                        grafanaError = nil
-                        GrafanaLink.open(
-                            store: store, context: context, endpoint: endpoint, queries: [alert.expr], range: .hour
-                        ) { grafanaError = $0 }
+                        openGrafana(alert, endpoint: endpoint)
                     } label: {
                         Image(systemName: "arrow.up.forward.square").iconSize(DesignTokens.iconXs)
                     }
@@ -181,7 +202,9 @@ struct AlertsCardView: View {
             }
             if let summary = alert.summary {
                 Text(summary)
-                    .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
+                    .typeStyle(
+                        DesignTokens.Typography.caption,
+                        color: muted ? DesignTokens.textDisabled : DesignTokens.textTertiary)
                     .lineLimit(1)
                     .padding(.leading, 14)
                     .help(summary)

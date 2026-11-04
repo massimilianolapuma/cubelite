@@ -4,16 +4,16 @@
 	import HostCharts from '#lib/components/metrics/HostCharts.svelte';
 	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
-	import { errorMessage } from '#lib/errors.ts';
 	import { NODE_METRICS_HINT, NODE_PANELS, panelQueries } from '#lib/host-metrics.ts';
 	import { observeOnce } from '#lib/in-view.ts';
+	import { LatestLoad } from '#lib/latest-load.svelte.ts';
 	import { UI_LINK_CLASS } from '#lib/integration.ts';
 	import { canOpenGrafana, openGrafanaQueries, showsIntegrationHint } from '#lib/integration-links.ts';
 	import { METRICS_RANGES } from '#lib/metrics.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import { settings } from '#lib/stores/settings.svelte.ts';
-	import { prometheusNodeMetrics, type HostMetrics, type MetricsRange, type PromEndpoint } from '#lib/tauri.ts';
+	import { prometheusNodeMetrics, type HostMetrics, type MetricsRange } from '#lib/tauri.ts';
 
 	// A node's Metrics section (#530): CPU, memory, pods, network and
 	// filesystem from node-exporter where it scrapes the node, else cAdvisor;
@@ -24,13 +24,12 @@
 	const hint = $derived(showsIntegrationHint(endpoint, settings.integrationHints.value));
 	let range = $state<MetricsRange>('1h');
 	let visible = $state(false);
-	let loading = $state(false);
-	let error = $state<string | null>(null);
-	let result = $state<HostMetrics | null>(null);
-	let resultRange = $state<MetricsRange>('1h');
-	let resultKey = '';
+	const metrics = new LatestLoad<HostMetrics, MetricsRange>('1h');
+	const loading = $derived(metrics.loading);
+	const error = $derived(metrics.error);
+	const result = $derived(metrics.result);
+	const resultRange = $derived(metrics.args);
 	let root = $state<HTMLElement | null>(null);
-	let generation = 0;
 
 	$effect(() => (root ? observeOnce(root, () => (visible = true)) : undefined));
 
@@ -38,36 +37,12 @@
 		const context = app.activeCluster;
 		const ep = endpoint;
 		const r = range;
-		const key = `${context}|${node}`;
-		if (key !== resultKey) {
-			// Another node in the same drawer: never show the previous one's charts.
-			resultKey = key;
-			result = null;
-			error = null;
-		}
+		// Another node in the same drawer: never show the previous one's charts.
+		metrics.subject(`${context}|${node}`);
 		if (!visible || !context || !ep) return;
-		void load(context, ep, node, r);
+		const name = node;
+		void metrics.run(r, () => prometheusNodeMetrics(app.kubeconfigPath, context, ep, name, r));
 	});
-
-	async function load(context: string, ep: PromEndpoint, name: string, r: MetricsRange) {
-		const mine = ++generation;
-		loading = true;
-		error = null;
-		try {
-			const data = await prometheusNodeMetrics(app.kubeconfigPath, context, ep, name, r);
-			if (mine === generation) {
-				result = data;
-				resultRange = r;
-			}
-		} catch (e) {
-			if (mine === generation) {
-				error = errorMessage(e);
-				result = null;
-			}
-		} finally {
-			if (mine === generation) loading = false;
-		}
-	}
 
 	const grafana = $derived.by(() => {
 		const ep = endpoint;

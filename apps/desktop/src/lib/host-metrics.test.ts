@@ -5,7 +5,9 @@ import {
   alertSubject,
   alertTarget,
   alertTone,
+  firingBadge,
   firingSince,
+  isInformational,
   panelError,
   panelLines,
   panelQueries,
@@ -44,6 +46,19 @@ describe("host panels (#530)", () => {
     expect(panelSummary(result, CPU)).toBe("500m / alloc 4");
     expect(panelQueries(result, CPU)).toEqual(["q-cpu", "q-cpu-allocatable"]);
     expect(panelSource(result, CPU)).toBe("from cAdvisor");
+  });
+
+  it("names a node-exporter reference capacity, not allocatable", () => {
+    const result = metrics({
+      cpu: { value: 0.5, source: "node-exporter" },
+      "cpu-allocatable": { value: 4, source: "node-exporter" },
+    });
+    expect(panelLines(result, CPU)[1].label).toBe("capacity");
+    expect(panelSummary(result, CPU)).toBe("500m / capacity 4");
+    // No reference for the winning exporter: usage alone.
+    const alone = metrics({ cpu: { value: 0.5 }, "cpu-allocatable": { source: null } });
+    expect(panelLines(alone, CPU)).toHaveLength(1);
+    expect(panelSummary(alone, CPU)).toBe("500m");
   });
 
   it("summarises memory, network and missing values", () => {
@@ -98,15 +113,27 @@ describe("alerts (#530)", () => {
   it("names and resolves what the alert is about", () => {
     const onPod = alert({ namespace: "shop", pod: "api-0" });
     expect(alertSubject(onPod)).toBe("shop/api-0");
-    expect(alertTarget(onPod, [pod])).toEqual({ kind: "pod", pod });
+    expect(alertTarget(onPod, [pod], [])).toEqual({ kind: "pod", pod });
     // A pod that is not loaded (another namespace) has no link.
-    expect(alertTarget(alert({ namespace: "kube-system", pod: "etcd-0" }), [pod])).toBeNull();
+    expect(alertTarget(alert({ namespace: "kube-system", pod: "etcd-0" }), [pod], [])).toBeNull();
     const onNode = alert({ node: "minikube" });
     expect(alertSubject(onNode)).toBe("minikube");
-    expect(alertTarget(onNode, [])).toEqual({ kind: "node", name: "minikube" });
+    expect(alertTarget(onNode, [], ["minikube"])).toEqual({ kind: "node", name: "minikube" });
+    // A node the cluster does not list (gone, or another cluster's) has no link.
+    expect(alertTarget(onNode, [], ["other"])).toBeNull();
     expect(alertSubject(alert({ namespace: "kube-system" }))).toBe("kube-system");
     expect(alertSubject(alert({}))).toBeNull();
-    expect(alertTarget(alert({}), [pod])).toBeNull();
+    expect(alertTarget(alert({}), [pod], [])).toBeNull();
+  });
+
+  it("keeps informational alerts out of the firing badge", () => {
+    const watchdog = alert({ name: "Watchdog", severity: "none" });
+    expect(isInformational(watchdog)).toBe(true);
+    expect(isInformational(alert({}))).toBe(false);
+    expect(firingBadge([watchdog])).toEqual({ count: 0, tone: "warn" });
+    expect(firingBadge([watchdog, alert({})])).toEqual({ count: 1, tone: "warn" });
+    expect(firingBadge([alert({ severity: "critical" }), alert({})])).toEqual({ count: 2, tone: "err" });
+    expect(firingBadge(null).count).toBe(0);
   });
 
   it("tells how long it has been firing", () => {

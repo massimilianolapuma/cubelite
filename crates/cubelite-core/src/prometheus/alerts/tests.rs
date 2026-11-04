@@ -1,7 +1,7 @@
 use super::*;
 use crate::prometheus::transport::connect;
-use crate::prometheus::{PromAuth, PromTarget};
-use crate::test_support::mock_server;
+use crate::prometheus::PromAuth;
+use crate::test_support::{mock_server, prom_endpoint as endpoint, prom_success as success};
 use serde_json::json;
 
 fn alerts_body() -> serde_json::Value {
@@ -69,9 +69,10 @@ fn alerts_series_have_labels_only() {
     assert_eq!(alerts[0].active_at, None);
     assert!(!alerts[0].labels.contains_key("__name__"));
     assert!(!alerts[0].labels.contains_key("alertstate"));
+    // The cluster's alerts and those without the label, as in `finish`.
     assert_eq!(
-        alerts_metric_query(Some("eu")),
-        r#"ALERTS{alertstate="firing", cluster="eu"}"#
+        alerts_metric_query(Some("eu.1")),
+        r#"ALERTS{alertstate="firing", cluster=~"eu\\.1|"}"#
     );
     assert_eq!(alerts_metric_query(None), r#"ALERTS{alertstate="firing"}"#);
 }
@@ -101,13 +102,16 @@ fn rules_give_alerts_their_expression() {
         expr: String::new(),
         labels: BTreeMap::new(),
     });
-    attach_exprs(&mut alerts, &rules, Some("eu"));
-    assert_eq!(alerts[0].expr, "vector(1)");
+    let exprs: Vec<String> = alerts
+        .iter()
+        .map(|a| rule_expr(a, &rules, Some("eu")))
+        .collect();
+    assert_eq!(exprs[0], "vector(1)");
     // Same name, the rule whose labels the alert carries.
-    assert_eq!(alerts[1].expr, "crash_warning > 0");
+    assert_eq!(exprs[1], "crash_warning > 0");
     assert_eq!(
-        alerts[2].expr,
-        r#"ALERTS{alertname="Unknown\"Rule", alertstate="firing", cluster="eu"}"#
+        exprs[2],
+        r#"ALERTS{alertname="Unknown\"Rule", alertstate="firing", cluster=~"eu|"}"#
     );
 }
 
@@ -149,33 +153,29 @@ fn alerts_sort_by_severity_then_age_and_keep_their_cluster() {
     );
     let names: Vec<&str> = sorted.iter().map(|a| a.name.as_str()).collect();
     assert_eq!(names, ["Crit", "A", "B", "Plain", "Watchdog"]);
+    assert!(is_informational(&sorted[4]));
+    assert!(!is_informational(&sorted[3]));
+    assert_eq!(
+        sorted[0].expr,
+        r#"ALERTS{alertname="Crit", alertstate="firing", cluster=~"eu|"}"#
+    );
+    // HA replicas report the same alert twice: listed once.
+    let twice = finish(
+        vec![
+            named("Watchdog", Some("none"), Some("2026-01-01T00:00:00Z"), None),
+            named("Watchdog", Some("none"), Some("2026-01-01T00:00:01Z"), None),
+        ],
+        None,
+    );
+    assert_eq!(twice.len(), 1);
     assert_eq!(
         finish(vec![named("Other", None, None, Some("us"))], None).len(),
         1
     );
 }
 
-fn endpoint(url: &str) -> PromEndpoint {
-    PromEndpoint {
-        target: PromTarget::External { url: url.into() },
-        cluster: None,
-        grafana_url: None,
-        grafana_datasource: None,
-        grafana_service: None,
-        skip_tls_verify: false,
-        shared: false,
-    }
-}
-
-fn success(data: serde_json::Value) -> (u16, String) {
-    (
-        200,
-        json!({ "status": "success", "data": data }).to_string(),
-    )
-}
-
 #[tokio::test]
-async fn alerts_come_from_the_alerts_api_with_rule_expressions() {
+async fn alerts_skip_the_rules_until_grafana_asks_then_cache_them() {
     let (url, server) = mock_server(vec![
         success(alerts_body()),
         success(json!({ "groups": [{ "rules": [
@@ -189,11 +189,17 @@ async fn alerts_come_from_the_alerts_api_with_rule_expressions() {
     assert_eq!(result.source, AlertSource::AlertsApi);
     let names: Vec<&str> = result.alerts.iter().map(|a| a.name.as_str()).collect();
     assert_eq!(names, ["KubePodCrashLooping", "Watchdog"]);
-    assert_eq!(result.alerts[1].expr, "vector(1)");
-    assert!(result.alerts[0]
+    assert!(result.alerts[1]
         .expr
+        .starts_with("ALERTS{alertname=\"Watchdog\""));
+    // Open in Grafana: the rules once, then from the cache.
+    assert_eq!(conn.alert_expr(&ep, &result.alerts[1]).await, "vector(1)");
+    assert!(conn
+        .alert_expr(&ep, &result.alerts[0])
+        .await
         .starts_with("ALERTS{alertname=\"KubePodCrashLooping\""));
     let requests = server.await.expect("server");
+    assert_eq!(requests.len(), 2);
     assert!(requests[0].starts_with("GET /api/v1/alerts "));
     assert!(requests[1].starts_with("GET /api/v1/rules?type=alert"));
 }
@@ -205,7 +211,6 @@ async fn alerts_fall_back_to_the_alerts_series() {
         success(json!({ "resultType": "vector", "result": [
             { "metric": { "alertname": "Watchdog", "alertstate": "firing", "severity": "none" }, "value": [1.0, "1"] }
         ] })),
-        (404, "404 page not found".into()),
     ])
     .await;
     let ep = endpoint(&url);

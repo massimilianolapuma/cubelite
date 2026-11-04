@@ -1174,7 +1174,7 @@ export type Alert = {
   summary: string | null;
   /** Firing since (RFC 3339); null from the `ALERTS` series. */
   activeAt: string | null;
-  /** PromQL for Open in Grafana. */
+  /** Its `ALERTS` series; Open in Grafana asks for the rule's expression. */
   expr: string;
   labels: Record<string, string>;
 };
@@ -1200,6 +1200,16 @@ export function prometheusNodeMetrics(
   range: MetricsRange,
 ): Promise<HostMetrics> {
   return invoke<HostMetrics>("prometheus_node_metrics", { kubeconfigPath, context, endpoint, node, range });
+}
+
+/** The alert's rule expression for Open in Grafana (rules fetched on demand, cached). */
+export function prometheusAlertExpr(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: PromEndpoint,
+  alert: Alert,
+): Promise<string> {
+  return invoke<string>("prometheus_alert_expr", { kubeconfigPath, context, endpoint, alert });
 }
 
 /** Firing alerts, most severe first. */

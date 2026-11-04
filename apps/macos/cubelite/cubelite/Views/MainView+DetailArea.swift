@@ -137,6 +137,12 @@ extension MainView {
                     PvcListView()
                 case .nodes:
                     NodeListView(selectedNodeName: $selectedNodeName)
+                        .onChange(of: selectedNodeName) { _, name in
+                            if name != nil {
+                                selectedPodID = nil
+                                selectedDeploymentID = nil
+                            }
+                        }
                 case .events:
                     EventListView()
                 case .logs:
@@ -149,10 +155,14 @@ extension MainView {
                     EmptyView()
                 }
             }
-            if let detail = currentSelectedResource {
+            switch DetailPanelChoice.choose(
+                resourceType: selectedResourceType, nodeName: selectedNodeName,
+                resource: currentSelectedResource)
+            {
+            case .resource(let detail):
                 Divider()
                 detailPanel(for: detail)
-            } else if selectedResourceType == .nodes, let name = selectedNodeName {
+            case .node(let name):
                 Divider()
                 NodeDetailView(
                     name: name, node: clusterState.nodes.first { $0.name == name },
@@ -160,6 +170,8 @@ extension MainView {
                     onClose: { selectedNodeName = nil }
                 )
                 .frame(minWidth: 320, idealWidth: 460, maxWidth: 600)
+            case .none:
+                EmptyView()
             }
         }
     }
@@ -170,9 +182,14 @@ extension MainView {
         switch target {
         case .pod(let id):
             showResource(.pods)
+            selectedNodeName = nil
+            selectedDeploymentID = nil
             selectedPodID = id
         case .node(let name):
             showResource(.nodes)
+            // A pod or deployment left selected must not keep its panel.
+            selectedPodID = nil
+            selectedDeploymentID = nil
             selectedNodeName = name
         }
     }

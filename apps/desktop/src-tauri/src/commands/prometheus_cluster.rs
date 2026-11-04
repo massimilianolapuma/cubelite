@@ -1,7 +1,7 @@
 //! Cluster and node history and the firing alerts from Prometheus (#530),
 //! on the cached connections of [`super::prometheus`].
 
-use cubelite_core::prometheus::alerts::AlertsResult;
+use cubelite_core::prometheus::alerts::{Alert, AlertsResult};
 use cubelite_core::prometheus::nodes::HostMetrics;
 use cubelite_core::prometheus::{MetricsRange, PromEndpoint};
 use tauri::State;
@@ -61,6 +61,26 @@ pub async fn prometheus_alerts(
         (kubeconfig_path, context),
         &endpoint,
         |conn| async move { conn.alerts(&ep).await },
+    )
+    .await
+}
+
+/// The alert's rule expression for Open in Grafana, fetched when the link
+/// is clicked (rules cached per connection for 5 minutes).
+#[tauri::command]
+pub async fn prometheus_alert_expr(
+    state: State<'_, PrometheusState>,
+    kubeconfig_path: String,
+    context: String,
+    endpoint: PromEndpoint,
+    alert: Alert,
+) -> Result<String, String> {
+    let ep = endpoint.clone();
+    with_connection(
+        &state,
+        (kubeconfig_path, context),
+        &endpoint,
+        |conn| async move { Ok(conn.alert_expr(&ep, &alert).await) },
     )
     .await
 }

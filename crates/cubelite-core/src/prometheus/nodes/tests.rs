@@ -1,21 +1,45 @@
 use super::*;
 use crate::prometheus::transport::connect;
-use crate::prometheus::{PromAuth, PromTarget};
-use crate::test_support::mock_server;
+use crate::prometheus::PromAuth;
+use crate::test_support::{
+    mock_server, prom_endpoint as endpoint, prom_matrix as matrix, prom_vector as vector,
+};
 use serde_json::json;
 
+/// A chart's candidates, usage or reference (`None` for an unpaired one).
+fn candidates(plan: &[ChartPlan], chart: HostChart) -> Vec<Option<Candidate>> {
+    for p in plan {
+        if p.chart == chart {
+            return p.candidates.iter().cloned().map(Some).collect();
+        }
+        if let Some((reference, refs)) = &p.reference {
+            if *reference == chart {
+                return refs.clone();
+            }
+        }
+    }
+    Vec::new()
+}
+
 fn queries(plan: &[ChartPlan], chart: HostChart) -> Vec<String> {
-    plan.iter()
-        .find(|(c, _)| *c == chart)
-        .map(|(_, cs)| cs.iter().map(|c| c.query.clone()).collect())
-        .unwrap_or_default()
+    candidates(plan, chart)
+        .into_iter()
+        .map(|c| c.map(|c| c.query).unwrap_or_default())
+        .collect()
 }
 
 fn sources(plan: &[ChartPlan], chart: HostChart) -> Vec<MetricSource> {
+    candidates(plan, chart)
+        .into_iter()
+        .flatten()
+        .map(|c| c.source)
+        .collect()
+}
+
+fn charts(plan: &[ChartPlan]) -> Vec<HostChart> {
     plan.iter()
-        .find(|(c, _)| *c == chart)
-        .map(|(_, cs)| cs.iter().map(|c| c.source).collect())
-        .unwrap_or_default()
+        .flat_map(|p| std::iter::once(p.chart).chain(p.reference.as_ref().map(|(c, _)| *c)))
+        .collect()
 }
 
 #[test]
@@ -38,18 +62,16 @@ fn cluster_plan_uses_the_issue_queries_and_the_cluster_label() {
         [r#"sum(kube_node_status_allocatable{resource="memory"})"#]
     );
     let shared = cluster_plan(Some(" aks-\"prod\" "), MetricsRange::Week);
-    for (_, candidates) in &shared {
-        assert!(
-            candidates[0].query.contains(r#"cluster="aks-\"prod\"""#),
-            "{}",
-            candidates[0].query
-        );
+    for chart in charts(&shared) {
+        let q = &queries(&shared, chart)[0];
+        assert!(q.contains(r#"cluster="aks-\"prod\"""#), "{q}");
     }
     // A week's window follows the step (2520 s × 4).
     assert!(queries(&shared, HostChart::Cpu)[0].contains("[10080s]"));
-    assert!(cluster_plan(Some("  "), MetricsRange::Hour)
-        .iter()
-        .all(|(_, cs)| !cs[0].query.contains("cluster=")));
+    let blank = cluster_plan(Some("  "), MetricsRange::Hour);
+    assert!(charts(&blank)
+        .into_iter()
+        .all(|c| !queries(&blank, c)[0].contains("cluster=")));
 }
 
 #[test]
@@ -57,7 +79,7 @@ fn node_plan_prefers_node_exporter_then_cadvisor() {
     let instances = vec!["192.168.49.2:9100".to_string()];
     let plan = node_plan("minikube", &instances, Some("eu"), MetricsRange::Hour);
     assert_eq!(
-        plan.iter().map(|(c, _)| *c).collect::<Vec<_>>(),
+        charts(&plan),
         [
             HostChart::Cpu,
             HostChart::CpuAllocatable,
@@ -99,7 +121,11 @@ fn node_plan_prefers_node_exporter_then_cadvisor() {
     let rx = queries(&plan, HostChart::NetworkRx);
     assert!(rx[0].starts_with("sum(rate(node_network_receive_bytes_total{instance="));
     assert!(rx[0].contains(r#"device!~"lo|veth.*"#));
-    assert!(rx[1].contains("container_network_receive_bytes_total{node=\"minikube\""));
+    assert_eq!(
+        rx[1],
+        r#"sum(rate(container_network_receive_bytes_total{node="minikube", cluster="eu", pod!=""}[300s]) and on (namespace, pod) kube_pod_info{host_network="false", cluster="eu"})"#,
+        "host-network pods see the node's interfaces"
+    );
     assert!(queries(&plan, HostChart::NetworkTx)[0].contains("node_network_transmit_bytes_total"));
     let fs = queries(&plan, HostChart::Filesystem);
     assert!(fs[0].contains("node_filesystem_avail_bytes"));
@@ -116,10 +142,31 @@ fn node_plan_prefers_node_exporter_then_cadvisor() {
             MetricSource::Kubelet
         ]
     );
+    // References pair with the usage's exporter: capacity next to
+    // node-exporter, allocatable (or cAdvisor's limit) next to cAdvisor.
+    let alloc =
+        r#"sum(kube_node_status_allocatable{node="minikube", cluster="eu", resource="cpu"})"#;
     assert_eq!(
         queries(&plan, HostChart::CpuAllocatable),
-        [r#"sum(kube_node_status_allocatable{node="minikube", cluster="eu", resource="cpu"})"#]
+        [
+            r#"count(node_cpu_seconds_total{instance="192.168.49.2:9100", cluster="eu", mode="idle"})"#,
+            alloc,
+            alloc
+        ]
     );
+    assert_eq!(
+        queries(&plan, HostChart::MemoryAllocatable)[0],
+        r#"sum(node_memory_MemTotal_bytes{instance="192.168.49.2:9100", cluster="eu"})"#
+    );
+    let fs_size = queries(&plan, HostChart::FilesystemCapacity);
+    assert!(fs_size[0].starts_with("sum(max by (device) (node_filesystem_size_bytes{instance="));
+    assert_eq!(
+        fs_size[2],
+        r#"sum(container_fs_limit_bytes{instance="minikube", cluster="eu", id="/"})"#
+    );
+    assert!(candidates(&plan, HostChart::Pods)
+        .iter()
+        .all(Option::is_some));
 }
 
 #[test]
@@ -182,15 +229,16 @@ fn settle_picks_the_first_candidate_with_data() {
     let ne = cand(MetricSource::NodeExporter, "ne");
     let cad = cand(MetricSource::Cadvisor, "cad");
     // node-exporter has data: it wins.
-    let data = settle(
+    let (data, winner) = settle(
         HostChart::Cpu,
         "ne",
         vec![(ne.clone(), Ok(series(&[Some(1.0)])))],
     );
+    assert_eq!(winner, Some(0));
     assert_eq!(data.source, Some(MetricSource::NodeExporter));
     assert_eq!(data.query, "ne");
     // No node-exporter series (or only gaps): cAdvisor.
-    let data = settle(
+    let (data, winner) = settle(
         HostChart::Cpu,
         "ne",
         vec![
@@ -198,15 +246,17 @@ fn settle_picks_the_first_candidate_with_data() {
             (cad.clone(), Ok(series(&[Some(0.5)]))),
         ],
     );
+    assert_eq!(winner, Some(1));
     assert_eq!(data.source, Some(MetricSource::Cadvisor));
     assert_eq!(data.query, "cad");
     assert_eq!(data.error, None);
     // Nothing anywhere: not available, no error, the preferred query.
-    let data = settle(
+    let (data, winner) = settle(
         HostChart::Filesystem,
         "ne",
         vec![(ne.clone(), Ok(Vec::new())), (cad.clone(), Ok(Vec::new()))],
     );
+    assert_eq!(winner, None);
     assert_eq!(data.source, None);
     assert_eq!(data.query, "ne");
     assert!(data.series.is_empty());
@@ -216,14 +266,14 @@ fn settle_picks_the_first_candidate_with_data() {
         status: 422,
         reason: "boom".into(),
     };
-    let data = settle(
+    let (data, _) = settle(
         HostChart::Cpu,
         "ne",
         vec![(ne.clone(), Ok(Vec::new())), (cad.clone(), Err(boom()))],
     );
     assert_eq!(data.error, None);
     // Every candidate failed: the first error.
-    let data = settle(
+    let (data, _) = settle(
         HostChart::Cpu,
         "ne",
         vec![(ne, Err(boom())), (cad, Err(boom()))],
@@ -241,34 +291,6 @@ fn series_labels_are_distinct_and_non_empty() {
     ] });
     assert_eq!(series_labels(&data, "instance"), ["a:9100", "b:9100"]);
     assert!(series_labels(&json!({}), "instance").is_empty());
-}
-
-fn endpoint(url: &str) -> PromEndpoint {
-    PromEndpoint {
-        target: PromTarget::External { url: url.into() },
-        cluster: None,
-        grafana_url: None,
-        grafana_datasource: None,
-        grafana_service: None,
-        skip_tls_verify: false,
-        shared: false,
-    }
-}
-
-fn vector(result: serde_json::Value) -> (u16, String) {
-    (
-        200,
-        json!({ "status": "success", "data": { "resultType": "vector", "result": result } })
-            .to_string(),
-    )
-}
-
-fn matrix(result: serde_json::Value) -> (u16, String) {
-    (
-        200,
-        json!({ "status": "success", "data": { "resultType": "matrix", "result": result } })
-            .to_string(),
-    )
 }
 
 #[tokio::test]
@@ -315,34 +337,73 @@ async fn no_node_exporter_means_no_instances() {
 }
 
 #[tokio::test]
-async fn host_metrics_fall_back_per_chart() {
+async fn host_metrics_fall_back_per_chart_and_pair_the_reference() {
     let (url, server) = mock_server(vec![
         matrix(json!([])),
         matrix(json!([{ "metric": {}, "values": [[1.0, "0.4"], [2.0, "0.5"]] }])),
+        matrix(json!([{ "metric": {}, "values": [[1.0, "4"]] }])),
     ])
     .await;
     let ep = endpoint(&url);
     let conn = connect(None, &ep, &PromAuth::None).await.expect("connect");
-    let plan = vec![(
+    let plan = vec![ChartPlan::with_reference(
         HostChart::Cpu,
         vec![
-            cand(MetricSource::NodeExporter, "ne_query"),
-            cand(MetricSource::Cadvisor, "cad_query"),
-            cand(MetricSource::Cadvisor, "never_asked"),
+            (
+                cand(MetricSource::NodeExporter, "ne_query"),
+                Some(cand(MetricSource::NodeExporter, "ne_capacity")),
+            ),
+            (
+                cand(MetricSource::Cadvisor, "cad_query"),
+                Some(cand(MetricSource::KubeStateMetrics, "ksm_alloc")),
+            ),
+            (cand(MetricSource::Cadvisor, "never_asked"), None),
         ],
+        HostChart::CpuAllocatable,
     )];
     let result = conn
         .host_metrics(plan, MetricsRange::Hour)
         .await
         .expect("metrics");
     assert_eq!(result.end - result.start, 3_600);
-    assert_eq!(result.charts.len(), 1);
+    assert_eq!(result.charts.len(), 2);
     assert_eq!(result.charts[0].source, Some(MetricSource::Cadvisor));
     assert_eq!(result.charts[0].query, "cad_query");
     assert_eq!(result.charts[0].series[0].points.len(), 2);
+    // The reference of the winner, never node-exporter capacity.
+    assert_eq!(result.charts[1].chart, HostChart::CpuAllocatable);
+    assert_eq!(
+        result.charts[1].source,
+        Some(MetricSource::KubeStateMetrics)
+    );
+    assert_eq!(result.charts[1].query, "ksm_alloc");
     let requests = server.await.expect("server");
-    assert_eq!(requests.len(), 2, "stops at the first candidate with data");
+    assert_eq!(requests.len(), 3, "stops at the first candidate with data");
     assert!(requests[0].contains("query=ne_query"));
+    assert!(requests[2].contains("query=ksm_alloc"));
+}
+
+#[tokio::test]
+async fn a_winner_without_a_paired_reference_draws_none() {
+    let (url, server) = mock_server(vec![matrix(json!([
+        { "metric": {}, "values": [[1.0, "1"]] }
+    ]))])
+    .await;
+    let ep = endpoint(&url);
+    let conn = connect(None, &ep, &PromAuth::None).await.expect("connect");
+    let plan = vec![ChartPlan::with_reference(
+        HostChart::Filesystem,
+        vec![(cand(MetricSource::Cadvisor, "usage"), None)],
+        HostChart::FilesystemCapacity,
+    )];
+    let result = conn
+        .host_metrics(plan, MetricsRange::Hour)
+        .await
+        .expect("metrics");
+    assert_eq!(result.charts[1].source, None);
+    assert!(result.charts[1].series.is_empty());
+    assert_eq!(result.charts[1].error, None);
+    assert_eq!(server.await.expect("server").len(), 1);
 }
 
 #[tokio::test]
@@ -351,14 +412,14 @@ async fn host_metrics_report_an_unreachable_endpoint_once() {
     let ep = endpoint(&url);
     let conn = connect(None, &ep, &PromAuth::None).await.expect("connect");
     let plan = vec![
-        (
+        ChartPlan::usage(
             HostChart::Cpu,
             vec![
                 cand(MetricSource::Cadvisor, "a"),
                 cand(MetricSource::Cadvisor, "b"),
             ],
         ),
-        (HostChart::Memory, vec![cand(MetricSource::Cadvisor, "c")]),
+        ChartPlan::usage(HostChart::Memory, vec![cand(MetricSource::Cadvisor, "c")]),
     ];
     let err = conn
         .host_metrics(plan, MetricsRange::Hour)

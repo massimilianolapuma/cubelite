@@ -16,6 +16,12 @@
 //! is matched against the instance address. Setups that relabel `instance`
 //! to the node name are covered by `node_uname_info{instance="<n>"}`.
 //! The charts then select `instance="…"` — readable in Grafana, and cheap.
+//!
+//! **Reference lines come from the usage's exporter.** A chart's reference
+//! (CPU and memory capacity, filesystem size) is paired with each usage
+//! candidate, so the line drawn next to node-exporter usage is node-exporter
+//! capacity, and next to cAdvisor usage kube-state-metrics allocatable or
+//! cAdvisor's filesystem limit. No pair for the winner: no reference line.
 
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
@@ -30,11 +36,12 @@ use super::{escape, parse_series, regex_literal, MetricsRange, PromEndpoint, Pro
 pub enum HostChart {
     /// CPU in use (cores).
     Cpu,
-    /// Allocatable CPU (cores), the reference line.
+    /// The CPU reference line (cores): allocatable from kube-state-metrics
+    /// next to cAdvisor usage, capacity next to node-exporter usage.
     CpuAllocatable,
     /// Memory in use (bytes).
     Memory,
-    /// Allocatable memory (bytes), the reference line.
+    /// The memory reference line (bytes): allocatable or capacity, as for CPU.
     MemoryAllocatable,
     /// Pods running on the node.
     Pods,
@@ -44,7 +51,7 @@ pub enum HostChart {
     NetworkTx,
     /// Filesystem bytes in use.
     Filesystem,
-    /// Filesystem size (bytes), the reference line.
+    /// Filesystem size (bytes), the reference line, from the usage's exporter.
     FilesystemCapacity,
 }
 
@@ -71,8 +78,41 @@ pub struct Candidate {
     pub query: String,
 }
 
-/// A chart and its candidates, best first.
-pub type ChartPlan = (HostChart, Vec<Candidate>);
+/// A chart, its candidates (best first) and its reference line, whose
+/// candidates pair with the usage ones by index (`None`: no reference for
+/// that usage candidate).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChartPlan {
+    /// The usage chart.
+    pub chart: HostChart,
+    /// Its candidates, best first.
+    pub candidates: Vec<Candidate>,
+    /// The reference chart and one optional candidate per usage candidate.
+    pub reference: Option<(HostChart, Vec<Option<Candidate>>)>,
+}
+
+impl ChartPlan {
+    fn usage(chart: HostChart, candidates: Vec<Candidate>) -> Self {
+        Self {
+            chart,
+            candidates,
+            reference: None,
+        }
+    }
+
+    fn with_reference(
+        chart: HostChart,
+        pairs: Vec<(Candidate, Option<Candidate>)>,
+        reference: HostChart,
+    ) -> Self {
+        let (candidates, refs) = pairs.into_iter().unzip();
+        Self {
+            chart,
+            candidates,
+            reference: Some((reference, refs)),
+        }
+    }
+}
 
 /// One chart's data.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -140,6 +180,39 @@ fn candidate(source: MetricSource, query: String) -> Candidate {
     Candidate { source, query }
 }
 
+type Make<'a> = &'a dyn Fn(&str) -> String;
+type MakeRef<'a> = &'a dyn Fn(&str) -> Option<Candidate>;
+
+/// Usage candidates for the node-exporter selector (if any) then each
+/// cAdvisor selector, each paired with its reference.
+fn pair_candidates(
+    ne: Option<&str>,
+    kubelet: &[String],
+    exporter: Make,
+    exporter_ref: MakeRef,
+    cadvisor: Make,
+    cadvisor_ref: MakeRef,
+) -> Vec<(Candidate, Option<Candidate>)> {
+    let ne_pairs = ne.into_iter().map(|sel| {
+        (
+            candidate(MetricSource::NodeExporter, exporter(sel)),
+            exporter_ref(sel),
+        )
+    });
+    let cad_pairs = kubelet.iter().map(|sel| {
+        (
+            candidate(MetricSource::Cadvisor, cadvisor(sel)),
+            cadvisor_ref(sel),
+        )
+    });
+    ne_pairs.chain(cad_pairs).collect()
+}
+
+/// A node-exporter reference candidate for each node-exporter selector.
+fn exporter_ref(make: fn(&str) -> String) -> impl Fn(&str) -> Option<Candidate> {
+    move |sel| Some(candidate(MetricSource::NodeExporter, make(sel)))
+}
+
 /// The Overview's cluster CPU and memory against allocatable.
 pub fn cluster_plan(cluster: Option<&str>, range: MetricsRange) -> Vec<ChartPlan> {
     let c = cluster_matcher(cluster);
@@ -147,28 +220,33 @@ pub fn cluster_plan(cluster: Option<&str>, range: MetricsRange) -> Vec<ChartPlan
     let w = host_window(range);
     let allocatable = |resource: &str| {
         let sel = join(&[Some(format!(r#"resource="{resource}""#)), c.clone()]);
-        vec![candidate(
+        Some(candidate(
             MetricSource::KubeStateMetrics,
             format!("sum(kube_node_status_allocatable{{{sel}}})"),
-        )]
+        ))
     };
+    let usage = |query: String| candidate(MetricSource::Cadvisor, query);
     vec![
-        (
+        ChartPlan::with_reference(
             HostChart::Cpu,
-            vec![candidate(
-                MetricSource::Cadvisor,
-                format!("sum(rate(container_cpu_usage_seconds_total{{{containers}}}[{w}s]))"),
+            vec![(
+                usage(format!(
+                    "sum(rate(container_cpu_usage_seconds_total{{{containers}}}[{w}s]))"
+                )),
+                allocatable("cpu"),
             )],
+            HostChart::CpuAllocatable,
         ),
-        (HostChart::CpuAllocatable, allocatable("cpu")),
-        (
+        ChartPlan::with_reference(
             HostChart::Memory,
-            vec![candidate(
-                MetricSource::Cadvisor,
-                format!("sum(container_memory_working_set_bytes{{{containers}}})"),
+            vec![(
+                usage(format!(
+                    "sum(container_memory_working_set_bytes{{{containers}}})"
+                )),
+                allocatable("memory"),
             )],
+            HostChart::MemoryAllocatable,
         ),
-        (HostChart::MemoryAllocatable, allocatable("memory")),
     ]
 }
 
@@ -204,41 +282,43 @@ pub fn node_plan(
         .map(|label| join(&[Some(format!("{label}={}", escape(node))), c.clone()]))
         .collect();
     let by_node = join(&[Some(format!("node={}", escape(node))), c.clone()]);
+    // Pods on the host network see the node's interfaces: leave them out.
+    let pod_network = join(&[Some(r#"host_network="false""#.to_string()), c.clone()]);
 
-    let exporter = |make: &dyn Fn(&str) -> String| -> Vec<Candidate> {
-        ne.iter()
-            .map(|sel| candidate(MetricSource::NodeExporter, make(sel)))
-            .collect()
-    };
-    let cadvisor = |make: &dyn Fn(&str) -> String| -> Vec<Candidate> {
-        kubelet
-            .iter()
-            .map(|sel| candidate(MetricSource::Cadvisor, make(sel)))
-            .collect()
-    };
-    let with = |mut a: Vec<Candidate>, b: Vec<Candidate>| {
-        a.extend(b);
-        a
+    // Usage candidates (node-exporter first, then cAdvisor by `node` and
+    // `instance`), each with its paired reference.
+    let usage_only = |exporter: Make, cadvisor: Make| {
+        pair_candidates(
+            ne.as_deref(),
+            &kubelet,
+            exporter,
+            &|_| None,
+            cadvisor,
+            &|_| None,
+        )
+        .into_iter()
+        .map(|(c, _)| c)
+        .collect::<Vec<_>>()
     };
     let allocatable = |resource: &str| {
-        vec![candidate(
+        Some(candidate(
             MetricSource::KubeStateMetrics,
             format!(r#"sum(kube_node_status_allocatable{{{by_node}, resource="{resource}"}})"#),
-        )]
+        ))
     };
     let fs = format!(r#"fstype!~"{PSEUDO_FS}""#);
     let network = |direction: &str| {
-        with(
-            exporter(&|sel| {
+        usage_only(
+            &|sel| {
                 format!(
                     r#"sum(rate(node_network_{direction}_bytes_total{{{sel}, device!~"{VIRTUAL_DEVICES}"}}[{w}s]))"#
                 )
-            }),
-            cadvisor(&|sel| {
+            },
+            &|sel| {
                 format!(
-                    r#"sum(rate(container_network_{direction}_bytes_total{{{sel}, pod!=""}}[{w}s]))"#
+                    r#"sum(rate(container_network_{direction}_bytes_total{{{sel}, pod!=""}}[{w}s]) and on (namespace, pod) kube_pod_info{{{pod_network}}})"#
                 )
-            }),
+            },
         )
     };
     let pods_ksm = {
@@ -256,63 +336,79 @@ pub fn node_plan(
             format!("sum(kubelet_running_pods{{{sel}}})"),
         )
     });
+    let cpu_capacity: fn(&str) -> String =
+        |sel| format!(r#"count(node_cpu_seconds_total{{{sel}, mode="idle"}})"#);
+    let memory_capacity: fn(&str) -> String =
+        |sel| format!("sum(node_memory_MemTotal_bytes{{{sel}}})");
+    let fs_size: fn(&str) -> String = |sel| {
+        format!(
+            r#"sum(max by (device) (node_filesystem_size_bytes{{{sel}, fstype!~"{PSEUDO_FS}"}}))"#
+        )
+    };
 
     vec![
-        (
+        ChartPlan::with_reference(
             HostChart::Cpu,
-            with(
-                exporter(&|sel| {
+            pair_candidates(
+                ne.as_deref(),
+                &kubelet,
+                &|sel| {
                     format!(
                         r#"sum(rate(node_cpu_seconds_total{{{sel}, mode!~"idle|iowait|steal"}}[{w}s]))"#
                     )
-                }),
-                cadvisor(&|sel| {
+                },
+                &exporter_ref(cpu_capacity),
+                &|sel| {
                     format!(
                         "sum(rate(container_cpu_usage_seconds_total{{{sel}, {CONTAINERS}}}[{w}s]))"
                     )
-                }),
+                },
+                &|_| allocatable("cpu"),
             ),
+            HostChart::CpuAllocatable,
         ),
-        (HostChart::CpuAllocatable, allocatable("cpu")),
-        (
+        ChartPlan::with_reference(
             HostChart::Memory,
-            with(
-                exporter(&|sel| {
+            pair_candidates(
+                ne.as_deref(),
+                &kubelet,
+                &|sel| {
                     format!(
                         "sum(node_memory_MemTotal_bytes{{{sel}}} - node_memory_MemAvailable_bytes{{{sel}}})"
                     )
-                }),
-                cadvisor(&|sel| {
-                    format!("sum(container_memory_working_set_bytes{{{sel}, {CONTAINERS}}})")
-                }),
+                },
+                &exporter_ref(memory_capacity),
+                &|sel| format!("sum(container_memory_working_set_bytes{{{sel}, {CONTAINERS}}})"),
+                &|_| allocatable("memory"),
             ),
+            HostChart::MemoryAllocatable,
         ),
-        (HostChart::MemoryAllocatable, allocatable("memory")),
-        (
+        ChartPlan::usage(
             HostChart::Pods,
             std::iter::once(pods_ksm).chain(pods_kubelet).collect(),
         ),
-        (HostChart::NetworkRx, network("receive")),
-        (HostChart::NetworkTx, network("transmit")),
-        (
+        ChartPlan::usage(HostChart::NetworkRx, network("receive")),
+        ChartPlan::usage(HostChart::NetworkTx, network("transmit")),
+        ChartPlan::with_reference(
             HostChart::Filesystem,
-            with(
-                exporter(&|sel| {
+            pair_candidates(
+                ne.as_deref(),
+                &kubelet,
+                &|sel| {
                     format!(
                         "sum(max by (device) (node_filesystem_size_bytes{{{sel}, {fs}}} - node_filesystem_avail_bytes{{{sel}, {fs}}}))"
                     )
-                }),
-                cadvisor(&|sel| format!(r#"sum(container_fs_usage_bytes{{{sel}, id="/"}})"#)),
+                },
+                &exporter_ref(fs_size),
+                &|sel| format!(r#"sum(container_fs_usage_bytes{{{sel}, id="/"}})"#),
+                &|sel| {
+                    Some(candidate(
+                        MetricSource::Cadvisor,
+                        format!(r#"sum(container_fs_limit_bytes{{{sel}, id="/"}})"#),
+                    ))
+                },
             ),
-        ),
-        (
             HostChart::FilesystemCapacity,
-            with(
-                exporter(&|sel| {
-                    format!("sum(max by (device) (node_filesystem_size_bytes{{{sel}, {fs}}}))")
-                }),
-                cadvisor(&|sel| format!(r#"sum(container_fs_limit_bytes{{{sel}, id="/"}})"#)),
-            ),
         ),
     ]
 }
@@ -361,29 +457,29 @@ pub fn series_labels(data: &Value, label: &str) -> Vec<String> {
 }
 
 /// A chart from its tried candidates (in order): the first with series
-/// wins; with none, the chart is "not available" unless every candidate
-/// failed, in which case it carries the first error.
+/// wins (its index is returned, to pick the paired reference); with none,
+/// the chart is "not available" unless every candidate failed, in which
+/// case it carries the first error.
 pub fn settle(
     chart: HostChart,
     preferred: &str,
     attempts: Vec<(Candidate, Result<Vec<Series>, PromError>)>,
-) -> HostChartData {
+) -> (HostChartData, Option<usize>) {
     let mut first_error = None;
     let mut any_answer = false;
-    for (candidate, result) in attempts {
+    for (index, (candidate, result)) in attempts.into_iter().enumerate() {
         match result {
-            Ok(series)
-                if series
-                    .iter()
-                    .any(|s| s.points.iter().any(|p| p.1.is_some())) =>
-            {
-                return HostChartData {
-                    chart,
-                    source: Some(candidate.source),
-                    query: candidate.query,
-                    series,
-                    error: None,
-                }
+            Ok(series) if has_data(&series) => {
+                return (
+                    HostChartData {
+                        chart,
+                        source: Some(candidate.source),
+                        query: candidate.query,
+                        series,
+                        error: None,
+                    },
+                    Some(index),
+                )
             }
             Ok(_) => any_answer = true,
             Err(e) => {
@@ -391,7 +487,7 @@ pub fn settle(
             }
         }
     }
-    HostChartData {
+    let data = HostChartData {
         chart,
         source: None,
         query: preferred.to_string(),
@@ -401,7 +497,15 @@ pub fn settle(
         } else {
             first_error.map(|e| e.to_string())
         },
-    }
+    };
+    (data, None)
+}
+
+/// Whether any series has a value.
+fn has_data(series: &[Series]) -> bool {
+    series
+        .iter()
+        .any(|s| s.points.iter().any(|p| p.1.is_some()))
 }
 
 fn now_secs() -> u64 {
@@ -453,8 +557,93 @@ impl PromConnection {
         })
     }
 
+    /// Tries `candidates` in order until one has data; stops at a fatal
+    /// answer. `Err` when every candidate was unreachable or rejected.
+    async fn run_chart(
+        &self,
+        chart: HostChart,
+        candidates: Vec<Candidate>,
+        (start, end, step): (u64, u64, u64),
+    ) -> Result<(HostChartData, Option<usize>), PromError> {
+        let preferred = candidates
+            .first()
+            .map(|c| c.query.clone())
+            .unwrap_or_default();
+        let mut attempts = Vec::new();
+        for candidate in candidates {
+            let result = self
+                .query_range(&candidate.query, start, end, step)
+                .await
+                .and_then(|data| parse_series(&data, &[]));
+            let stop =
+                result.as_ref().is_ok_and(|s| has_data(s)) || result.as_ref().is_err_and(fatal);
+            attempts.push((candidate, result));
+            if stop {
+                break;
+            }
+        }
+        if !attempts.is_empty() && attempts.iter().all(|(_, r)| r.as_ref().is_err_and(fatal)) {
+            if let Some((_, Err(e))) = attempts.into_iter().next() {
+                return Err(e);
+            }
+            return Err(PromError::Response("no charts".to_string()));
+        }
+        Ok(settle(chart, &preferred, attempts))
+    }
+
+    /// One plan: its usage chart, then the reference paired with the
+    /// winning candidate (nothing when it has none).
+    async fn run_plan(
+        &self,
+        plan: ChartPlan,
+        window: (u64, u64, u64),
+    ) -> Result<Vec<HostChartData>, (Vec<HostChartData>, PromError)> {
+        let failed = |chart: HostChart, query: String, e: &PromError| HostChartData {
+            chart,
+            source: None,
+            query,
+            series: Vec::new(),
+            error: Some(e.to_string()),
+        };
+        let preferred = plan
+            .candidates
+            .first()
+            .map(|c| c.query.clone())
+            .unwrap_or_default();
+        let ref_preferred = |refs: &[Option<Candidate>]| {
+            refs.iter()
+                .flatten()
+                .next()
+                .map(|c| c.query.clone())
+                .unwrap_or_default()
+        };
+        let (usage, winner) = match self.run_chart(plan.chart, plan.candidates, window).await {
+            Ok(done) => done,
+            Err(e) => {
+                let mut charts = vec![failed(plan.chart, preferred, &e)];
+                if let Some((chart, refs)) = &plan.reference {
+                    charts.push(failed(*chart, ref_preferred(refs), &e));
+                }
+                return Err((charts, e));
+            }
+        };
+        let mut charts = vec![usage];
+        if let Some((chart, refs)) = plan.reference {
+            let paired = winner.and_then(|i| refs.get(i).cloned().flatten());
+            let data = match paired {
+                Some(c) => match self.run_chart(chart, vec![c.clone()], window).await {
+                    Ok((data, _)) => data,
+                    Err(e) => failed(chart, c.query, &e),
+                },
+                None => settle(chart, &ref_preferred(&refs), Vec::new()).0,
+            };
+            charts.push(data);
+        }
+        Ok(charts)
+    }
+
     /// Runs `plan` over the last `range`: charts concurrently, each trying
-    /// its candidates in order until one has data.
+    /// its candidates in order until one has data, then its reference.
     pub async fn host_metrics(
         &self,
         plan: Vec<ChartPlan>,
@@ -463,64 +652,28 @@ impl PromConnection {
         let step = range.step();
         let end = now_secs() / step * step;
         let start = end.saturating_sub(range.seconds());
-        let charts = join_all(plan.into_iter().map(|(chart, candidates)| async move {
-            let preferred = candidates
-                .first()
-                .map(|c| c.query.clone())
-                .unwrap_or_default();
-            let mut attempts = Vec::new();
-            for candidate in candidates {
-                let result = self
-                    .query_range(&candidate.query, start, end, step)
-                    .await
-                    .and_then(|data| parse_series(&data, &[]));
-                let done = result
-                    .as_ref()
-                    .is_ok_and(|s| s.iter().any(|s| s.points.iter().any(|p| p.1.is_some())));
-                let stop = done || result.as_ref().is_err_and(fatal);
-                attempts.push((candidate, result));
-                if stop {
-                    break;
-                }
-            }
-            // Every candidate unreachable or rejected: the connection's problem.
-            if !attempts.is_empty() && attempts.iter().all(|(_, r)| r.as_ref().is_err_and(fatal)) {
-                if let Some((_, Err(e))) = attempts.into_iter().next() {
-                    return Err((chart, preferred, e));
-                }
-                return Err((
-                    chart,
-                    preferred,
-                    PromError::Response("no charts".to_string()),
-                ));
-            }
-            Ok(settle(chart, &preferred, attempts))
-        }))
+        let results = join_all(
+            plan.into_iter()
+                .map(|p| self.run_plan(p, (start, end, step))),
+        )
         .await;
         // Unreachable or rejected credentials are everyone's problem:
         // report them once (the caller then drops the connection).
-        if charts.iter().all(Result::is_err) {
-            if let Some(Err((_, _, e))) = charts.into_iter().next() {
+        if results.iter().all(Result::is_err) {
+            if let Some(Err((_, e))) = results.into_iter().next() {
                 return Err(e);
             }
             return Err(PromError::Response("no charts".to_string()));
         }
+        let charts = results
+            .into_iter()
+            .flat_map(|r| r.unwrap_or_else(|(charts, _)| charts))
+            .collect();
         Ok(HostMetrics {
             start,
             end,
             step,
-            charts: charts
-                .into_iter()
-                .map(|r| {
-                    r.unwrap_or_else(|(chart, query, e)| HostChartData {
-                        chart,
-                        source: None,
-                        query,
-                        series: Vec::new(),
-                        error: Some(e.to_string()),
-                    })
-                })
-                .collect(),
+            charts,
         })
     }
 

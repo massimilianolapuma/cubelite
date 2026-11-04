@@ -54,8 +54,10 @@ struct OverviewView: View {
         let summary = OverviewSummary(state: clusterState)
         ScrollView {
             VStack(spacing: 12) {
-                if let firing = prom.alerts?.count, firing > 0 {
-                    firingBadge(firing)
+                // Informational alerts (Watchdog) neither count nor colour it.
+                let firing = PromAlerts.badge(prom.alerts)
+                if firing.count > 0 {
+                    firingBadge(firing.count, color: AlertsCardView.color(firing.tone))
                 }
                 statRow(summary)
                 HStack(alignment: .top, spacing: 12) {
@@ -78,13 +80,13 @@ struct OverviewView: View {
     }
 
     /// "3 firing", like the desktop's Overview header badge.
-    private func firingBadge(_ count: Int) -> some View {
+    private func firingBadge(_ count: Int, color: Color) -> some View {
         HStack {
             Spacer()
             Text("\(count) firing")
-                .typeStyle(DesignTokens.Typography.caption.monospaced, color: DesignTokens.statusWarn)
+                .typeStyle(DesignTokens.Typography.caption.monospaced, color: color)
                 .padding(.horizontal, 8)
-                .overlay(Capsule().strokeBorder(DesignTokens.statusWarn, lineWidth: 1))
+                .overlay(Capsule().strokeBorder(color, lineWidth: 1))
                 .help("Firing alerts from Prometheus")
                 .accessibilityIdentifier("overview.alerts-badge")
         }

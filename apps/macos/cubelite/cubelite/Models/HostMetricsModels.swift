@@ -13,6 +13,11 @@ import Foundation
 // the node name unless the kubelet overrides it), else by the node's
 // `internal_ip` from `kube_node_info` matched against the address; setups
 // that relabel `instance` to the node name match `node_uname_info{instance="<n>"}`.
+//
+// A reference line (CPU and memory capacity, filesystem size) pairs with
+// each usage candidate, so it comes from the usage's exporter: node-exporter
+// capacity next to node-exporter usage, kube-state-metrics allocatable (or
+// cAdvisor's filesystem limit) next to cAdvisor. No pair: no reference line.
 
 /// One chart of the cluster or node history.
 enum HostChart: String, CaseIterable, Sendable {
@@ -51,10 +56,31 @@ struct HostCandidate: Equatable, Sendable {
     let query: String
 }
 
-/// A chart and its candidates, best first.
+/// A chart, its candidates (best first) and its reference line, whose
+/// candidates pair with the usage ones by index (nil: no reference for that
+/// usage candidate).
 struct HostChartPlan: Equatable, Sendable {
     let chart: HostChart
     let candidates: [HostCandidate]
+    var reference: HostChart?
+    var referenceCandidates: [HostCandidate?] = []
+
+    init(chart: HostChart, candidates: [HostCandidate]) {
+        self.chart = chart
+        self.candidates = candidates
+    }
+
+    init(chart: HostChart, pairs: [(HostCandidate, HostCandidate?)], reference: HostChart) {
+        self.chart = chart
+        self.candidates = pairs.map(\.0)
+        self.reference = reference
+        self.referenceCandidates = pairs.map(\.1)
+    }
+
+    static func == (a: HostChartPlan, b: HostChartPlan) -> Bool {
+        a.chart == b.chart && a.candidates == b.candidates && a.reference == b.reference
+            && a.referenceCandidates == b.referenceCandidates
+    }
 }
 
 struct HostChartData: Equatable, Sendable {
@@ -103,27 +129,30 @@ enum HostQueries {
         let c = clusterMatcher(cluster)
         let sel = join([containers, c])
         let w = window(range)
-        func allocatable(_ resource: String) -> [HostCandidate] {
-            [
-                HostCandidate(
-                    source: .kubeStateMetrics,
-                    query: "sum(kube_node_status_allocatable{\(join([#"resource="\#(resource)""#, c]))})")
-            ]
+        func allocatable(_ resource: String) -> HostCandidate {
+            HostCandidate(
+                source: .kubeStateMetrics,
+                query: "sum(kube_node_status_allocatable{\(join([#"resource="\#(resource)""#, c]))})")
         }
         return [
             HostChartPlan(
                 chart: .cpu,
-                candidates: [
-                    HostCandidate(
-                        source: .cadvisor, query: "sum(rate(container_cpu_usage_seconds_total{\(sel)}[\(w)s]))")
-                ]),
-            HostChartPlan(chart: .cpuAllocatable, candidates: allocatable("cpu")),
+                pairs: [
+                    (
+                        HostCandidate(
+                            source: .cadvisor,
+                            query: "sum(rate(container_cpu_usage_seconds_total{\(sel)}[\(w)s]))"),
+                        allocatable("cpu")
+                    )
+                ], reference: .cpuAllocatable),
             HostChartPlan(
                 chart: .memory,
-                candidates: [
-                    HostCandidate(source: .cadvisor, query: "sum(container_memory_working_set_bytes{\(sel)})")
-                ]),
-            HostChartPlan(chart: .memoryAllocatable, candidates: allocatable("memory")),
+                pairs: [
+                    (
+                        HostCandidate(source: .cadvisor, query: "sum(container_memory_working_set_bytes{\(sel)})"),
+                        allocatable("memory")
+                    )
+                ], reference: .memoryAllocatable),
         ]
     }
 
@@ -147,34 +176,49 @@ enum HostQueries {
         let exporter = instanceMatcher(instances).map { join([$0, c]) }
         let kubelet = ["node", "instance"].map { join(["\($0)=\(Prometheus.escape(node))", c]) }
         let byNode = join(["node=\(Prometheus.escape(node))", c])
+        // Pods on the host network see the node's interfaces: leave them out.
+        let podNetwork = join([#"host_network="false""#, c])
         let fs = #"fstype!~"\#(pseudoFS)""#
 
-        func plan(
-            _ chart: HostChart, exporterQuery: ((String) -> String)?, cadvisor: ((String) -> String)?
-        ) -> HostChartPlan {
-            var out: [HostCandidate] = []
-            if let exporterQuery, let exporter {
-                out.append(HostCandidate(source: .nodeExporter, query: exporterQuery(exporter)))
+        /// Usage candidates (node-exporter, then cAdvisor by `node` and
+        /// `instance`), each with its paired reference.
+        func pairs(
+            exporterQuery: (String) -> String, exporterRef: ((String) -> String)?,
+            cadvisor: (String) -> String, cadvisorRef: (String) -> HostCandidate?
+        ) -> [(HostCandidate, HostCandidate?)] {
+            var out: [(HostCandidate, HostCandidate?)] = []
+            if let exporter {
+                out.append(
+                    (
+                        HostCandidate(source: .nodeExporter, query: exporterQuery(exporter)),
+                        exporterRef.map { HostCandidate(source: .nodeExporter, query: $0(exporter)) }
+                    ))
             }
-            if let cadvisor { out += kubelet.map { HostCandidate(source: .cadvisor, query: cadvisor($0)) } }
-            return HostChartPlan(chart: chart, candidates: out)
+            out += kubelet.map { (HostCandidate(source: .cadvisor, query: cadvisor($0)), cadvisorRef($0)) }
+            return out
         }
-        func allocatable(_ chart: HostChart, _ resource: String) -> HostChartPlan {
+        func usage(_ chart: HostChart, exporterQuery: (String) -> String, cadvisor: (String) -> String)
+            -> HostChartPlan
+        {
             HostChartPlan(
                 chart: chart,
-                candidates: [
-                    HostCandidate(
-                        source: .kubeStateMetrics,
-                        query: #"sum(kube_node_status_allocatable{\#(byNode), resource="\#(resource)"})"#)
-                ])
+                candidates: pairs(exporterQuery: exporterQuery, exporterRef: nil, cadvisor: cadvisor) { _ in nil }
+                    .map(\.0))
+        }
+        func allocatable(_ resource: String) -> HostCandidate {
+            HostCandidate(
+                source: .kubeStateMetrics,
+                query: #"sum(kube_node_status_allocatable{\#(byNode), resource="\#(resource)"})"#)
         }
         func network(_ chart: HostChart, _ direction: String) -> HostChartPlan {
-            plan(
+            usage(
                 chart,
                 exporterQuery: {
                     #"sum(rate(node_network_\#(direction)_bytes_total{\#($0), device!~"\#(virtualDevices)"}[\#(w)s]))"#
                 },
-                cadvisor: { #"sum(rate(container_network_\#(direction)_bytes_total{\#($0), pod!=""}[\#(w)s]))"# })
+                cadvisor: {
+                    #"sum(rate(container_network_\#(direction)_bytes_total{\#($0), pod!=""}[\#(w)s]) and on (namespace, pod) kube_pod_info{\#(podNetwork)})"#
+                })
         }
         let phase = join([#"phase="Running""#, c])
         let pods = HostChartPlan(
@@ -188,29 +232,37 @@ enum HostQueries {
             ] + kubelet.map { HostCandidate(source: .kubelet, query: "sum(kubelet_running_pods{\($0)})") })
 
         return [
-            plan(
-                .cpu,
-                exporterQuery: { #"sum(rate(node_cpu_seconds_total{\#($0), mode!~"idle|iowait|steal"}[\#(w)s]))"# },
-                cadvisor: { "sum(rate(container_cpu_usage_seconds_total{\($0), \(containers)}[\(w)s]))" }),
-            allocatable(.cpuAllocatable, "cpu"),
-            plan(
-                .memory,
-                exporterQuery: { "sum(node_memory_MemTotal_bytes{\($0)} - node_memory_MemAvailable_bytes{\($0)})" },
-                cadvisor: { "sum(container_memory_working_set_bytes{\($0), \(containers)})" }),
-            allocatable(.memoryAllocatable, "memory"),
+            HostChartPlan(
+                chart: .cpu,
+                pairs: pairs(
+                    exporterQuery: { #"sum(rate(node_cpu_seconds_total{\#($0), mode!~"idle|iowait|steal"}[\#(w)s]))"# },
+                    exporterRef: { #"count(node_cpu_seconds_total{\#($0), mode="idle"})"# },
+                    cadvisor: { "sum(rate(container_cpu_usage_seconds_total{\($0), \(containers)}[\(w)s]))" },
+                    cadvisorRef: { _ in allocatable("cpu") }),
+                reference: .cpuAllocatable),
+            HostChartPlan(
+                chart: .memory,
+                pairs: pairs(
+                    exporterQuery: { "sum(node_memory_MemTotal_bytes{\($0)} - node_memory_MemAvailable_bytes{\($0)})" },
+                    exporterRef: { "sum(node_memory_MemTotal_bytes{\($0)})" },
+                    cadvisor: { "sum(container_memory_working_set_bytes{\($0), \(containers)})" },
+                    cadvisorRef: { _ in allocatable("memory") }),
+                reference: .memoryAllocatable),
             pods,
             network(.networkRx, "receive"),
             network(.networkTx, "transmit"),
-            plan(
-                .filesystem,
-                exporterQuery: {
-                    "sum(max by (device) (node_filesystem_size_bytes{\($0), \(fs)} - node_filesystem_avail_bytes{\($0), \(fs)}))"
-                },
-                cadvisor: { #"sum(container_fs_usage_bytes{\#($0), id="/"})"# }),
-            plan(
-                .filesystemCapacity,
-                exporterQuery: { "sum(max by (device) (node_filesystem_size_bytes{\($0), \(fs)}))" },
-                cadvisor: { #"sum(container_fs_limit_bytes{\#($0), id="/"})"# }),
+            HostChartPlan(
+                chart: .filesystem,
+                pairs: pairs(
+                    exporterQuery: {
+                        "sum(max by (device) (node_filesystem_size_bytes{\($0), \(fs)} - node_filesystem_avail_bytes{\($0), \(fs)}))"
+                    },
+                    exporterRef: { "sum(max by (device) (node_filesystem_size_bytes{\($0), \(fs)}))" },
+                    cadvisor: { #"sum(container_fs_usage_bytes{\#($0), id="/"})"# },
+                    cadvisorRef: {
+                        HostCandidate(source: .cadvisor, query: #"sum(container_fs_limit_bytes{\#($0), id="/"})"#)
+                    }),
+                reference: .filesystemCapacity),
         ]
     }
 
@@ -245,26 +297,33 @@ enum HostQueries {
     }
 
     /// A chart from its tried candidates (in order): the first with data
-    /// wins; with none the chart is "not available", unless every candidate
-    /// failed, in which case it carries the first error.
+    /// wins (its index picks the paired reference); with none the chart is
+    /// "not available", unless every candidate failed, in which case it
+    /// carries the first error.
     static func settle(
         _ chart: HostChart, preferred: String, attempts: [(HostCandidate, Result<[MetricSeries], Error>)]
-    ) -> HostChartData {
+    ) -> (data: HostChartData, winner: Int?) {
         var firstError: Error?
         var answered = false
-        for (candidate, result) in attempts {
+        for (index, (candidate, result)) in attempts.enumerated() {
             switch result {
             case .success(let series) where hasData(series):
-                return HostChartData(
-                    chart: chart, source: candidate.source, query: candidate.query, series: series, error: nil)
+                return (
+                    HostChartData(
+                        chart: chart, source: candidate.source, query: candidate.query, series: series, error: nil),
+                    index
+                )
             case .success:
                 answered = true
             case .failure(let error):
                 if firstError == nil { firstError = error }
             }
         }
-        return HostChartData(
-            chart: chart, source: nil, query: preferred, series: [],
-            error: answered ? nil : firstError?.localizedDescription)
+        return (
+            HostChartData(
+                chart: chart, source: nil, query: preferred, series: [],
+                error: answered ? nil : firstError?.localizedDescription),
+            nil
+        )
     }
 }
