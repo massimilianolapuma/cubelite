@@ -17,6 +17,11 @@ final class IntegrationStubProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) private static var responses: [String: (Int, String)] = [:]
     nonisolated(unsafe) private static var recorded: [Recorded] = []
     nonisolated(unsafe) private static var handler: (@Sendable (URLRequest) -> (Int, String)?)?
+    /// Bumped by `reset`: sessions carry the generation they were made in,
+    /// so a request an earlier test left in flight (a cancelled query
+    /// reaching the stub late) is neither served nor recorded (#540).
+    nonisolated(unsafe) private static var generation = 0
+    private static let generationHeader = "X-Integration-Stub-Generation"
 
     /// Responses keyed by URL path (query ignored).
     /// `handle` answers first when it returns a response (per-query replies).
@@ -25,6 +30,7 @@ final class IntegrationStubProtocol: URLProtocol, @unchecked Sendable {
         handle: (@Sendable (URLRequest) -> (Int, String)?)? = nil
     ) {
         lock.withLock {
+            generation += 1
             responses = map
             recorded = []
             handler = handle
@@ -32,6 +38,15 @@ final class IntegrationStubProtocol: URLProtocol, @unchecked Sendable {
     }
 
     static var requests: [Recorded] { lock.withLock { recorded } }
+
+    /// A session configuration routed through the stub, tied to the
+    /// current generation: create it after `reset`.
+    static func configuration() -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [IntegrationStubProtocol.self]
+        config.httpAdditionalHeaders = [generationHeader: String(lock.withLock { generation })]
+        return config
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -50,7 +65,9 @@ final class IntegrationStubProtocol: URLProtocol, @unchecked Sendable {
         }
         let url = request.url
         let path = url?.path ?? ""
+        let stamp = request.value(forHTTPHeaderField: Self.generationHeader)
         let (status, text) = Self.lock.withLock { () -> (Int, String) in
+            if let stamp, stamp != String(Self.generation) { return (404, "") }
             Self.recorded.append(
                 Recorded(
                     method: request.httpMethod ?? "GET", url: url?.absoluteString ?? "",

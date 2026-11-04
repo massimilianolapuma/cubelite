@@ -311,8 +311,7 @@ final class PrometheusClusterServiceTests: XCTestCase {
     private let external = PromEndpoint(target: .external(url: "https://prom.example"))
 
     private func service() -> PrometheusService {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [IntegrationStubProtocol.self]
+        let config = IntegrationStubProtocol.configuration()
         return PrometheusService(
             cluster: StubCluster(objects: [:]), secrets: MemorySecrets(), configuration: config,
             azure: AzureCLIToken { throw PromError.config("no az in tests") })

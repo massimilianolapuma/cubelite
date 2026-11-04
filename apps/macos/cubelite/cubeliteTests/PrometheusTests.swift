@@ -246,8 +246,7 @@ final class PrometheusServiceTests: XCTestCase {
         cluster: StubCluster = StubCluster(objects: [:]), secrets: MemorySecrets = MemorySecrets(),
         azure: AzureCLIToken = AzureCLIToken { throw PromError.config("no az in tests") }
     ) -> PrometheusService {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [IntegrationStubProtocol.self]
+        let config = IntegrationStubProtocol.configuration()
         return PrometheusService(cluster: cluster, secrets: secrets, configuration: config, azure: azure)
     }
 

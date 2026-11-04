@@ -12,8 +12,7 @@ final class ElasticServiceTests: XCTestCase {
     private func service(cluster: [String: String] = [:], secrets: MemorySecrets = MemorySecrets())
         -> ElasticService
     {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [IntegrationStubProtocol.self]
+        let config = IntegrationStubProtocol.configuration()
         return ElasticService(
             cluster: StubCluster(objects: cluster), secrets: secrets, configuration: config)
     }
