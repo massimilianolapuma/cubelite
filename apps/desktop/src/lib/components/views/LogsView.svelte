@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ExternalLink from '@lucide/svelte/icons/external-link';
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
+	import { listDaemonSets, type WorkloadRef } from '#lib/tauri.ts';
 	import { logs, type LevelFilter } from '#lib/stores/logs.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -39,16 +40,27 @@
 	});
 
 	// Workloads to narrow to (#529): StatefulSets and Jobs are loaded on
-	// demand, once per namespace.
+	// demand, once per namespace; DaemonSets (listed nowhere else) each time.
+	let daemonsets = $state<WorkloadRef[]>([]);
 	$effect(() => {
-		void app.activeCluster;
+		const cluster = app.activeCluster;
 		const ns = app.namespace ?? null;
 		void untrack(async () => {
 			for (const kind of ['statefulsets', 'jobs'] as const) {
 				if (resources.loadedKinds[kind] !== ns) await resources.loadKind(kind);
 			}
 		});
+		daemonsets = [];
+		if (!cluster) return;
+		let current = true;
+		listDaemonSets(app.kubeconfigPath, ns ?? undefined, cluster).then(
+			(list) => current && (daemonsets = list),
+			() => {} // RBAC or an old cluster: no DaemonSets to pick.
+		);
+		return () => (current = false);
 	});
+	// The view's history holds a point in time: release it on the way out.
+	onDestroy(() => logs.closeHistory());
 
 	const workloads = $derived<LogScope[]>([
 		...resources.deployments.map((d) => ({
@@ -58,6 +70,10 @@
 		...resources.statefulsets.map((s) => ({
 			namespace: s.namespace,
 			workload: { kind: 'stateful-set' as const, name: s.name }
+		})),
+		...daemonsets.map((d) => ({
+			namespace: d.namespace,
+			workload: { kind: 'daemon-set' as const, name: d.name }
 		})),
 		...resources.jobs.map((j) => ({ namespace: j.namespace, workload: { kind: 'job' as const, name: j.name } }))
 	]);
@@ -69,17 +85,6 @@
 		return workloads.some((w) => scopeKey(w) === key) ? workloads : [scope, ...workloads];
 	});
 
-	// A scope belongs to its cluster and namespace: drop it when they change.
-	let scopeCluster = app.activeCluster;
-	$effect(() => {
-		const cluster = app.activeCluster;
-		const ns = app.namespace;
-		untrack(() => {
-			const scope = logs.scope;
-			if (scope && (cluster !== scopeCluster || (ns !== null && ns !== scope.namespace))) logs.scope = null;
-			scopeCluster = cluster;
-		});
-	});
 
 	function pickScope(key: string) {
 		logs.scope = scopeOptions.find((w) => scopeKey(w) === key) ?? null;

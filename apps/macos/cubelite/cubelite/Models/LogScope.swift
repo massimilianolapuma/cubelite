@@ -35,6 +35,13 @@ struct LogScope: Hashable, Sendable, Identifiable {
     }
 }
 
+/// Lists DaemonSets for the Logs view's picker (#529; `KubeAPIService`).
+protocol DaemonSetListing: Sendable {
+    func listDaemonSets(namespace: String?, inContext contextName: String?) async throws -> [LogScope]
+}
+
+extension KubeAPIService: DaemonSetListing {}
+
 /// The Logs view's filter as a history query, or why History cannot
 /// express it (#529).
 enum LogsHistoryMapping: Equatable, Sendable {

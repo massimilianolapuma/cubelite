@@ -11,18 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Elasticsearch history for workloads and the Logs view** (desktop and
   macOS, #529): the Logs view gets a Workload picker (deployments,
-  StatefulSets, Jobs; the deployment details' Logs button opens it on that
-  deployment) that narrows the live stream to the workload's pods, and
-  Live · History for its filter: one workload's pods, or the selected
-  namespace. History matches the pods with the same name regexp as the
-  Prometheus charts (deployment `name-<hash>-<suffix>`, StatefulSet
-  `name-<n>`, DaemonSet and Job `name-<suffix>`, so `api` never matches
-  `api-gateway`), on the preset's keyword pod field (`.keyword` for Fluent
-  Bit); a Job also matches its `job-name` label (ECS). Every history line
-  shows its pod. A label selector or every namespace at once keeps History
-  disabled, with the reason as its tooltip. Open in Kibana uses the same
-  filter (Lucene). The core's `HistoryQuery` takes an optional `workload`
-  (backwards-compatible) and history lines carry their pod.
+  StatefulSets, DaemonSets, Jobs; the deployment details' Logs button opens
+  it on that deployment) that narrows the live stream to the workload's
+  pods, and Live · History for its filter: one workload's pods, or the
+  selected namespace. History matches the pods with the same name regexp as
+  the Prometheus charts (deployment `name-<hash>-<suffix>`, StatefulSet
+  `name-<n>`, DaemonSet `name-<suffix>`, Job `name-<suffix>` or, Indexed,
+  `name-<index>-<suffix>` with an index of at most 7 digits so a CronJob's
+  pods never match), so `api` never matches `api-gateway`; a Job also
+  matches its `job-name` label (ECS). With the Fluent Bit preset every exact
+  filter tries the field and its `.keyword` subfield (dynamic mapping or a
+  keyword template). Every history line shows its pod. A label selector or
+  every namespace at once keeps History disabled, with the reason as its
+  tooltip; leaving the view releases the search's point in time. Open in
+  Kibana uses the same filter (Lucene). The core's `HistoryQuery` takes an
+  optional `workload` (backwards-compatible) and history lines carry their
+  pod.
 - **Discoverable history, metrics, Kibana and Grafana** (desktop and macOS,
   #526): without Elasticsearch the log panel still shows Live · History,
   with History disabled ("Connect Elasticsearch in Settings → Integrations

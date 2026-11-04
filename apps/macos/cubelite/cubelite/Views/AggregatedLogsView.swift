@@ -48,7 +48,7 @@ struct AggregatedLogsView: View {
             LogScope(namespace: $0.namespace, workload: .statefulSet($0.name))
         }
         let jobs = clusterState.jobs.map { LogScope(namespace: $0.namespace, workload: .job($0.name)) }
-        let all = deployments + statefulSets + jobs
+        let all = deployments + statefulSets + store.daemonSets + jobs
         // The current scope stays selectable while the lists load.
         if let scope = store.scope, !all.contains(scope) { return [scope] + all }
         return all
@@ -84,6 +84,9 @@ struct AggregatedLogsView: View {
         .task(id: streamKey) {
             store.start(pods: matchedPods, context: context)
         }
+        .task(id: "\(context ?? "")|\(namespace ?? "")") {
+            await store.loadDaemonSets(namespace: namespace, context: context)
+        }
         .task(id: historyKey) {
             store.elastic = logSessions?.elastic
             store.setHistory(historyMapping, context: context)
@@ -93,7 +96,7 @@ struct AggregatedLogsView: View {
         .onChange(of: namespace) { _, new in
             if let new, let scope = store.scope, scope.namespace != new { store.scope = nil }
         }
-        .onDisappear { store.stop() }
+        .onDisappear { store.leave() }
     }
 
     // MARK: - Toolbar

@@ -402,6 +402,23 @@ actor KubeAPIService {
         return response.items.map { $0.toStatefulSetInfo() }
     }
 
+    /// DaemonSets by name, optionally scoped to a namespace and/or context
+    /// (the Logs view's workload picker, #529).
+    func listDaemonSets(namespace: String?, inContext contextName: String?) async throws -> [LogScope] {
+        let path: String
+        if let ns = namespace {
+            let encoded = ns.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ns
+            path = "/apis/apps/v1/namespaces/\(encoded)/daemonsets"
+        } else {
+            path = "/apis/apps/v1/daemonsets"
+        }
+        let response: K8sListResponse<K8sNamedObject> = try await fetch(path: path, contextName: contextName)
+        return response.items.compactMap { item in
+            guard let name = item.metadata?.name else { return nil }
+            return LogScope(namespace: item.metadata?.namespace ?? "", workload: .daemonSet(name))
+        }
+    }
+
     /// Lists cron jobs, optionally scoped to a namespace and/or context.
     func listCronJobs(namespace: String? = nil, inContext contextName: String? = nil)
         async throws -> [CronJobInfo]

@@ -74,6 +74,16 @@ final class AggregatedLogStore {
 
     /// Workload the screen is narrowed to (#529); nil streams every pod in scope.
     var scope: LogScope?
+    /// DaemonSets to narrow to (listed nowhere else in the app).
+    private(set) var daemonSets: [LogScope] = []
+
+    /// Loads the DaemonSets of `namespace` (every namespace when nil), when
+    /// the streamer can list them; none on failure (RBAC).
+    func loadDaemonSets(namespace: String?, context: String?) async {
+        guard let lister = streamer as? any DaemonSetListing else { return }
+        let found = (try? await lister.listDaemonSets(namespace: namespace, inContext: context)) ?? []
+        if !Task.isCancelled { daemonSets = found }
+    }
     /// Live stream or Elasticsearch history; the stream keeps running in History.
     private(set) var source: LogSession.Source = .live
     /// History of the current filter; nil when the filter has no history
@@ -140,6 +150,17 @@ final class AggregatedLogStore {
             let base = try await elastic.kibanaBase(context: context, endpoint: endpoint)
         else { return nil }
         return history.kibanaURL(shown: showsHistory, base: base)
+    }
+
+    /// The screen closed: stops the streams and releases the history's
+    /// point in time (unlike `stop()`, which every restart runs and which
+    /// keeps History browsable).
+    func leave() {
+        stop()
+        history?.close()
+        history = nil
+        historyKey = nil
+        source = .live
     }
 
     private func dropHistoryExpansions() {

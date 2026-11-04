@@ -53,7 +53,7 @@ fn selectors_match_pods_deployments_and_statefulsets_literally() {
             },
             None
         ),
-        r#"namespace="shop", pod=~"migrate-[bcdfghjklmnpqrstvwxz2456789]{5}""#
+        r#"namespace="shop", pod=~"migrate-([0-9]{1,7}-)?[bcdfghjklmnpqrstvwxz2456789]{5}""#
     );
     assert_eq!(escape("a\"b\\c\nd"), r#""a\"b\\c\nd""#);
 }

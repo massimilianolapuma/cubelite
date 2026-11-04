@@ -24,7 +24,7 @@ describe("workload pod regexps (#529, same as the core's)", () => {
     expect(workloadPodsSource({ kind: "deployment", name: "api" })).toBe(`api-${SAFE}{6,10}-${SAFE}{5}`);
     expect(workloadPodsSource({ kind: "stateful-set", name: "db" })).toBe("db-[0-9]+");
     expect(workloadPodsSource({ kind: "daemon-set", name: "agent" })).toBe(`agent-${SAFE}{5}`);
-    expect(workloadPodsSource({ kind: "job", name: "migrate" })).toBe(`migrate-${SAFE}{5}`);
+    expect(workloadPodsSource({ kind: "job", name: "migrate" })).toBe(`migrate-([0-9]{1,7}-)?${SAFE}{5}`);
     expect(workloadPodsSource({ kind: "deployment", name: "a.b" })).toMatch(/^a\\\.b-/);
   });
 
@@ -45,10 +45,16 @@ describe("workload pod regexps (#529, same as the core's)", () => {
 
     const job = scope("job", "migrate");
     expect(matches(job, "migrate-x7k2p")).toBe(true);
-    expect(matches(job, "migrate-28374652-x7k2p")).toBe(false);
+    expect(matches(job, "migrate-0-x7k2p")).toBe(true); // an Indexed Job's pod
+    expect(matches(job, "migrate-28374652-x7k2p")).toBe(false); // a CronJob's (8-digit minute)
+    expect(matches(scope("job", "backup"), "backup-28000000-x7k2p")).toBe(false);
   });
 
   it("cuts long generated names at 58 characters", () => {
+    const job = scope("job", "j".repeat(70));
+    expect(matches(job, `${"j".repeat(58)}x7k2p`)).toBe(true);
+    expect(matches(job, `${"j".repeat(54)}-42-x7k2p`)).toBe(true);
+    expect(matches(job, `${"j".repeat(55)}-42-x7k2p`)).toBe(false);
     const long = "d".repeat(70);
     expect(matches(scope("daemon-set", long), `${"d".repeat(58)}x7k2p`)).toBe(true);
     expect(matches(scope("deployment", long), `${"d".repeat(58)}x7k2p`)).toBe(true);

@@ -436,6 +436,14 @@ export function listStatefulSets(
   });
 }
 
+/** A namespaced object by name (#529). */
+export type WorkloadRef = { name: string; namespace: string };
+
+/** DaemonSets by name, for the Logs view's workload picker (#529). */
+export function listDaemonSets(kubeconfigPath: string, namespace?: string, context?: string): Promise<WorkloadRef[]> {
+  return invoke<WorkloadRef[]>("list_daemonsets", { kubeconfigPath, namespace: namespace ?? null, context: context ?? null });
+}
+
 export function listPvcs(
   kubeconfigPath: string,
   namespace?: string,

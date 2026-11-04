@@ -20,6 +20,37 @@ private final class RecordingSearcher: LogHistorySearching, @unchecked Sendable 
     func closeCursor(context: String, endpoint: EsEndpoint, cursor: HistoryCursor) async {}
 }
 
+/// A streamer that also lists DaemonSets (like `KubeAPIService`).
+private final class DaemonSetStreamer: PodLogStreaming, DaemonSetListing, @unchecked Sendable {
+    private let base = MockLogStreamer()
+
+    func streamPodLogs(
+        namespace: String, pod: String, container: String?, tailLines: Int, sinceTime: String?,
+        inContext contextName: String?
+    ) async throws -> AsyncThrowingStream<String, Error> {
+        try await base.streamPodLogs(
+            namespace: namespace, pod: pod, container: container, tailLines: tailLines, sinceTime: sinceTime,
+            inContext: contextName)
+    }
+
+    func fetchPreviousPodLogs(
+        namespace: String, pod: String, container: String?, tailLines: Int, inContext contextName: String?
+    ) async throws -> [String] {
+        try await base.fetchPreviousPodLogs(
+            namespace: namespace, pod: pod, container: container, tailLines: tailLines, inContext: contextName)
+    }
+
+    func fetchPodContainers(namespace: String, pod: String, inContext contextName: String?) async throws
+        -> [ContainerInfo]
+    {
+        try await base.fetchPodContainers(namespace: namespace, pod: pod, inContext: contextName)
+    }
+
+    func listDaemonSets(namespace: String?, inContext contextName: String?) async throws -> [LogScope] {
+        [LogScope(namespace: namespace ?? "", workload: .daemonSet("node-agent"))]
+    }
+}
+
 private func line(_ message: String, pod: String?) -> HistoryLine {
     HistoryLine(
         time: "2026-11-03T08:00:00Z", level: .info, message: message, container: "api", document: "{}", pod: pod)
@@ -56,8 +87,10 @@ final class WorkloadHistoryTests: XCTestCase {
             json(#"{"regexp":{"kubernetes.pod.name":{"value":"api-\#(safe){6,10}-\#(safe){5}"}}}"#))
         XCTAssertEqual(
             podClause(.statefulSet("db"), .fluentBit),
-            json(#"{"regexp":{"kubernetes.pod_name.keyword":{"value":"db-[0-9]+"}}}"#),
-            "Fluent Bit maps the pod name as text: its keyword subfield")
+            json(
+                #"{"bool":{"should":[{"regexp":{"kubernetes.pod_name":{"value":"db-[0-9]+"}}},{"regexp":{"kubernetes.pod_name.keyword":{"value":"db-[0-9]+"}}}],"minimum_should_match":1}}"#
+            ),
+            "Fluent Bit: the plain field (keyword template) or its keyword subfield (dynamic mapping)")
         XCTAssertEqual(
             podClause(.daemonSet("agent")),
             json(#"{"regexp":{"kubernetes.pod.name":{"value":"agent-\#(safe){5}"}}}"#))
@@ -65,7 +98,7 @@ final class WorkloadHistoryTests: XCTestCase {
     }
 
     func testAJobMatchesItsRegexpOrItsJobNameLabel() {
-        let regexp = #"{"regexp":{"kubernetes.pod.name":{"value":"migrate-\#(safe){5}"}}}"#
+        let regexp = #"{"regexp":{"kubernetes.pod.name":{"value":"migrate-([0-9]{1,7}-)?\#(safe){5}"}}}"#
         XCTAssertEqual(
             podClause(.job("migrate")),
             json(
@@ -73,7 +106,9 @@ final class WorkloadHistoryTests: XCTestCase {
             ))
         XCTAssertEqual(
             podClause(.job("migrate"), .fluentBit),
-            json(#"{"regexp":{"kubernetes.pod_name.keyword":{"value":"migrate-\#(safe){5}"}}}"#),
+            json(
+                #"{"bool":{"should":[{"regexp":{"kubernetes.pod_name":{"value":"migrate-([0-9]{1,7}-)?\#(safe){5}"}}},{"regexp":{"kubernetes.pod_name.keyword":{"value":"migrate-([0-9]{1,7}-)?\#(safe){5}"}}}],"minimum_should_match":1}}"#
+            ),
             "no label field in the preset: the regexp only")
     }
 
@@ -94,12 +129,14 @@ final class WorkloadHistoryTests: XCTestCase {
             q(.daemonSet("agent")), #"kubernetes.namespace:"shop" AND kubernetes.pod.name:/agent-\#(safe){5}/"#)
         XCTAssertEqual(
             q(.job("migrate")),
-            #"kubernetes.namespace:"shop" AND (kubernetes.pod.name:/migrate-\#(safe){5}/ OR kubernetes.labels.batch_kubernetes_io\/job\-name:"migrate")"#
+            #"kubernetes.namespace:"shop" AND (kubernetes.pod.name:/migrate-([0-9]{1,7}-)?\#(safe){5}/ OR kubernetes.labels.batch_kubernetes_io\/job\-name:"migrate")"#
         )
         let escaped = q(.deployment("a.b/c#d"), .fluentBit)
         XCTAssertTrue(
-            escaped.hasPrefix(##"kubernetes.namespace_name:"shop" AND kubernetes.pod_name.keyword:/a\.b\/c\#d-"##),
-            "keyword subfield, special characters escaped: \(escaped)")
+            escaped.hasPrefix(##"kubernetes.namespace_name:"shop" AND (kubernetes.pod_name:/a\.b\/c\#d-"##),
+            "special characters escaped: \(escaped)")
+        XCTAssertTrue(
+            escaped.contains(##" OR kubernetes.pod_name.keyword:/a\.b\/c\#d-"##), "or the keyword subfield: \(escaped)")
         let namespaceURL = Elastic.kibanaWorkloadURL(
             kibanaBase: "https://kb.example", preset: .ecs, namespace: "shop", workload: nil, from: "now-24h")
         let decoded = namespaceURL.removingPercentEncoding ?? ""
@@ -119,7 +156,16 @@ final class WorkloadHistoryTests: XCTestCase {
         XCTAssertTrue(matches(.daemonSet("agent"), "agent-x7k2p"))
         XCTAssertFalse(matches(.daemonSet("agent"), "agent-metrics-x7k2p"))
         XCTAssertTrue(matches(.job("migrate"), "migrate-x7k2p"))
-        XCTAssertFalse(matches(.job("migrate"), "migrate-28374652-x7k2p"), "a CronJob's pod")
+        XCTAssertTrue(matches(.job("migrate"), "migrate-0-x7k2p"), "an Indexed Job's pod")
+        XCTAssertTrue(matches(.job("migrate"), "migrate-1234567-x7k2p"), "a 7-digit index")
+        XCTAssertFalse(matches(.job("migrate"), "migrate-28374652-x7k2p"), "a CronJob's pod (8-digit minute)")
+        XCTAssertFalse(matches(.job("backup"), "backup-28000000-x7k2p"), "CronJob backup's pods")
+        XCTAssertFalse(matches(.job("backup"), "backup-28000000-abcde"))
+        // Long Job names: `name-<index>-` is cut to 58 with the whole index kept.
+        let long = String(repeating: "j", count: 70)
+        XCTAssertTrue(matches(.job(long), String(repeating: "j", count: 58) + "x7k2p"), "non-indexed")
+        XCTAssertTrue(matches(.job(long), String(repeating: "j", count: 54) + "-42-x7k2p"), "index 42")
+        XCTAssertFalse(matches(.job(long), String(repeating: "j", count: 55) + "-42-x7k2p"), "cut too late")
         let other = PodInfo(
             name: "api-7d9f8b6c5-x7k2p", namespace: "billing", phase: nil, ready: true, restarts: 0,
             creationTimestamp: nil)
@@ -132,7 +178,7 @@ final class WorkloadHistoryTests: XCTestCase {
             #"namespace="shop", pod=~"agent-\#(safe){5}""#)
         XCTAssertEqual(
             Prometheus.selector(namespace: "shop", workload: .job("migrate"), cluster: nil),
-            #"namespace="shop", pod=~"migrate-\#(safe){5}""#)
+            #"namespace="shop", pod=~"migrate-([0-9]{1,7}-)?\#(safe){5}""#)
     }
 
     func testHitsCarryTheirPod() throws {
@@ -197,6 +243,26 @@ final class WorkloadHistoryTests: XCTestCase {
         XCTAssertTrue(store.history === history)
         store.setHistory(.query(namespace: "shop", target: nil), context: "prod")
         XCTAssertFalse(store.history === history)
+    }
+
+    func testStoreOffersDaemonSetsAndLeavingReleasesTheHistory() async throws {
+        let store = AggregatedLogStore(streamer: DaemonSetStreamer(), defaults: TestDefaults.fresh(for: Self.self))
+        await store.loadDaemonSets(namespace: "shop", context: "prod")
+        XCTAssertEqual(store.daemonSets, [LogScope(namespace: "shop", workload: .daemonSet("node-agent"))])
+
+        let searcher = RecordingSearcher()
+        let withHistory = self.store(searcher, endpoint: endpoint)
+        withHistory.setHistory(.query(namespace: "shop", target: nil), context: "prod")
+        withHistory.setSource(.history)
+        XCTAssertTrue(withHistory.showsHistory)
+        withHistory.stop()
+        XCTAssertNotNil(withHistory.history, "a stream restart keeps History")
+        withHistory.leave()
+        XCTAssertNil(withHistory.history)
+        XCTAssertEqual(withHistory.source, .live)
+        // Coming back builds a new history for the same filter.
+        withHistory.setHistory(.query(namespace: "shop", target: nil), context: "prod")
+        XCTAssertNotNil(withHistory.history)
     }
 
     func testStoreFallsBackToLiveWithoutAHistoryQueryOrEndpoint() throws {

@@ -191,6 +191,7 @@ test("Logs view reads a deployment's history from Elasticsearch (#529)", async (
   await page.getByText("api", { exact: true }).click();
   await page.getByRole("dialog", { name: "api" }).getByRole("button", { name: "Logs", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Workload" })).toHaveValue("deployment:default/api");
+  await expect(page.getByRole("option", { name: "DaemonSet default/node-agent" })).toBeAttached();
 
   await page.getByTestId("logs-source").getByRole("radio", { name: "History" }).click();
   await expect(page.getByText("e2e-history-newest")).toBeVisible();

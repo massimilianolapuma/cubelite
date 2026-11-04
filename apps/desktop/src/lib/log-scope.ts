@@ -65,8 +65,32 @@ const SAFE = "[bcdfghjklmnpqrstvwxz2456789]";
 /** Generated names are cut to 58 characters before the 5-character suffix. */
 const GENERATED_PREFIX_MAX = 58;
 
+/**
+ * Digits of an Indexed Job's completion index (`name-<index>-<suffix>`).
+ * Capped at 7 so a CronJob's pods (`backup-28000000-x7k2p`, an 8-digit
+ * scheduled minute) stay out of the Job `backup` — see the core.
+ */
+const JOB_INDEX_DIGITS_MAX = 7;
+
 function literal(name: string): string {
   return name.replace(/[\\.+*?()|[\]{}^$]/g, "\\$&");
+}
+
+/** A Job's pods, indexed or not, with Kubernetes' cuts — the core's `job_pods_regex`. */
+function jobPodsSource(name: string): string {
+  if (name.length + JOB_INDEX_DIGITS_MAX + 2 <= GENERATED_PREFIX_MAX) {
+    return `${literal(name)}-([0-9]{1,${JOB_INDEX_DIGITS_MAX}}-)?${SAFE}{5}`;
+  }
+  const alternatives = [literal(`${name}-`.slice(0, GENERATED_PREFIX_MAX))];
+  const kept = (digits: number) => Math.min(name.length, GENERATED_PREFIX_MAX - digits - 2);
+  let digits = 1;
+  while (digits <= JOB_INDEX_DIGITS_MAX) {
+    let last = digits;
+    while (last < JOB_INDEX_DIGITS_MAX && kept(last + 1) === kept(digits)) last++;
+    alternatives.push(`${literal(name.slice(0, kept(digits)))}-[0-9]{${digits},${last}}-`);
+    digits = last + 1;
+  }
+  return `(${alternatives.join("|")})${SAFE}{5}`;
 }
 
 /**
@@ -82,6 +106,8 @@ export function workloadPodsSource(workload: ScopedWorkload): string {
         : `${literal(name.slice(0, GENERATED_PREFIX_MAX))}(-${SAFE}{0,10}-?)?${SAFE}{5}`;
     case "stateful-set":
       return `${literal(name)}-[0-9]+`;
+    case "job":
+      return jobPodsSource(name);
     default:
       return `${literal(`${name}-`.slice(0, GENERATED_PREFIX_MAX))}${SAFE}{5}`;
   }

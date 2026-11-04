@@ -57,6 +57,7 @@ pub use metrics::{NodeCapacityInfo, PodMetricsInfo};
 pub use resources::{
     ConfigMapInfo, ContainerDetail, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo,
     NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,
+    WorkloadRef,
 };
 pub use types::{
     ClusterDetails, ContextDetails, ContextInfo, KubeConfigFile, KubeconfigSource, NamedCluster,

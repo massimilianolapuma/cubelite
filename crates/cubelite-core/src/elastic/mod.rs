@@ -34,10 +34,11 @@ pub struct PresetFields {
     pub namespace: &'static str,
     /// Pod name field.
     pub pod: &'static str,
-    /// The pod name as a keyword, for regexp queries on a workload's pods
-    /// (#529): Fluent Bit's dynamic mapping makes the name `text` with a
-    /// `.keyword` subfield.
-    pub pod_keyword: &'static str,
+    /// Exact filters also try the `.keyword` subfield (#529): Fluent Bit
+    /// indices without a template map strings as `text` + `.keyword` (where
+    /// a `term` on a hyphenated name never matches the plain field), while
+    /// a keyword template has no subfield. ECS mappings are keywords.
+    pub keyword_subfields: bool,
     /// The `batch.kubernetes.io/job-name` pod label, when the shipper stores
     /// it under a predictable field (Filebeat / Elastic Agent dedot label
     /// keys); a Job's history also matches it.
@@ -55,7 +56,7 @@ impl FieldPreset {
             FieldPreset::Ecs => PresetFields {
                 namespace: "kubernetes.namespace",
                 pod: "kubernetes.pod.name",
-                pod_keyword: "kubernetes.pod.name",
+                keyword_subfields: false,
                 job_label: Some("kubernetes.labels.batch_kubernetes_io/job-name"),
                 container: "kubernetes.container.name",
                 message: "message",
@@ -63,11 +64,36 @@ impl FieldPreset {
             FieldPreset::FluentBit => PresetFields {
                 namespace: "kubernetes.namespace_name",
                 pod: "kubernetes.pod_name",
-                pod_keyword: "kubernetes.pod_name.keyword",
+                keyword_subfields: true,
                 job_label: None,
                 container: "kubernetes.container_name",
                 message: "log",
             },
+        }
+    }
+}
+
+impl PresetFields {
+    /// An exact clause (`term`, or `regexp` with `{"value": …}`) on
+    /// `field`; with keyword subfields, either the field or its `.keyword`
+    /// may match.
+    fn exact(&self, kind: &str, field: &str, value: Value) -> Value {
+        let clause = |name: &str| json!({ kind: { name: value.clone() } });
+        if !self.keyword_subfields {
+            return clause(field);
+        }
+        json!({ "bool": {
+            "should": [clause(field), clause(&format!("{field}.keyword"))],
+            "minimum_should_match": 1
+        } })
+    }
+
+    /// A Lucene regexp on `field` (and its `.keyword` subfield, see [`Self::exact`]).
+    fn lucene_regexp(&self, field: &str, regexp: &str) -> String {
+        if self.keyword_subfields {
+            format!("({field}:/{regexp}/ OR {field}.keyword:/{regexp}/)")
+        } else {
+            format!("{field}:/{regexp}/")
         }
     }
 }
@@ -270,11 +296,11 @@ pub const MAX_PAGE: u32 = 1000;
 /// (rare).
 pub fn search_body(query: &HistoryQuery, preset: FieldPreset, pit: Option<&str>) -> Value {
     let f = preset.fields();
-    let mut filter = vec![json!({ "term": { f.namespace: query.namespace } })];
+    let mut filter = vec![f.exact("term", f.namespace, json!(query.namespace))];
     filter.extend(pod_filter(query, preset));
     filter.push(json!({ "range": { "@timestamp": { "gte": query.from, "lte": query.to } } }));
     if let Some(container) = query.container.as_deref().filter(|c| !c.is_empty()) {
-        filter.push(json!({ "term": { f.container: container } }));
+        filter.push(f.exact("term", f.container, json!(container)));
     }
     let mut must = Vec::new();
     if let Some(text) = query
@@ -314,19 +340,19 @@ pub fn search_body(query: &HistoryQuery, preset: FieldPreset, pit: Option<&str>)
 }
 
 /// The pod clause of a history search: a `term` on one pod, a `regexp` on
-/// the keyword pod name for a workload's pods (the regexp Prometheus uses,
+/// the pod name for a workload's pods (the regexp Prometheus uses,
 /// so `api` never matches `api-gateway-…`; Lucene regexps match the whole
 /// term), or `None` for the whole namespace. A Job's pods also match its
 /// `job-name` label when the preset stores it.
 pub fn pod_filter(query: &HistoryQuery, preset: FieldPreset) -> Option<Value> {
     let f = preset.fields();
     let Some(workload) = &query.workload else {
-        return (!query.pod.is_empty()).then(|| json!({ "term": { f.pod: query.pod } }));
+        return (!query.pod.is_empty()).then(|| f.exact("term", f.pod, json!(query.pod)));
     };
     let Some(pods) = workload_pods_regex(workload, lucene_regex_literal) else {
-        return Some(json!({ "term": { f.pod: workload.name() } }));
+        return Some(f.exact("term", f.pod, json!(workload.name())));
     };
-    let regexp = json!({ "regexp": { f.pod_keyword: { "value": pods } } });
+    let regexp = f.exact("regexp", f.pod, json!({ "value": pods }));
     match (workload, f.job_label) {
         (Workload::Job { name }, Some(label)) => Some(json!({
             "bool": {
@@ -580,7 +606,7 @@ pub fn workload_lucene_query(
         return query;
     };
     let pods = match workload_pods_regex(workload, lucene_regex_literal) {
-        Some(pods) => format!("{}:/{pods}/", f.pod_keyword),
+        Some(pods) => f.lucene_regexp(f.pod, &pods),
         None => format!("{}:{}", f.pod, kql(workload.name())),
     };
     match (workload, f.job_label) {

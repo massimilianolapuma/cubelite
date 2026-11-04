@@ -11,6 +11,7 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   stopLogs: vi.fn(async () => {}),
   listStatefulSets: vi.fn(async () => []),
   listJobs: vi.fn(async () => []),
+  listDaemonSets: vi.fn(async () => [{ name: "node-agent", namespace: "shop" }]),
   elasticSearch: vi.fn(),
   elasticCloseCursor: vi.fn(async () => {}),
   openKibanaWorkload: vi.fn(async () => {}),
@@ -161,10 +162,36 @@ describe("LogsView workload scope and history (#529)", () => {
     expect(elasticSearch).not.toHaveBeenCalled();
   });
 
-  it("drops the scope when the namespace changes", async () => {
+  it("drops the scope when the namespace or the cluster changes", async () => {
     logs.scope = { namespace: "shop", workload: { kind: "deployment", name: "api" } };
     render(LogsView);
     app.namespace = "billing";
     await waitFor(() => expect(logs.scope).toBeNull());
+    app.namespace = null;
+    logs.scope = { namespace: "shop", workload: { kind: "deployment", name: "api" } };
+    app.activeCluster = "staging";
+    expect(logs.scope).toBeNull();
+  });
+
+  it("offers DaemonSets and narrows to their pods", async () => {
+    resources.pods = [pod("node-agent-x7k2p"), pod("node-agent-metrics-z9z9z")];
+    render(LogsView);
+    const picker = screen.getByRole("combobox", { name: "Workload" });
+    expect(await screen.findByRole("option", { name: "DaemonSet node-agent" })).toBeInTheDocument();
+    await fireEvent.change(picker, { target: { value: "daemon-set:shop/node-agent" } });
+    await waitFor(() => expect(lastStreamed()).toEqual(["node-agent-x7k2p"]));
+  });
+
+  it("closes the history (its point in time) when the view goes away", async () => {
+    vi.mocked(elasticSearch).mockResolvedValue({ lines: [], total: 0, totalIsLowerBound: false, next: null });
+    const view = render(LogsView);
+    await fireEvent.click(await screen.findByRole("radio", { name: "History" }));
+    await waitFor(() => expect(elasticSearch).toHaveBeenCalled());
+    const history = logs.history!;
+    const close = vi.spyOn(history, "close");
+    view.unmount();
+    expect(close).toHaveBeenCalled();
+    expect(logs.history).toBeNull();
+    expect(logs.source).toBe("live");
   });
 });

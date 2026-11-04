@@ -3,7 +3,7 @@
 //! [`KubeClient`] wraps a configured `kube::Client` and exposes high-level
 //! methods for listing the most common Kubernetes resources.
 
-use k8s_openapi::api::apps::v1::{Deployment, StatefulSet};
+use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
 use k8s_openapi::api::batch::v1::{CronJob, Job};
 use k8s_openapi::api::core::v1::{
     ConfigMap, Event, Namespace, Node, PersistentVolumeClaim, Pod, Secret, Service,
@@ -27,7 +27,7 @@ use crate::{
     },
     resources::{
         ConfigMapInfo, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo, NamespaceInfo,
-        NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,
+        NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo, WorkloadRef,
     },
     watcher::ResourceType,
     watcher::{
@@ -531,6 +531,37 @@ impl KubeClient {
             .items
             .into_iter()
             .filter_map(statefulset_to_info)
+            .collect())
+    }
+
+    /// List DaemonSets in `namespace`, or across all namespaces when `None`,
+    /// by name only (the Logs view's workload picker, #529).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`KubeconfigError::ClientError`] when the API call fails.
+    pub async fn list_daemonsets(
+        &self,
+        namespace: Option<&str>,
+    ) -> Result<Vec<WorkloadRef>, KubeconfigError> {
+        let api: Api<DaemonSet> = match namespace {
+            Some(ns) => Api::namespaced(self.inner.clone(), ns),
+            None => Api::all(self.inner.clone()),
+        };
+        let list = api.list_metadata(&Default::default()).await.map_err(|e| {
+            KubeconfigError::ClientError {
+                reason: e.to_string(),
+            }
+        })?;
+        Ok(list
+            .items
+            .into_iter()
+            .filter_map(|d| {
+                Some(WorkloadRef {
+                    name: d.metadata.name?,
+                    namespace: d.metadata.namespace.unwrap_or_default(),
+                })
+            })
             .collect())
     }
 

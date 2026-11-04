@@ -21,10 +21,11 @@ enum FieldPreset: String, Codable, CaseIterable, Sendable {
     struct Fields: Equatable, Sendable {
         let namespace: String
         let pod: String
-        /// The pod name as a keyword, for regexp queries on a workload's pods
-        /// (#529): Fluent Bit's dynamic mapping makes the name `text` with a
-        /// `.keyword` subfield.
-        let podKeyword: String
+        /// Exact filters also try the `.keyword` subfield (#529): Fluent Bit
+        /// indices without a template map strings as `text` + `.keyword`
+        /// (a `term` on a hyphenated name never matches the plain field),
+        /// while a keyword template has no subfield. ECS fields are keywords.
+        let keywordSubfields: Bool
         /// The `batch.kubernetes.io/job-name` label, when the shipper stores
         /// it under a predictable field (Filebeat / Elastic Agent dedot label
         /// keys); a Job's history also matches it.
@@ -38,13 +39,13 @@ enum FieldPreset: String, Codable, CaseIterable, Sendable {
         case .ecs:
             Fields(
                 namespace: "kubernetes.namespace", pod: "kubernetes.pod.name",
-                podKeyword: "kubernetes.pod.name",
+                keywordSubfields: false,
                 jobLabel: "kubernetes.labels.batch_kubernetes_io/job-name",
                 container: "kubernetes.container.name", message: "message")
         case .fluentBit:
             Fields(
                 namespace: "kubernetes.namespace_name", pod: "kubernetes.pod_name",
-                podKeyword: "kubernetes.pod_name.keyword", jobLabel: nil,
+                keywordSubfields: true, jobLabel: nil,
                 container: "kubernetes.container_name", message: "log")
         }
     }
@@ -356,7 +357,7 @@ enum Elastic {
         -> JSONValue
     {
         let f = preset.fields
-        var filter: [JSONValue] = [object(["term": object([f.namespace: .string(query.namespace)])])]
+        var filter: [JSONValue] = [exact("term", f.namespace, .string(query.namespace), preset: preset)]
         if let pods = podFilter(query, preset: preset) { filter.append(pods) }
         filter += [
             object([
@@ -366,7 +367,7 @@ enum Elastic {
             ]),
         ]
         if let container = query.container, !container.isEmpty {
-            filter.append(object(["term": object([f.container: .string(container)])]))
+            filter.append(exact("term", f.container, .string(container), preset: preset))
         }
         var must: [JSONValue] = []
         if let text = query.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
@@ -411,16 +412,32 @@ enum Elastic {
     static func podFilter(_ query: HistoryQuery, preset: FieldPreset) -> JSONValue? {
         let f = preset.fields
         guard let workload = query.workload else {
-            return query.pod.isEmpty ? nil : object(["term": object([f.pod: .string(query.pod)])])
+            return query.pod.isEmpty ? nil : exact("term", f.pod, .string(query.pod), preset: preset)
         }
         guard let pods = Prometheus.workloadPods(workload, literal: luceneRegexLiteral) else {
-            return object(["term": object([f.pod: .string(workload.name)])])
+            return exact("term", f.pod, .string(workload.name), preset: preset)
         }
-        let regexp = object(["regexp": object([f.podKeyword: object(["value": .string(pods)])])])
+        let regexp = exact("regexp", f.pod, object(["value": .string(pods)]), preset: preset)
         guard case .job(let name) = workload, let label = f.jobLabel else { return regexp }
         return object([
             "bool": object([
                 "should": .array([regexp, object(["term": object([label: .string(name)])])]),
+                "minimum_should_match": .number("1"),
+            ])
+        ])
+    }
+
+    /// An exact clause (`term`, or `regexp` with `{"value": …}`) on `field`;
+    /// with keyword subfields (Fluent Bit), either the field or its
+    /// `.keyword` may match. Mirrors the core's `PresetFields::exact`.
+    static func exact(_ kind: String, _ field: String, _ value: JSONValue, preset: FieldPreset) -> JSONValue {
+        func clause(_ name: String) -> JSONValue {
+            .object([JSONMember(key: kind, value: .object([JSONMember(key: name, value: value)]))])
+        }
+        guard preset.fields.keywordSubfields else { return clause(field) }
+        return object([
+            "bool": object([
+                "should": .array([clause(field), clause("\(field).keyword")]),
                 "minimum_should_match": .number("1"),
             ])
         ])
@@ -551,7 +568,10 @@ enum Elastic {
         let query = "\(f.namespace):\(kql(namespace))"
         guard let workload else { return query }
         let pods =
-            Prometheus.workloadPods(workload, literal: luceneRegexLiteral).map { "\(f.podKeyword):/\($0)/" }
+            Prometheus.workloadPods(workload, literal: luceneRegexLiteral).map { regexp in
+                f.keywordSubfields
+                    ? "(\(f.pod):/\(regexp)/ OR \(f.pod).keyword:/\(regexp)/)" : "\(f.pod):/\(regexp)/"
+            }
             ?? "\(f.pod):\(kql(workload.name))"
         if case .job(let name) = workload, let label = f.jobLabel {
             return "\(query) AND (\(pods) OR \(luceneField(label)):\(kql(name)))"

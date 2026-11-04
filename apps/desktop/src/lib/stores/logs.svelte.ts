@@ -45,8 +45,23 @@ class LogsStore {
   streaming = $state(false);
   /** Line ids currently expanded into their JSON tree (JSON view, #461). */
   expanded = new SvelteSet<number>();
-  /** Workload the view is narrowed to (#529); null shows every pod in scope. */
-  scope = $state<LogScope | null>(null);
+  #scope = $state<{ scope: LogScope; cluster: string | null } | null>(null);
+  /**
+   * Workload the view is narrowed to (#529); null shows every pod in scope.
+   * A scope belongs to the cluster it was picked on, and to its namespace:
+   * it reads as null once either no longer matches.
+   */
+  get scope(): LogScope | null {
+    const picked = this.#scope;
+    if (!picked) return null;
+    const ns = app.namespace;
+    return picked.cluster === app.activeCluster && (ns === null || ns === picked.scope.namespace)
+      ? picked.scope
+      : null;
+  }
+  set scope(scope: LogScope | null) {
+    this.#scope = scope ? { scope, cluster: app.activeCluster } : null;
+  }
   /** Live stream or Elasticsearch history; the stream keeps running in History. */
   source = $state<"live" | "history">("live");
   /** History of the current filter; null when the filter has no history query. */
@@ -154,6 +169,11 @@ class LogsStore {
     }
     this.history = new LogHistory(mapping.namespace, mapping.target, () => null, () => this.#dropHistoryExpansions());
     if (this.source === "history") void this.history.reload();
+  }
+
+  /** The view closed: release the history's point in time and go back to Live. */
+  closeHistory(): void {
+    this.setHistory({ namespace: null, target: null, reason: "" }, null);
   }
 
   /** Switches the source; the first switch to History loads a page. */

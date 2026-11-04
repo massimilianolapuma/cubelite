@@ -259,6 +259,16 @@ pub struct CronJobInfo {
     pub creation_timestamp: Option<String>,
 }
 
+/// A namespaced object by name: workloads listed only to be picked (the
+/// Logs view's DaemonSets, #529).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkloadRef {
+    /// Object name.
+    pub name: String,
+    /// Its namespace.
+    pub namespace: String,
+}
+
 /// Lightweight representation of a Kubernetes StatefulSet.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StatefulSetInfo {

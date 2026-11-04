@@ -77,6 +77,17 @@ fn cursor_serialises_camel_case_and_omits_a_missing_pit() {
     );
 }
 
+/// A Fluent Bit exact clause: the plain field or its `.keyword` subfield.
+fn either(kind: &str, field: &str, value: Value) -> Value {
+    json!({ "bool": {
+        "should": [
+            { kind: { field: value.clone() } },
+            { kind: { format!("{field}.keyword"): value } }
+        ],
+        "minimum_should_match": 1
+    } })
+}
+
 #[test]
 fn search_body_adds_container_text_paging_and_caps_size() {
     let mut q = query();
@@ -89,8 +100,13 @@ fn search_body_adds_container_text_paging_and_caps_size() {
     q.size = Some(5000);
     let body = search_body(&q, FieldPreset::FluentBit, None);
     let filter = body["query"]["bool"]["filter"].as_array().expect("filter");
-    assert!(filter.contains(&json!({ "term": { "kubernetes.container_name": "worker" } })));
-    assert!(filter.contains(&json!({ "term": { "kubernetes.pod_name": "api-0" } })));
+    assert!(filter.contains(&either(
+        "term",
+        "kubernetes.container_name",
+        json!("worker")
+    )));
+    assert!(filter.contains(&either("term", "kubernetes.pod_name", json!("api-0"))));
+    assert!(filter.contains(&either("term", "kubernetes.namespace_name", json!("shop"))));
     let text = &body["query"]["bool"]["must"][0]["simple_query_string"];
     assert_eq!(text["query"], "timeout \"db\"");
     assert_eq!(text["fields"], json!(["log"]));
@@ -336,9 +352,13 @@ fn deployment_discover_url_is_a_lucene_regexp_on_the_pods() {
         workload_lucene_query(FieldPreset::FluentBit, "shop", Some(&deployment("a.b/c#d")));
     assert!(
         fluent.starts_with(
-            "kubernetes.namespace_name:\"shop\" AND kubernetes.pod_name.keyword:/a\\.b\\/c\\#d-"
+            "kubernetes.namespace_name:\"shop\" AND (kubernetes.pod_name:/a\\.b\\/c\\#d-"
         ),
-        "keyword subfield, special characters escaped: {fluent}"
+        "special characters escaped: {fluent}"
+    );
+    assert!(
+        fluent.contains(" OR kubernetes.pod_name.keyword:/a\\.b\\/c\\#d-"),
+        "or the keyword subfield: {fluent}"
     );
 }
 
@@ -371,7 +391,7 @@ fn workload_lucene_queries_per_kind() {
             name: "migrate".into()
         })),
         format!(
-            "kubernetes.namespace:\"shop\" AND (kubernetes.pod.name:/migrate-{SAFE}{{5}}/ OR kubernetes.labels.batch_kubernetes_io\\/job\\-name:\"migrate\")"
+            "kubernetes.namespace:\"shop\" AND (kubernetes.pod.name:/migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}/ OR kubernetes.labels.batch_kubernetes_io\\/job\\-name:\"migrate\")"
         ),
         "a Job also matches its label, the field name escaped"
     );
@@ -384,7 +404,7 @@ fn workload_lucene_queries_per_kind() {
     );
     assert_eq!(
         fluent_job,
-        format!("kubernetes.namespace_name:\"shop\" AND kubernetes.pod_name.keyword:/migrate-{SAFE}{{5}}/"),
+        format!("kubernetes.namespace_name:\"shop\" AND (kubernetes.pod_name:/migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}/ OR kubernetes.pod_name.keyword:/migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}/)"),
         "no label field in the Fluent Bit preset: the regexp only"
     );
 }
@@ -432,11 +452,52 @@ fn workload_regexps_do_not_match_a_sibling_workload() {
         name: "migrate".into(),
     });
     assert!(job.is_match("migrate-x7k2p"));
+    assert!(job.is_match("migrate-0-x7k2p"), "an Indexed Job's pod");
+    assert!(job.is_match("migrate-1234567-x7k2p"), "a 7-digit index");
     assert!(
         !job.is_match("migrate-28374652-x7k2p"),
-        "a CronJob's job pod"
+        "a CronJob's job pod (8-digit scheduled minute)"
     );
     assert!(!job.is_match("migrate-db-x7k2p"), "another Job");
+    let backup = pods_regex(&Workload::Job {
+        name: "backup".into(),
+    });
+    assert!(
+        !backup.is_match("backup-28000000-x7k2p"),
+        "CronJob backup's pods are not Job backup's"
+    );
+    assert!(!backup.is_match("backup-28000000-abcde"));
+
+    // Long Job names: `name-` is cut at 58 characters, and an index keeps
+    // its whole `-<index>-` with the name cut before it.
+    let long = "j".repeat(70);
+    let job = pods_regex(&Workload::Job { name: long });
+    assert!(
+        job.is_match(&format!("{}x7k2p", "j".repeat(58))),
+        "non-indexed"
+    );
+    assert!(
+        job.is_match(&format!("{}-3-x7k2p", "j".repeat(55))),
+        "index 3"
+    );
+    assert!(
+        job.is_match(&format!("{}-42-x7k2p", "j".repeat(54))),
+        "index 42"
+    );
+    assert!(
+        !job.is_match(&format!("{}-42-x7k2p", "j".repeat(55))),
+        "cut too late"
+    );
+    let near = "n".repeat(52);
+    let job = pods_regex(&Workload::Job { name: near.clone() });
+    assert!(
+        job.is_match(&format!("{near}-1234-x7k2p")),
+        "fits without a cut"
+    );
+    assert!(
+        job.is_match(&format!("{}-12345-x7k2p", "n".repeat(51))),
+        "cut by one"
+    );
 
     // Long DaemonSet names: `generateName` is cut at 58 characters.
     let long = "d".repeat(70);
@@ -453,7 +514,7 @@ fn workload_query(workload: Workload) -> HistoryQuery {
 }
 
 #[test]
-fn search_body_filters_a_workload_with_a_regexp_on_the_keyword_pod_field() {
+fn search_body_filters_a_workload_with_a_regexp_on_the_pod_field() {
     let body = search_body(&workload_query(deployment("api")), FieldPreset::Ecs, None);
     let filter = body["query"]["bool"]["filter"].as_array().expect("filter");
     assert_eq!(filter.len(), 3, "namespace, pods, time: {filter:?}");
@@ -471,8 +532,12 @@ fn search_body_filters_a_workload_with_a_regexp_on_the_keyword_pod_field() {
     );
     assert_eq!(
         body["query"]["bool"]["filter"][1],
-        json!({ "regexp": { "kubernetes.pod_name.keyword": { "value": "db-[0-9]+" } } }),
-        "Fluent Bit maps the pod name as text: its keyword subfield"
+        either(
+            "regexp",
+            "kubernetes.pod_name",
+            json!({ "value": "db-[0-9]+" })
+        ),
+        "Fluent Bit: the plain field (keyword template) or its keyword subfield (dynamic mapping)"
     );
 
     let body = search_body(
@@ -498,7 +563,7 @@ fn search_body_matches_a_job_by_regexp_or_job_name_label() {
         body["query"]["bool"]["filter"][1],
         json!({ "bool": {
             "should": [
-                { "regexp": { "kubernetes.pod.name": { "value": format!("migrate-{SAFE}{{5}}") } } },
+                { "regexp": { "kubernetes.pod.name": { "value": format!("migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}") } } },
                 { "term": { "kubernetes.labels.batch_kubernetes_io/job-name": "migrate" } }
             ],
             "minimum_should_match": 1
@@ -507,7 +572,11 @@ fn search_body_matches_a_job_by_regexp_or_job_name_label() {
     let body = search_body(&workload_query(job()), FieldPreset::FluentBit, None);
     assert_eq!(
         body["query"]["bool"]["filter"][1],
-        json!({ "regexp": { "kubernetes.pod_name.keyword": { "value": format!("migrate-{SAFE}{{5}}") } } }),
+        either(
+            "regexp",
+            "kubernetes.pod_name",
+            json!({ "value": format!("migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}") })
+        ),
         "no label field in the preset: the regexp only"
     );
 }
