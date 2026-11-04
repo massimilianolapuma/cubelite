@@ -43,24 +43,41 @@ struct IntegrationsPreferencesTab: View {
                 if let prometheusModel { PrometheusPreferencesForm(model: prometheusModel) }
             }
             Divider()
-            Toggle("Show integration hints in panels", isOn: Bindable(settings).integrationHints)
-                .help("Offer setting up Elasticsearch and Prometheus where their data would appear")
-                .accessibilityIdentifier("preferences.integration-hints")
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 8)
+            HStack {
+                Toggle("Show integration hints in panels", isOn: Bindable(settings).integrationHints)
+                    .help("Offer setting up Elasticsearch and Prometheus where their data would appear")
+                    .accessibilityIdentifier("preferences.integration-hints")
+                Spacer()
+                if let context, settings.integrationDismissals[context]?.isEmpty == false {
+                    Button("Suggest detected integrations again") { settings.clearDismissals(context: context) }
+                        .buttonStyle(.link)
+                        .typeStyle(DesignTokens.Typography.caption)
+                        .accessibilityIdentifier("preferences.integration-suggestions-reset")
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
         }
         .task(id: context) {
             if elasticModel == nil, let elastic {
-                elasticModel = ElasticPreferencesModel(backend: elastic, endpoints: elasticEndpoints)
+                let model = ElasticPreferencesModel(backend: elastic, endpoints: elasticEndpoints)
+                // Turned off: the banner does not offer it again (#527).
+                model.onTurnedOff = { [settings] in settings.dismiss([.elasticsearch], context: $0) }
+                elasticModel = model
             }
             if prometheusModel == nil, let prometheus {
-                prometheusModel = PrometheusPreferencesModel(backend: prometheus, endpoints: prometheusEndpoints)
+                let model = PrometheusPreferencesModel(backend: prometheus, endpoints: prometheusEndpoints)
+                model.onTurnedOff = { [settings] in settings.dismiss([.prometheus], context: $0) }
+                prometheusModel = model
             }
             await elasticModel?.load(context: context)
             await prometheusModel?.load(context: context)
+            applySuggestion()
         }
+        .onChange(of: settings.pendingSuggestion) { _, _ in applySuggestion() }
         .onAppear { adoptRequestedContext() }
+        // A Review never shown must not pre-fill a later visit.
+        .onDisappear { settings.clearPendingSuggestion() }
         .onChange(of: settings.integrationContext) { _, _ in adoptRequestedContext() }
         .task(id: clusterState.contexts) {
             // Contexts may load after Settings opened.
@@ -68,6 +85,20 @@ struct IntegrationsPreferencesTab: View {
                 let requested = settings.integrationContext.flatMap { clusterState.contexts.contains($0) ? $0 : nil }
                 context = requested ?? clusterState.currentContext ?? clusterState.contexts.first
             }
+        }
+    }
+
+    /// Pre-fills the forms with what the banner's Review found (#527).
+    private func applySuggestion() {
+        // Kept until the forms show that context.
+        guard let elasticModel, let prometheusModel, elasticModel.context == context,
+            prometheusModel.context == context, let found = settings.takeSuggestion(for: context)
+        else { return }
+        if let es = found.elasticsearch {
+            elasticModel.suggest(es, kibana: found.kibana, candidates: found.elasticServices)
+        }
+        if let prom = found.prometheus {
+            prometheusModel.suggest(prom, grafana: found.grafana, candidates: found.prometheusServices)
         }
     }
 

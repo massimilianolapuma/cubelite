@@ -7,6 +7,7 @@ use commands::elastic::{
     kibana_discover_url, kibana_port_forward, open_kibana_discover, open_kibana_home,
     open_kibana_workload, ElasticState,
 };
+use commands::integrations::integrations_detect;
 use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
 use commands::kubernetes::{
     apply_resource_yaml, cluster_capacity, delete_pod, exec_send, export_log, get_current_context,
@@ -44,6 +45,7 @@ pub fn run() {
         .manage(PrometheusState::default())
         .invoke_handler(tauri::generate_handler![
             elastic_detect,
+            integrations_detect,
             kibana_port_forward,
             prometheus_detect,
             prometheus_test,

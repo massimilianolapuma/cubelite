@@ -10,6 +10,7 @@
 	import CommandPalette from '#lib/components/CommandPalette.svelte';
 	import OnboardingModal from '#lib/components/OnboardingModal.svelte';
 	import PreferencesModal from '#lib/components/PreferencesModal.svelte';
+	import IntegrationsBanner from '#lib/components/IntegrationsBanner.svelte';
 	import ConnectingOverlay from '#lib/components/ui/ConnectingOverlay.svelte';
 	import Toaster from '#lib/components/ui/Toaster.svelte';
 	import UnreachableView from '#lib/components/views/UnreachableView.svelte';
@@ -158,6 +159,9 @@
 			<Sidebar />
 		{/if}
 		<div class="flex min-w-0 flex-1 flex-col">
+			{#if app.view !== 'dashboard' && clusters.connectionState === 'connected'}
+				<IntegrationsBanner />
+			{/if}
 			<!-- Drawers portal into <main> (data-drawer-host), outside the scroller,
 			     so they stay pinned to the right edge while the view scrolls. -->
 			<main class="relative flex min-h-0 min-w-0 flex-1 flex-col" data-drawer-host>

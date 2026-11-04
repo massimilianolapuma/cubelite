@@ -18,6 +18,7 @@ vi.mock("#lib/tauri.ts", () => ({
   kubeconfigSources: vi.fn(),
   watchKubeconfig: vi.fn(async () => "kw1"),
   unwatchKubeconfig: vi.fn(async () => undefined),
+  integrationsDetect: vi.fn(async () => null),
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: vi.fn(async () => "/home/u") }));
@@ -27,6 +28,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import {
+  integrationsDetect,
   kubeconfigSources,
   listContexts,
   listDeployments,
@@ -112,6 +114,8 @@ describe("switchCluster", () => {
     expect(clusters.connectionState).toBe("connected");
     expect(clusters.contexts.find((c) => c.name === "staging")?.is_active).toBe(true);
     expect(clusters.contexts.find((c) => c.name === "prod")?.is_active).toBe(false);
+    // Integrations are looked for once the first load succeeded (#527).
+    expect(integrationsDetect).toHaveBeenCalledWith("/home/u/.kube/config", "staging");
   });
 
   it("lands unreachable with the reason when the probe fails", async () => {
@@ -124,6 +128,7 @@ describe("switchCluster", () => {
     expect(clusters.connectionState).toBe("unreachable");
     expect(clusters.unreachableReason).toBe("connection timed out");
     expect(app.connecting).toBeNull();
+    expect(integrationsDetect).not.toHaveBeenCalled();
   });
 
   it("keeps the previous active cluster when set_context fails", async () => {

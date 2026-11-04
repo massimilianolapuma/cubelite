@@ -27,6 +27,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Kibana uses the same filter (Lucene). The core's `HistoryQuery` takes an
   optional `workload` (backwards-compatible) and history lines carry their
   pod.
+- **Detect Elasticsearch and Prometheus on connect, enable them in one
+  click** (desktop and macOS, #527): after a context connects, CubeLite
+  lists its services once (across namespaces, classified by the existing
+  Elasticsearch/Kibana and Prometheus/Grafana detectors) and, for each
+  integration that is not configured yet, shows a slim banner above the
+  content naming the services it would use, e.g. "Elasticsearch found
+  (logging/quickstart-es-http) and Prometheus (monitoring/prometheus-operated)
+  — Enable · Review · ✕". Enable tests and saves the in-cluster endpoints
+  with the defaults (the ECK elastic user, the default index pattern with
+  ECS fields, the Kibana and Grafana next to them); a failed test saves
+  nothing and the banner says why, and a Prometheus without cAdvisor series
+  is saved with a warning. Enable is offered only when the service is the
+  only candidate, selects its instance, and is controlled by an ECK
+  `Elasticsearch` or a `Prometheus` resource verified through the
+  Kubernetes API (it exists with the referenced uid); labels and names only
+  rank candidates, so a look-alike Service cannot be enabled in one click.
+  kube-prometheus-stack's `prometheus-operated` is not controlled by its
+  Prometheus, so it gets Review. Otherwise Review opens
+  Preferences pre-filled with the best guess and every candidate, not
+  saved. ✕, or turning the
+  integration off in Preferences, hides the banner for that context until
+  Preferences → Integrations brings it back.
+  Nothing reaches Elasticsearch or Prometheus and no secret is read before
+  the click; a user who may not list services across namespaces gets no
+  banner. The banner follows "Show integration hints in panels".
 - **Discoverable history, metrics, Kibana and Grafana** (desktop and macOS,
   #526): without Elasticsearch the log panel still shows Live · History,
   with History disabled ("Connect Elasticsearch in Settings → Integrations

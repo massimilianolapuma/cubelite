@@ -15,7 +15,9 @@
 		urlProblem,
 		type FormResult
 	} from '#lib/integration-form.svelte.ts';
+	import { SUGGESTED_TEXT } from '#lib/integration-suggest.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { integrations } from '#lib/stores/integrations.svelte.ts';
 	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import {
@@ -64,6 +66,15 @@
 			grafanaUrl = '';
 			grafanaDatasource = '';
 			grafanaService = null;
+			// Review in the integrations banner (#527): pre-filled, not saved.
+			const suggested = context ? integrations.takePrometheus(context) : null;
+			if (suggested) {
+				form.load(suggested.endpoint.target, false);
+				grafanaService = suggested.endpoint.grafanaService ?? null;
+				// Every candidate, so another one can be picked.
+				detected = suggested.candidates;
+				result = { ok: true, text: SUGGESTED_TEXT };
+			}
 			return;
 		}
 		form.load(e.target, e.skipTlsVerify);
@@ -189,6 +200,8 @@
 			// A changed endpoint or Grafana service must not keep old forwards.
 			await prometheusDisconnect(ctx);
 			if (endpoint) await refreshStoredMethod(endpoint);
+			// Turned off on purpose: the detection banner must not offer it again.
+			if (!endpoint) integrations.dismissKind(ctx, 'prometheus');
 			toasts.push(endpoint ? `Prometheus saved for ${ctx}` : `Prometheus off for ${ctx}`, 'ok');
 		});
 	}

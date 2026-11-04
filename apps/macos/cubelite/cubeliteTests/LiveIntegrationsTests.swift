@@ -165,4 +165,22 @@ final class LiveIntegrationsTests: XCTestCase {
         session.invalidateAndCancel()
         await service.disconnectAll()
     }
+
+    /// Detect on connect (#527): one listing finds all four services.
+    func testDetectionOnConnectFindsAllFourServices() async throws {
+        let context = try context()
+        let found = try await DetectedIntegrations.detect(context: context, cluster: api())
+        print("detected:", found)
+        XCTAssertEqual(found.elasticsearch?.id, "elasticsearch:logging/quickstart-es-http:9200")
+        XCTAssertEqual(found.kibana?.id, "kibana:logging/quickstart-kb-http:5601")
+        XCTAssertEqual(found.prometheus?.id, "prometheus:monitoring/prometheus-operated:9090")
+        XCTAssertEqual(found.grafana?.namespace, "monitoring")
+        XCTAssertEqual(found.grafana?.name, "kps-grafana")
+        XCTAssertTrue(found.elasticsearchOneClick, "ECK controller owner verified, selector names it, alone")
+        // kube-prometheus-stack: `prometheus-operated` is the operator's
+        // governing service (owner without `controller`, selecting every
+        // Prometheus of the namespace) and the chart's service has no
+        // owner, so Prometheus is offered for Review only.
+        XCTAssertFalse(found.prometheusOneClick)
+    }
 }

@@ -44,6 +44,7 @@ struct MainView: View {
     @Environment(ResourcePreferences.self) var resourcePreferences
     @Environment(LogSessionStore.self) var logSessionStore
     @Environment(PrometheusStore.self) var prometheusStore: PrometheusStore?
+    @Environment(IntegrationsSuggestionStore.self) var integrationSuggestions: IntegrationsSuggestionStore?
     @Environment(\.openWindow) var openWindow
     @Environment(\.openSettings) var openSettings
 
@@ -238,6 +239,9 @@ struct MainView: View {
                 }
                 VStack(spacing: 0) {
                     errorBannerInset
+                    if !showAllClusters, let selectedContext {
+                        IntegrationsBannerView(context: selectedContext)
+                    }
                     detailArea
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     LogPanelView()
@@ -321,6 +325,8 @@ struct MainView: View {
             clusterState.serverURL = nil
             clusterState.clusterVersion = nil
             if let context = newValue {
+                // Detected again after this connect's first load (#527).
+                integrationSuggestions?.connected(context)
                 Task { await loadClusterInfo(for: context) }
                 // Restore the last namespace the user picked for this context
                 // immediately so the dashboard never sits on an empty
@@ -369,6 +375,10 @@ struct MainView: View {
                 Task {
                     await loadResources(context: sel.context, namespace: sel.namespace)
                     startResourceWatch()
+                    // Once the context answered: list the integrations' services (#527).
+                    if clusterState.clusterReachable == true, selectedContext == sel.context {
+                        await integrationSuggestions?.detectIfNeeded(context: sel.context)
+                    }
                 }
             } else {
                 watchTaskBox.task?.cancel()
