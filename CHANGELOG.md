@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Integration endpoints shared across contexts** (desktop and macOS,
+  #528): Settings → Integrations has a "This context" / "All contexts
+  (default)" switch for Elasticsearch and Prometheus. One external
+  endpoint (an Azure Monitor workspace, an Elastic Cloud deployment) can
+  serve every kube context without one of its own; a context can
+  override it or turn it off. Each context keeps its own Prometheus
+  `cluster` label, picked from the values Test connection finds
+  (preselecting the one matching the context name), or its own
+  Elasticsearch cluster filter (`orchestrator.cluster.name` with ECS).
+  The default's credentials are saved once in the keychain and only sent
+  to its URL; in-cluster services cannot be defaults. Settings saved by
+  older versions load unchanged.
 - **Detect Elasticsearch and Prometheus on connect, enable them in one
   click** (desktop and macOS, #527): after a context connects, CubeLite
   lists its services once (across namespaces, classified by the existing
