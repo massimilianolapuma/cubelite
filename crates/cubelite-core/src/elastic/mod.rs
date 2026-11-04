@@ -5,6 +5,7 @@
 //! hit → line mapping, Kibana Discover URL — and [`transport`] reaches the
 //! cluster (port-forward for in-cluster, HTTPS for external endpoints).
 
+pub mod cluster_filter;
 pub mod transport;
 
 use serde::{Deserialize, Serialize};
@@ -83,6 +84,14 @@ pub struct EsEndpoint {
     /// Accept any certificate (opt-in, for self-signed endpoints without a CA).
     #[serde(default)]
     pub skip_tls_verify: bool,
+    /// Narrows a deployment shared by many clusters to this context's
+    /// cluster (#528).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_filter: Option<cluster_filter::ClusterFilter>,
+    /// The default endpoint shared by every context (#528): its
+    /// credentials are the default's (see `crate::integration::check_shared`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shared: bool,
 }
 
 /// A Kibana service in the cluster (from Detect; port 5601, HTTPS by

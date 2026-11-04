@@ -75,6 +75,12 @@ impl<E: Clone + PartialEq, C> ConnCache<E, C> {
     pub(crate) async fn forget(&self, context: &str) {
         self.map.lock().await.retain(|(_, c), _| c != context);
     }
+
+    /// Drops every cached connection (the default endpoint's credentials
+    /// changed, #528).
+    pub(crate) async fn clear(&self) {
+        self.map.lock().await.clear();
+    }
 }
 
 /// Port-forwards to in-cluster web UIs (Kibana #505, Grafana #525), owned by

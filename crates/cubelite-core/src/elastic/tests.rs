@@ -459,6 +459,8 @@ fn external(url: &str) -> EsEndpoint {
         kibana_url: None,
         kibana_service: None,
         skip_tls_verify: false,
+        cluster_filter: None,
+        shared: false,
     }
 }
 

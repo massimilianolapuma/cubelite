@@ -34,20 +34,33 @@ pub struct ElasticState {
 impl ElasticState {
     /// Closes the context's connections and Kibana forwards (endpoint
     /// saved, credentials changed, disconnect).
-    async fn forget(&self, context: &str) {
-        self.connections.forget(context).await;
+    async fn forget(&self, context: &str, every_context: bool) {
+        if every_context {
+            // The default's credentials changed (#528).
+            self.connections.clear().await;
+        } else {
+            self.connections.forget(context).await;
+        }
         self.kibana.forget(context).await;
     }
 }
 
 fn binding(endpoint: &EsEndpoint) -> Result<String, String> {
+    integration::check_shared(&endpoint.target, endpoint.shared)?;
     integration::binding(&endpoint.target, endpoint.skip_tls_verify)
 }
 
-/// Credentials stored for `context`, usable only with `endpoint`;
-/// `EsAuth::None` when nothing is stored.
+/// Credentials stored for `context` (or the default, #528), usable only
+/// with `endpoint`; `EsAuth::None` when nothing is stored.
 fn load_auth(context: &str, endpoint: &EsEndpoint) -> Result<EsAuth, String> {
-    vault::load(KEYCHAIN_SERVICE, context, &binding(endpoint)?, EsAuth::None)
+    let binding = binding(endpoint)?;
+    vault::load(
+        KEYCHAIN_SERVICE,
+        context,
+        endpoint.shared,
+        &binding,
+        EsAuth::None,
+    )
 }
 
 fn store_auth(context: &str, endpoint: &EsEndpoint, auth: &EsAuth) -> Result<(), String> {
@@ -58,7 +71,8 @@ fn store_auth(context: &str, endpoint: &EsEndpoint, auth: &EsAuth) -> Result<(),
             auth: auth.clone(),
         }),
     };
-    vault::write(KEYCHAIN_SERVICE, context, record.as_ref())
+    let account = vault::account(context, endpoint.shared);
+    vault::write(KEYCHAIN_SERVICE, account, record.as_ref())
 }
 
 fn method(auth: &EsAuth) -> &'static str {
@@ -193,8 +207,9 @@ pub async fn elastic_save_auth(
     auth: EsAuth,
 ) -> Result<(), String> {
     let c = context.clone();
+    let shared = endpoint.shared;
     keychain(move || store_auth(&c, &endpoint, &auth)).await?;
-    state.forget(&context).await;
+    state.forget(&context, shared).await;
     Ok(())
 }
 
@@ -204,12 +219,11 @@ pub async fn elastic_save_auth(
 #[tauri::command]
 pub async fn elastic_auth_method(context: String, endpoint: EsEndpoint) -> Result<String, String> {
     let current = binding(&endpoint)?;
-    let stored = keychain(move || vault::read::<EsAuth>(KEYCHAIN_SERVICE, &context)).await?;
-    Ok(match stored {
-        Some(stored) if stored.binding == current => method(&stored.auth),
-        _ => "none",
-    }
-    .to_string())
+    let stored = keychain(move || {
+        vault::stored::<EsAuth>(KEYCHAIN_SERVICE, &context, endpoint.shared, &current)
+    })
+    .await?;
+    Ok(stored.as_ref().map_or("none", method).to_string())
 }
 
 /// Uses ECK's `elastic` user for this in-cluster endpoint: checks it can be
@@ -237,7 +251,7 @@ pub async fn elastic_use_eck_credentials(
     .map_err(text)?;
     let c = context.clone();
     keychain(move || store_auth(&c, &endpoint, &EsAuth::EckUser)).await?;
-    state.forget(&context).await;
+    state.forget(&context, false).await;
     Ok(method(&EsAuth::EckUser).to_string())
 }
 
@@ -247,7 +261,7 @@ pub async fn elastic_disconnect(
     state: State<'_, ElasticState>,
     context: String,
 ) -> Result<(), String> {
-    state.forget(&context).await;
+    state.forget(&context, false).await;
     Ok(())
 }
 

@@ -66,6 +66,8 @@ async fn elasticsearch_history_through_the_eck_tunnel() {
         kibana_url: None,
         kibana_service: None,
         skip_tls_verify: false,
+        cluster_filter: None,
+        shared: false,
     };
     let conn = es::connect(Some(client.clone()), &endpoint, &EsAuth::EckUser)
         .await
@@ -265,6 +267,7 @@ async fn prometheus_charts_through_the_service_proxy() {
         grafana_datasource: None,
         grafana_service: None,
         skip_tls_verify: false,
+        shared: false,
     };
     let conn = prom::connect(Some(client.clone()), &endpoint, &PromAuth::None)
         .await
