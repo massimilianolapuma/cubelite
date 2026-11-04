@@ -99,6 +99,9 @@ struct MainView: View {
     @State var selectedIngressID: IngressInfo.ID?
     /// Row ID of the selected Helm release.
     @State var selectedHelmReleaseID: HelmReleaseInfo.ID?
+    /// Node whose detail is open (#530); a name, so an alert can open a node
+    /// the inventory does not list yet.
+    @State var selectedNodeName: NodeInfo.ID?
 
     // MARK: - Auto-Reload
 
@@ -371,6 +374,7 @@ struct MainView: View {
             selectedConfigMapID = nil
             selectedIngressID = nil
             selectedHelmReleaseID = nil
+            selectedNodeName = nil
             if let sel = newValue {
                 Task {
                     await loadResources(context: sel.context, namespace: sel.namespace)

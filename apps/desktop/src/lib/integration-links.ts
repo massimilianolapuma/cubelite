@@ -11,12 +11,14 @@ import { toasts } from "#lib/stores/toasts.svelte.ts";
 import {
   grafanaPortForward,
   kibanaPortForward,
+  openGrafanaExplore,
   openGrafanaHome,
   openGrafanaWorkload,
   openKibanaDiscover,
   openKibanaHome,
   openKibanaWorkload,
   type EsEndpoint,
+  type MetricsRange,
   type PromEndpoint,
   type Workload,
 } from "#lib/tauri.ts";
@@ -94,6 +96,15 @@ export async function openGrafanaFor(endpoint: PromEndpoint, namespace: string, 
     namespace,
     workload,
     range: "1h",
+  });
+}
+
+/** Grafana Explore on `queries` over `range`; a failure becomes an error toast (#530). */
+export function openGrafanaQueries(endpoint: PromEndpoint, queries: string[], range: MetricsRange): Promise<void> {
+  return toastErrors(async () => {
+    const grafanaUrl = await grafanaBase(endpoint);
+    if (!grafanaUrl) return;
+    await openGrafanaExplore({ grafanaUrl, datasource: endpoint.grafanaDatasource, queries, range });
   });
 }
 

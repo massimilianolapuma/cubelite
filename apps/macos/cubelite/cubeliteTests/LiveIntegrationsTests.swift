@@ -166,6 +166,44 @@ final class LiveIntegrationsTests: XCTestCase {
         await service.disconnectAll()
     }
 
+    /// Cluster history, a node's charts and the firing alerts (#530).
+    func testClusterAndNodeHistoryAndAlerts() async throws {
+        let context = try context()
+        let api = api()
+        let service = PrometheusService(cluster: api, secrets: MemorySecrets())
+        let found = try await service.detect(context: context)
+        let prom = try XCTUnwrap(found.first { $0.kind == .prometheus })
+        let endpoint = PromEndpoint(
+            target: .inCluster(namespace: prom.namespace, service: prom.name, port: prom.port, https: prom.https))
+
+        let cluster = try await service.clusterUsage(context: context, endpoint: endpoint, range: .hour)
+        for chart in cluster.charts {
+            print("cluster \(chart.chart) (\(chart.source?.rawValue ?? "none")): \(chart.series.count) series")
+            XCTAssertNil(chart.error, "\(chart.chart): \(chart.error ?? "")")
+            XCTAssertTrue(HostQueries.hasData(chart.series), "cluster \(chart.chart) has data")
+        }
+
+        let nodes = try await api.listNodes(inContext: context)
+        let node = try XCTUnwrap(nodes.first?.name)
+        let result = try await service.nodeMetrics(context: context, endpoint: endpoint, node: node, range: .hour)
+        for chart in result.charts {
+            print("\(node) \(chart.chart) (\(chart.source?.rawValue ?? "none")): \(chart.query)")
+            XCTAssertNil(chart.error, "\(chart.chart): \(chart.error ?? "")")
+        }
+        for chart in [HostChart.cpu, .cpuAllocatable, .memory, .memoryAllocatable, .pods, .networkRx, .networkTx] {
+            XCTAssertNotNil(result.data(chart)?.source, "\(chart) has data on \(node)")
+        }
+
+        let alerts = try await service.alerts(context: context, endpoint: endpoint)
+        print("alerts (\(alerts.source)):", alerts.alerts.map(\.name))
+        let watchdog = try XCTUnwrap(alerts.alerts.first { $0.name == "Watchdog" }, "Watchdog fires")
+        XCTAssertNotNil(watchdog.activeAt)
+        XCTAssertNotNil(watchdog.summary)
+        XCTAssertEqual(watchdog.expr, "vector(1)", "the rule's expression")
+        XCTAssertNotEqual(PromAlerts.firingSince(watchdog.activeAt), "firing", "activeAt parses")
+        await service.disconnectAll()
+    }
+
     /// Detect on connect (#527): one listing finds all four services.
     func testDetectionOnConnectFindsAllFourServices() async throws {
         let context = try context()

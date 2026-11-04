@@ -1,4 +1,5 @@
 <script lang="ts">
+	import NodeDrawer from '#lib/components/nodes/NodeDrawer.svelte';
 	import SortHeader from '#lib/components/ui/SortHeader.svelte';
 	import { sortRows } from '#lib/list-sort.ts';
 	import { lists } from '#lib/stores/lists.svelte.ts';
@@ -38,8 +39,16 @@
 				{:else}
 					{#each sorted as item (item.name)}
 						<div
-							class="grid items-center gap-x-3 border-b border-border-faint px-3 last:border-b-0 hover:bg-surface-row-hover"
-							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
+							role="button"
+							tabindex="0"
+							class="focus-ring grid cursor-default items-center gap-x-3 border-b border-border-faint px-3 last:border-b-0 hover:bg-surface-row-hover"
+							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default); {app.selectedNode === item.name
+								? 'background: var(--alpha-selection-bg);'
+								: ''}"
+							onclick={() => (app.selectedNode = item.name)}
+							onkeydown={(e) => {
+								if (e.key === 'Enter') app.selectedNode = item.name;
+							}}
 						>
 						<span class="type-data truncate text-text-data-bright">{item.name}</span>
 						<span class="type-data-sm" style="color: {item.status === 'Ready' ? 'var(--color-status-ok)' : 'var(--color-status-err)'};">{item.status}</span>
@@ -53,3 +62,11 @@
 		</div>
 	{/if}
 </div>
+
+{#if app.selectedNode}
+	<NodeDrawer
+		name={app.selectedNode}
+		info={resources.nodeInventory.find((n) => n.name === app.selectedNode) ?? null}
+		onClose={() => (app.selectedNode = null)}
+	/>
+{/if}

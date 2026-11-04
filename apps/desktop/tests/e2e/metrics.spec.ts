@@ -57,6 +57,48 @@ test("Prometheus metrics in the pod drawer, sparklines and Grafana (#510)", asyn
   });
 });
 
+test("Overview cluster history and alerts, and a node's metrics (#530)", async ({ page }) => {
+  await page.addInitScript(tauriMockScript());
+  await page.addInitScript(() => {
+    window.localStorage.setItem("cubelite.onboardingSeen", "true");
+    window.localStorage.setItem("cubelite.theme", '"dark"');
+    window.localStorage.setItem(
+      "cubelite.prometheus.endpoints",
+      JSON.stringify({
+        "prod-aks": {
+          target: { kind: "in-cluster", namespace: "monitoring", service: "prometheus-operated", port: 9090, https: false },
+          cluster: null,
+          grafanaUrl: "https://grafana.example",
+          grafanaDatasource: "prom",
+          skipTlsVerify: false,
+        },
+      }),
+    );
+  });
+  await page.goto("/");
+  const history = page.getByTestId("cluster-history");
+  await expect(history.getByTestId("metrics-chart")).toHaveCount(2);
+  await expect(history.getByText("1.50 / alloc 4")).toBeVisible();
+  await expect(page.getByTestId("overview-alerts-badge")).toHaveText("2 firing");
+  const alerts = page.getByTestId("alerts-card");
+  await expect(alerts.getByTestId("alert-row")).toHaveCount(2);
+  await expect(alerts.getByText("Node is not ready.")).toBeVisible();
+
+  await alerts.getByRole("button", { name: "Open Watchdog in Grafana" }).click();
+  await expect.poll(() => page.evaluate(() => window.__grafanaOpened)).toMatchObject({
+    grafanaUrl: "https://grafana.example",
+    queries: ["vector(1)"],
+    range: "1h",
+  });
+
+  await alerts.getByRole("button", { name: "node-1" }).click();
+  const drawer = page.getByRole("dialog", { name: "node-1" });
+  const section = drawer.getByTestId("node-metrics-section");
+  await section.scrollIntoViewIfNeeded();
+  await expect(section.getByTestId("metrics-chart")).toHaveCount(5);
+  await expect(section.getByText("not available — needs node-exporter or cAdvisor metrics for this node")).toBeVisible();
+});
+
 test("Open in Grafana forwards to an in-cluster Grafana without a URL (#525)", async ({ page }) => {
   const section = await openMetrics(page, { grafanaUrl: null, grafanaService: GRAFANA_SERVICE });
   for (let i = 0; i < 2; i++) await section.getByRole("button", { name: "Grafana", exact: true }).click();

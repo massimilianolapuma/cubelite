@@ -9,13 +9,39 @@ import SwiftUI
 struct OverviewView: View {
 
     @Environment(ClusterState.self) private var clusterState
+    @Environment(PrometheusStore.self) private var prometheus: PrometheusStore?
 
+    /// The context shown (its Prometheus feeds the history and alerts, #530).
+    let context: String?
     /// Selects a resource view: the stat tiles open the view holding their
     /// evidence (#464), the warnings card opens Events ("All events →").
     let onNavigate: (ResourceType) -> Void
+    /// Opens the pod or node an alert is about (#530).
+    let onOpenAlert: (PromAlerts.Target) -> Void
 
-    init(onNavigate: @escaping (ResourceType) -> Void) {
+    /// Cluster history and firing alerts from Prometheus (#530).
+    @State private var prom = OverviewPromModel()
+
+    init(
+        context: String? = nil, onNavigate: @escaping (ResourceType) -> Void,
+        onOpenAlert: @escaping (PromAlerts.Target) -> Void = { _ in /* No alert links. */ }
+    ) {
+        self.context = context
         self.onNavigate = onNavigate
+        self.onOpenAlert = onOpenAlert
+    }
+
+    /// What the Prometheus data depends on: any change loads it.
+    private struct PromKey: Hashable {
+        let context: String?
+        let endpoint: PromEndpoint?
+        let range: MetricsRange
+    }
+
+    private func loadProm() async {
+        await prom.load(
+            context: context, endpoint: prometheus?.endpoint(for: context),
+            querying: prometheus?.querying as? any PrometheusClusterQuerying)
     }
 
     // Card tints: the desktop sidebar section palette.
@@ -28,16 +54,40 @@ struct OverviewView: View {
         let summary = OverviewSummary(state: clusterState)
         ScrollView {
             VStack(spacing: 12) {
+                if let firing = prom.alerts?.count, firing > 0 {
+                    firingBadge(firing)
+                }
                 statRow(summary)
                 HStack(alignment: .top, spacing: 12) {
                     capacityCard
                     warningsCard
                 }
+                AlertsCardView(context: context, model: prom, onOpen: onOpenAlert)
                 resourceGrid(summary)
             }
             .padding(16)
         }
         .background(DesignTokens.surfaceWindow)
+        .task(id: PromKey(context: context, endpoint: prometheus?.endpoint(for: context), range: prom.range)) {
+            await loadProm()
+        }
+        // The Overview's refresh cadence: every resource load (throttled in the model).
+        .onChange(of: clusterState.isLoadingResources) { _, loading in
+            if !loading { Task { await loadProm() } }
+        }
+    }
+
+    /// "3 firing", like the desktop's Overview header badge.
+    private func firingBadge(_ count: Int) -> some View {
+        HStack {
+            Spacer()
+            Text("\(count) firing")
+                .typeStyle(DesignTokens.Typography.caption.monospaced, color: DesignTokens.statusWarn)
+                .padding(.horizontal, 8)
+                .overlay(Capsule().strokeBorder(DesignTokens.statusWarn, lineWidth: 1))
+                .help("Firing alerts from Prometheus")
+                .accessibilityIdentifier("overview.alerts-badge")
+        }
     }
 
     // MARK: - Stat Row
@@ -91,6 +141,7 @@ struct OverviewView: View {
                 Text("metrics unavailable — metrics-server not detected in this cluster")
                     .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textDisabled)
             }
+            ClusterHistoryView(context: context, model: prom)
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

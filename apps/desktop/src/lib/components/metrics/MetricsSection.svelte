@@ -4,13 +4,14 @@
 	import LineChart from '#lib/components/metrics/LineChart.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import { errorMessage } from '#lib/errors.ts';
-	import { BUTTON_CLASS, UI_LINK_CLASS } from '#lib/integration.ts';
+	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
+	import { UI_LINK_CLASS } from '#lib/integration.ts';
+	import { observeOnce } from '#lib/in-view.ts';
 	import {
 		METRICS_HINT,
 		canOpenGrafana as canOpenGrafanaUi,
-		grafanaBase,
-		showsIntegrationHint,
-		toastErrors
+		openGrafanaQueries,
+		showsIntegrationHint
 	} from '#lib/integration-links.ts';
 	import { settings } from '#lib/stores/settings.svelte.ts';
 	import {
@@ -27,7 +28,6 @@
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import {
-		openGrafanaExplore,
 		prometheusMetrics,
 		type Chart,
 		type MetricsRange,
@@ -56,21 +56,7 @@
 	let root = $state<HTMLElement | null>(null);
 	let generation = 0;
 
-	$effect(() => {
-		if (!root) return;
-		if (typeof IntersectionObserver === 'undefined') {
-			visible = true;
-			return;
-		}
-		const observer = new IntersectionObserver((entries) => {
-			if (entries.some((e) => e.isIntersecting)) {
-				visible = true;
-				observer.disconnect();
-			}
-		});
-		observer.observe(root);
-		return () => observer.disconnect();
-	});
+	$effect(() => (root ? observeOnce(root, () => (visible = true)) : undefined));
 
 	$effect(() => {
 		const context = app.activeCluster;
@@ -179,12 +165,7 @@
 		const data = result;
 		if (!ep || !data) return;
 		const queries = charts.map((c) => chartData(data.charts, c)?.query).filter((q): q is string => !!q);
-		const range = resultRange;
-		await toastErrors(async () => {
-			const grafanaUrl = await grafanaBase(ep);
-			if (!grafanaUrl) return;
-			await openGrafanaExplore({ grafanaUrl, datasource: ep.grafanaDatasource, queries, range });
-		});
+		await openGrafanaQueries(ep, queries, resultRange);
 	}
 
 	const onGrafana = (...charts: Chart[]) => (canOpenGrafana && result ? () => void grafana(...charts) : undefined);
@@ -290,24 +271,5 @@
 		{/if}
 	</div>
 {:else if hint}
-	<div
-		class="flex items-center gap-2 rounded-lg border border-border-faint px-2.5 py-2"
-		data-testid="metrics-hint"
-	>
-		<div class="min-w-0 flex-1">
-			<div class="type-section text-text-tertiary">Metrics</div>
-			<p class="type-caption mt-0.5 text-text-tertiary">{METRICS_HINT}</p>
-		</div>
-		<button type="button" class={BUTTON_CLASS} onclick={() => app.openPreferences('prometheus')}>
-			Set up Prometheus
-		</button>
-		<button
-			type="button"
-			class={UI_LINK_CLASS}
-			title="Hide integration hints (Preferences → Integrations brings them back)"
-			onclick={() => (settings.integrationHints.value = false)}
-		>
-			Hide
-		</button>
-	</div>
+	<PrometheusHint title="Metrics" text={METRICS_HINT} testid="metrics-hint" />
 {/if}

@@ -28,7 +28,9 @@ extension MainView {
         } else if let sel = sidebarSelection {
             switch selectedResourceType ?? .dashboard {
             case .dashboard:
-                OverviewView(onNavigate: { showResource($0) })
+                OverviewView(
+                    context: sel.context, onNavigate: { showResource($0) },
+                    onOpenAlert: { openAlertTarget($0) })
             case .pods, .deployments, .services, .secrets, .configMaps, .ingresses,
                 .helmReleases, .nodes, .jobs, .statefulSets, .cronJobs, .pvcs, .events, .logs:
                 resourceBrowserView(context: sel.context, namespace: sel.namespace)
@@ -134,7 +136,7 @@ extension MainView {
                 case .pvcs:
                     PvcListView()
                 case .nodes:
-                    NodeListView()
+                    NodeListView(selectedNodeName: $selectedNodeName)
                 case .events:
                     EventListView()
                 case .logs:
@@ -150,7 +152,28 @@ extension MainView {
             if let detail = currentSelectedResource {
                 Divider()
                 detailPanel(for: detail)
+            } else if selectedResourceType == .nodes, let name = selectedNodeName {
+                Divider()
+                NodeDetailView(
+                    name: name, node: clusterState.nodes.first { $0.name == name },
+                    context: sidebarSelection?.context ?? selectedContext,
+                    onClose: { selectedNodeName = nil }
+                )
+                .frame(minWidth: 320, idealWidth: 460, maxWidth: 600)
             }
+        }
+    }
+
+    /// Opens what an Overview alert is about (#530): its pod in Pods, its
+    /// node in Nodes.
+    private func openAlertTarget(_ target: PromAlerts.Target) {
+        switch target {
+        case .pod(let id):
+            showResource(.pods)
+            selectedPodID = id
+        case .node(let name):
+            showResource(.nodes)
+            selectedNodeName = name
         }
     }
 

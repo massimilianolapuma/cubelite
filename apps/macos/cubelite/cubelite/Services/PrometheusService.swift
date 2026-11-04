@@ -292,8 +292,9 @@ actor PrometheusService {
 
     // MARK: - Transport
 
-    /// The proxy route (no connection) or an HTTP connection.
-    private struct Session: Sendable {
+    /// The proxy route (no connection) or an HTTP connection (internal for
+    /// the cluster, node and alert queries, #530).
+    struct Session: Sendable {
         let endpoint: PromEndpoint
         let context: String
         let connection: IntegrationConnection<PromEndpoint>?
@@ -301,7 +302,7 @@ actor PrometheusService {
         var azure = false
     }
 
-    private static func isFatal(_ error: PromError) -> Bool {
+    static func isFatal(_ error: PromError) -> Bool {
         switch error {
         case .connect: true
         case .http(let status, _): status == 401 || status == 403
@@ -309,7 +310,7 @@ actor PrometheusService {
         }
     }
 
-    private func dropConnection(context: String, session: Session, after error: PromError) async {
+    func dropConnection(context: String, session: Session, after error: PromError) async {
         guard Self.isFatal(error), !Task.isCancelled else { return }
         if case .http(401, _) = error, session.azure {
             await azure.forget()
@@ -372,7 +373,7 @@ actor PrometheusService {
     }
 
     /// A session for `endpoint`: the proxy route, or a (cached) connection.
-    private func open(
+    func open(
         context: String, endpoint: PromEndpoint, auth: PromAuth? = nil, cached: Bool = true
     ) async throws -> Session {
         switch endpoint.target {
@@ -510,7 +511,7 @@ actor PrometheusService {
     }
 
     /// GET `path` through the session, parsed as JSON.
-    private func get(_ session: Session, _ path: String) async throws -> JSONValue {
+    func get(_ session: Session, _ path: String) async throws -> JSONValue {
         let status: Int
         let body: String
         if let connection = session.connection {
@@ -535,11 +536,11 @@ actor PrometheusService {
         return json
     }
 
-    private func query(_ session: Session, _ promql: String) async throws -> JSONValue {
+    func query(_ session: Session, _ promql: String) async throws -> JSONValue {
         try Prometheus.unwrapData(try await get(session, "/api/v1/query?" + Self.form(["query": promql])))
     }
 
-    private func queryRange(_ session: Session, _ promql: String, start: Int, end: Int, step: Int)
+    func queryRange(_ session: Session, _ promql: String, start: Int, end: Int, step: Int)
         async throws -> JSONValue
     {
         let params = Self.form([

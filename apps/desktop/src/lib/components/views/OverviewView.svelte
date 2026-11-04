@@ -12,11 +12,14 @@
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { onMount } from 'svelte';
 	import { formatAge } from '#lib/age.ts';
+	import AlertsCard from '#lib/components/metrics/AlertsCard.svelte';
+	import ClusterHistory from '#lib/components/metrics/ClusterHistory.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
 	import ResourceSummaryCard from '#lib/components/ui/ResourceSummaryCard.svelte';
 	import StatCard from '#lib/components/ui/StatCard.svelte';
 	import { coresDetail, memoryDetail, summarize } from '#lib/overview-summary.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { promOverview } from '#lib/stores/promOverview.svelte.ts';
 	import { resources, type ExtraKind } from '#lib/stores/resources.svelte.ts';
 	import { percentOf } from '#lib/units.ts';
 
@@ -26,6 +29,14 @@
 	const NAMESPACES = 'var(--color-accent-alt-teal)';
 
 	onMount(() => void resources.loadOverviewExtras());
+
+	// Cluster history and alerts from Prometheus (#530), on the Overview's
+	// refresh cadence (at most every 30 s, see the store).
+	$effect(() => {
+		void resources.pods;
+		void promOverview.load();
+	});
+	const firing = $derived(promOverview.alerts?.length ?? 0);
 
 	const warnings = $derived(resources.warningEvents);
 	const capacity = $derived(resources.capacityTotals);
@@ -54,7 +65,19 @@
 </script>
 
 <div class="flex flex-col gap-4 p-4">
-	<h1 class="type-title">Overview</h1>
+	<div class="flex items-center gap-2">
+		<h1 class="type-title">Overview</h1>
+		{#if firing > 0}
+			<span
+				class="type-caption rounded-full border px-2 font-mono"
+				style="color: var(--color-status-warn); border-color: var(--color-status-warn);"
+				data-testid="overview-alerts-badge"
+				title="Firing alerts from Prometheus"
+			>
+				{firing} firing
+			</span>
+		{/if}
+	</div>
 
 	<div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
 		<StatCard
@@ -110,6 +133,7 @@
 					metrics unavailable — metrics-server not detected in this cluster
 				</p>
 			{/if}
+			<ClusterHistory />
 		</div>
 
 		<div class="rounded-xl border border-border-default bg-surface-surface p-4">
@@ -149,6 +173,8 @@
 			{/if}
 		</div>
 	</div>
+
+	<AlertsCard />
 
 	<div class="grid gap-3 xl:grid-cols-2" data-testid="resource-grid">
 		<ResourceSummaryCard

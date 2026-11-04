@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Node and cluster charts and active alerts from Prometheus** (desktop and
+  macOS, #530): the Overview's Capacity card gets a cluster CPU and memory
+  history (1h · 6h · 24h · 7d) against allocatable, next to the
+  metrics-server meters, and an Alerts card lists the firing alerts
+  (severity, name, the pod or node they are about with a link to it,
+  summary, firing since, Open in Grafana on the alert's expression), with a
+  "N firing" badge by the Overview title. Nodes open a detail (drawer on the
+  desktop) with a Metrics section: CPU, memory, pods running, network rx/tx
+  and filesystem. Each chart uses node-exporter where it scrapes the node,
+  else cAdvisor (`node="<n>"`, or `instance="<n>"` on Azure Monitor), and
+  says which; a chart no exporter has says "not available". node-exporter's
+  `instance` (an IP:port) is matched to the node by `node_uname_info`'s
+  host name, else by the node's `internal_ip` from `kube_node_info`. Alerts
+  come from `/api/v1/alerts` (annotations, activeAt), else the `ALERTS`
+  series; expressions come from the alerting rules. Everything uses the
+  context's Prometheus endpoint and cluster label, loads on the Overview's
+  refresh at most every 30 s, and shows the "Set up Prometheus" hint without
+  an endpoint. Core: `prometheus::nodes` and `prometheus::alerts`; Tauri:
+  `prometheus_cluster_usage`, `prometheus_node_metrics`, `prometheus_alerts`.
 - **Elasticsearch history for workloads and the Logs view** (desktop and
   macOS, #529): the Logs view gets a Workload picker (deployments,
   StatefulSets, DaemonSets, Jobs; the deployment details' Logs button opens

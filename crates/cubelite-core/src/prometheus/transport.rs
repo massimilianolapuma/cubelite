@@ -288,8 +288,8 @@ impl PromConnection {
         }
     }
 
-    /// GET `path`, parsed as JSON.
-    async fn get(&self, path: &str) -> Result<Value, PromError> {
+    /// GET `path`, parsed as JSON (also used by the alerts list, #530).
+    pub(crate) async fn get(&self, path: &str) -> Result<Value, PromError> {
         let answer = self.fetch(path).await?;
         if !(200..300).contains(&answer.status) {
             return Err(PromError::Http {
