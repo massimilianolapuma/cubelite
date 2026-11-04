@@ -122,6 +122,26 @@ async fn connection(
         .await
 }
 
+/// Runs `query` on the cached connection for `endpoint`, dropping the
+/// connection when it is dead or its credentials are rejected (#530).
+pub(super) async fn with_connection<T, F, Fut>(
+    state: &PrometheusState,
+    key: ConnKey,
+    endpoint: &PromEndpoint,
+    query: F,
+) -> Result<T, String>
+where
+    F: FnOnce(std::sync::Arc<PromConnection>) -> Fut,
+    Fut: std::future::Future<Output = Result<T, PromError>>,
+{
+    let conn = connection(state, &key, endpoint).await?;
+    let result = query(conn.clone()).await;
+    if must_reconnect(&result) {
+        state.connections.invalidate(&key, &conn).await;
+    }
+    result.map_err(text)
+}
+
 /// Prometheus services the user can see in the cluster.
 #[tauri::command]
 pub async fn prometheus_detect(

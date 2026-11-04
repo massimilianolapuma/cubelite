@@ -193,8 +193,9 @@ export function tauriMockScript(): string {
       case "list_cronjobs":
       case "list_statefulsets":
       case "list_pvcs":
-      case "list_nodes":
         return [];
+      case "list_nodes":
+        return [{ name: "node-1", status: "NotReady", roles: ["worker"], version: "v1.30.2", creation_timestamp: null }];
       case "list_daemonsets":
         return [{ name: "node-agent", namespace: "default" }];
       case "probe_cluster":
@@ -265,6 +266,36 @@ export function tauriMockScript(): string {
       }
       case "prometheus_sparklines":
         return { cpu: { "default/api-0": [[0, 0.1], [120, 0.2], [240, 0.15]] }, memory: { "default/api-0": [[0, 1], [120, 2]] } };
+      case "prometheus_cluster_usage":
+      case "prometheus_node_metrics": {
+        const charts = cmd === "prometheus_cluster_usage"
+          ? ["cpu", "cpu-allocatable", "memory", "memory-allocatable"]
+          : ["cpu", "cpu-allocatable", "memory", "memory-allocatable", "pods", "network-rx", "network-tx", "filesystem", "filesystem-capacity"];
+        const value = { cpu: 1.5, "cpu-allocatable": 4, memory: 2147483648, "memory-allocatable": 8589934592, pods: 18, "network-rx": 2048, "network-tx": 1024 };
+        return {
+          start: 0, end: 3600, step: 15,
+          charts: charts.map((chart) => {
+            const v = value[chart];
+            return {
+              chart,
+              source: v === undefined ? null : chart === "pods" || chart.endsWith("allocatable") ? "kube-state-metrics" : "cadvisor",
+              query: "e2e-" + chart,
+              series: v === undefined ? [] : [{ label: "", points: [[0, v / 2], [1800, v], [3600, v]] }],
+              error: null,
+            };
+          }),
+        };
+      }
+      case "prometheus_alerts":
+        return {
+          source: "alerts-api",
+          alerts: [
+            { name: "KubeNodeNotReady", severity: "critical", namespace: null, pod: null, node: "node-1", summary: "Node is not ready.", activeAt: "2026-01-01T00:00:00Z", expr: "kube_node_status_condition == 0", labels: {} },
+            { name: "Watchdog", severity: "none", namespace: null, pod: null, node: null, summary: "Alerting pipeline check.", activeAt: "2026-01-01T00:00:00Z", expr: "ALERTS-watchdog", labels: {} },
+          ],
+        };
+      case "prometheus_alert_expr":
+        return args.alert && args.alert.name === "Watchdog" ? "vector(1)" : "e2e-rule";
       case "prometheus_auth_method": return "none";
       case "open_grafana_explore": {
         window.__grafanaOpened = args;

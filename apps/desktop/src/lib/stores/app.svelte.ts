@@ -72,6 +72,8 @@ class AppState {
 
   selectedPod = $state<PodInfo | null>(null);
   selectedDeployment = $state<DeploymentInfo | null>(null);
+  /** Node whose drawer is open in the Nodes view (#530). */
+  selectedNode = $state<string | null>(null);
   podFilter = $state("");
   deploymentFilter = $state("");
 
@@ -79,6 +81,7 @@ class AppState {
     this.view = view;
     this.selectedPod = null;
     this.selectedDeployment = null;
+    this.selectedNode = null;
   }
 
   /** Reset per-cluster state on switch (spec: reset namespace, clear selections). */
@@ -87,6 +90,7 @@ class AppState {
     this.namespace = null;
     this.selectedPod = null;
     this.selectedDeployment = null;
+    this.selectedNode = null;
     this.podFilter = "";
     this.deploymentFilter = "";
     if (this.view === "dashboard") this.view = "overview";
@@ -120,9 +124,10 @@ class AppState {
       this.onboardingOpen = false;
       return true;
     }
-    if (this.selectedPod || this.selectedDeployment) {
+    if (this.selectedPod || this.selectedDeployment || this.selectedNode) {
       this.selectedPod = null;
       this.selectedDeployment = null;
+      this.selectedNode = null;
       return true;
     }
     return false;

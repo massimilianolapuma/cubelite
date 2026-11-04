@@ -8,6 +8,12 @@ struct NodeListView: View {
 
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
+    /// The node whose detail is open (#530).
+    @Binding var selectedNodeName: NodeInfo.ID?
+
+    init(selectedNodeName: Binding<NodeInfo.ID?> = .constant(nil)) {
+        self._selectedNodeName = selectedNodeName
+    }
 
     /// Preferences default sort or this session's header sort (#497).
     private var sortedRows: [NodeInfo] {
@@ -29,7 +35,10 @@ struct NodeListView: View {
     }
 
     private var nodeTable: some View {
-        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "nodes", of: NodeInfo.self)) {
+        Table(
+            sortedRows, selection: $selectedNodeName,
+            sortOrder: resourcePreferences.sortOrder(for: "nodes", of: NodeInfo.self)
+        ) {
             TableColumn("") { node in
                 Circle()
                     .fill(

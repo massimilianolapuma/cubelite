@@ -24,6 +24,9 @@ use commands::prometheus::{
     prometheus_auth_method, prometheus_detect, prometheus_disconnect, prometheus_metrics,
     prometheus_save_auth, prometheus_sparklines, prometheus_test, PrometheusState,
 };
+use commands::prometheus_cluster::{
+    prometheus_alert_expr, prometheus_alerts, prometheus_cluster_usage, prometheus_node_metrics,
+};
 
 /// Entry point for the Tauri application.
 pub fn run() {
@@ -51,6 +54,10 @@ pub fn run() {
             prometheus_test,
             prometheus_metrics,
             prometheus_sparklines,
+            prometheus_cluster_usage,
+            prometheus_node_metrics,
+            prometheus_alerts,
+            prometheus_alert_expr,
             prometheus_save_auth,
             prometheus_auth_method,
             prometheus_disconnect,

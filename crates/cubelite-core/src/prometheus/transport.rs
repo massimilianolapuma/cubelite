@@ -52,6 +52,8 @@ struct Answer {
 /// An open connection to a Prometheus endpoint.
 pub struct PromConnection {
     route: Route,
+    /// Alerting rules for Open in Grafana on an alert (#530).
+    pub(crate) rules: super::alerts::RulesCache,
 }
 
 impl std::fmt::Debug for PromConnection {
@@ -146,6 +148,7 @@ pub async fn connect(
                     auth: credential,
                     _tunnel: None,
                 },
+                rules: Default::default(),
             })
         }
         PromTarget::InCluster {
@@ -168,6 +171,7 @@ pub async fn connect(
                     client: client.clone(),
                     base: proxy_base(namespace, service, *port, *https),
                 },
+                rules: Default::default(),
             };
             let probe = proxy.fetch("/api/v1/status/buildinfo").await?;
             match (probe.from_api_server, probe.status) {
@@ -206,6 +210,7 @@ pub async fn connect(
                     auth: Credential::None,
                     _tunnel: Some(tunnel),
                 },
+                rules: Default::default(),
             })
         }
     }
@@ -312,8 +317,8 @@ impl PromConnection {
         }
     }
 
-    /// GET `path`, parsed as JSON.
-    async fn get(&self, path: &str) -> Result<Value, PromError> {
+    /// GET `path`, parsed as JSON (also used by the alerts list, #530).
+    pub(crate) async fn get(&self, path: &str) -> Result<Value, PromError> {
         let answer = self.fetch(path).await?;
         if !(200..300).contains(&answer.status) {
             return Err(PromError::Http {

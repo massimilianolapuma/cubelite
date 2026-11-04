@@ -36,7 +36,7 @@ struct MetricsSectionView: View {
         let perContainer: Bool
     }
 
-    private static let palette: [Color] = [
+    static let palette: [Color] = [
         DesignTokens.accentDefault, DesignTokens.clusterTeal, DesignTokens.clusterViolet,
         DesignTokens.clusterAmber, DesignTokens.clusterPink, DesignTokens.clusterBlue,
     ]
@@ -86,12 +86,7 @@ struct MetricsSectionView: View {
                 ProgressView().controlSize(.mini).accessibilityLabel("Loading metrics")
             }
             Spacer()
-            Picker("Metrics range", selection: $model.range) {
-                ForEach(MetricsRange.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            MetricsRangePicker(label: "Metrics range", selection: $model.range)
             Picker("Per container or total", selection: $model.perContainer) {
                 Text("per container").tag(true)
                 Text("total").tag(false)
@@ -227,8 +222,8 @@ struct MetricsSectionView: View {
 }
 
 /// One Metrics chart: lines over the range, dashed reference lines, the
-/// hovered time's values.
-private struct MetricChartView: View {
+/// hovered time's values (also the cluster and node charts, #530).
+struct MetricChartView: View {
     let title: String
     let unit: MetricsMath.Unit
     let summary: String
@@ -238,6 +233,8 @@ private struct MetricChartView: View {
     let error: String?
     let emptyText: String
     let onGrafana: (() -> Void)?
+    /// Small text after the title (the exporter of a node chart, #530).
+    var note: String?
 
     @State private var hovered: Double?
 
@@ -271,6 +268,9 @@ private struct MetricChartView: View {
             HStack(spacing: 6) {
                 Text(title.uppercased())
                     .typeStyle(DesignTokens.Typography.micro.weighted(.semibold), color: DesignTokens.textTertiary)
+                if let note {
+                    Text(note).typeStyle(DesignTokens.Typography.micro, color: DesignTokens.textDisabled)
+                }
                 if let onGrafana {
                     Button(action: onGrafana) {
                         Image(systemName: "arrow.up.forward.square").iconSize(DesignTokens.iconXs)

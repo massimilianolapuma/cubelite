@@ -1136,3 +1136,83 @@ export function openGrafanaWorkload(args: {
 export function openGrafanaHome(grafanaUrl: string): Promise<void> {
   return invoke("open_grafana_home", { grafanaUrl });
 }
+
+// ── Cluster and node history, alerts (#530) ───────────────────────────────
+
+/** A chart of the Overview's cluster history or of a node's Metrics section. */
+export type HostChart =
+  | "cpu"
+  | "cpu-allocatable"
+  | "memory"
+  | "memory-allocatable"
+  | "pods"
+  | "network-rx"
+  | "network-tx"
+  | "filesystem"
+  | "filesystem-capacity";
+
+/** The exporter a chart's data came from (null: no candidate had data). */
+export type MetricSource = "node-exporter" | "cadvisor" | "kube-state-metrics" | "kubelet";
+
+export type HostChartData = {
+  chart: HostChart;
+  source: MetricSource | null;
+  query: string;
+  series: Series[];
+  error: string | null;
+};
+
+export type HostMetrics = { start: number; end: number; step: number; charts: HostChartData[] };
+
+export type Alert = {
+  name: string;
+  severity: string | null;
+  namespace: string | null;
+  pod: string | null;
+  node: string | null;
+  /** `summary` annotation, else `description` / `message`. */
+  summary: string | null;
+  /** Firing since (RFC 3339); null from the `ALERTS` series. */
+  activeAt: string | null;
+  /** Its `ALERTS` series; Open in Grafana asks for the rule's expression. */
+  expr: string;
+  labels: Record<string, string>;
+};
+
+export type AlertsResult = { alerts: Alert[]; source: "alerts-api" | "alerts-metric" };
+
+/** The Overview's cluster CPU and memory against allocatable. */
+export function prometheusClusterUsage(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: PromEndpoint,
+  range: MetricsRange,
+): Promise<HostMetrics> {
+  return invoke<HostMetrics>("prometheus_cluster_usage", { kubeconfigPath, context, endpoint, range });
+}
+
+/** A node's charts: node-exporter where it scrapes the node, else cAdvisor. */
+export function prometheusNodeMetrics(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: PromEndpoint,
+  node: string,
+  range: MetricsRange,
+): Promise<HostMetrics> {
+  return invoke<HostMetrics>("prometheus_node_metrics", { kubeconfigPath, context, endpoint, node, range });
+}
+
+/** The alert's rule expression for Open in Grafana (rules fetched on demand, cached). */
+export function prometheusAlertExpr(
+  kubeconfigPath: string,
+  context: string,
+  endpoint: PromEndpoint,
+  alert: Alert,
+): Promise<string> {
+  return invoke<string>("prometheus_alert_expr", { kubeconfigPath, context, endpoint, alert });
+}
+
+/** Firing alerts, most severe first. */
+export function prometheusAlerts(kubeconfigPath: string, context: string, endpoint: PromEndpoint): Promise<AlertsResult> {
+  return invoke<AlertsResult>("prometheus_alerts", { kubeconfigPath, context, endpoint });
+}

@@ -28,7 +28,9 @@ extension MainView {
         } else if let sel = sidebarSelection {
             switch selectedResourceType ?? .dashboard {
             case .dashboard:
-                OverviewView(onNavigate: { showResource($0) })
+                OverviewView(
+                    context: sel.context, onNavigate: { showResource($0) },
+                    onOpenAlert: { openAlertTarget($0) })
             case .pods, .deployments, .services, .secrets, .configMaps, .ingresses,
                 .helmReleases, .nodes, .jobs, .statefulSets, .cronJobs, .pvcs, .events, .logs:
                 resourceBrowserView(context: sel.context, namespace: sel.namespace)
@@ -134,7 +136,13 @@ extension MainView {
                 case .pvcs:
                     PvcListView()
                 case .nodes:
-                    NodeListView()
+                    NodeListView(selectedNodeName: $selectedNodeName)
+                        .onChange(of: selectedNodeName) { _, name in
+                            if name != nil {
+                                selectedPodID = nil
+                                selectedDeploymentID = nil
+                            }
+                        }
                 case .events:
                     EventListView()
                 case .logs:
@@ -147,10 +155,42 @@ extension MainView {
                     EmptyView()
                 }
             }
-            if let detail = currentSelectedResource {
+            switch DetailPanelChoice.choose(
+                resourceType: selectedResourceType, nodeName: selectedNodeName,
+                resource: currentSelectedResource)
+            {
+            case .resource(let detail):
                 Divider()
                 detailPanel(for: detail)
+            case .node(let name):
+                Divider()
+                NodeDetailView(
+                    name: name, node: clusterState.nodes.first { $0.name == name },
+                    context: sidebarSelection?.context ?? selectedContext,
+                    onClose: { selectedNodeName = nil }
+                )
+                .frame(minWidth: 320, idealWidth: 460, maxWidth: 600)
+            case .none:
+                EmptyView()
             }
+        }
+    }
+
+    /// Opens what an Overview alert is about (#530): its pod in Pods, its
+    /// node in Nodes.
+    private func openAlertTarget(_ target: PromAlerts.Target) {
+        switch target {
+        case .pod(let id):
+            showResource(.pods)
+            selectedNodeName = nil
+            selectedDeploymentID = nil
+            selectedPodID = id
+        case .node(let name):
+            showResource(.nodes)
+            // A pod or deployment left selected must not keep its panel.
+            selectedPodID = nil
+            selectedDeploymentID = nil
+            selectedNodeName = name
         }
     }
 

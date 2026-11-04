@@ -48,3 +48,34 @@ pub(crate) async fn mock_server(
     });
     (format!("http://{addr}"), handle)
 }
+
+/// An external Prometheus endpoint at `url`, without a cluster label.
+pub(crate) fn prom_endpoint(url: &str) -> crate::prometheus::PromEndpoint {
+    crate::prometheus::PromEndpoint {
+        target: crate::prometheus::PromTarget::External { url: url.into() },
+        cluster: None,
+        grafana_url: None,
+        grafana_datasource: None,
+        grafana_service: None,
+        skip_tls_verify: false,
+        shared: false,
+    }
+}
+
+/// A successful Prometheus API answer carrying `data`.
+pub(crate) fn prom_success(data: serde_json::Value) -> (u16, String) {
+    (
+        200,
+        serde_json::json!({ "status": "success", "data": data }).to_string(),
+    )
+}
+
+/// A successful instant query answer.
+pub(crate) fn prom_vector(result: serde_json::Value) -> (u16, String) {
+    prom_success(serde_json::json!({ "resultType": "vector", "result": result }))
+}
+
+/// A successful range query answer.
+pub(crate) fn prom_matrix(result: serde_json::Value) -> (u16, String) {
+    prom_success(serde_json::json!({ "resultType": "matrix", "result": result }))
+}

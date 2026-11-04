@@ -42,16 +42,20 @@ struct IntegrationSetupButton: View {
 }
 
 /// Stand-in for the Metrics section when the context has no Prometheus
-/// (#526): what it would show, a link to set it up, and Hide.
+/// (#526): what it would show, a link to set it up, and Hide. The title and
+/// caption change for the Overview and node placeholders (#530).
 struct MetricsSetupHint: View {
     let context: String?
+    var title = "Metrics"
+    var caption = IntegrationHints.metricsCaption
+    var identifier = "detail.metrics-hint"
 
     @Environment(AppSettings.self) private var settings: AppSettings?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Text("Metrics")
+                Text(title)
                     .textCase(.uppercase)
                     .typeStyle(DesignTokens.Typography.caption.weighted(.semibold), color: DesignTokens.textTertiary)
                 Spacer()
@@ -59,14 +63,14 @@ struct MetricsSetupHint: View {
                     .buttonStyle(.borderless)
                     .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
                     .help("Hide integration hints (Settings → Integrations shows them again)")
-                    .accessibilityIdentifier("detail.metrics-hint-hide")
+                    .accessibilityIdentifier("\(identifier)-hide")
             }
-            Text(IntegrationHints.metricsCaption)
+            Text(caption)
                 .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
             IntegrationSetupButton(title: "Set up Prometheus", pane: .prometheus, context: context)
         }
         .padding(.top, 16)
-        .accessibilityIdentifier("detail.metrics-hint")
+        .accessibilityIdentifier(identifier)
     }
 }
 

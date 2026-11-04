@@ -437,3 +437,147 @@ async fn detect_all_finds_the_four_services_on_connect() {
     let gf = found.grafana.expect("Grafana");
     assert_eq!((gf.namespace, gf.name), name("monitoring", "kps-grafana"));
 }
+
+/// The in-cluster Prometheus, connected through the service proxy.
+async fn live_prometheus(client: &kube::Client) -> (PromEndpoint, prom::PromConnection) {
+    let found = prom::detect(client.clone()).await.expect("detect");
+    let svc = found
+        .iter()
+        .find(|s| s.kind == "prometheus")
+        .expect("Prometheus service");
+    let endpoint = PromEndpoint {
+        target: PromTarget::InCluster {
+            namespace: svc.namespace.clone(),
+            service: svc.name.clone(),
+            port: svc.port,
+            https: svc.https,
+        },
+        cluster: None,
+        grafana_url: None,
+        grafana_datasource: None,
+        grafana_service: None,
+        skip_tls_verify: false,
+        shared: false,
+    };
+    let conn = prom::connect(Some(client.clone()), &endpoint, &PromAuth::None)
+        .await
+        .expect("connect");
+    (endpoint, conn)
+}
+
+#[tokio::test]
+#[ignore = "needs a live cluster (CUBELITE_LIVE_CONTEXT)"]
+async fn prometheus_cluster_and_node_history_and_alerts() {
+    use cubelite_core::prometheus::nodes::{HostChart, MetricSource};
+    let Some(client) = client().await else { return };
+    let (endpoint, conn) = live_prometheus(&client).await;
+
+    // Overview: cluster CPU and memory against allocatable.
+    let cluster = conn
+        .cluster_usage(&endpoint, MetricsRange::Hour)
+        .await
+        .expect("cluster usage");
+    for chart in &cluster.charts {
+        println!(
+            "cluster {:?} ({:?}): {} series",
+            chart.chart,
+            chart.source,
+            chart.series.len()
+        );
+        assert!(
+            chart.error.is_none(),
+            "{:?}: {:?}",
+            chart.chart,
+            chart.error
+        );
+        assert!(!chart.series.is_empty(), "{:?} series", chart.chart);
+    }
+
+    // Node detail: the node's charts, from node-exporter where it runs,
+    // else cAdvisor, kube-state-metrics and the kubelet.
+    let nodes: kube::Api<k8s_openapi::api::core::v1::Node> = kube::Api::all(client.clone());
+    let node = nodes.list(&Default::default()).await.expect("nodes").items[0]
+        .metadata
+        .name
+        .clone()
+        .expect("node name");
+    let instances = conn
+        .node_exporter_instances(&node, None)
+        .await
+        .expect("instances");
+    println!("{node}: node-exporter instances {instances:?}");
+    let result = conn
+        .node_metrics(&endpoint, &node, MetricsRange::Hour)
+        .await
+        .expect("node metrics");
+    for chart in &result.charts {
+        println!(
+            "{node} {:?} ({:?}): {} series, query {}",
+            chart.chart,
+            chart.source,
+            chart.series.len(),
+            chart.query
+        );
+        assert!(
+            chart.error.is_none(),
+            "{:?}: {:?}",
+            chart.chart,
+            chart.error
+        );
+    }
+    let mut wanted = vec![
+        HostChart::Cpu,
+        HostChart::CpuAllocatable,
+        HostChart::Memory,
+        HostChart::MemoryAllocatable,
+        HostChart::Pods,
+        HostChart::NetworkRx,
+        HostChart::NetworkTx,
+    ];
+    if !instances.is_empty() {
+        wanted.push(HostChart::Filesystem);
+    }
+    for chart in wanted {
+        let data = result
+            .charts
+            .iter()
+            .find(|c| c.chart == chart)
+            .expect("chart");
+        assert!(data.source.is_some(), "{chart:?} has data on {node}");
+    }
+    // A reference line comes from its usage's exporter: kube-state-metrics
+    // allocatable next to cAdvisor, node-exporter capacity next to it.
+    let source = |chart: HostChart| {
+        result
+            .charts
+            .iter()
+            .find(|c| c.chart == chart)
+            .and_then(|c| c.source)
+    };
+    let expected = match source(HostChart::Cpu) {
+        Some(MetricSource::NodeExporter) => MetricSource::NodeExporter,
+        _ => MetricSource::KubeStateMetrics,
+    };
+    assert_eq!(source(HostChart::CpuAllocatable), Some(expected));
+
+    // Overview alerts: kube-prometheus-stack's Watchdog always fires.
+    let alerts = conn.alerts(&endpoint).await.expect("alerts");
+    println!(
+        "alerts ({:?}): {:?}",
+        alerts.source,
+        alerts.alerts.iter().map(|a| &a.name).collect::<Vec<_>>()
+    );
+    let watchdog = alerts
+        .alerts
+        .iter()
+        .find(|a| a.name == "Watchdog")
+        .expect("Watchdog fires");
+    assert!(watchdog.active_at.is_some());
+    assert!(watchdog.summary.is_some());
+    assert!(watchdog.expr.starts_with("ALERTS{"), "no rules until asked");
+    assert_eq!(
+        conn.alert_expr(&endpoint, watchdog).await,
+        "vector(1)",
+        "the rule's expression, on demand"
+    );
+}

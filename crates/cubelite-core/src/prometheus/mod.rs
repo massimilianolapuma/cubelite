@@ -5,7 +5,9 @@
 //! step/window maths, response parsing, Grafana Explore URL — while
 //! [`transport`] reaches Prometheus and [`azure`] gets Azure Monitor tokens.
 
+pub mod alerts;
 pub mod azure;
+pub mod nodes;
 pub mod transport;
 
 use std::collections::BTreeMap;
@@ -282,7 +284,7 @@ pub fn escape(value: &str) -> String {
 }
 
 /// Escapes regex metacharacters (RE2) so a name matches literally.
-fn regex_literal(name: &str) -> String {
+pub(crate) fn regex_literal(name: &str) -> String {
     name.chars()
         .flat_map(|c| {
             let meta = "\\.+*?()|[]{}^$".contains(c);

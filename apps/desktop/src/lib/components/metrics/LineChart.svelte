@@ -24,6 +24,7 @@
 		range,
 		error,
 		emptyText,
+		note,
 		onGrafana
 	}: {
 		title: string;
@@ -35,6 +36,8 @@
 		range: MetricsRange;
 		error: string | null;
 		emptyText: string;
+		/** Small text after the title (the exporter of a node chart, #530). */
+		note?: string | null;
 		onGrafana?: () => void;
 	} = $props();
 
@@ -68,6 +71,9 @@
 <div class="rounded-lg border border-border-faint bg-surface-surface px-2.5 py-2" data-testid="metrics-chart">
 	<div class="mb-1 flex items-baseline gap-2">
 		<span class="type-section text-text-tertiary">{title}</span>
+		{#if note}
+			<span class="type-micro text-text-disabled">{note}</span>
+		{/if}
 		{#if onGrafana}
 			<button
 				type="button"
