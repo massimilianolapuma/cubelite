@@ -292,6 +292,18 @@ final class TLSErrorDescriptionTests: XCTestCase {
 
 final class IsTLSErrorTests: XCTestCase {
 
+    func testTLSFailureReasonCarriesTheCodes() {
+        let withStatus = URLError(
+            .secureConnectionFailed, userInfo: ["_kCFStreamErrorCodeKey": -9808])
+        XCTAssertEqual(
+            KubeAPIService.tlsFailureReason(withStatus),
+            "Certificate validation failed for the cluster API server (URLError -1200, OSStatus -9808)")
+        XCTAssertEqual(
+            KubeAPIService.tlsFailureReason(URLError(.clientCertificateRejected)),
+            "Certificate validation failed for the cluster API server (URLError -1205)")
+    }
+
+
     func testIsTLSError_secureConnectionFailed_returnsTrue() {
         let error = URLError(.secureConnectionFailed)
         XCTAssertTrue(KubeAPIService.isTLSError(error))
@@ -479,6 +491,56 @@ final class LoadClientIdentityTests: XCTestCase {
         let invalid = "!!! not valid base64 !!!"
         XCTAssertNil(
             Data(base64Encoded: invalid), "Expected base64 decode to fail for invalid key input")
+    }
+
+    // MARK: - Concurrent imports (#521)
+
+    /// Several connections set up at once (actor reentrancy, or several
+    /// `KubeAPIService` instances in one process) import the same client
+    /// identity concurrently. Every import must succeed, and every returned
+    /// identity must still be able to sign afterwards: a concurrent
+    /// delete-and-re-add of the key broke the first TLS handshake (#521).
+    func testLoadClientIdentity_concurrentImportsAllSucceedAndCanSign() async throws {
+        guard let keyPEMData = Data(base64Encoded: testKeyPEMBase64) else {
+            XCTFail("testKeyPEMBase64 is not valid base64")
+            return
+        }
+        let user = UserDetails(
+            clientCertificateData: testCertDERBase64,
+            clientKeyData: keyPEMData.base64EncodedString()
+        )
+        // Each task imports, then checks that its identity can sign once
+        // every import has finished (SecIdentity is not Sendable, so the
+        // check runs in the task and only the outcome crosses back).
+        let imported = await withTaskGroup(of: String?.self) { group in
+            for _ in 0..<8 {
+                group.addTask { Self.importOutcome(user) }
+            }
+            var failures: [String] = []
+            for await failure in group { if let failure { failures.append(failure) } }
+            return failures
+        }
+        XCTAssertEqual(imported, [], "every concurrent import succeeds")
+        // After all imports: the identity the next connection gets can still sign.
+        XCTAssertNil(Self.importOutcome(user), "the stored identity still signs")
+    }
+
+    /// `nil` when importing `user`'s identity succeeds and it can sign, else why not.
+    private static func importOutcome(_ user: UserDetails) -> String? {
+        do {
+            guard let identity = try KubeAPIService.loadClientIdentity(from: user) else {
+                return "no identity"
+            }
+            var key: SecKey?
+            guard SecIdentityCopyPrivateKey(identity, &key) == errSecSuccess, let key else {
+                return "no private key"
+            }
+            let signature = SecKeyCreateSignature(
+                key, .ecdsaSignatureMessageX962SHA256, Data("probe".utf8) as CFData, nil)
+            return signature == nil ? "cannot sign" : nil
+        } catch {
+            return "\(error)"
+        }
     }
 
     // MARK: - Integration: valid EC cert + key produces SecIdentity

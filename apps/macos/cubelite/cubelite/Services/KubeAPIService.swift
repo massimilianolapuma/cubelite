@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Security
 
 /// Service actor for communicating with the Kubernetes API server.
@@ -354,9 +355,9 @@ actor KubeAPIService {
         do {
             (data, response) = try await session.data(for: request)
         } catch let urlError as URLError where Self.isTLSError(urlError) {
-            throw CubeliteError.tlsError(
-                reason: "Certificate validation failed for the cluster API server"
-            )
+            let reason = Self.tlsFailureReason(urlError)
+            Self.logger.error("\(reason, privacy: .public)")
+            throw CubeliteError.tlsError(reason: reason)
         } catch let urlError as URLError where Self.isConnectionError(urlError) {
             throw CubeliteError.clusterUnreachable
         } catch {
@@ -860,6 +861,19 @@ actor KubeAPIService {
         return kind
     }
 
+    private static let logger = Logger(subsystem: "com.cubelite", category: "KubeAPIService")
+
+    /// The TLS failure message, with the `URLError` code and the stream's
+    /// `OSStatus` when present (e.g. -9808 bad certificate, -9829 peer
+    /// rejected the client certificate), so a failure can be told apart (#521).
+    static func tlsFailureReason(_ error: URLError) -> String {
+        var codes = "URLError \(error.code.rawValue)"
+        if let status = error.userInfo["_kCFStreamErrorCodeKey"] as? Int {
+            codes += ", OSStatus \(status)"
+        }
+        return "Certificate validation failed for the cluster API server (\(codes))"
+    }
+
     /// URL error codes that indicate TLS certificate validation failure.
     static func isTLSError(_ error: URLError) -> Bool {
         switch error.code {
@@ -1010,7 +1024,7 @@ actor KubeAPIService {
     ///
     /// - Returns: A `SecIdentity`, or `nil` when no client certificate is configured.
     /// - Throws: `CubeliteError.clientError` on any decode, read, or keychain failure.
-    private static func loadClientIdentity(from user: UserDetails) throws -> SecIdentity? {
+    static func loadClientIdentity(from user: UserDetails) throws -> SecIdentity? {
         // --- Path 1: inline base64 data (client-certificate-data / client-key-data) ---
         if let certB64 = user.clientCertificateData, !certB64.isEmpty,
             let keyB64 = user.clientKeyData, !keyB64.isEmpty
@@ -1167,6 +1181,31 @@ actor KubeAPIService {
         certificate: SecCertificate,
         privateKey: SecKey
     ) throws -> SecIdentity {
+        // Connections are set up concurrently (actor reentrancy across the
+        // awaits in `connection(contextName:)`, and several `KubeAPIService`
+        // instances in one process). Unserialised, one import deleted the key
+        // another had just paired — its first TLS handshake then failed, or
+        // its own re-add hit errSecDuplicateItem (#521).
+        try identityImportLock.withLock {
+            try storeAndFindIdentityLocked(certificate: certificate, privateKey: privateKey)
+        }
+    }
+
+    /// Serialises client identity imports process-wide (#521).
+    private static let identityImportLock = NSLock()
+
+    private static func storeAndFindIdentityLocked(
+        certificate: SecCertificate,
+        privateKey: SecKey
+    ) throws -> SecIdentity {
+        // Reuse a usable pairing: never delete a key that open sessions use.
+        var existing: SecIdentity?
+        if SecIdentityCreateWithCertificate(nil, certificate, &existing) == errSecSuccess,
+            let existing, identityCanSign(existing)
+        {
+            return existing
+        }
+
         let keyTag = Data("it.lapuma.cubelite.client-key".utf8)
 
         // Preserve the application label (SHA-1 of the public key) from the imported key so
@@ -1174,11 +1213,16 @@ actor KubeAPIService {
         let importedKeyAttrs = SecKeyCopyAttributes(privateKey) as? [CFString: Any]
         let applicationLabel = importedKeyAttrs?[kSecAttrApplicationLabel] as? Data
 
-        let keySearchQuery: [CFString: Any] = [
+        // Only this key: the tag is shared by every client-certificate
+        // cluster, and replacing another cluster's key breaks its sessions.
+        var keySearchQuery: [CFString: Any] = [
             kSecClass: kSecClassKey,
             kSecAttrApplicationTag: keyTag,
             kSecAttrKeyClass: kSecAttrKeyClassPrivate,
         ]
+        if let label = applicationLabel {
+            keySearchQuery[kSecAttrApplicationLabel] = label
+        }
 
         /// Replace the tagged key, (re-)add the certificate and pair them.
         func addAndPair() throws -> SecIdentity {
