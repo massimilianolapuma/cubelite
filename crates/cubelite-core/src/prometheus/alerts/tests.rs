@@ -163,6 +163,7 @@ fn endpoint(url: &str) -> PromEndpoint {
         grafana_datasource: None,
         grafana_service: None,
         skip_tls_verify: false,
+        shared: false,
     }
 }
 

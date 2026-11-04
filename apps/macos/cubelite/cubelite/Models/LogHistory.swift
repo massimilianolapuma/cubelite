@@ -155,12 +155,14 @@ final class LogHistory {
             // A workload's pods or the namespace: the history's filter (#529).
             return Integration.webURL(
                 Elastic.kibanaWorkloadURL(
-                    kibanaBase: base, preset: endpoint.preset, namespace: namespace, workload: target, from: from))
+                    kibanaBase: base, preset: endpoint.preset, namespace: namespace, workload: target, from: from,
+                    clusterFilter: endpoint.clusterFilter))
         }
         let text = Elastic.kibanaDiscoverURL(
             kibanaBase: base.trimmingCharacters(in: .whitespaces), preset: endpoint.preset,
             namespace: namespace, pod: pod, container: shownParams?.container ?? container(),
-            from: (shownParams?.range ?? (shown ? range : .last1h)).rawValue, to: "now")
+            from: (shownParams?.range ?? (shown ? range : .last1h)).rawValue, to: "now",
+            clusterFilter: endpoint.clusterFilter)
         return Integration.webURL(text)
     }
 

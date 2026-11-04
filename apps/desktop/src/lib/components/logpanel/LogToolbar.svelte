@@ -66,7 +66,8 @@
 				pod: session.pod,
 				container: session.merged ? null : session.container,
 				from: session.source === 'history' ? session.history.range : 'now-1h',
-				to: 'now'
+				to: 'now',
+				clusterFilter: ep.clusterFilter ?? null
 			});
 		});
 	}

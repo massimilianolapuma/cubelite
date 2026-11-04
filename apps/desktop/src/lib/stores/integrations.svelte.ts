@@ -82,7 +82,10 @@ class IntegrationsStore {
   }
 
   #configured(kind: IntegrationKind, context: string): boolean {
-    return (kind === "elasticsearch" ? elastic : prometheus).endpointFor(context) !== null;
+    // A context using the default endpoint (#528) is configured; one where
+    // the default is off was turned off on purpose.
+    const store = kind === "elasticsearch" ? elastic : prometheus;
+    return store.endpointFor(context) !== null || store.useOf(context) === "off";
   }
 
   dismissed(context: string | null): IntegrationKind[] {

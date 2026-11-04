@@ -2,6 +2,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use super::azure::{cli_error, is_azure_monitor_url, parse_token};
 use super::transport::{classify, connect, proxy_base};
+use super::transport::{label_values_path, CLUSTER_SERIES};
 use super::*;
 use crate::test_support::mock_server;
 use k8s_openapi::api::core::v1::Service;
@@ -431,6 +432,7 @@ fn external(url: &str) -> PromEndpoint {
         grafana_datasource: None,
         grafana_service: None,
         skip_tls_verify: false,
+        shared: false,
     }
 }
 
@@ -530,10 +532,11 @@ async fn info_reports_exporters_and_clusters() {
         ),
         ok(json!([{ "metric": {}, "value": [1.0, "42"] }])),
         ok(json!([])),
-        ok(json!([
-            { "metric": { "cluster": "aks-prod" }, "value": [1.0, "3"] },
-            { "metric": { "cluster": "aks-test" }, "value": [1.0, "3"] }
-        ])),
+        // `/api/v1/label/cluster/values` (#528), unsorted with a blank.
+        (
+            200,
+            json!({ "status": "success", "data": ["aks-test", "", "aks-prod"] }).to_string(),
+        ),
     ])
     .await;
     let endpoint = external(&url);
@@ -545,7 +548,70 @@ async fn info_reports_exporters_and_clusters() {
     assert!(info.cadvisor);
     assert!(!info.kube_state_metrics);
     assert_eq!(info.clusters, ["aks-prod", "aks-test"]);
+    let requests = server.await.expect("server");
+    assert!(
+        requests[4].contains("/api/v1/label/cluster/values?match%5B%5D="),
+        "{}",
+        requests[4]
+    );
+}
+
+#[tokio::test]
+async fn info_falls_back_to_up_without_label_values() {
+    let ok = |result: serde_json::Value| {
+        (
+            200,
+            json!({ "status": "success", "data": { "resultType": "vector", "result": result } })
+                .to_string(),
+        )
+    };
+    let (url, server) = mock_server(vec![
+        ok(json!([{ "metric": {}, "value": [1.0, "1"] }])),
+        (404, "not found".to_string()),
+        ok(json!([])),
+        ok(json!([])),
+        (404, "not found".to_string()),
+        ok(json!([{ "metric": { "cluster": "eu" }, "value": [1.0, "3"] }])),
+    ])
+    .await;
+    let endpoint = external(&url);
+    let conn = connect(None, &endpoint, &PromAuth::None)
+        .await
+        .expect("connect");
+    let info = conn.info(&endpoint).await.expect("info");
+    assert_eq!(info.version, "unknown");
+    assert_eq!(info.clusters, ["eu"]);
     server.await.expect("server");
+}
+
+#[test]
+fn label_values_path_matches_kubernetes_series() {
+    assert_eq!(
+        label_values_path("cluster", &CLUSTER_SERIES).expect("path"),
+        "/api/v1/label/cluster/values?match%5B%5D=container_cpu_usage_seconds_total&match%5B%5D=kube_pod_info"
+    );
+    assert_eq!(
+        label_values_path("_x1", &[]).expect("path"),
+        "/api/v1/label/_x1/values"
+    );
+    for bad in ["", "1abc", "a/b", "a-b", "../x"] {
+        assert!(label_values_path(bad, &[]).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn shared_flag_is_optional_and_not_serialized_when_off() {
+    let endpoint: PromEndpoint =
+        serde_json::from_str(r#"{"target":{"kind":"external","url":"https://p"}}"#)
+            .expect("old json");
+    assert!(!endpoint.shared);
+    assert!(!serde_json::to_string(&endpoint)
+        .expect("json")
+        .contains("shared"));
+    let shared: PromEndpoint =
+        serde_json::from_str(r#"{"target":{"kind":"external","url":"https://p"},"shared":true}"#)
+            .expect("json");
+    assert!(shared.shared);
 }
 
 /// A kube client whose API server answers every request with `reply`.

@@ -15,7 +15,8 @@ protocol PrometheusPreferencesBackend: Sendable {
 extension PrometheusService: PrometheusPreferencesBackend {}
 
 /// Form state of Settings → Integrations → Prometheus for one kube context
-/// (#512, spec §5.3), mirroring the desktop's PrometheusPreferences.
+/// or the default shared by every context (#512 spec §5.3, #528), mirroring
+/// the desktop's PrometheusPreferences.
 /// In-cluster endpoints use the cluster credentials; external ones take
 /// basic, bearer or an Azure CLI token. Secrets are never read back.
 @Observable @MainActor
@@ -56,6 +57,24 @@ final class PrometheusPreferencesModel {
     private(set) var detected: [DetectedPrometheus]?
     /// Grafana services found by the last Detect.
     private(set) var detectedGrafana: [DetectedPrometheus] = []
+    /// `cluster` values found by the last Test connection (#528).
+    private(set) var foundClusters: [String]?
+    /// The form as loaded (#528).
+    private var loaded: [String] = []
+
+    /// The form's fields, typed secrets included.
+    private var snapshot: [String] {
+        [
+            target.mode.rawValue, target.namespace, target.service, String(target.port), String(target.https),
+            target.url, String(target.skipTLSVerify), cluster, grafanaURL, grafanaDatasource,
+            grafanaService.map { "\($0)" } ?? "", input.username, input.password, input.secret,
+        ]
+    }
+
+    /// The form has edits not saved yet.
+    var isDirty: Bool { snapshot != loaded }
+    /// This context's endpoint or the default (#528).
+    let scope: EndpointScopeModel<PromEndpoint>
     private(set) var busy: Busy?
     private(set) var outcome: FormOutcome?
 
@@ -68,22 +87,36 @@ final class PrometheusPreferencesModel {
     init(backend: any PrometheusPreferencesBackend, endpoints: PrometheusEndpointStore) {
         self.backend = backend
         self.endpoints = endpoints
+        scope = EndpointScopeModel(store: endpoints)
     }
 
-    var saved: PromEndpoint? { endpoints.endpoint(for: context) }
+    /// What the form shows for the context (#528).
+    var view: ScopeView { scope.view(for: context) }
+
+    /// The saved endpoint the form edits: the context's own, or the default.
+    var saved: PromEndpoint? { scope.saved(view, context: context) }
 
     /// Loads `context`'s saved endpoint; nothing from the previous context stays.
     func load(context: String?) async {
+        if context != self.context {
+            scope.overriding = false
+            scope.pending = nil
+        }
         self.context = context
+        // What "unsaved edits" compare against, once loaded.
+        defer { loaded = snapshot }
         outcome = nil
         detected = nil
         detectedGrafana = []
+        foundClusters = nil
         input.reset()
         authMethod = .none
         storedMethod = nil
-        guard let endpoint = saved else {
+        let view = self.view
+        guard let endpoint = saved ?? scope.prefill(view) else {
             target.reset()
-            cluster = ""
+            // On the default, the context's own label.
+            cluster = view == .inherited ? context.flatMap { endpoints.contextSettings[$0]?.cluster } ?? "" : ""
             grafanaURL = ""
             grafanaDatasource = ""
             grafanaService = nil
@@ -94,7 +127,72 @@ final class PrometheusPreferencesModel {
         grafanaURL = endpoint.grafanaURL ?? ""
         grafanaDatasource = endpoint.grafanaDatasource ?? ""
         grafanaService = endpoint.grafanaService
-        await refreshStoredMethod(endpoint)
+        if saved != nil { await refreshStoredMethod(scope.forBackend(endpoint, view: view)) }
+    }
+
+    // MARK: Scope (#528)
+
+    /// Switches to `kind`, or asks first when the form has unsaved edits.
+    func setScope(_ kind: EndpointScopeKind) async {
+        guard kind != scope.kind else { return }
+        if isDirty {
+            scope.pending = kind
+            return
+        }
+        scope.kind = kind
+        await load(context: context)
+    }
+
+    /// Discards the edits and switches to the pending scope.
+    func confirmScope() async {
+        guard let kind = scope.pending else { return }
+        scope.pending = nil
+        scope.kind = kind
+        await load(context: context)
+    }
+
+    func cancelScope() {
+        scope.pending = nil
+    }
+
+    /// Gives a context using the default an endpoint of its own, from the
+    /// default's values; what was typed for this context is kept.
+    func override() async {
+        let carry = isDirty ? cluster : nil
+        scope.overriding = true
+        await load(context: context)
+        if let carry { cluster = carry }
+    }
+
+    func turnOff() async {
+        guard let context else { return }
+        let result = await scope.turnOff(context, name: "Prometheus", onTurnedOff: onTurnedOff) {
+            await self.backend.disconnect(context: $0)
+        }
+        await load(context: context)
+        outcome = result
+    }
+
+    func useDefault() async {
+        guard let context else { return }
+        let result = await scope.useDefault(
+            context, name: "Prometheus",
+            removeSecret: { try await self.backend.saveAuth(context: context, endpoint: $0, auth: .none) },
+            disconnect: { await self.backend.disconnect(context: $0) })
+        await load(context: context)
+        outcome = result
+    }
+
+    /// The default with the label typed for this context (Test on the default).
+    private var contextDraft: PrometheusContextSettings? {
+        cluster.trimmed.isEmpty ? nil : PrometheusContextSettings(cluster: cluster.trimmed)
+    }
+
+    /// The endpoint Test connection reaches.
+    private func tested() -> PromEndpoint? {
+        let view = self.view
+        if view == .inherited { return endpoints.defaultEndpoint(with: contextDraft) }
+        return draft().map { scope.forBackend($0, view: view) }
     }
 
     // MARK: Validation
@@ -110,7 +208,9 @@ final class PrometheusPreferencesModel {
         return nil
     }
 
-    var isIncomplete: Bool { target.isIncomplete || grafanaProblem != nil || azureProblem != nil }
+    var isIncomplete: Bool {
+        view != .inherited && (target.isIncomplete || grafanaProblem != nil || azureProblem != nil)
+    }
 
     // MARK: Draft
 
@@ -126,6 +226,7 @@ final class PrometheusPreferencesModel {
     /// Auth typed in the form, or nil to use the stored one. In-cluster
     /// endpoints always use the cluster credentials.
     func typedAuth() -> PromAuth? {
+        if view == .inherited { return nil }
         if target.mode == .inCluster { return storedMethod == AuthMethod.none ? nil : PromAuth.none }
         switch authMethod {
         case .none: return storedMethod == AuthMethod.none ? nil : PromAuth.none
@@ -188,11 +289,19 @@ final class PrometheusPreferencesModel {
     }
 
     func test() async {
-        guard let endpoint = draft() else { return }
+        guard let endpoint = tested() else { return }
         let auth = typedAuth()
+        let view = self.view
         await run(.test) { context in
             let info = try await self.backend.test(context: context, endpoint: endpoint, auth: auth)
             guard context == self.context else { return }
+            self.foundClusters = info.clusters
+            // Preselect this context's cluster in a shared workspace (#528).
+            if view != .sharedDefault, self.cluster.trimmed.isEmpty,
+                let match = ClusterLabel.match(info.clusters, context: context)
+            {
+                self.cluster = match
+            }
             var parts = ["Prometheus \(info.version)"]
             parts.append(info.cadvisor ? "cAdvisor ✓" : "no cAdvisor series")
             parts.append(info.kubeStateMetrics ? "kube-state-metrics ✓" : "no kube-state-metrics series")
@@ -201,8 +310,17 @@ final class PrometheusPreferencesModel {
         }
     }
 
-    /// Saves the endpoint (or turns Prometheus off) and the typed credentials.
+    /// Saves the endpoint (or turns Prometheus off) and the typed credentials;
+    /// on the default, this context's `cluster` label only.
     func save() async {
+        let view = self.view
+        if view == .inherited {
+            guard let context else { return }
+            endpoints.setSettings(contextDraft, for: context)
+            outcome = FormOutcome(ok: true, text: "Prometheus cluster label saved for \(context)")
+            loaded = snapshot
+            return
+        }
         let endpoint = draft()
         await run(.save) { context in
             if let endpoint {
@@ -210,7 +328,8 @@ final class PrometheusPreferencesModel {
                     saved: self.saved.map { ($0.target, $0.skipTLSVerify) },
                     draft: (endpoint.target, endpoint.skipTLSVerify))
                 if let auth = self.typedAuth() {
-                    try await self.backend.saveAuth(context: context, endpoint: endpoint, auth: auth)
+                    try await self.backend.saveAuth(
+                        context: context, endpoint: self.scope.forBackend(endpoint, view: view), auth: auth)
                 } else if moved, let stored = self.storedMethod, stored != .none {
                     self.outcome = FormOutcome(ok: false, text: IntegrationForm.movedMessage)
                     return
@@ -218,21 +337,25 @@ final class PrometheusPreferencesModel {
                 self.input.clearSecrets()
             } else if let saved = self.saved {
                 // Turning it off also removes the stored secret and open connection.
-                try await self.backend.saveAuth(context: context, endpoint: saved, auth: .none)
+                try await self.backend.saveAuth(
+                    context: context, endpoint: self.scope.forBackend(saved, view: view), auth: .none)
             }
             // Stored even if the form moved to another context meanwhile.
-            self.endpoints.setEndpoint(endpoint, for: context)
-            if endpoint == nil { self.onTurnedOff?(context) }
+            self.scope.apply(endpoint, view: view, context: context)
+            if endpoint == nil, view != .sharedDefault { self.onTurnedOff?(context) }
             // A changed endpoint or Grafana service must not keep old forwards.
             await self.backend.disconnect(context: context)
             guard context == self.context else { return }
             if let endpoint {
-                await self.refreshStoredMethod(endpoint)
+                await self.refreshStoredMethod(self.scope.forBackend(endpoint, view: view))
             } else {
                 self.storedMethod = nil
             }
+            self.loaded = self.snapshot
             self.outcome = FormOutcome(
-                ok: true, text: endpoint == nil ? "Prometheus off for \(context)" : "Prometheus saved for \(context)")
+                ok: true,
+                text: self.scope.savedText(
+                    name: "Prometheus", view: view, saved: endpoint != nil, context: context))
         }
     }
 

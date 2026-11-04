@@ -1,47 +1,81 @@
 import SwiftUI
 
-/// Settings → Integrations → Elasticsearch (#503, spec §5.2).
+/// Settings → Integrations → Elasticsearch (#503, spec §5.2), for a context
+/// or the default shared by every context (#528).
 struct ElasticPreferencesForm: View {
 
     @Bindable var model: ElasticPreferencesModel
+    let contexts: [String]
 
     var body: some View {
         Form {
-            TargetModeSection(
-                target: model.target, label: "Elasticsearch:",
-                footer: "Log history in the log panel and Open in Kibana. Credentials stay in the keychain.",
-                identifier: "preferences.elastic")
-            TargetLocationSection(
-                target: model.target,
-                detected: model.detected.map { es in
-                    es.map { found in
-                        DetectedChoice(
-                            id: found.id,
-                            label: "Elasticsearch \(found.namespace)/\(found.name):\(found.port)",
-                            pick: { model.pick(found) })
-                    }
-                        + model.detectedKibana.map { found in
-                            DetectedChoice(
-                                id: found.id,
-                                label: "Kibana \(found.namespace)/\(found.name):\(found.port)",
-                                pick: { model.pickKibana(found) })
-                        }
-                },
-                canDetect: model.busy == nil && model.context != nil,
-                urlPrompt: "https://my-deployment.es.example:9243", identifier: "preferences.elastic",
-                onDetect: { Task { await model.detect() } })
-            if model.target.mode != .off {
-                detailsSection
-                ElasticAuthSection(model: model)
+            EndpointScopeSection(
+                scope: model.scope, view: model.view, context: model.context, contexts: contexts,
+                busy: model.busy != nil, identifier: "preferences.elastic",
+                onScope: { kind in Task { await model.setScope(kind) } },
+                onConfirm: { Task { await model.confirmScope() } },
+                onCancel: { model.cancelScope() },
+                onOverride: { Task { await model.override() } },
+                onTurnOff: { Task { await model.turnOff() } },
+                onUseDefault: { Task { await model.useDefault() } })
+            switch model.view {
+            case .inherited:
+                Section("Logs") {
+                    ClusterFilterRows(
+                        field: $model.clusterField, value: $model.clusterValue, fieldHint: model.clusterFieldHint)
+                }
+                actions(inherited: true)
+            case .off:
+                EmptyView()
+            case .own, .sharedDefault:
+                endpointSections
             }
-            FormActionsSection(
-                target: model.target, busy: model.busy != nil,
-                canAct: model.busy == nil && !model.isIncomplete && model.context != nil,
-                outcome: model.outcome, identifier: "preferences.elastic",
-                onTest: { Task { await model.test() } }, onSave: { Task { await model.save() } })
         }
         .formStyle(.grouped)
         .padding()
+        // Who a saved default reaches (#528).
+        .task(id: contexts) { model.scope.contexts = contexts }
+    }
+
+    @ViewBuilder
+    private var endpointSections: some View {
+        TargetModeSection(
+            target: model.target, label: "Elasticsearch:",
+            footer: "Log history in the log panel and Open in Kibana. Credentials stay in the keychain.",
+            identifier: "preferences.elastic",
+            modes: model.view == .sharedDefault ? [.off, .external] : TargetFields.Mode.allCases)
+        TargetLocationSection(
+            target: model.target,
+            detected: model.detected.map { es in
+                es.map { found in
+                    DetectedChoice(
+                        id: found.id,
+                        label: "Elasticsearch \(found.namespace)/\(found.name):\(found.port)",
+                        pick: { model.pick(found) })
+                }
+                    + model.detectedKibana.map { found in
+                        DetectedChoice(
+                            id: found.id,
+                            label: "Kibana \(found.namespace)/\(found.name):\(found.port)",
+                            pick: { model.pickKibana(found) })
+                    }
+            },
+            canDetect: model.busy == nil && model.context != nil,
+            urlPrompt: "https://my-deployment.es.example:9243", identifier: "preferences.elastic",
+            onDetect: { Task { await model.detect() } })
+        if model.target.mode != .off {
+            detailsSection
+            ElasticAuthSection(model: model)
+        }
+        actions(inherited: false)
+    }
+
+    private func actions(inherited: Bool) -> some View {
+        FormActionsSection(
+            target: model.target, busy: model.busy != nil,
+            canAct: model.busy == nil && !model.isIncomplete && model.context != nil,
+            outcome: model.outcome, identifier: "preferences.elastic", inherited: inherited,
+            onTest: { Task { await model.test() } }, onSave: { Task { await model.save() } })
     }
 
     private var detailsSection: some View {
@@ -51,6 +85,8 @@ struct ElasticPreferencesForm: View {
                 Text("ECS (Elastic Agent, Filebeat)").tag(FieldPreset.ecs)
                 Text("Fluent Bit").tag(FieldPreset.fluentBit)
             }
+            ClusterFilterRows(
+                field: $model.clusterField, value: $model.clusterValue, fieldHint: model.clusterFieldHint)
             TextField("Kibana URL:", text: $model.kibanaURL, prompt: Text("optional"))
                 .accessibilityIdentifier("preferences.elastic-kibana")
             ProblemText(problem: model.kibanaProblem)

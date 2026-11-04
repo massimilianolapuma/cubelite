@@ -432,20 +432,52 @@ extension Integration {
 // MARK: - Credentials
 
 /// Credentials in the keychain, one record per kube context, bound to the
-/// endpoint they were saved for and never sent anywhere else.
+/// endpoint they were saved for and never sent anywhere else. The default
+/// endpoint shared by every context (#528) keeps its credentials once, in a
+/// store of its own (keychain service `….default`, account
+/// `Integration.defaultAccount`), so no context name can collide with them;
+/// a context reads them only when its resolved endpoint is the default
+/// (`shared`), and only for their binding.
+///
+/// The binding is the endpoint's origin (scheme, host, port) plus the TLS
+/// setting, for per-context and default credentials alike: a path change on
+/// the same origin keeps the stored secret. Changing that rule would
+/// invalidate every stored credential.
 struct IntegrationVault<Auth: Codable & Equatable & Sendable>: Sendable {
     private struct Stored: Codable {
         let binding: String
         let auth: Auth
     }
 
+    /// What applies to a binding.
+    private enum Lookup {
+        case found(Auth)
+        case nothing
+        /// The record that would apply was saved for another endpoint.
+        case otherEndpoint
+    }
+
     let store: any IntegrationSecretStore
+    /// The default endpoint's credentials.
+    let defaults: any IntegrationSecretStore
     /// The "nothing stored" value (`.none`).
     let none: Auth
 
+    init(store: any IntegrationSecretStore, defaults: any IntegrationSecretStore, none: Auth) {
+        self.store = store
+        self.defaults = defaults
+        self.none = none
+    }
+
     /// The stored method's record, if any, with its binding.
     func read(context: String) async throws -> (binding: String, auth: Auth)? {
-        guard let data = try await store.read(account: context) else { return nil }
+        try await read(account: context, in: store)
+    }
+
+    private func read(account: String, in store: any IntegrationSecretStore) async throws
+        -> (binding: String, auth: Auth)?
+    {
+        guard let data = try await store.read(account: account) else { return nil }
         guard let record = try? JSONDecoder().decode(Stored.self, from: data) else {
             throw IntegrationFailure.config("Stored credentials are unreadable; save them again")
         }
@@ -453,32 +485,47 @@ struct IntegrationVault<Auth: Codable & Equatable & Sendable>: Sendable {
     }
 
     /// Stored credentials usable with `binding`; `none` when nothing is stored.
-    func load(context: String, binding: String) async throws -> Auth {
-        guard let stored = try await read(context: context) else { return none }
-        guard stored.binding == binding else {
+    func load(context: String, binding: String, shared: Bool = false) async throws -> Auth {
+        switch try await lookup(context: context, binding: binding, shared: shared) {
+        case .found(let auth): return auth
+        case .nothing: return none
+        case .otherEndpoint:
             throw IntegrationFailure.config(
                 "The saved credentials belong to another endpoint or TLS setting; save them again for this one"
             )
         }
-        return stored.auth
     }
 
     /// The stored auth when it belongs to `binding`, else nil.
-    func stored(context: String, binding: String) async throws -> Auth? {
-        guard let stored = try await read(context: context), stored.binding == binding else {
-            return nil
+    func stored(context: String, binding: String, shared: Bool = false) async throws -> Auth? {
+        if case .found(let auth) = try await lookup(context: context, binding: binding, shared: shared) {
+            return auth
         }
-        return stored.auth
+        return nil
     }
 
-    /// Stores `auth` bound to `binding`; `none` deletes the record.
-    func save(context: String, binding: String, auth: Auth) async throws {
+    /// Stores `auth` bound to `binding` (under the default's account for a
+    /// shared endpoint); `none` deletes the record.
+    func save(context: String, shared: Bool = false, binding: String, auth: Auth) async throws {
+        let (target, account) = shared ? (defaults, Integration.defaultAccount) : (store, context)
         if auth == none {
-            try await store.delete(account: context)
+            try await target.delete(account: account)
         } else {
-            try await store.write(
-                try JSONEncoder().encode(Stored(binding: binding, auth: auth)), account: context)
+            try await target.write(
+                try JSONEncoder().encode(Stored(binding: binding, auth: auth)), account: account)
         }
+    }
+
+    /// The context's own record, else (shared endpoints only) the default's.
+    private func lookup(context: String, binding: String, shared: Bool) async throws -> Lookup {
+        let own = try await read(context: context)
+        if let own, own.binding == binding { return .found(own.auth) }
+        // Without the default, the context's own record is the only one.
+        guard shared else { return own == nil ? .nothing : .otherEndpoint }
+        guard let fallback = try await read(account: Integration.defaultAccount, in: defaults) else {
+            return .nothing
+        }
+        return fallback.binding == binding ? .found(fallback.auth) : .otherEndpoint
     }
 }
 
@@ -495,6 +542,9 @@ actor ConnectionPool<Endpoint: Equatable & Sendable> {
 
     private var connections: [String: Connection] = [:]
     private var generations: [String: Int] = [:]
+    /// Bumped by `disconnectAll`, which also covers contexts still connecting
+    /// (no cached connection to find yet, #528).
+    private var epoch = 0
     private var lastUse: [String: ContinuousClock.Instant] = [:]
     private var idleTasks: [String: Task<Void, Never>] = [:]
 
@@ -509,9 +559,10 @@ actor ConnectionPool<Endpoint: Equatable & Sendable> {
                 return cached
             }
             let generation = generations[context, default: 0]
+            let started = epoch
             let fresh = try await connect()
             // Credentials were saved or removed meanwhile: start over with them.
-            guard generations[context, default: 0] == generation else {
+            guard generations[context, default: 0] == generation, epoch == started else {
                 fresh.close()
                 continue
             }
@@ -547,6 +598,7 @@ actor ConnectionPool<Endpoint: Equatable & Sendable> {
 
     /// Closes every connection (app quit, kubeconfig reload).
     func disconnectAll() {
+        epoch += 1
         for context in Array(connections.keys) {
             disconnect(context: context)
         }

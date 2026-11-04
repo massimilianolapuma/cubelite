@@ -32,21 +32,31 @@ pub struct PrometheusState {
 impl PrometheusState {
     /// Closes the context's connections and Grafana forwards (credentials
     /// saved, disconnect).
-    async fn forget(&self, context: &str) {
-        self.connections.forget(context).await;
+    async fn forget(&self, context: &str, every_context: bool) {
+        if every_context {
+            // The default's credentials changed (#528).
+            self.connections.clear().await;
+        } else {
+            self.connections.forget(context).await;
+        }
         self.grafana.forget(context).await;
     }
 }
 
 fn binding(endpoint: &PromEndpoint) -> Result<String, String> {
+    integration::check_shared(&endpoint.target, endpoint.shared)?;
     integration::binding(&endpoint.target, endpoint.skip_tls_verify)
 }
 
+/// Credentials stored for `context` (or the default, #528), usable only
+/// with `endpoint`. Azure CLI stores the choice only, never a secret.
 fn load_auth(context: &str, endpoint: &PromEndpoint) -> Result<PromAuth, String> {
+    let binding = binding(endpoint)?;
     vault::load(
         KEYCHAIN_SERVICE,
         context,
-        &binding(endpoint)?,
+        endpoint.shared,
+        &binding,
         PromAuth::None,
     )
 }
@@ -59,7 +69,8 @@ fn store_auth(context: &str, endpoint: &PromEndpoint, auth: &PromAuth) -> Result
             auth: auth.clone(),
         }),
     };
-    vault::write(KEYCHAIN_SERVICE, context, record.as_ref())
+    let (service, account) = vault::location(KEYCHAIN_SERVICE, context, endpoint.shared);
+    vault::write(&service, account, record.as_ref())
 }
 
 /// A dead tunnel or network change, or rejected credentials (an expired
@@ -215,8 +226,9 @@ pub async fn prometheus_save_auth(
         }
     }
     let c = context.clone();
+    let shared = endpoint.shared;
     keychain(move || store_auth(&c, &endpoint, &auth)).await?;
-    state.forget(&context).await;
+    state.forget(&context, shared).await;
     Ok(())
 }
 
@@ -228,12 +240,11 @@ pub async fn prometheus_auth_method(
     endpoint: PromEndpoint,
 ) -> Result<String, String> {
     let current = binding(&endpoint)?;
-    let stored = keychain(move || vault::read::<PromAuth>(KEYCHAIN_SERVICE, &context)).await?;
-    Ok(match stored {
-        Some(stored) if stored.binding == current => stored.auth.method(),
-        _ => PromAuth::None.method(),
-    }
-    .to_string())
+    let stored = keychain(move || {
+        vault::stored::<PromAuth>(KEYCHAIN_SERVICE, &context, endpoint.shared, &current)
+    })
+    .await?;
+    Ok(stored.unwrap_or(PromAuth::None).method().to_string())
 }
 
 /// Closes the cached connections of `context` (their port-forwards too)
@@ -243,7 +254,7 @@ pub async fn prometheus_disconnect(
     state: State<'_, PrometheusState>,
     context: String,
 ) -> Result<(), String> {
-    state.forget(&context).await;
+    state.forget(&context, false).await;
     Ok(())
 }
 

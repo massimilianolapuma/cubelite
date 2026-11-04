@@ -210,6 +210,14 @@ pub async fn connect(
     })
 }
 
+/// The `_search` body of a history page, narrowed to the endpoint's
+/// cluster when it has a cluster filter (#528).
+fn history_body(endpoint: &EsEndpoint, query: &HistoryQuery, pit: Option<&str>) -> Value {
+    let mut body = search_body(query, endpoint.preset, pit);
+    super::cluster_filter::apply(&mut body, endpoint.cluster_filter.as_ref(), endpoint.preset);
+    body
+}
+
 impl EsConnection {
     async fn send(&self, request: reqwest::RequestBuilder) -> Result<Value, ElasticError> {
         let response = integration::send(request, self.auth.as_deref())
@@ -348,7 +356,7 @@ impl EsConnection {
         query: &HistoryQuery,
         size: u32,
     ) -> Result<HistoryPage, ElasticError> {
-        let body = search_body(query, endpoint.preset, None);
+        let body = history_body(endpoint, query, None);
         let url = self.url(&format!(
             "{}/_search?ignore_unavailable=true&allow_no_indices=true",
             endpoint.index_pattern
@@ -391,7 +399,7 @@ impl EsConnection {
         pit: &str,
         size: u32,
     ) -> Result<(HistoryPage, String), ElasticError> {
-        let body = search_body(query, endpoint.preset, Some(pit));
+        let body = history_body(endpoint, query, Some(pit));
         // A PIT search names no index (the PIT holds them).
         let response = self
             .send(self.http.post(self.url("_search")).json(&body))

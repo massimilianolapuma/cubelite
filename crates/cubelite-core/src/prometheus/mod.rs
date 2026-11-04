@@ -41,6 +41,10 @@ pub struct PromEndpoint {
     /// Accept any certificate (opt-in, for self-signed endpoints without a CA).
     #[serde(default)]
     pub skip_tls_verify: bool,
+    /// The default endpoint shared by every context (#528): its
+    /// credentials are the default's (see `crate::integration::check_shared`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shared: bool,
 }
 
 /// A Grafana service in the cluster (from Detect; kube-prometheus-stack's

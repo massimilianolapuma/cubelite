@@ -5,6 +5,7 @@
 //! hit → line mapping, Kibana Discover URL — and [`transport`] reaches the
 //! cluster (port-forward for in-cluster, HTTPS for external endpoints).
 
+pub mod cluster_filter;
 pub mod transport;
 
 use serde::{Deserialize, Serialize};
@@ -122,6 +123,14 @@ pub struct EsEndpoint {
     /// Accept any certificate (opt-in, for self-signed endpoints without a CA).
     #[serde(default)]
     pub skip_tls_verify: bool,
+    /// Narrows a deployment shared by many clusters to this context's
+    /// cluster (#528).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_filter: Option<cluster_filter::ClusterFilter>,
+    /// The default endpoint shared by every context (#528): its
+    /// credentials are the default's (see `crate::integration::check_shared`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shared: bool,
 }
 
 /// A Kibana service in the cluster (from Detect; port 5601, HTTPS by
@@ -540,7 +549,9 @@ fn kql(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Kibana Discover URL for one pod's logs over `[from, to]`.
+/// Kibana Discover URL for one pod's logs over `[from, to]`, narrowed to
+/// the context's `cluster` in a shared deployment (#528).
+#[allow(clippy::too_many_arguments)]
 pub fn kibana_discover_url(
     kibana_base: &str,
     preset: FieldPreset,
@@ -549,6 +560,7 @@ pub fn kibana_discover_url(
     container: Option<&str>,
     from: &str,
     to: &str,
+    cluster: Option<&cluster_filter::ClusterFilter>,
 ) -> String {
     let f = preset.fields();
     let mut query = format!(
@@ -561,6 +573,8 @@ pub fn kibana_discover_url(
     if let Some(c) = container.filter(|c| !c.is_empty()) {
         query.push_str(&format!(" and {}:{}", f.container, kql(c)));
     }
+    // The context's cluster in a shared deployment (#528), as in the history.
+    query.push_str(&cluster_filter::kql_clause(cluster, preset));
     discover_link(kibana_base, "kuery", &query, from, to)
 }
 
@@ -629,8 +643,11 @@ pub fn kibana_workload_discover_url(
     workload: Option<&Workload>,
     from: &str,
     to: &str,
+    cluster: Option<&cluster_filter::ClusterFilter>,
 ) -> String {
-    let query = workload_lucene_query(preset, namespace, workload);
+    let mut query = workload_lucene_query(preset, namespace, workload);
+    // The context's cluster in a shared deployment (#528), as in the history.
+    query.push_str(&cluster_filter::lucene_clause(cluster, preset));
     discover_link(kibana_base, "lucene", &query, from, to)
 }
 

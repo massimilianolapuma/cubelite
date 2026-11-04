@@ -187,6 +187,17 @@ describe("History in the log panel (#501)", () => {
     expect(await screen.findByText("No lines in Elasticsearch for this pod and range.")).toBeInTheDocument();
   });
 
+  it("Open in Kibana carries the context's cluster filter (#528)", async () => {
+    elastic.setEndpoint("prod", { ...endpoint, clusterFilter: { field: "", value: "aks-prod" } });
+    vi.mocked(elasticSearch).mockResolvedValue(page([]));
+    const s = session();
+    render(LogToolbar, { props: { session: s } });
+    await fireEvent.click(screen.getByLabelText("More log options"));
+    await fireEvent.click(screen.getByText("Open in Kibana"));
+    await waitFor(() => expect(openKibanaDiscover).toHaveBeenCalled());
+    expect(vi.mocked(openKibanaDiscover).mock.calls.at(-1)?.[0].clusterFilter).toEqual({ field: "", value: "aks-prod" });
+  });
+
   it("Open in Kibana passes the pod, container and range", async () => {
     vi.mocked(elasticSearch).mockResolvedValue(page([]));
     const s = session();
@@ -203,6 +214,7 @@ describe("History in the log panel (#501)", () => {
       container: "web",
       from: "now-7d",
       to: "now",
+      clusterFilter: null,
     });
   });
 });

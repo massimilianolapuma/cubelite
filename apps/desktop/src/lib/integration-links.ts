@@ -80,7 +80,14 @@ export async function openKibanaFor(
 ): Promise<void> {
   const kibanaUrl = await kibanaBase(endpoint);
   if (!kibanaUrl) return;
-  const common = { kibanaUrl, preset: endpoint.preset, namespace, from, to: "now" };
+  const common = {
+    kibanaUrl,
+    preset: endpoint.preset,
+    namespace,
+    from,
+    to: "now",
+    clusterFilter: endpoint.clusterFilter ?? null,
+  };
   if (workload?.kind === "pod") await openKibanaDiscover({ ...common, pod: workload.name, container: null });
   else await openKibanaWorkload({ ...common, workload });
 }

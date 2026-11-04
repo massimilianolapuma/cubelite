@@ -211,6 +211,30 @@ pub async fn connect(
     }
 }
 
+/// Series whose `cluster` label names the clusters with Kubernetes metrics
+/// (cAdvisor, kube-state-metrics), not every scraped job.
+pub const CLUSTER_SERIES: [&str; 2] = ["container_cpu_usage_seconds_total", "kube_pod_info"];
+
+/// `/api/v1/label/<label>/values` with one `match[]` per selector; an error
+/// for a name that is not a Prometheus label name.
+pub fn label_values_path(label: &str, matches: &[&str]) -> Result<String, PromError> {
+    let valid = label
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !valid {
+        return Err(PromError::Config(format!("Invalid label name \"{label}\"")));
+    }
+    let pairs: Vec<(&str, String)> = matches.iter().map(|m| ("match[]", m.to_string())).collect();
+    let query = encode(&pairs);
+    Ok(if query.is_empty() {
+        format!("/api/v1/label/{label}/values")
+    } else {
+        format!("/api/v1/label/{label}/values?{query}")
+    })
+}
+
 fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -323,6 +347,28 @@ impl PromConnection {
         unwrap_data(self.get(&format!("/api/v1/query?{params}")).await?)
     }
 
+    /// Values of `label` on the series matching any of `matches` (every
+    /// series when empty), sorted, without blanks (#528: the `cluster`
+    /// values of a workspace shared by many clusters).
+    pub async fn label_values(
+        &self,
+        label: &str,
+        matches: &[&str],
+    ) -> Result<Vec<String>, PromError> {
+        let data = unwrap_data(self.get(&label_values_path(label, matches)?).await?)?;
+        let mut values: Vec<String> = data
+            .as_array()
+            .ok_or_else(|| PromError::Response("label values are not a list".to_string()))?
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|v| !v.trim().is_empty())
+            .map(str::to_owned)
+            .collect();
+        values.sort();
+        values.dedup();
+        Ok(values)
+    }
+
     /// Version, exporters present and `cluster` label values.
     pub async fn info(&self, endpoint: &PromEndpoint) -> Result<PromInfo, PromError> {
         // The first call decides reachability; the rest are best effort.
@@ -360,18 +406,23 @@ impl PromConnection {
                 "count(kube_pod_container_resource_requests{cluster})"
             ))
             .await);
-        let clusters = self
-            .query("count by (cluster) (up)")
-            .await
-            .ok()
-            .and_then(|d| parse_series(&d, &["cluster"]).ok())
-            .map(|s| {
-                s.into_iter()
-                    .map(|s| s.label)
-                    .filter(|l| !l.is_empty())
-                    .collect()
-            })
-            .unwrap_or_default();
+        let clusters = match self.label_values("cluster", &CLUSTER_SERIES).await {
+            Ok(values) if !values.is_empty() => values,
+            // Servers without the label values API (or without matching
+            // series): the clusters `up` knows.
+            _ => self
+                .query("count by (cluster) (up)")
+                .await
+                .ok()
+                .and_then(|d| parse_series(&d, &["cluster"]).ok())
+                .map(|s| {
+                    s.into_iter()
+                        .map(|s| s.label)
+                        .filter(|l| !l.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
         Ok(PromInfo {
             version,
             cadvisor,

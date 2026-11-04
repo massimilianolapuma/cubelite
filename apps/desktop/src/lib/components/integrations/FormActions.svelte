@@ -5,6 +5,7 @@
 	// last result (shared by the integration preferences).
 	let {
 		active,
+		tls = true,
 		busy,
 		incomplete,
 		skipTlsVerify = $bindable(),
@@ -15,6 +16,8 @@
 	}: {
 		/** The integration is on (Test and skip-TLS only apply then). */
 		active: boolean;
+		/** Shows the skip-TLS opt-in (not for a context using the default, #528). */
+		tls?: boolean;
 		busy: string | null;
 		incomplete: boolean;
 		skipTlsVerify: boolean;
@@ -25,7 +28,7 @@
 	} = $props();
 </script>
 
-{#if active}
+{#if active && tls}
 	<label class="type-caption flex items-center gap-2 text-text-secondary">
 		<input type="checkbox" bind:checked={skipTlsVerify} /> Skip TLS verification (self-signed, no CA)
 	</label>

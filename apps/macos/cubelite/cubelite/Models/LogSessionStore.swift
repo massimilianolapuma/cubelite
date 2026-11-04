@@ -368,7 +368,8 @@ extension LogHistoryAccess {
         guard let workload else { return Integration.webURL(Elastic.kibanaHomeURL(kibanaBase: base)) }
         return Integration.webURL(
             Elastic.kibanaWorkloadURL(
-                kibanaBase: base, preset: endpoint.preset, namespace: namespace, workload: workload))
+                kibanaBase: base, preset: endpoint.preset, namespace: namespace, workload: workload,
+                clusterFilter: endpoint.clusterFilter))
     }
 }
 

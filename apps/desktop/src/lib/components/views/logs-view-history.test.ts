@@ -139,6 +139,7 @@ describe("LogsView workload scope and history (#529)", () => {
         workload: { kind: "deployment", name: "api" },
         from: "now-1h",
         to: "now",
+        clusterFilter: null,
       }),
     );
   });

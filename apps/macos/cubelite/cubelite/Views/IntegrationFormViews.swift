@@ -38,9 +38,11 @@ struct IntegrationsPreferencesTab: View {
             .padding(.top, 12)
             switch settings.integrationPane {
             case .elasticsearch:
-                if let elasticModel { ElasticPreferencesForm(model: elasticModel) }
+                if let elasticModel { ElasticPreferencesForm(model: elasticModel, contexts: clusterState.contexts) }
             case .prometheus:
-                if let prometheusModel { PrometheusPreferencesForm(model: prometheusModel) }
+                if let prometheusModel {
+                    PrometheusPreferencesForm(model: prometheusModel, contexts: clusterState.contexts)
+                }
             }
             Divider()
             HStack {
@@ -108,17 +110,18 @@ struct IntegrationsPreferencesTab: View {
     }
 }
 
-/// Off / In cluster / External.
+/// Off / In cluster / External (Off / External for the default, #528).
 struct TargetModeSection: View {
     @Bindable var target: TargetFields
     let label: String
     let footer: String
     let identifier: String
+    var modes = TargetFields.Mode.allCases
 
     var body: some View {
         Section {
             Picker(label, selection: $target.mode) {
-                ForEach(TargetFields.Mode.allCases, id: \.self) { Text($0.label).tag($0) }
+                ForEach(modes, id: \.self) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("\(identifier)-mode")
@@ -207,16 +210,18 @@ struct FormActionsSection: View {
     let canAct: Bool
     let outcome: FormOutcome?
     let identifier: String
+    /// A context using the default (#528): Test and Save, no TLS opt-in.
+    var inherited = false
     let onTest: () -> Void
     let onSave: () -> Void
 
     var body: some View {
         Section {
-            if target.mode != .off {
+            if target.mode != .off, !inherited {
                 Toggle("Skip TLS certificate verification", isOn: $target.skipTLSVerify)
             }
             HStack {
-                if target.mode != .off {
+                if target.mode != .off || inherited {
                     Button("Test connection", action: onTest)
                         .disabled(!canAct)
                         .accessibilityIdentifier("\(identifier)-test")

@@ -127,6 +127,26 @@ pub fn check_target(target: &Target) -> Result<(), String> {
     Ok(())
 }
 
+/// Keychain service suffix of the default endpoint's credentials (#528):
+/// `cubelite.elastic.default`, `cubelite.prometheus.default`. A service of
+/// its own, so no kube context name (the account of per-context
+/// credentials) can collide with it.
+pub const DEFAULT_SERVICE_SUFFIX: &str = ".default";
+
+/// Account of the default endpoint's credentials in its own service.
+pub const DEFAULT_ACCOUNT: &str = "default";
+
+/// A default endpoint shared by every context (#528) must be external: an
+/// in-cluster service is per cluster by nature.
+pub fn check_shared(target: &Target, shared: bool) -> Result<(), String> {
+    match target {
+        Target::InCluster { .. } if shared => {
+            Err("A default endpoint shared by every context must be an external URL".to_string())
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Checks an external URL: http(s), no credentials in it, and credentials
 /// only over https (or plain http to loopback, which never leaves the host).
 /// The query and fragment are dropped: paths are appended to the result.
@@ -711,6 +731,22 @@ pub async fn detect_all(client: Client) -> Result<Detected, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_endpoints_must_be_external() {
+        let in_cluster = Target::InCluster {
+            namespace: "logging".into(),
+            service: "es".into(),
+            port: 9200,
+            https: true,
+        };
+        assert!(check_shared(&in_cluster, true).is_err());
+        assert!(check_shared(&in_cluster, false).is_ok());
+        let ext = Target::External {
+            url: "https://es.example".into(),
+        };
+        assert!(check_shared(&ext, true).is_ok());
+    }
 
     #[test]
     fn binding_is_the_origin_and_tls_setting() {

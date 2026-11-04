@@ -150,6 +150,7 @@ describe("Kibana and Grafana links in the drawers (#526)", () => {
         container: null,
         from: "now-1h",
         to: "now",
+        clusterFilter: null,
       }),
     );
     expect(kibanaPortForward).not.toHaveBeenCalled();
@@ -181,6 +182,7 @@ describe("Kibana and Grafana links in the drawers (#526)", () => {
         workload: { kind: "deployment", name: "api" },
         from: "now-1h",
         to: "now",
+        clusterFilter: null,
       }),
     );
     expect(kibanaPortForward).toHaveBeenCalledWith("/k", "prod", kibanaService);
