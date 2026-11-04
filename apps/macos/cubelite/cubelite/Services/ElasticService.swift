@@ -73,10 +73,11 @@ actor ElasticService {
     init(
         cluster: any IntegrationClusterAccess,
         secrets: any IntegrationSecretStore = KeychainSecrets(tag: .elasticAuth),
+        defaultSecrets: any IntegrationSecretStore = KeychainSecrets(tag: .elasticDefaultAuth),
         configuration: URLSessionConfiguration = .ephemeral
     ) {
         self.cluster = cluster
-        self.vault = IntegrationVault(store: secrets, none: .none)
+        self.vault = IntegrationVault(store: secrets, defaults: defaultSecrets, none: .none)
         self.configuration = configuration
         self.kibana = ServiceForwards(cluster: cluster)
     }

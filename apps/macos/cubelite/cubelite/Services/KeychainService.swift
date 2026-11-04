@@ -22,6 +22,11 @@ actor KeychainService {
         case elasticAuth       = "it.lapuma.cubelite.elastic"
         /// Prometheus credentials bound to an endpoint (#511).
         case prometheusAuth    = "it.lapuma.cubelite.prometheus"
+        /// The default Elasticsearch endpoint's credentials (#528): a service
+        /// of its own, so no kube context name can collide with them.
+        case elasticDefaultAuth = "it.lapuma.cubelite.elastic.default"
+        /// The default Prometheus endpoint's credentials (#528).
+        case prometheusDefaultAuth = "it.lapuma.cubelite.prometheus.default"
     }
 
     // MARK: - Store

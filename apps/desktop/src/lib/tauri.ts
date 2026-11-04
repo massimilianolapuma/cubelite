@@ -900,6 +900,8 @@ export function kibanaDiscoverUrl(args: {
   container: string | null;
   from: string;
   to: string;
+  /** The context's cluster in a shared deployment (#528). */
+  clusterFilter?: ClusterFilter | null;
 }): Promise<string> {
   return invoke<string>("kibana_discover_url", args);
 }
@@ -913,6 +915,8 @@ export function openKibanaDiscover(args: {
   container: string | null;
   from: string;
   to: string;
+  /** The context's cluster in a shared deployment (#528). */
+  clusterFilter?: ClusterFilter | null;
 }): Promise<void> {
   return invoke("open_kibana_discover", args);
 }
@@ -928,6 +932,8 @@ export function openKibanaWorkload(args: {
   workload: Workload | null;
   from: string;
   to: string;
+  /** The context's cluster in a shared deployment (#528). */
+  clusterFilter?: ClusterFilter | null;
 }): Promise<void> {
   return invoke("open_kibana_workload", args);
 }

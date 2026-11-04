@@ -13,6 +13,8 @@ struct ElasticPreferencesForm: View {
                 scope: model.scope, view: model.view, context: model.context, contexts: contexts,
                 busy: model.busy != nil, identifier: "preferences.elastic",
                 onScope: { kind in Task { await model.setScope(kind) } },
+                onConfirm: { Task { await model.confirmScope() } },
+                onCancel: { model.cancelScope() },
                 onOverride: { Task { await model.override() } },
                 onTurnOff: { Task { await model.turnOff() } },
                 onUseDefault: { Task { await model.useDefault() } })
@@ -31,6 +33,8 @@ struct ElasticPreferencesForm: View {
         }
         .formStyle(.grouped)
         .padding()
+        // Who a saved default reaches (#528).
+        .task(id: contexts) { model.scope.contexts = contexts }
     }
 
     @ViewBuilder

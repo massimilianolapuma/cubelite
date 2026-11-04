@@ -69,8 +69,8 @@ fn store_auth(context: &str, endpoint: &PromEndpoint, auth: &PromAuth) -> Result
             auth: auth.clone(),
         }),
     };
-    let account = vault::account(context, endpoint.shared);
-    vault::write(KEYCHAIN_SERVICE, account, record.as_ref())
+    let (service, account) = vault::location(KEYCHAIN_SERVICE, context, endpoint.shared);
+    vault::write(&service, account, record.as_ref())
 }
 
 /// A dead tunnel or network change, or rejected credentials (an expired

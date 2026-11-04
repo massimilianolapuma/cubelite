@@ -6,6 +6,7 @@ import {
   resolveEndpoint,
   scopeView,
   usedByText,
+  willUseDefaultText,
   type ScopedEndpoint,
 } from "./endpoint-scope.ts";
 
@@ -62,6 +63,8 @@ describe("scopeView (#528)", () => {
   it("lists the contexts using the default", () => {
     expect(usedByText(["a", "b"])).toBe("Used by: a, b");
     expect(usedByText([])).toBe("No context uses the default endpoint yet.");
+    expect(willUseDefaultText(["a", "b"])).toBe("Contexts without their own endpoint will use this default: a, b.");
+    expect(willUseDefaultText([])).toBe("No context uses the default endpoint yet.");
   });
 });
 
@@ -72,13 +75,16 @@ describe("matchClusterLabel (#528)", () => {
     expect(matchClusterLabel(values, "AKS-PROD")).toBe("aks-prod");
   });
 
-  it("then the shortest value containing the context name", () => {
-    expect(matchClusterLabel(["aks-prod-weu-2", "aks-prod-weu"], "aks-prod")).toBe("aks-prod-weu");
+  it("then the only value containing the name or contained in it", () => {
+    expect(matchClusterLabel(["aks-prod-weu", "aks-test"], "aks-prod")).toBe("aks-prod-weu");
+    expect(matchClusterLabel(values, "admin@aks-test")).toBe("aks-test");
   });
 
-  it("then the longest value the context name contains", () => {
-    expect(matchClusterLabel(values, "admin@aks-test")).toBe("aks-test");
-    expect(matchClusterLabel(["dev", "dev-eu"], "user@dev-eu-1")).toBe("dev-eu");
+  it("preselects nothing when several values are near", () => {
+    expect(matchClusterLabel(["preprod", "prod-eu"], "prod")).toBeNull();
+    expect(matchClusterLabel(["aks-prod-weu-2", "aks-prod-weu"], "aks-prod")).toBeNull();
+    expect(matchClusterLabel(["dev", "dev-eu"], "user@dev-eu-1")).toBeNull();
+    expect(matchClusterLabel(["", "x"], "prod")).toBeNull();
   });
 
   it("returns null without a match", () => {

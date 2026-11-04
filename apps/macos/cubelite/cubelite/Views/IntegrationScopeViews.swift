@@ -12,6 +12,8 @@ struct EndpointScopeSection<Endpoint: ScopedEndpoint>: View {
     let busy: Bool
     let identifier: String
     let onScope: @Sendable (EndpointScopeKind) -> Void
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
     let onOverride: () -> Void
     let onTurnOff: () -> Void
     let onUseDefault: () -> Void
@@ -23,6 +25,17 @@ struct EndpointScopeSection<Endpoint: ScopedEndpoint>: View {
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("\(identifier)-scope")
+            if scope.pending != nil {
+                HStack {
+                    Text(ScopeText.unsaved)
+                        .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.statusWarn)
+                    Spacer()
+                    Button(ScopeText.discard, action: onConfirm)
+                        .accessibilityIdentifier("\(identifier)-scope-discard")
+                    Button(ScopeText.keepEditing, action: onCancel)
+                        .accessibilityIdentifier("\(identifier)-scope-keep")
+                }
+            }
             details
         }
     }

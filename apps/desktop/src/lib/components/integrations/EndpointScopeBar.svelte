@@ -7,17 +7,23 @@
 	// endpoint or the default shared by every context, and what the default
 	// means for this context (used, overridden, off).
 	let {
-		scope = $bindable(),
+		scope,
+		pending,
 		view,
 		defaultTarget,
 		usedBy,
 		hasOwn,
 		disabled,
+		onScope,
+		onConfirm,
+		onCancel,
 		onOverride,
 		onTurnOff,
 		onUseDefault
 	}: {
 		scope: EndpointScopeKind;
+		/** A switch waiting for "Discard changes" (unsaved edits). */
+		pending: EndpointScopeKind | null;
 		view: ScopeView;
 		/** The default endpoint's URL; null when there is none. */
 		defaultTarget: string | null;
@@ -26,6 +32,9 @@
 		/** The context has an endpoint of its own (or the user is overriding). */
 		hasOwn: boolean;
 		disabled: boolean;
+		onScope: (kind: EndpointScopeKind) => void;
+		onConfirm: () => void;
+		onCancel: () => void;
 		onOverride: () => void;
 		onTurnOff: () => void;
 		onUseDefault: () => void;
@@ -34,8 +43,16 @@
 
 <div class="flex items-center justify-between gap-3">
 	<span class="type-caption text-text-secondary">Endpoint for</span>
-	<SegmentedControl segments={SCOPE_SEGMENTS} bind:value={scope} label="Endpoint scope" />
+	<SegmentedControl segments={SCOPE_SEGMENTS} bind:value={() => scope, onScope} label="Endpoint scope" />
 </div>
+
+{#if pending}
+	<div class="flex flex-wrap items-center gap-2" role="alert" data-testid="scope-unsaved">
+		<span class="type-caption text-status-warn">{SCOPE_TEXT.unsaved}</span>
+		<button type="button" class={BUTTON_CLASS} onclick={onConfirm}>{SCOPE_TEXT.discard}</button>
+		<button type="button" class={BUTTON_CLASS} onclick={onCancel}>{SCOPE_TEXT.keepEditing}</button>
+	</div>
+{/if}
 
 {#if view === 'default'}
 	<p class="type-caption text-text-tertiary" data-testid="default-used-by">{usedByText(usedBy)}</p>

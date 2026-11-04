@@ -4,7 +4,14 @@
  * the default (override, turn off, use it again). Shared by the
  * Elasticsearch and Prometheus preferences.
  */
-import { scopeView, type EndpointScopeKind, type ScopeView, type ScopedEndpoint } from "#lib/endpoint-scope.ts";
+import {
+  scopeView,
+  willUseDefaultText,
+  type EndpointScopeKind,
+  type ScopeView,
+  type ScopedEndpoint,
+} from "#lib/endpoint-scope.ts";
+import type { FormResult } from "#lib/integration.ts";
 import type { IntegrationKind } from "#lib/integration-suggest.ts";
 import type { EndpointStore } from "#lib/stores/endpoints.svelte.ts";
 import { integrations } from "#lib/stores/integrations.svelte.ts";
@@ -14,6 +21,8 @@ export class EndpointScope<E extends ScopedEndpoint, P> {
   scope = $state<EndpointScopeKind>("context");
   /** The user chose Override on a context using the default. */
   overriding = $state(false);
+  /** A scope switch waiting for "Discard changes" (the form has unsaved edits). */
+  pending = $state<EndpointScopeKind | null>(null);
 
   readonly #store: EndpointStore<E, P>;
   readonly #name: string;
@@ -35,6 +44,23 @@ export class EndpointScope<E extends ScopedEndpoint, P> {
     this.#kind = args.kind;
     this.#removeSecret = args.removeSecret;
     this.#disconnect = args.disconnect;
+  }
+
+  /** Switches to `kind`, or asks first when the form has unsaved edits. */
+  request(kind: EndpointScopeKind, dirty: boolean): void {
+    if (kind === this.scope) return;
+    if (dirty) this.pending = kind;
+    else this.scope = kind;
+  }
+
+  /** Discards the edits and switches. */
+  confirmPending(): void {
+    if (this.pending) this.scope = this.pending;
+    this.pending = null;
+  }
+
+  cancelPending(): void {
+    this.pending = null;
   }
 
   view(context: string | null): ScopeView {
@@ -78,8 +104,13 @@ export class EndpointScope<E extends ScopedEndpoint, P> {
     this.overriding = false;
   }
 
-  /** Toast after the default was saved or removed. */
-  savedDefault(endpoint: E | null): void {
+  /**
+   * Toast after the default was saved or removed; the result line names the
+   * contexts it now reaches (older settings cannot tell "off" from "never
+   * configured").
+   */
+  savedDefault(endpoint: E | null, contexts: string[]): FormResult | null {
     toasts.push(endpoint ? `${this.#name} default endpoint saved` : `${this.#name} default endpoint removed`, "ok");
+    return endpoint ? { ok: true, text: willUseDefaultText(this.#store.usersOfDefault(contexts)) } : null;
   }
 }

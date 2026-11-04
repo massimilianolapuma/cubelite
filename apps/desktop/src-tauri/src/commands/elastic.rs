@@ -12,6 +12,7 @@ use cubelite_core::elastic::{
     HistoryQuery, KibanaService,
 };
 
+use cubelite_core::elastic::cluster_filter::ClusterFilter;
 use cubelite_core::integration;
 use cubelite_core::prometheus::Workload;
 use cubelite_core::KubeClient;
@@ -72,8 +73,8 @@ fn store_auth(context: &str, endpoint: &EsEndpoint, auth: &EsAuth) -> Result<(),
             auth: auth.clone(),
         }),
     };
-    let account = vault::account(context, endpoint.shared);
-    vault::write(KEYCHAIN_SERVICE, account, record.as_ref())
+    let (service, account) = vault::location(KEYCHAIN_SERVICE, context, endpoint.shared);
+    vault::write(&service, account, record.as_ref())
 }
 
 fn method(auth: &EsAuth) -> &'static str {
@@ -288,6 +289,7 @@ pub fn kibana_discover_url(
     container: Option<String>,
     from: String,
     to: String,
+    cluster_filter: Option<ClusterFilter>,
 ) -> String {
     discover_url(
         &kibana_url,
@@ -297,6 +299,7 @@ pub fn kibana_discover_url(
         container.as_deref(),
         &from,
         &to,
+        cluster_filter.as_ref(),
     )
 }
 
@@ -313,6 +316,7 @@ pub fn open_kibana_discover(
     container: Option<String>,
     from: String,
     to: String,
+    cluster_filter: Option<ClusterFilter>,
 ) -> Result<(), String> {
     let base = http_base(&kibana_url, "Kibana")?;
     let target = discover_url(
@@ -323,6 +327,7 @@ pub fn open_kibana_discover(
         container.as_deref(),
         &from,
         &to,
+        cluster_filter.as_ref(),
     );
     open_in_browser(&app, target)
 }
@@ -330,6 +335,7 @@ pub fn open_kibana_discover(
 /// Opens Kibana Discover for a workload's pods, or a whole namespace
 /// without one (#526, #529): the same filter as the history.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn open_kibana_workload(
     app: tauri::AppHandle,
     kibana_url: String,
@@ -338,6 +344,7 @@ pub fn open_kibana_workload(
     workload: Option<Workload>,
     from: String,
     to: String,
+    cluster_filter: Option<ClusterFilter>,
 ) -> Result<(), String> {
     let base = http_base(&kibana_url, "Kibana")?;
     let target = kibana_workload_discover_url(
@@ -347,6 +354,7 @@ pub fn open_kibana_workload(
         workload.as_ref(),
         &from,
         &to,
+        cluster_filter.as_ref(),
     );
     open_in_browser(&app, target)
 }

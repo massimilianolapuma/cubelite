@@ -59,6 +59,20 @@ final class PrometheusPreferencesModel {
     private(set) var detectedGrafana: [DetectedPrometheus] = []
     /// `cluster` values found by the last Test connection (#528).
     private(set) var foundClusters: [String]?
+    /// The form as loaded (#528).
+    private var loaded: [String] = []
+
+    /// The form's fields, typed secrets included.
+    private var snapshot: [String] {
+        [
+            target.mode.rawValue, target.namespace, target.service, String(target.port), String(target.https),
+            target.url, String(target.skipTLSVerify), cluster, grafanaURL, grafanaDatasource,
+            grafanaService.map { "\($0)" } ?? "", input.username, input.password, input.secret,
+        ]
+    }
+
+    /// The form has edits not saved yet.
+    var isDirty: Bool { snapshot != loaded }
     /// This context's endpoint or the default (#528).
     let scope: EndpointScopeModel<PromEndpoint>
     private(set) var busy: Busy?
@@ -84,8 +98,13 @@ final class PrometheusPreferencesModel {
 
     /// Loads `context`'s saved endpoint; nothing from the previous context stays.
     func load(context: String?) async {
-        if context != self.context { scope.overriding = false }
+        if context != self.context {
+            scope.overriding = false
+            scope.pending = nil
+        }
         self.context = context
+        // What "unsaved edits" compare against, once loaded.
+        defer { loaded = snapshot }
         outcome = nil
         detected = nil
         detectedGrafana = []
@@ -113,15 +132,36 @@ final class PrometheusPreferencesModel {
 
     // MARK: Scope (#528)
 
+    /// Switches to `kind`, or asks first when the form has unsaved edits.
     func setScope(_ kind: EndpointScopeKind) async {
+        guard kind != scope.kind else { return }
+        if isDirty {
+            scope.pending = kind
+            return
+        }
         scope.kind = kind
         await load(context: context)
     }
 
-    /// Gives a context using the default an endpoint of its own.
+    /// Discards the edits and switches to the pending scope.
+    func confirmScope() async {
+        guard let kind = scope.pending else { return }
+        scope.pending = nil
+        scope.kind = kind
+        await load(context: context)
+    }
+
+    func cancelScope() {
+        scope.pending = nil
+    }
+
+    /// Gives a context using the default an endpoint of its own, from the
+    /// default's values; what was typed for this context is kept.
     func override() async {
+        let carry = isDirty ? cluster : nil
         scope.overriding = true
         await load(context: context)
+        if let carry { cluster = carry }
     }
 
     func turnOff() async {
@@ -278,6 +318,7 @@ final class PrometheusPreferencesModel {
             guard let context else { return }
             endpoints.setSettings(contextDraft, for: context)
             outcome = FormOutcome(ok: true, text: "Prometheus cluster label saved for \(context)")
+            loaded = snapshot
             return
         }
         let endpoint = draft()
@@ -310,9 +351,10 @@ final class PrometheusPreferencesModel {
             } else {
                 self.storedMethod = nil
             }
+            self.loaded = self.snapshot
             self.outcome = FormOutcome(
                 ok: true,
-                text: EndpointScopeModel<PromEndpoint>.savedText(
+                text: self.scope.savedText(
                     name: "Prometheus", view: view, saved: endpoint != nil, context: context))
         }
     }

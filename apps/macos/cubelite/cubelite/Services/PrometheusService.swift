@@ -99,11 +99,12 @@ actor PrometheusService {
     init(
         cluster: any IntegrationClusterAccess,
         secrets: any IntegrationSecretStore = KeychainSecrets(tag: .prometheusAuth),
+        defaultSecrets: any IntegrationSecretStore = KeychainSecrets(tag: .prometheusDefaultAuth),
         configuration: URLSessionConfiguration = .ephemeral,
         azure: AzureCLIToken = AzureCLIToken()
     ) {
         self.cluster = cluster
-        self.vault = IntegrationVault(store: secrets, none: .none)
+        self.vault = IntegrationVault(store: secrets, defaults: defaultSecrets, none: .none)
         self.configuration = configuration
         self.azure = azure
         self.grafana = ServiceForwards(cluster: cluster)

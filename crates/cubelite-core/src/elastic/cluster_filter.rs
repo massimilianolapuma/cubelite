@@ -38,6 +38,36 @@ impl ClusterFilter {
     }
 }
 
+/// Escapes a field name for KQL (`\`, whitespace and the KQL operators).
+fn kql_field(name: &str) -> String {
+    name.chars()
+        .flat_map(|c| {
+            let special = c.is_whitespace() || r#"\():<>"*{}"#.contains(c);
+            special
+                .then_some('\\')
+                .into_iter()
+                .chain(std::iter::once(c))
+        })
+        .collect()
+}
+
+/// The cluster clause of a Kibana KQL query (` and <field>:"<value>"`),
+/// empty without a usable filter: Open in Kibana shows what the history shows.
+pub fn kql_clause(filter: Option<&ClusterFilter>, preset: FieldPreset) -> String {
+    filter
+        .and_then(|f| f.term(preset))
+        .map(|(field, value)| format!(" and {}:{}", kql_field(field), super::kql(value)))
+        .unwrap_or_default()
+}
+
+/// The cluster clause of a Kibana Lucene query (` AND <field>:"<value>"`).
+pub fn lucene_clause(filter: Option<&ClusterFilter>, preset: FieldPreset) -> String {
+    filter
+        .and_then(|f| f.term(preset))
+        .map(|(field, value)| format!(" AND {}:{}", super::lucene_field(field), super::kql(value)))
+        .unwrap_or_default()
+}
+
 /// Adds the cluster term to a `_search` body built by
 /// [`super::search_body`] (its `query.bool.filter` list); a no-op without
 /// a usable filter.
@@ -140,6 +170,71 @@ mod tests {
         let body: Value = serde_json::from_str(body).expect("json");
         let filters = body["query"]["bool"]["filter"].as_array().expect("filters");
         assert!(filters.contains(&json!({ "term": { ECS_CLUSTER_FIELD: "aks-prod" } })));
+    }
+
+    #[test]
+    fn kibana_clauses_escape_field_and_value() {
+        let f = filter("", r#"aks "prod"\x"#);
+        assert_eq!(
+            kql_clause(Some(&f), FieldPreset::Ecs),
+            r#" and orchestrator.cluster.name:"aks \"prod\"\\x""#
+        );
+        assert_eq!(
+            lucene_clause(Some(&filter("k8s/cluster-name", "eu")), FieldPreset::Ecs),
+            r#" AND k8s\/cluster\-name:"eu""#
+        );
+        assert_eq!(
+            kql_clause(Some(&filter("a b:c", "eu")), FieldPreset::Ecs),
+            r#" and a\ b\:c:"eu""#
+        );
+        assert_eq!(kql_clause(None, FieldPreset::Ecs), "");
+        assert_eq!(
+            lucene_clause(Some(&filter("", "eu")), FieldPreset::FluentBit),
+            ""
+        );
+    }
+
+    #[test]
+    fn kibana_links_carry_the_cluster_filter() {
+        use super::super::{kibana_discover_url, kibana_workload_discover_url, Workload};
+        let f = filter("", "aks-prod");
+        let pod = kibana_discover_url(
+            "https://kb",
+            FieldPreset::Ecs,
+            "shop",
+            "api-0",
+            None,
+            "now-1h",
+            "now",
+            Some(&f),
+        );
+        let decoded = urlencoding_decode(&pod);
+        assert!(
+            decoded.contains(r#"and orchestrator.cluster.name:"aks-prod""#),
+            "{decoded}"
+        );
+        let workload = Workload::Deployment { name: "api".into() };
+        let url = kibana_workload_discover_url(
+            "https://kb",
+            FieldPreset::Ecs,
+            "shop",
+            Some(&workload),
+            "now-1h",
+            "now",
+            Some(&f),
+        );
+        let decoded = urlencoding_decode(&url);
+        assert!(
+            decoded.contains(r#"AND orchestrator.cluster.name:"aks-prod""#),
+            "{decoded}"
+        );
+    }
+
+    fn urlencoding_decode(s: &str) -> String {
+        url::form_urlencoded::parse(s.split_once('?').map_or(s, |(_, q)| q).as_bytes())
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("&")
     }
 
     #[test]

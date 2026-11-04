@@ -127,10 +127,14 @@ pub fn check_target(target: &Target) -> Result<(), String> {
     Ok(())
 }
 
-/// Account of the default endpoint's credentials in the keychain (#528),
-/// next to one account per kube context. Not a valid context name for
-/// kubectl-generated kubeconfigs, and never sent as one by the frontends.
-pub const DEFAULT_ACCOUNT: &str = "*default*";
+/// Keychain service suffix of the default endpoint's credentials (#528):
+/// `cubelite.elastic.default`, `cubelite.prometheus.default`. A service of
+/// its own, so no kube context name (the account of per-context
+/// credentials) can collide with it.
+pub const DEFAULT_SERVICE_SUFFIX: &str = ".default";
+
+/// Account of the default endpoint's credentials in its own service.
+pub const DEFAULT_ACCOUNT: &str = "default";
 
 /// A default endpoint shared by every context (#528) must be external: an
 /// in-cluster service is per cluster by nature.

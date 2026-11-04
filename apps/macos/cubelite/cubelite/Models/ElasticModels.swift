@@ -525,12 +525,16 @@ enum Elastic {
     /// Kibana Discover URL for one pod's logs over `[from, to]`.
     static func kibanaDiscoverURL(
         kibanaBase: String, preset: FieldPreset, namespace: String, pod: String,
-        container: String?, from: String, to: String
+        container: String?, from: String, to: String, clusterFilter: ClusterFilter? = nil
     ) -> String {
         let f = preset.fields
         var query = "\(f.namespace):\(kql(namespace)) and \(f.pod):\(kql(pod))"
         if let container, !container.isEmpty {
             query += " and \(f.container):\(kql(container))"
+        }
+        // The context's cluster in a shared deployment (#528), as in the history.
+        if let (field, value) = clusterFilter?.term(preset: preset) {
+            query += " and \(kqlField(field)):\(kql(value))"
         }
         return kibanaDiscoverURL(kibanaBase: kibanaBase, query: query, from: from, to: to)
     }
@@ -555,14 +559,18 @@ enum Elastic {
     /// history's filter.
     static func kibanaWorkloadURL(
         kibanaBase: String, preset: FieldPreset, namespace: String, workload: Workload?,
-        from: String = "now-1h"
+        from: String = "now-1h", clusterFilter: ClusterFilter? = nil
     ) -> String {
         if case .pod(let name)? = workload {
             return kibanaDiscoverURL(
                 kibanaBase: kibanaBase, preset: preset, namespace: namespace, pod: name, container: nil,
-                from: from, to: "now")
+                from: from, to: "now", clusterFilter: clusterFilter)
         }
-        let query = workloadLuceneQuery(preset: preset, namespace: namespace, workload: workload)
+        var query = workloadLuceneQuery(preset: preset, namespace: namespace, workload: workload)
+        // The context's cluster in a shared deployment (#528), as in the history.
+        if let (field, value) = clusterFilter?.term(preset: preset) {
+            query += " AND \(luceneField(field)):\(kql(value))"
+        }
         return kibanaDiscoverURL(kibanaBase: kibanaBase, query: query, language: "lucene", from: from, to: "now")
     }
 
@@ -684,6 +692,16 @@ enum Elastic {
     }
 
     /// KQL string literal: `"…"` with `\` and `"` escaped.
+    /// Escapes a field name for KQL (`\\`, whitespace and the KQL operators).
+    private static func kqlField(_ name: String) -> String {
+        var out = ""
+        for c in name {
+            if c.isWhitespace || "\\():<>\"*{}".contains(c) { out.append("\\") }
+            out.append(c)
+        }
+        return out
+    }
+
     private static func kql(_ s: String) -> String {
         "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
             + "\""

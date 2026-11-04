@@ -4,11 +4,17 @@
 //! back to the frontend.
 //!
 //! The default endpoint shared by every context (#528) keeps its
-//! credentials once, under [`DEFAULT_ACCOUNT`]. A context reads them only
-//! when its resolved endpoint is the default (`shared`), and only for the
-//! binding they were saved with.
+//! credentials once, in a keychain service of its own (`<service>.default`,
+//! see [`location`]), so no context name can collide with it. A context
+//! reads them only when its resolved endpoint is the default (`shared`), and
+//! only for the binding they were saved with.
+//!
+//! The binding is the endpoint's origin (scheme, host, port) plus the TLS
+//! setting, for per-context and default credentials alike: a path change on
+//! the same origin keeps the stored secret, any other change needs it typed
+//! again. Changing that rule would invalidate every stored credential.
 
-pub(crate) use cubelite_core::integration::DEFAULT_ACCOUNT;
+use cubelite_core::integration::{DEFAULT_ACCOUNT, DEFAULT_SERVICE_SUFFIX};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -60,13 +66,18 @@ pub(crate) fn write<A: Serialize>(
 const MOVED: &str =
     "The saved credentials belong to another endpoint or TLS setting; save them again for this one";
 
-/// Keychain account of the credentials saved for `context`'s endpoint: the
-/// default's account when the endpoint is the shared default.
-pub(crate) fn account(context: &str, shared: bool) -> &str {
+/// Keychain service of the default endpoint's credentials.
+fn default_service(service: &str) -> String {
+    format!("{service}{DEFAULT_SERVICE_SUFFIX}")
+}
+
+/// Keychain (service, account) of the credentials saved for `context`'s
+/// endpoint: the default's own service when it is the shared default.
+pub(crate) fn location<'a>(service: &str, context: &'a str, shared: bool) -> (String, &'a str) {
     if shared {
-        DEFAULT_ACCOUNT
+        (default_service(service), DEFAULT_ACCOUNT)
     } else {
-        context
+        (service.to_string(), context)
     }
 }
 
@@ -104,7 +115,8 @@ pub(crate) fn load<A: DeserializeOwned>(
     none: A,
 ) -> Result<A, String> {
     let own = read::<A>(service, context)?;
-    let found = pick(own, || read::<A>(service, DEFAULT_ACCOUNT), shared, binding)?;
+    let default = || read::<A>(&default_service(service), DEFAULT_ACCOUNT);
+    let found = pick(own, default, shared, binding)?;
     Ok(found.unwrap_or(none))
 }
 
@@ -117,7 +129,8 @@ pub(crate) fn stored<A: DeserializeOwned>(
     binding: &str,
 ) -> Result<Option<A>, String> {
     let own = read::<A>(service, context)?;
-    Ok(pick(own, || read::<A>(service, DEFAULT_ACCOUNT), shared, binding).unwrap_or(None))
+    let default = || read::<A>(&default_service(service), DEFAULT_ACCOUNT);
+    Ok(pick(own, default, shared, binding).unwrap_or(None))
 }
 
 /// Runs a keychain call on the blocking pool: it can block on a system
@@ -207,8 +220,21 @@ mod tests {
     }
 
     #[test]
-    fn shared_endpoints_use_the_default_account() {
-        assert_eq!(account("prod", false), "prod");
-        assert_eq!(account("prod", true), DEFAULT_ACCOUNT);
+    fn the_default_has_a_service_of_its_own() {
+        assert_eq!(
+            location("cubelite.elastic", "prod", false),
+            ("cubelite.elastic".to_string(), "prod")
+        );
+        assert_eq!(
+            location("cubelite.elastic", "prod", true),
+            ("cubelite.elastic.default".to_string(), "default")
+        );
+        // A context named like the default's account never reaches it.
+        for name in [DEFAULT_ACCOUNT, "*default*"] {
+            assert_ne!(
+                location("cubelite.elastic", name, false),
+                location("cubelite.elastic", name, true)
+            );
+        }
     }
 }

@@ -78,12 +78,35 @@
 	$effect(() => {
 		void context;
 		scope.overriding = false;
+		scope.pending = null;
 	});
+
+	/** The form as loaded: what "unsaved edits" compare against (#528). */
+	let loaded = $state('');
+	/** The cluster label typed on the default, kept by Override. */
+	let carry: string | null = null;
+
+	function snapshot(): string {
+		const { mode, namespace, service, port, https, url, skipTlsVerify } = form;
+		const typed = [auth.username, auth.password, auth.secret];
+		return JSON.stringify([mode, namespace, service, port, https, url, skipTlsVerify, cluster, grafanaUrl, grafanaDatasource, grafanaService, typed]);
+	}
+	const dirty = $derived(snapshot() !== loaded);
 
 	$effect(() => {
 		const e = saved;
 		const v = view;
 		const ctx = context;
+		loadForm(e, v, ctx);
+		untrack(() => (loaded = snapshot()));
+	});
+
+	function override() {
+		carry = dirty ? cluster : null;
+		scope.overriding = true;
+	}
+
+	function loadForm(e: PromEndpoint | null, v: typeof view, ctx: string | null) {
 		result = null;
 		detected = null;
 		found = null;
@@ -107,6 +130,9 @@
 		const prefill = v === 'own' && untrack(() => scope.overriding) ? untrack(() => fallback) : null;
 		if (prefill) {
 			loadFields(prefill);
+			// What was typed on the default is kept.
+			if (carry) cluster = carry;
+			carry = null;
 			return;
 		}
 		// Review in the integrations banner (#527): pre-filled, not saved.
@@ -118,7 +144,7 @@
 			detected = suggested.candidates;
 			result = { ok: true, text: SUGGESTED_TEXT };
 		}
-	});
+	}
 
 	function loadFields(e: PromEndpoint) {
 		form.load(e.target, e.skipTlsVerify);
@@ -238,6 +264,7 @@
 		if (view === 'inherited') {
 			prometheus.setContextSettings(ctx, cluster.trim() ? { cluster: cluster.trim() } : null);
 			toasts.push(`Prometheus cluster label saved for ${ctx}`, 'ok');
+			loaded = snapshot();
 			return;
 		}
 		const v = view;
@@ -256,9 +283,10 @@
 				return;
 			}
 			auth.clearSecrets();
+			let notice: FormResult | null = null;
 			if (v === 'default') {
 				prometheus.setDefault(endpoint);
-				scope.savedDefault(endpoint);
+				notice = scope.savedDefault(endpoint, contextNames());
 			} else {
 				prometheus.setEndpoint(ctx, endpoint);
 				scope.savedOwn(ctx, endpoint);
@@ -269,8 +297,12 @@
 			// A changed endpoint or Grafana service must not keep old forwards.
 			await prometheusDisconnect(ctx);
 			if (endpoint) await refreshStoredMethod(scope.forBackend(v, endpoint));
+			loaded = snapshot();
+			if (notice) result = notice;
 		});
 	}
+
+	const contextNames = () => clusters.contexts.map((c) => c.name);
 
 	function scoped(action: (ctx: string) => Promise<void>) {
 		const ctx = context;
@@ -301,13 +333,17 @@
 	{#if context}
 		<div class="flex flex-col gap-2 rounded-md border border-border-faint bg-surface-window px-2.5 py-2">
 			<EndpointScopeBar
-				bind:scope={scope.scope}
+				scope={scope.scope}
+				pending={scope.pending}
 				{view}
 				defaultTarget={fallback ? describeTarget(fallback.target) : null}
 				{usedBy}
 				hasOwn={prometheus.ownEndpoint(context) !== null || scope.overriding}
 				disabled={busy !== null}
-				onOverride={() => (scope.overriding = true)}
+				onScope={(kind) => scope.request(kind, dirty)}
+				onConfirm={() => scope.confirmPending()}
+				onCancel={() => scope.cancelPending()}
+				onOverride={override}
 				onTurnOff={() => scoped((ctx) => scope.turnOff(ctx))}
 				onUseDefault={() => scoped((ctx) => scope.useDefault(ctx))}
 			/>

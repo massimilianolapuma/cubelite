@@ -9,9 +9,9 @@ import Foundation
 // MARK: - Default endpoint
 
 extension Integration {
-    /// Keychain account of the default endpoint's credentials, next to one
-    /// account per kube context (same as the desktop).
-    static let defaultAccount = "*default*"
+    /// Account of the default endpoint's credentials, in their own keychain
+    /// service (`it.lapuma.cubelite.elastic.default`, …), same as the desktop.
+    static let defaultAccount = "default"
 
     /// A default endpoint shared by every context must be external: an
     /// in-cluster service is per cluster by nature.
@@ -79,9 +79,21 @@ enum ScopeText {
     static let defaultHint =
         "Only external URLs can be shared by every context. Credentials are saved once, for this URL only."
     static let usedByNone = "No context uses the default endpoint yet."
+    static let unsaved = "Unsaved changes will be lost."
+    static let discard = "Discard changes"
+    static let keepEditing = "Keep editing"
 
     static func usedBy(_ contexts: [String]) -> String {
         contexts.isEmpty ? usedByNone : "Used by: \(contexts.joined(separator: ", "))"
+    }
+
+    /// Shown when the default is saved: older settings cannot tell a context
+    /// turned off from one never configured, so the contexts it now reaches
+    /// are named.
+    static func willUseDefault(_ contexts: [String]) -> String {
+        contexts.isEmpty
+            ? usedByNone
+            : "Contexts without their own endpoint will use this default: \(contexts.joined(separator: ", "))."
     }
 }
 
@@ -236,14 +248,18 @@ enum ClusterLabel {
         return Array(Set(strings)).sorted()
     }
 
-    /// The value matching a kube context: equal to its name, else the
-    /// shortest value containing it, else the longest value the name
-    /// contains (`admin@aks-prod` → `aks-prod`). Case-insensitive.
+    /// The value to preselect for a kube context: the one equal to its name
+    /// (case-insensitive), else the only value containing the name or
+    /// contained in it (`admin@aks-prod` → `aks-prod`). Ambiguous (`prod`
+    /// with `preprod` and `prod-eu`) preselects nothing: picking one would
+    /// show another cluster's metrics.
     static func match(_ values: [String], context: String) -> String? {
         let name = context.lowercased()
         if let exact = values.first(where: { $0.lowercased() == name }) { return exact }
-        let containing = values.filter { $0.lowercased().contains(name) }
-        if let shortest = containing.min(by: { $0.count < $1.count }) { return shortest }
-        return values.filter { !$0.isEmpty && name.contains($0.lowercased()) }.max { $0.count < $1.count }
+        let near = values.filter { value in
+            let v = value.lowercased()
+            return !v.isEmpty && (v.contains(name) || name.contains(v))
+        }
+        return near.count == 1 ? near[0] : nil
     }
 }

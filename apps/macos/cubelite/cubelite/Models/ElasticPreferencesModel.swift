@@ -73,6 +73,21 @@ final class ElasticPreferencesModel {
     private(set) var outcome: Outcome?
     /// This context's endpoint or the default (#528).
     let scope: EndpointScopeModel<EsEndpoint>
+    /// The form as loaded (#528).
+    private var loaded: [String] = []
+
+    /// The form's fields, typed secrets included.
+    private var snapshot: [String] {
+        [
+            target.mode.rawValue, target.namespace, target.service, String(target.port), String(target.https),
+            target.url, String(target.skipTLSVerify), indexPattern, preset.rawValue, kibanaURL,
+            kibanaService.map { "\($0)" } ?? "", clusterField, clusterValue, input.username, input.password,
+            input.secret,
+        ]
+    }
+
+    /// The form has edits not saved yet.
+    var isDirty: Bool { snapshot != loaded }
 
     private let backend: any ElasticPreferencesBackend
     private let endpoints: ElasticEndpointStore
@@ -100,8 +115,13 @@ final class ElasticPreferencesModel {
     /// Loads `context`'s saved endpoint; nothing from the previous context
     /// stays in the form.
     func load(context: String?) async {
-        if context != self.context { scope.overriding = false }
+        if context != self.context {
+            scope.overriding = false
+            scope.pending = nil
+        }
         self.context = context
+        // What "unsaved edits" compare against, once loaded.
+        defer { loaded = snapshot }
         outcome = nil
         detected = nil
         detectedKibana = []
@@ -133,15 +153,36 @@ final class ElasticPreferencesModel {
 
     // MARK: Scope (#528)
 
+    /// Switches to `kind`, or asks first when the form has unsaved edits.
     func setScope(_ kind: EndpointScopeKind) async {
+        guard kind != scope.kind else { return }
+        if isDirty {
+            scope.pending = kind
+            return
+        }
         scope.kind = kind
         await load(context: context)
     }
 
-    /// Gives a context using the default an endpoint of its own.
+    /// Discards the edits and switches to the pending scope.
+    func confirmScope() async {
+        guard let kind = scope.pending else { return }
+        scope.pending = nil
+        scope.kind = kind
+        await load(context: context)
+    }
+
+    func cancelScope() {
+        scope.pending = nil
+    }
+
+    /// Gives a context using the default an endpoint of its own, from the
+    /// default's values; what was typed for this context is kept.
     func override() async {
+        let carry = isDirty ? (clusterField, clusterValue) : nil
         scope.overriding = true
         await load(context: context)
+        if let carry { (clusterField, clusterValue) = carry }
     }
 
     func turnOff() async {
@@ -305,6 +346,7 @@ final class ElasticPreferencesModel {
             let filter = ClusterFilter.typed(field: clusterField, value: clusterValue)
             endpoints.setSettings(filter.map { ElasticContextSettings(clusterFilter: $0) }, for: context)
             outcome = Outcome(ok: true, text: "Elasticsearch cluster filter saved for \(context)")
+            loaded = snapshot
             return
         }
         let endpoint = draft()
@@ -345,9 +387,10 @@ final class ElasticPreferencesModel {
             } else {
                 storedMethod = nil
             }
+            loaded = snapshot
             outcome = Outcome(
                 ok: true,
-                text: EndpointScopeModel<EsEndpoint>.savedText(
+                text: scope.savedText(
                     name: "Elasticsearch", view: view, saved: endpoint != nil, context: context))
         } catch {
             if context == self.context { outcome = Outcome(ok: false, text: error.localizedDescription) }

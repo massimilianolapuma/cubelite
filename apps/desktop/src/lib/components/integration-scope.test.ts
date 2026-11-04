@@ -141,6 +141,58 @@ describe("Prometheus default endpoint (#528)", () => {
     expect(prometheus.endpointFor("aks-prod")?.shared).toBe(true);
   });
 
+  it("names the contexts a newly saved default reaches", async () => {
+    render(PrometheusPreferences);
+    await fireEvent.click(screen.getByRole("radio", { name: "All contexts (default)" }));
+    await fireEvent.click(screen.getByRole("radio", { name: "External" }));
+    await fireEvent.input(screen.getByLabelText("Prometheus URL"), { target: { value: "https://p.example" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Contexts without their own endpoint will use this default: aks-prod, aks-test, minikube.",
+    );
+  });
+
+  it("asks before a scope switch drops unsaved edits", async () => {
+    render(PrometheusPreferences);
+    await fireEvent.click(screen.getByRole("radio", { name: "External" }));
+    await fireEvent.input(screen.getByLabelText("Prometheus URL"), { target: { value: "https://typed.example" } });
+    await fireEvent.click(screen.getByRole("radio", { name: "All contexts (default)" }));
+    expect(screen.getByTestId("scope-unsaved")).toHaveTextContent("Unsaved changes will be lost.");
+    await fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.getByLabelText("Prometheus URL")).toHaveValue("https://typed.example");
+    expect(screen.getByRole("radio", { name: "This context" })).toHaveAttribute("aria-checked", "true");
+    await fireEvent.click(screen.getByRole("radio", { name: "All contexts (default)" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(screen.getByRole("radio", { name: "All contexts (default)" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByTestId("scope-unsaved")).not.toBeInTheDocument();
+  });
+
+  it("Override keeps the cluster label typed on the default", async () => {
+    prometheus.setDefault(SHARED);
+    render(PrometheusPreferences);
+    await fireEvent.input(screen.getByLabelText("Cluster label"), { target: { value: "aks-typed" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Override" }));
+    expect(await screen.findByLabelText("Prometheus URL")).toHaveValue(
+      "https://ws-1.westeurope.prometheus.monitor.azure.com",
+    );
+    expect(screen.getByLabelText("Cluster label")).toHaveValue("aks-typed");
+  });
+
+  it("preselects no cluster when several are near the context name", async () => {
+    prometheus.setDefault(SHARED);
+    app.activeCluster = "aks-test";
+    vi.mocked(prometheusTest).mockResolvedValueOnce({
+      version: "unknown",
+      cadvisor: true,
+      kubeStateMetrics: true,
+      clusters: ["aks-test-eu", "aks-test-us"],
+    });
+    render(PrometheusPreferences);
+    await fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    await waitFor(() => expect(screen.getByLabelText("Clusters found")).toHaveValue(""));
+    expect(screen.getByLabelText("Cluster label")).toHaveValue("");
+  });
+
   it("Off on a context's own form keeps the default away", async () => {
     prometheus.setDefault(SHARED);
     prometheus.setEndpoint("aks-prod", { ...SHARED, target: { kind: "external", url: "https://own.example" } });

@@ -11,6 +11,10 @@ final class EndpointScopeModel<Endpoint: ScopedEndpoint> {
     var kind = EndpointScopeKind.context
     /// The user chose Override on a context using the default.
     var overriding = false
+    /// A scope switch waiting for "Discard changes" (unsaved edits).
+    var pending: EndpointScopeKind?
+    /// Every kube context (set by the settings view): who a saved default reaches.
+    @ObservationIgnored var contexts: [String] = []
 
     let store: EndpointStore<Endpoint>
 
@@ -100,10 +104,11 @@ final class EndpointScopeModel<Endpoint: ScopedEndpoint> {
         overriding = false
     }
 
-    /// The result line after Save.
-    static func savedText(name: String, view: ScopeView, saved: Bool, context: String) -> String {
+    /// The result line after Save; a saved default names the contexts it
+    /// now reaches (older settings cannot tell "off" from "never configured").
+    func savedText(name: String, view: ScopeView, saved: Bool, context: String) -> String {
         switch (view, saved) {
-        case (.sharedDefault, true): "\(name) default endpoint saved"
+        case (.sharedDefault, true): ScopeText.willUseDefault(store.usersOfDefault(contexts))
         case (.sharedDefault, false): "\(name) default endpoint removed"
         case (_, true): "\(name) saved for \(context)"
         case (_, false): "\(name) off for \(context)"

@@ -37,7 +37,22 @@ export const SCOPE_TEXT = {
   useDefault: "Use the default endpoint",
   defaultHint: "Only external URLs can be shared by every context. Credentials are saved once, for this URL only.",
   usedByNone: "No context uses the default endpoint yet.",
+  willUseDefault: "Contexts without their own endpoint will use this default",
+  unsaved: "Unsaved changes will be lost.",
+  discard: "Discard changes",
+  keepEditing: "Keep editing",
 } as const;
+
+/**
+ * Shown when the default is saved: older settings cannot tell a context
+ * turned off from one never configured, so the contexts it now reaches are
+ * named.
+ */
+export function willUseDefaultText(contexts: string[]): string {
+  return contexts.length === 0
+    ? SCOPE_TEXT.usedByNone
+    : `${SCOPE_TEXT.willUseDefault}: ${contexts.join(", ")}.`;
+}
 
 /** "Used by: a, b" for the default's editor. */
 export function usedByText(contexts: string[]): string {
@@ -75,17 +90,19 @@ export function scopeView(scope: EndpointScopeKind, use: EndpointUse, overriding
 }
 
 /**
- * The `cluster` label value matching a kube context (#528): equal to its
- * name, else the shortest value containing it, else the longest value the
- * name contains (`admin@aks-prod` → `aks-prod`). Case-insensitive.
+ * The `cluster` label value to preselect for a kube context (#528): the one
+ * equal to its name (case-insensitive), else the only value containing the
+ * name or contained in it (`admin@aks-prod` → `aks-prod`). Ambiguous
+ * (`prod` with `preprod` and `prod-eu`) preselects nothing: picking one
+ * would show another cluster's metrics.
  */
 export function matchClusterLabel(values: string[], context: string): string | null {
   const name = context.toLowerCase();
   const exact = values.find((v) => v.toLowerCase() === name);
   if (exact !== undefined) return exact;
-  const byLength = (a: string, b: string) => a.length - b.length;
-  const containing = values.filter((v) => v.toLowerCase().includes(name)).sort(byLength);
-  if (containing.length > 0) return containing[0];
-  const contained = values.filter((v) => v.length > 0 && name.includes(v.toLowerCase())).sort(byLength);
-  return contained.at(-1) ?? null;
+  const near = values.filter((v) => {
+    const value = v.toLowerCase();
+    return value.length > 0 && (value.includes(name) || name.includes(value));
+  });
+  return near.length === 1 ? near[0] : null;
 }

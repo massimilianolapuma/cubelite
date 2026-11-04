@@ -94,16 +94,20 @@ final class EndpointStoreScopeTests: XCTestCase {
 
 final class IntegrationVaultScopeTests: XCTestCase {
 
+    private let defaults = MemorySecrets()
+
     private func vault() -> (IntegrationVault<PromAuth>, MemorySecrets) {
         let secrets = MemorySecrets()
-        return (IntegrationVault(store: secrets, none: PromAuth.none), secrets)
+        return (IntegrationVault(store: secrets, defaults: defaults, none: PromAuth.none), secrets)
     }
 
     func testTheDefaultsCredentialsAreSavedOnceAndFoundBySharedEndpointsOnly() async throws {
         let (vault, secrets) = vault()
         try await vault.save(context: "aks-1", shared: true, binding: "https://ws", auth: .bearer("t"))
         let accounts = await secrets.items.keys.sorted()
-        XCTAssertEqual(accounts, [Integration.defaultAccount])
+        XCTAssertEqual(accounts, [], "the per-context store is untouched")
+        let defaultAccounts = await defaults.items.keys.sorted()
+        XCTAssertEqual(defaultAccounts, [Integration.defaultAccount])
         let viaDefault = try await vault.load(context: "aks-2", binding: "https://ws", shared: true)
         XCTAssertEqual(viaDefault, .bearer("t"))
         // A context's own endpoint never reads the default's account.
@@ -142,12 +146,24 @@ final class IntegrationVaultScopeTests: XCTestCase {
         } catch is IntegrationFailure {}
     }
 
+    func testAContextNamedLikeTheDefaultsAccountNeverReachesIt() async throws {
+        let (vault, _) = vault()
+        try await vault.save(context: "x", shared: true, binding: "https://ws", auth: .bearer("default"))
+        for name in [Integration.defaultAccount, "*default*"] {
+            let own = try await vault.load(context: name, binding: "https://ws")
+            XCTAssertEqual(own, PromAuth.none, name)
+            try await vault.save(context: name, binding: "https://ws", auth: .bearer("own"))
+        }
+        let shared = try await vault.load(context: "aks-1", binding: "https://ws", shared: true)
+        XCTAssertEqual(shared, .bearer("default"), "saving for a context never overwrites the default")
+    }
+
     func testAzureCLIStoresTheChoiceOnly() async throws {
-        let (vault, secrets) = vault()
+        let (vault, _) = vault()
         try await vault.save(context: "x", shared: true, binding: "https://ws", auth: .azureCLI)
         let method = try await vault.stored(context: "aks-1", binding: "https://ws", shared: true)?.method
         XCTAssertEqual(method, "azure-cli")
-        let data = await secrets.items[Integration.defaultAccount]
+        let data = await defaults.items[Integration.defaultAccount]
         let text = String(decoding: try XCTUnwrap(data), as: UTF8.self)
         XCTAssertFalse(text.contains("token"), text)
     }
@@ -158,10 +174,13 @@ final class ClusterScopeHelpersTests: XCTestCase {
     func testMatchClusterLabel() {
         let values = ["aks-prod", "aks-prod-weu", "aks-test", "dev"]
         XCTAssertEqual(ClusterLabel.match(values, context: "AKS-PROD"), "aks-prod")
-        XCTAssertEqual(ClusterLabel.match(["aks-prod-weu-2", "aks-prod-weu"], context: "aks-prod"), "aks-prod-weu")
+        XCTAssertEqual(ClusterLabel.match(["aks-prod-weu", "aks-test"], context: "aks-prod"), "aks-prod-weu")
         XCTAssertEqual(ClusterLabel.match(values, context: "admin@aks-test"), "aks-test")
-        XCTAssertEqual(ClusterLabel.match(["dev", "dev-eu"], context: "user@dev-eu-1"), "dev-eu")
         XCTAssertNil(ClusterLabel.match(values, context: "staging"))
+        // Ambiguous: nothing is preselected.
+        XCTAssertNil(ClusterLabel.match(["preprod", "prod-eu"], context: "prod"))
+        XCTAssertNil(ClusterLabel.match(["aks-prod-weu-2", "aks-prod-weu"], context: "aks-prod"))
+        XCTAssertNil(ClusterLabel.match(["dev", "dev-eu"], context: "user@dev-eu-1"))
     }
 
     func testLabelValuesPathAndAnswer() throws {
@@ -188,6 +207,26 @@ final class ClusterScopeHelpersTests: XCTestCase {
         let filtered = Elastic.addingClusterFilter(body, ClusterFilter(value: "aks-prod"), preset: .ecs)
         XCTAssertTrue(filtered.compactText.contains(#"{"term":{"orchestrator.cluster.name":"aks-prod"}}"#), filtered.compactText)
         XCTAssertEqual(Elastic.addingClusterFilter(body, nil, preset: .ecs), body)
+    }
+
+    func testKibanaLinksCarryTheClusterFilter() {
+        let filter = ClusterFilter(value: #"aks "prod""#)
+        let pod = Elastic.kibanaDiscoverURL(
+            kibanaBase: "https://kb", preset: .ecs, namespace: "shop", pod: "api-0", container: nil,
+            from: "now-1h", to: "now", clusterFilter: filter)
+        XCTAssertTrue(
+            (pod.removingPercentEncoding ?? "").contains(#"and orchestrator.cluster.name:"aks \"prod\"""#), pod)
+        let workload = Elastic.kibanaWorkloadURL(
+            kibanaBase: "https://kb", preset: .ecs, namespace: "shop", workload: .deployment("api"),
+            clusterFilter: ClusterFilter(field: "k8s/cluster", value: "eu"))
+        XCTAssertTrue((workload.removingPercentEncoding ?? "").contains(#"AND k8s\/cluster:"eu""#), workload)
+        let plain = Elastic.kibanaWorkloadURL(
+            kibanaBase: "https://kb", preset: .ecs, namespace: "shop", workload: .deployment("api"))
+        XCTAssertFalse((plain.removingPercentEncoding ?? "").contains("cluster"), plain)
+        let fieldWithSpace = Elastic.kibanaDiscoverURL(
+            kibanaBase: "https://kb", preset: .ecs, namespace: "n", pod: "p", container: nil, from: "a", to: "b",
+            clusterFilter: ClusterFilter(field: "a b:c", value: "eu"))
+        XCTAssertTrue((fieldWithSpace.removingPercentEncoding ?? "").contains(#"and a\ b\:c:"eu""#), fieldWithSpace)
     }
 
     func testOldEndpointsDecodeWithoutTheNewFields() throws {
@@ -243,7 +282,7 @@ final class PrometheusScopeModelTests: XCTestCase {
         model.target.url = "https://ws-1.westeurope.prometheus.monitor.azure.com"
         model.authMethod = .azureCLI
         await model.save()
-        XCTAssertEqual(model.outcome, FormOutcome(ok: true, text: "Prometheus default endpoint saved"))
+        XCTAssertEqual(model.outcome?.ok, true)
         XCTAssertEqual(endpoints.defaultEndpoint?.target, shared.target)
         XCTAssertEqual(endpoints.defaultEndpoint?.shared, false)
         let saved = await backend.saved
@@ -272,6 +311,47 @@ final class PrometheusScopeModelTests: XCTestCase {
         XCTAssertTrue(saved.isEmpty)
     }
 
+    func testASavedDefaultNamesTheContextsItReaches() async {
+        let model = PrometheusPreferencesModel(backend: ScopeStubBackend(), endpoints: endpoints)
+        model.scope.contexts = ["aks-prod", "aks-test", "own"]
+        endpoints.setEndpoint(PromEndpoint(target: .external(url: "https://own.example")), for: "own")
+        await model.load(context: "aks-prod")
+        await model.setScope(.allContexts)
+        model.target.mode = .external
+        model.target.url = "https://p.example"
+        await model.save()
+        XCTAssertEqual(
+            model.outcome?.text, "Contexts without their own endpoint will use this default: aks-prod, aks-test.")
+    }
+
+    func testAScopeSwitchWithUnsavedEditsAsksFirst() async {
+        let model = PrometheusPreferencesModel(backend: ScopeStubBackend(), endpoints: endpoints)
+        await model.load(context: "aks-prod")
+        model.target.mode = .external
+        model.target.url = "https://typed.example"
+        XCTAssertTrue(model.isDirty)
+        await model.setScope(.allContexts)
+        XCTAssertEqual(model.scope.kind, .context)
+        XCTAssertEqual(model.scope.pending, .allContexts)
+        model.cancelScope()
+        XCTAssertNil(model.scope.pending)
+        XCTAssertEqual(model.target.url, "https://typed.example")
+        await model.setScope(.allContexts)
+        await model.confirmScope()
+        XCTAssertEqual(model.view, .sharedDefault)
+        XCTAssertFalse(model.isDirty)
+    }
+
+    func testOverrideKeepsTheLabelTypedOnTheDefault() async {
+        endpoints.setDefault(shared)
+        let model = PrometheusPreferencesModel(backend: ScopeStubBackend(), endpoints: endpoints)
+        await model.load(context: "aks-prod")
+        model.cluster = "aks-typed"
+        await model.override()
+        XCTAssertEqual(model.target.url, "https://ws-1.westeurope.prometheus.monitor.azure.com")
+        XCTAssertEqual(model.cluster, "aks-typed")
+    }
+
     func testTurnOffOverrideAndUseTheDefaultAgain() async {
         endpoints.setDefault(shared)
         let backend = ScopeStubBackend()
@@ -297,5 +377,61 @@ final class PrometheusScopeModelTests: XCTestCase {
         let saved = await backend.saved
         XCTAssertEqual(saved.last?.1, PromAuth.none, "the own endpoint's credentials are removed")
         XCTAssertEqual(saved.last?.0.target, .external(url: "https://own.example"))
+    }
+}
+
+/// A connect still in flight when every connection closes (default
+/// credentials saved, #528) must not be cached.
+final class ConnectionPoolEpochTests: XCTestCase {
+
+    private actor Gate {
+        private var opened = false
+        private var waiter: CheckedContinuation<Void, Never>?
+        private(set) var calls = 0
+
+        func enter() async -> Int {
+            calls += 1
+            let call = calls
+            if call == 1, !opened {
+                await withCheckedContinuation { waiter = $0 }
+            }
+            return call
+        }
+
+        func open() {
+            opened = true
+            waiter?.resume()
+            waiter = nil
+        }
+    }
+
+    private static func connection(_ call: Int) -> IntegrationConnection<String> {
+        IntegrationConnection(
+            endpoint: "e", session: URLSession(configuration: .ephemeral),
+            base: URL(fileURLWithPath: "/call-\(call)"), tunnel: nil, authorize: { nil })
+    }
+
+    func testAConnectAcrossDisconnectAllIsDroppedAndRetried() async throws {
+        let pool = ConnectionPool<String>()
+        let gate = Gate()
+        let task = Task {
+            try await pool.connection(context: "aks-1", endpoint: "e") {
+                ConnectionPoolEpochTests.connection(await gate.enter())
+            }
+        }
+        // Wait until the first connect is in flight.
+        while await gate.calls == 0 { await Task.yield() }
+        await pool.disconnectAll()
+        await gate.open()
+        let conn = try await task.value
+        let calls = await gate.calls
+        XCTAssertEqual(calls, 2, "the stale connect was dropped and done again")
+        XCTAssertEqual(conn.base.lastPathComponent, "call-2")
+        let cached = try await pool.connection(context: "aks-1", endpoint: "e") {
+            XCTFail("must be cached")
+            return ConnectionPoolEpochTests.connection(99)
+        }
+        XCTAssertTrue(cached === conn)
+        await pool.disconnectAll()
     }
 }
