@@ -12,7 +12,10 @@ import { EndpointStore } from "./endpoints.svelte";
 /** Minimum time between two sparkline loads for the same scope. */
 export const SPARKLINE_INTERVAL_MS = 30_000;
 
-class PrometheusStore extends EndpointStore<PromEndpoint> {
+/** A context's own settings on the shared default endpoint (#528). */
+export type PrometheusContextSettings = { cluster: string | null };
+
+class PrometheusStore extends EndpointStore<PromEndpoint, PrometheusContextSettings> {
   sparklines = $state<Sparklines | null>(null);
   sparklineError = $state<string | null>(null);
   #scope: string | null = null;
@@ -60,4 +63,8 @@ class PrometheusStore extends EndpointStore<PromEndpoint> {
   }
 }
 
-export const prometheus = new PrometheusStore("prometheus.endpoints");
+/** The context's `cluster` label wins over the default's (#528). */
+export const prometheus = new PrometheusStore("prometheus.endpoints", (fallback, settings) => ({
+  ...fallback,
+  cluster: settings.cluster || fallback.cluster,
+}));

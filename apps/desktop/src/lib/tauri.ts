@@ -737,7 +737,17 @@ export type EsEndpoint = {
   /** In-cluster Kibana opened through a port-forward when there is no URL (#505). */
   kibanaService?: KibanaService | null;
   skipTlsVerify: boolean;
+  /** Narrows a deployment shared by many clusters to this context's (#528). */
+  clusterFilter?: ClusterFilter | null;
+  /** Resolved from the default endpoint shared by every context (#528): the backend uses the default's credentials. */
+  shared?: boolean;
 };
+
+/**
+ * A `field: value` term added to every history query (#528); an empty field
+ * means `orchestrator.cluster.name` with the ECS preset.
+ */
+export type ClusterFilter = { field: string; value: string };
 
 /** A web UI service in the cluster picked from Detect (Kibana #505, Grafana #525). */
 export type ServiceRef = { namespace: string; service: string; port: number; https: boolean };
@@ -927,6 +937,8 @@ export type PromEndpoint = {
   /** In-cluster Grafana opened through a port-forward when there is no URL (#525). */
   grafanaService?: GrafanaService | null;
   skipTlsVerify: boolean;
+  /** Resolved from the default endpoint shared by every context (#528): the backend uses the default's credentials. */
+  shared?: boolean;
 };
 
 export type GrafanaService = ServiceRef;
