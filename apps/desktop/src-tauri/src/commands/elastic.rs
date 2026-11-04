@@ -12,6 +12,7 @@ use cubelite_core::elastic::{
     HistoryQuery, KibanaService,
 };
 
+use cubelite_core::elastic::cluster_filter::ClusterFilter;
 use cubelite_core::integration;
 use cubelite_core::prometheus::Workload;
 use cubelite_core::KubeClient;
@@ -35,20 +36,33 @@ pub struct ElasticState {
 impl ElasticState {
     /// Closes the context's connections and Kibana forwards (endpoint
     /// saved, credentials changed, disconnect).
-    async fn forget(&self, context: &str) {
-        self.connections.forget(context).await;
+    async fn forget(&self, context: &str, every_context: bool) {
+        if every_context {
+            // The default's credentials changed (#528).
+            self.connections.clear().await;
+        } else {
+            self.connections.forget(context).await;
+        }
         self.kibana.forget(context).await;
     }
 }
 
 fn binding(endpoint: &EsEndpoint) -> Result<String, String> {
+    integration::check_shared(&endpoint.target, endpoint.shared)?;
     integration::binding(&endpoint.target, endpoint.skip_tls_verify)
 }
 
-/// Credentials stored for `context`, usable only with `endpoint`;
-/// `EsAuth::None` when nothing is stored.
+/// Credentials stored for `context` (or the default, #528), usable only
+/// with `endpoint`; `EsAuth::None` when nothing is stored.
 fn load_auth(context: &str, endpoint: &EsEndpoint) -> Result<EsAuth, String> {
-    vault::load(KEYCHAIN_SERVICE, context, &binding(endpoint)?, EsAuth::None)
+    let binding = binding(endpoint)?;
+    vault::load(
+        KEYCHAIN_SERVICE,
+        context,
+        endpoint.shared,
+        &binding,
+        EsAuth::None,
+    )
 }
 
 fn store_auth(context: &str, endpoint: &EsEndpoint, auth: &EsAuth) -> Result<(), String> {
@@ -59,7 +73,8 @@ fn store_auth(context: &str, endpoint: &EsEndpoint, auth: &EsAuth) -> Result<(),
             auth: auth.clone(),
         }),
     };
-    vault::write(KEYCHAIN_SERVICE, context, record.as_ref())
+    let (service, account) = vault::location(KEYCHAIN_SERVICE, context, endpoint.shared);
+    vault::write(&service, account, record.as_ref())
 }
 
 fn method(auth: &EsAuth) -> &'static str {
@@ -194,8 +209,9 @@ pub async fn elastic_save_auth(
     auth: EsAuth,
 ) -> Result<(), String> {
     let c = context.clone();
+    let shared = endpoint.shared;
     keychain(move || store_auth(&c, &endpoint, &auth)).await?;
-    state.forget(&context).await;
+    state.forget(&context, shared).await;
     Ok(())
 }
 
@@ -205,12 +221,11 @@ pub async fn elastic_save_auth(
 #[tauri::command]
 pub async fn elastic_auth_method(context: String, endpoint: EsEndpoint) -> Result<String, String> {
     let current = binding(&endpoint)?;
-    let stored = keychain(move || vault::read::<EsAuth>(KEYCHAIN_SERVICE, &context)).await?;
-    Ok(match stored {
-        Some(stored) if stored.binding == current => method(&stored.auth),
-        _ => "none",
-    }
-    .to_string())
+    let stored = keychain(move || {
+        vault::stored::<EsAuth>(KEYCHAIN_SERVICE, &context, endpoint.shared, &current)
+    })
+    .await?;
+    Ok(stored.as_ref().map_or("none", method).to_string())
 }
 
 /// Uses ECK's `elastic` user for this in-cluster endpoint: checks it can be
@@ -238,7 +253,7 @@ pub async fn elastic_use_eck_credentials(
     .map_err(text)?;
     let c = context.clone();
     keychain(move || store_auth(&c, &endpoint, &EsAuth::EckUser)).await?;
-    state.forget(&context).await;
+    state.forget(&context, false).await;
     Ok(method(&EsAuth::EckUser).to_string())
 }
 
@@ -248,7 +263,7 @@ pub async fn elastic_disconnect(
     state: State<'_, ElasticState>,
     context: String,
 ) -> Result<(), String> {
-    state.forget(&context).await;
+    state.forget(&context, false).await;
     Ok(())
 }
 
@@ -274,6 +289,7 @@ pub fn kibana_discover_url(
     container: Option<String>,
     from: String,
     to: String,
+    cluster_filter: Option<ClusterFilter>,
 ) -> String {
     discover_url(
         &kibana_url,
@@ -283,6 +299,7 @@ pub fn kibana_discover_url(
         container.as_deref(),
         &from,
         &to,
+        cluster_filter.as_ref(),
     )
 }
 
@@ -299,6 +316,7 @@ pub fn open_kibana_discover(
     container: Option<String>,
     from: String,
     to: String,
+    cluster_filter: Option<ClusterFilter>,
 ) -> Result<(), String> {
     let base = http_base(&kibana_url, "Kibana")?;
     let target = discover_url(
@@ -309,6 +327,7 @@ pub fn open_kibana_discover(
         container.as_deref(),
         &from,
         &to,
+        cluster_filter.as_ref(),
     );
     open_in_browser(&app, target)
 }
@@ -316,6 +335,7 @@ pub fn open_kibana_discover(
 /// Opens Kibana Discover for a workload's pods, or a whole namespace
 /// without one (#526, #529): the same filter as the history.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn open_kibana_workload(
     app: tauri::AppHandle,
     kibana_url: String,
@@ -324,6 +344,7 @@ pub fn open_kibana_workload(
     workload: Option<Workload>,
     from: String,
     to: String,
+    cluster_filter: Option<ClusterFilter>,
 ) -> Result<(), String> {
     let base = http_base(&kibana_url, "Kibana")?;
     let target = kibana_workload_discover_url(
@@ -333,6 +354,7 @@ pub fn open_kibana_workload(
         workload.as_ref(),
         &from,
         &to,
+        cluster_filter.as_ref(),
     );
     open_in_browser(&app, target)
 }

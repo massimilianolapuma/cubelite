@@ -279,6 +279,7 @@ fn kibana_discover_url_escapes_rison_and_kql() {
         Some("web"),
         "now-1h",
         "now",
+        None,
     );
     assert!(url.starts_with("https://kb.example/app/discover#/?_g="));
     let decoded = url
@@ -301,6 +302,7 @@ fn kibana_discover_url_escapes_rison_and_kql() {
         None,
         "now-1h",
         "now",
+        None,
     );
     assert!(tricky.contains("%21%27"), "' escaped as !' in rison");
     assert!(tricky.contains("%21%21"), "! escaped as !! in rison");
@@ -340,6 +342,7 @@ fn deployment_discover_url_is_a_lucene_regexp_on_the_pods() {
         Some(&deployment("api")),
         "now-1h",
         "now",
+        None,
     );
     assert!(url.starts_with("https://kb.example/app/discover#/?_g="));
     let decoded = decode(&url);
@@ -643,7 +646,8 @@ fn discover_links_drop_the_base_query_and_fragment() {
         "p",
         None,
         "a",
-        "b"
+        "b",
+        None
     )
     .starts_with("https://kb/kibana/app/discover#/?_g="));
 }
@@ -729,6 +733,8 @@ fn external(url: &str) -> EsEndpoint {
         kibana_url: None,
         kibana_service: None,
         skip_tls_verify: false,
+        cluster_filter: None,
+        shared: false,
     }
 }
 

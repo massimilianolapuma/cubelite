@@ -354,8 +354,12 @@ final class IntegrationsSuggestionStore {
 
     func isConfigured(_ pane: AppSettings.IntegrationPane, context: String) -> Bool {
         switch pane {
-        case .elasticsearch: elasticEndpoints.endpoint(for: context) != nil
-        case .prometheus: prometheusEndpoints.endpoint(for: context) != nil
+        // A context using the default (#528) is configured; one where the
+        // default is off was turned off on purpose.
+        case .elasticsearch:
+            elasticEndpoints.endpoint(for: context) != nil || elasticEndpoints.use(of: context) == .off
+        case .prometheus:
+            prometheusEndpoints.endpoint(for: context) != nil || prometheusEndpoints.use(of: context) == .off
         }
     }
 

@@ -66,18 +66,24 @@ struct EsEndpoint: Hashable, Sendable, Codable {
     var kibanaService: KibanaService?
     /// Accept any certificate (opt-in, for self-signed endpoints without a CA).
     var skipTLSVerify = false
+    /// Narrows a deployment shared by many clusters to this context's (#528).
+    var clusterFilter: ClusterFilter?
+    /// Resolved from the default shared by every context (#528): its
+    /// credentials are the default's.
+    var shared = false
 
     private enum CodingKeys: String, CodingKey {
         case target, indexPattern, preset
         case kibanaURL = "kibanaUrl"
         case kibanaService
         case skipTLSVerify = "skipTlsVerify"
+        case clusterFilter, shared
     }
 
     init(
         target: EsTarget, indexPattern: String = Self.defaultIndexPattern,
         preset: FieldPreset = .ecs, kibanaURL: String? = nil, kibanaService: KibanaService? = nil,
-        skipTLSVerify: Bool = false
+        skipTLSVerify: Bool = false, clusterFilter: ClusterFilter? = nil
     ) {
         self.target = target
         self.indexPattern = indexPattern
@@ -85,6 +91,7 @@ struct EsEndpoint: Hashable, Sendable, Codable {
         self.kibanaURL = kibanaURL
         self.kibanaService = kibanaService
         self.skipTLSVerify = skipTLSVerify
+        self.clusterFilter = clusterFilter
     }
 
     init(from decoder: Decoder) throws {
@@ -95,6 +102,8 @@ struct EsEndpoint: Hashable, Sendable, Codable {
         kibanaURL = try c.decodeIfPresent(String.self, forKey: .kibanaURL)
         kibanaService = try c.decodeIfPresent(KibanaService.self, forKey: .kibanaService)
         skipTLSVerify = try c.decodeIfPresent(Bool.self, forKey: .skipTLSVerify) ?? false
+        clusterFilter = try c.decodeIfPresent(ClusterFilter.self, forKey: .clusterFilter)
+        shared = try c.decodeIfPresent(Bool.self, forKey: .shared) ?? false
     }
 }
 
@@ -516,12 +525,16 @@ enum Elastic {
     /// Kibana Discover URL for one pod's logs over `[from, to]`.
     static func kibanaDiscoverURL(
         kibanaBase: String, preset: FieldPreset, namespace: String, pod: String,
-        container: String?, from: String, to: String
+        container: String?, from: String, to: String, clusterFilter: ClusterFilter? = nil
     ) -> String {
         let f = preset.fields
         var query = "\(f.namespace):\(kql(namespace)) and \(f.pod):\(kql(pod))"
         if let container, !container.isEmpty {
             query += " and \(f.container):\(kql(container))"
+        }
+        // The context's cluster in a shared deployment (#528), as in the history.
+        if let (field, value) = clusterFilter?.term(preset: preset) {
+            query += " and \(kqlField(field)):\(kql(value))"
         }
         return kibanaDiscoverURL(kibanaBase: kibanaBase, query: query, from: from, to: to)
     }
@@ -546,14 +559,18 @@ enum Elastic {
     /// history's filter.
     static func kibanaWorkloadURL(
         kibanaBase: String, preset: FieldPreset, namespace: String, workload: Workload?,
-        from: String = "now-1h"
+        from: String = "now-1h", clusterFilter: ClusterFilter? = nil
     ) -> String {
         if case .pod(let name)? = workload {
             return kibanaDiscoverURL(
                 kibanaBase: kibanaBase, preset: preset, namespace: namespace, pod: name, container: nil,
-                from: from, to: "now")
+                from: from, to: "now", clusterFilter: clusterFilter)
         }
-        let query = workloadLuceneQuery(preset: preset, namespace: namespace, workload: workload)
+        var query = workloadLuceneQuery(preset: preset, namespace: namespace, workload: workload)
+        // The context's cluster in a shared deployment (#528), as in the history.
+        if let (field, value) = clusterFilter?.term(preset: preset) {
+            query += " AND \(luceneField(field)):\(kql(value))"
+        }
         return kibanaDiscoverURL(kibanaBase: kibanaBase, query: query, language: "lucene", from: from, to: "now")
     }
 
@@ -603,7 +620,10 @@ enum Elastic {
 
     /// What stored credentials are bound to (see `Integration.binding`).
     static func binding(_ endpoint: EsEndpoint) throws -> String {
-        try mapped { try Integration.binding(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify) }
+        try mapped {
+            try Integration.checkShared(endpoint.target, shared: endpoint.shared)
+            return try Integration.binding(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify)
+        }
     }
 
     /// Checks an external URL (see `Integration.checkExternalURL`); ECK's
@@ -672,6 +692,16 @@ enum Elastic {
     }
 
     /// KQL string literal: `"…"` with `\` and `"` escaped.
+    /// Escapes a field name for KQL (`\\`, whitespace and the KQL operators).
+    private static func kqlField(_ name: String) -> String {
+        var out = ""
+        for c in name {
+            if c.isWhitespace || "\\():<>\"*{}".contains(c) { out.append("\\") }
+            out.append(c)
+        }
+        return out
+    }
+
     private static func kql(_ s: String) -> String {
         "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
             + "\""

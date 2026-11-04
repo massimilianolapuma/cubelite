@@ -745,7 +745,17 @@ export type EsEndpoint = {
   /** In-cluster Kibana opened through a port-forward when there is no URL (#505). */
   kibanaService?: KibanaService | null;
   skipTlsVerify: boolean;
+  /** Narrows a deployment shared by many clusters to this context's (#528). */
+  clusterFilter?: ClusterFilter | null;
+  /** Resolved from the default endpoint shared by every context (#528): the backend uses the default's credentials. */
+  shared?: boolean;
 };
+
+/**
+ * A `field: value` term added to every history query (#528); an empty field
+ * means `orchestrator.cluster.name` with the ECS preset.
+ */
+export type ClusterFilter = { field: string; value: string };
 
 /** A web UI service in the cluster picked from Detect (Kibana #505, Grafana #525). */
 export type ServiceRef = { namespace: string; service: string; port: number; https: boolean };
@@ -890,6 +900,8 @@ export function kibanaDiscoverUrl(args: {
   container: string | null;
   from: string;
   to: string;
+  /** The context's cluster in a shared deployment (#528). */
+  clusterFilter?: ClusterFilter | null;
 }): Promise<string> {
   return invoke<string>("kibana_discover_url", args);
 }
@@ -903,6 +915,8 @@ export function openKibanaDiscover(args: {
   container: string | null;
   from: string;
   to: string;
+  /** The context's cluster in a shared deployment (#528). */
+  clusterFilter?: ClusterFilter | null;
 }): Promise<void> {
   return invoke("open_kibana_discover", args);
 }
@@ -918,6 +932,8 @@ export function openKibanaWorkload(args: {
   workload: Workload | null;
   from: string;
   to: string;
+  /** The context's cluster in a shared deployment (#528). */
+  clusterFilter?: ClusterFilter | null;
 }): Promise<void> {
   return invoke("open_kibana_workload", args);
 }
@@ -943,6 +959,8 @@ export type PromEndpoint = {
   /** In-cluster Grafana opened through a port-forward when there is no URL (#525). */
   grafanaService?: GrafanaService | null;
   skipTlsVerify: boolean;
+  /** Resolved from the default endpoint shared by every context (#528): the backend uses the default's credentials. */
+  shared?: boolean;
 };
 
 export type GrafanaService = ServiceRef;

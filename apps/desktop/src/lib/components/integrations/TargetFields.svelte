@@ -1,12 +1,19 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
-	import { BUTTON_CLASS, INPUT_CLASS, MODE_SEGMENTS, type TargetForm } from '#lib/integration-form.svelte.ts';
+	import {
+		BUTTON_CLASS,
+		INPUT_CLASS,
+		MODE_SEGMENTS,
+		type TargetForm,
+		type TargetMode
+	} from '#lib/integration-form.svelte.ts';
 
 	// Where an integration's endpoint lives: off, a service found in the
 	// cluster, or an external URL (shared by Elasticsearch and Prometheus).
 	let {
 		form,
+		segments = MODE_SEGMENTS,
 		sourceLabel,
 		urlLabel,
 		urlPlaceholder,
@@ -18,6 +25,8 @@
 		detected
 	}: {
 		form: TargetForm;
+		/** Modes offered (the default endpoint is external only, #528). */
+		segments?: { value: TargetMode; label: string }[];
 		sourceLabel: string;
 		urlLabel: string;
 		urlPlaceholder: string;
@@ -33,7 +42,7 @@
 
 <div class="flex items-center justify-between gap-3">
 	<span class="type-caption text-text-secondary">{sourceLabel}</span>
-	<SegmentedControl segments={MODE_SEGMENTS} bind:value={form.mode} />
+	<SegmentedControl {segments} bind:value={form.mode} />
 </div>
 
 {#if form.mode === 'in-cluster'}

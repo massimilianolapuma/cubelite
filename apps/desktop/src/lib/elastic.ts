@@ -1,4 +1,4 @@
-import type { EsEndpoint, HistoryLine } from "#lib/tauri.ts";
+import type { ClusterFilter, EsEndpoint, FieldPreset, HistoryLine } from "#lib/tauri.ts";
 
 /** Default index pattern: Elastic Agent data streams, Filebeat, Logstash. */
 export const DEFAULT_INDEX_PATTERN = "logs-*,filebeat-*,logstash-*";
@@ -26,6 +26,39 @@ export function newEndpoint(target: EsEndpoint["target"]): EsEndpoint {
     kibanaService: null,
     skipTlsVerify: false,
   };
+}
+
+/** ECS field naming a document's cluster (#528). */
+export const ECS_CLUSTER_FIELD = "orchestrator.cluster.name";
+
+/** A context's own settings on the shared default endpoint (#528). */
+export type ElasticContextSettings = { clusterFilter: ClusterFilter | null };
+
+/**
+ * The cluster filter typed in a form; null when both are blank. A field
+ * without a value is kept: on the default it names the field each context
+ * fills in.
+ */
+export function clusterFilterOf(field: string, value: string): ClusterFilter | null {
+  const f = field.trim();
+  const v = value.trim();
+  return f || v ? { field: f, value: v } : null;
+}
+
+/** Placeholder of the cluster filter field: the field used when left blank. */
+export function clusterFieldHint(preset: FieldPreset, fallback: string | null | undefined): string {
+  if (fallback) return fallback;
+  return preset === "ecs" ? ECS_CLUSTER_FIELD : "cluster field";
+}
+
+/**
+ * The default endpoint with a context's cluster filter; a blank field takes
+ * the default's (`orchestrator.cluster.name` with ECS, in the backend).
+ */
+export function mergeClusterFilter(fallback: EsEndpoint, settings: ElasticContextSettings): EsEndpoint {
+  const own = settings.clusterFilter;
+  if (!own) return fallback;
+  return { ...fallback, clusterFilter: { field: own.field || fallback.clusterFilter?.field || "", value: own.value } };
 }
 
 /** One-line description of an endpoint for status lines. */

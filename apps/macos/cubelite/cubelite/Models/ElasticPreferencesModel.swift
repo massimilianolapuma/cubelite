@@ -16,7 +16,8 @@ protocol ElasticPreferencesBackend: Sendable {
 extension ElasticService: ElasticPreferencesBackend {}
 
 /// Form state of Settings → Integrations → Elasticsearch for one kube
-/// context (#503, spec §5.2), mirroring the desktop's ElasticPreferences.
+/// context or the default shared by every context (#503 spec §5.2, #528),
+/// mirroring the desktop's ElasticPreferences.
 /// Secrets go straight to the keychain and are never read back: the form
 /// only knows which method is stored.
 @Observable @MainActor
@@ -57,6 +58,10 @@ final class ElasticPreferencesModel {
     /// In-cluster Kibana picked from Detect, opened through a port-forward
     /// when there is no Kibana URL (#519).
     var kibanaService: KibanaService?
+    /// Cluster filter (#528): field (blank = the default's, or
+    /// `orchestrator.cluster.name` with ECS) and value.
+    var clusterField = ""
+    var clusterValue = ""
 
     var authMethod = AuthMethod.none
     private(set) var storedMethod: AuthMethod?
@@ -66,6 +71,23 @@ final class ElasticPreferencesModel {
     private(set) var detectedKibana: [DetectedService] = []
     private(set) var busy: Busy?
     private(set) var outcome: Outcome?
+    /// This context's endpoint or the default (#528).
+    let scope: EndpointScopeModel<EsEndpoint>
+    /// The form as loaded (#528).
+    private var loaded: [String] = []
+
+    /// The form's fields, typed secrets included.
+    private var snapshot: [String] {
+        [
+            target.mode.rawValue, target.namespace, target.service, String(target.port), String(target.https),
+            target.url, String(target.skipTLSVerify), indexPattern, preset.rawValue, kibanaURL,
+            kibanaService.map { "\($0)" } ?? "", clusterField, clusterValue, input.username, input.password,
+            input.secret,
+        ]
+    }
+
+    /// The form has edits not saved yet.
+    var isDirty: Bool { snapshot != loaded }
 
     private let backend: any ElasticPreferencesBackend
     private let endpoints: ElasticEndpointStore
@@ -76,6 +98,7 @@ final class ElasticPreferencesModel {
     init(backend: any ElasticPreferencesBackend, endpoints: ElasticEndpointStore) {
         self.backend = backend
         self.endpoints = endpoints
+        scope = EndpointScopeModel(store: endpoints)
         // ECK's user is offered only in-cluster.
         target.onModeChange = { [weak self] in
             guard let self, !self.authMethods.contains(self.authMethod) else { return }
@@ -83,25 +106,39 @@ final class ElasticPreferencesModel {
         }
     }
 
-    /// The saved endpoint of the shown context.
-    var saved: EsEndpoint? { endpoints.endpoint(for: context) }
+    /// What the form shows for the context (#528).
+    var view: ScopeView { scope.view(for: context) }
+
+    /// The saved endpoint the form edits: the context's own, or the default.
+    var saved: EsEndpoint? { scope.saved(view, context: context) }
 
     /// Loads `context`'s saved endpoint; nothing from the previous context
     /// stays in the form.
     func load(context: String?) async {
+        if context != self.context {
+            scope.overriding = false
+            scope.pending = nil
+        }
         self.context = context
+        // What "unsaved edits" compare against, once loaded.
+        defer { loaded = snapshot }
         outcome = nil
         detected = nil
         detectedKibana = []
         input.reset()
         authMethod = .none
         storedMethod = nil
-        guard let endpoint = saved else {
+        let view = self.view
+        guard let endpoint = saved ?? scope.prefill(view) else {
             target.reset()
             indexPattern = EsEndpoint.defaultIndexPattern
             preset = .ecs
             kibanaURL = ""
             kibanaService = nil
+            // On the default, the context's own filter.
+            let own = view == .inherited ? context.flatMap { endpoints.contextSettings[$0]?.clusterFilter } : nil
+            clusterField = own?.field ?? ""
+            clusterValue = own?.value ?? ""
             return
         }
         target.load(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify)
@@ -109,14 +146,88 @@ final class ElasticPreferencesModel {
         preset = endpoint.preset
         kibanaURL = endpoint.kibanaURL ?? ""
         kibanaService = endpoint.kibanaService
-        await refreshStoredMethod(endpoint)
+        clusterField = endpoint.clusterFilter?.field ?? ""
+        clusterValue = endpoint.clusterFilter?.value ?? ""
+        if saved != nil { await refreshStoredMethod(scope.forBackend(endpoint, view: view)) }
+    }
+
+    // MARK: Scope (#528)
+
+    /// Switches to `kind`, or asks first when the form has unsaved edits.
+    func setScope(_ kind: EndpointScopeKind) async {
+        guard kind != scope.kind else { return }
+        if isDirty {
+            scope.pending = kind
+            return
+        }
+        scope.kind = kind
+        await load(context: context)
+    }
+
+    /// Discards the edits and switches to the pending scope.
+    func confirmScope() async {
+        guard let kind = scope.pending else { return }
+        scope.pending = nil
+        scope.kind = kind
+        await load(context: context)
+    }
+
+    func cancelScope() {
+        scope.pending = nil
+    }
+
+    /// Gives a context using the default an endpoint of its own, from the
+    /// default's values; what was typed for this context is kept.
+    func override() async {
+        let carry = isDirty ? (clusterField, clusterValue) : nil
+        scope.overriding = true
+        await load(context: context)
+        if let carry { (clusterField, clusterValue) = carry }
+    }
+
+    func turnOff() async {
+        guard let context else { return }
+        let result = await scope.turnOff(context, name: "Elasticsearch", onTurnedOff: onTurnedOff) {
+            await self.backend.disconnect(context: $0)
+        }
+        await load(context: context)
+        outcome = result
+    }
+
+    func useDefault() async {
+        guard let context else { return }
+        let result = await scope.useDefault(
+            context, name: "Elasticsearch",
+            removeSecret: { try await self.backend.saveAuth(context: context, endpoint: $0, auth: .none) },
+            disconnect: { await self.backend.disconnect(context: $0) })
+        await load(context: context)
+        outcome = result
+    }
+
+    /// The placeholder of the cluster field: the field used when left blank.
+    var clusterFieldHint: String {
+        view == .inherited
+            ? ClusterFilter.fieldHint(
+                preset: endpoints.defaultEndpoint?.preset ?? .ecs,
+                fallback: endpoints.defaultEndpoint?.clusterFilter?.field)
+            : ClusterFilter.fieldHint(preset: preset, fallback: nil)
+    }
+
+    /// The endpoint Test connection reaches.
+    private func tested() -> EsEndpoint? {
+        let view = self.view
+        if view == .inherited {
+            return endpoints.defaultEndpoint(
+                with: ElasticContextSettings(clusterFilter: ClusterFilter.typed(field: clusterField, value: clusterValue)))
+        }
+        return draft().map { scope.forBackend($0, view: view) }
     }
 
     // MARK: Validation
 
     var kibanaProblem: String? { target.mode == .off ? nil : TargetFields.problem(kibanaURL) }
 
-    var isIncomplete: Bool { target.isIncomplete || kibanaProblem != nil }
+    var isIncomplete: Bool { view != .inherited && (target.isIncomplete || kibanaProblem != nil) }
 
     /// Methods offered: ECK's user only for in-cluster endpoints.
     var authMethods: [AuthMethod] {
@@ -133,12 +244,14 @@ final class ElasticPreferencesModel {
             target: target, indexPattern: pattern.isEmpty ? EsEndpoint.defaultIndexPattern : pattern,
             preset: preset, kibanaURL: kibana.isEmpty ? nil : kibana,
             kibanaService: self.target.mode == .inCluster ? kibanaService : nil,
-            skipTLSVerify: self.target.skipTLSVerify)
+            skipTLSVerify: self.target.skipTLSVerify,
+            clusterFilter: ClusterFilter.typed(field: clusterField, value: clusterValue))
     }
 
     /// Auth typed in the form, or nil to use the stored one.
     func typedAuth() -> EsAuth? {
-        switch authMethod {
+        if view == .inherited { return nil }
+        return switch authMethod {
         case .none: storedMethod == AuthMethod.none ? nil : EsAuth.none
         case .basic:
             !input.username.isEmpty && !input.password.isEmpty
@@ -208,7 +321,7 @@ final class ElasticPreferencesModel {
     }
 
     func test() async {
-        guard let context, let endpoint = draft() else { return }
+        guard let context, let endpoint = tested() else { return }
         busy = .test
         outcome = nil
         defer { busy = nil }
@@ -224,9 +337,18 @@ final class ElasticPreferencesModel {
         }
     }
 
-    /// Saves the endpoint (or turns Elasticsearch off) and the typed credentials.
+    /// Saves the endpoint (or turns Elasticsearch off) and the typed
+    /// credentials; on the default, this context's cluster filter only.
     func save() async {
         guard let context else { return }
+        let view = self.view
+        if view == .inherited {
+            let filter = ClusterFilter.typed(field: clusterField, value: clusterValue)
+            endpoints.setSettings(filter.map { ElasticContextSettings(clusterFilter: $0) }, for: context)
+            outcome = Outcome(ok: true, text: "Elasticsearch cluster filter saved for \(context)")
+            loaded = snapshot
+            return
+        }
         let endpoint = draft()
         busy = .save
         outcome = nil
@@ -240,7 +362,8 @@ final class ElasticPreferencesModel {
                 if authMethod == .eckUser, storedMethod != .eckUser || moved {
                     try await backend.useEckCredentials(context: context, endpoint: endpoint)
                 } else if let auth {
-                    try await backend.saveAuth(context: context, endpoint: endpoint, auth: auth)
+                    try await backend.saveAuth(
+                        context: context, endpoint: scope.forBackend(endpoint, view: view), auth: auth)
                 } else if moved, let stored = storedMethod, stored != .none {
                     // Stored secrets only work with the endpoint they were saved for.
                     outcome = Outcome(ok: false, text: IntegrationForm.movedMessage)
@@ -249,24 +372,26 @@ final class ElasticPreferencesModel {
                 input.clearSecrets()
             } else if let saved {
                 // Turning it off also removes the stored secret and open connection.
-                try await backend.saveAuth(context: context, endpoint: saved, auth: .none)
+                try await backend.saveAuth(
+                    context: context, endpoint: scope.forBackend(saved, view: view), auth: .none)
             }
             // Stored even if the form moved to another context meanwhile:
             // the keychain already matches this endpoint.
-            endpoints.setEndpoint(endpoint, for: context)
-            if endpoint == nil { onTurnedOff?(context) }
+            scope.apply(endpoint, view: view, context: context)
+            if endpoint == nil, view != .sharedDefault { onTurnedOff?(context) }
             // A changed endpoint or Kibana service must not keep old forwards.
             await backend.disconnect(context: context)
             guard context == self.context else { return }
             if let endpoint {
-                await refreshStoredMethod(endpoint)
+                await refreshStoredMethod(scope.forBackend(endpoint, view: view))
             } else {
                 storedMethod = nil
             }
+            loaded = snapshot
             outcome = Outcome(
                 ok: true,
-                text: endpoint == nil
-                    ? "Elasticsearch off for \(context)" : "Elasticsearch saved for \(context)")
+                text: scope.savedText(
+                    name: "Elasticsearch", view: view, saved: endpoint != nil, context: context))
         } catch {
             if context == self.context { outcome = Outcome(ok: false, text: error.localizedDescription) }
         }

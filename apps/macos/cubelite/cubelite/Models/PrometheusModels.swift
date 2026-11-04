@@ -20,11 +20,15 @@ struct PromEndpoint: Hashable, Sendable, Codable {
     /// In-cluster Grafana opened through a port-forward when there is no URL (#525).
     var grafanaService: GrafanaService?
     var skipTLSVerify = false
+    /// Resolved from the default shared by every context (#528): its
+    /// credentials are the default's.
+    var shared = false
 
     private enum CodingKeys: String, CodingKey {
         case target, cluster, grafanaDatasource, grafanaService
         case grafanaURL = "grafanaUrl"
         case skipTLSVerify = "skipTlsVerify"
+        case shared
     }
 
     init(
@@ -48,6 +52,7 @@ struct PromEndpoint: Hashable, Sendable, Codable {
         grafanaDatasource = try c.decodeIfPresent(String.self, forKey: .grafanaDatasource)
         grafanaService = try c.decodeIfPresent(GrafanaService.self, forKey: .grafanaService)
         skipTLSVerify = try c.decodeIfPresent(Bool.self, forKey: .skipTLSVerify) ?? false
+        shared = try c.decodeIfPresent(Bool.self, forKey: .shared) ?? false
     }
 }
 

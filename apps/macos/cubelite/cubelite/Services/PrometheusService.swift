@@ -99,11 +99,12 @@ actor PrometheusService {
     init(
         cluster: any IntegrationClusterAccess,
         secrets: any IntegrationSecretStore = KeychainSecrets(tag: .prometheusAuth),
+        defaultSecrets: any IntegrationSecretStore = KeychainSecrets(tag: .prometheusDefaultAuth),
         configuration: URLSessionConfiguration = .ephemeral,
         azure: AzureCLIToken = AzureCLIToken()
     ) {
         self.cluster = cluster
-        self.vault = IntegrationVault(store: secrets, none: .none)
+        self.vault = IntegrationVault(store: secrets, defaults: defaultSecrets, none: .none)
         self.configuration = configuration
         self.azure = azure
         self.grafana = ServiceForwards(cluster: cluster)
@@ -129,8 +130,9 @@ actor PrometheusService {
     /// The auth method stored for `endpoint`, never the secret.
     func authMethod(context: String, endpoint: PromEndpoint) async throws -> String {
         let binding = try binding(endpoint)
-        return try await prom { try await vault.stored(context: context, binding: binding) }?
-            .method ?? PromAuth.none.method
+        return try await prom {
+            try await vault.stored(context: context, binding: binding, shared: endpoint.shared)
+        }?.method ?? PromAuth.none.method
     }
 
     /// Saves `auth` for `context`, bound to `endpoint` (`none` deletes it).
@@ -139,8 +141,11 @@ actor PrometheusService {
             _ = try checkAuth(auth, for: endpoint)
         }
         let binding = auth == .none ? "" : try binding(endpoint)
-        try await prom { try await vault.save(context: context, binding: binding, auth: auth) }
-        await disconnect(context: context)
+        try await prom {
+            try await vault.save(context: context, shared: endpoint.shared, binding: binding, auth: auth)
+        }
+        // The default's credentials serve every context (#528).
+        if endpoint.shared { await disconnectAll() } else { await disconnect(context: context) }
     }
 
     /// Closes the context's connection (and its port-forward) and its
@@ -206,10 +211,14 @@ actor PrometheusService {
         }
         let cadvisor = await present("count(container_cpu_usage_seconds_total\(filter))")
         let ksm = await present("count(kube_pod_container_resource_requests\(filter))")
-        let clusters =
-            (try? await query(session, "count by (cluster) (up)"))
-            .flatMap { try? Prometheus.parseSeries($0, labels: ["cluster"]) }?
-            .map(\.label).filter { !$0.isEmpty } ?? []
+        var clusters = await labelValues(session, "cluster", matches: ClusterLabel.series)
+        if clusters.isEmpty {
+            // Servers without the label values API: the clusters `up` knows.
+            clusters =
+                (try? await query(session, "count by (cluster) (up)"))
+                .flatMap { try? Prometheus.parseSeries($0, labels: ["cluster"]) }?
+                .map(\.label).filter { !$0.isEmpty } ?? []
+        }
         return PromInfo(version: version, cadvisor: cadvisor, kubeStateMetrics: ksm, clusters: clusters)
     }
 
@@ -335,6 +344,7 @@ actor PrometheusService {
 
     private func binding(_ endpoint: PromEndpoint) throws -> String {
         do {
+            try Integration.checkShared(endpoint.target, shared: endpoint.shared)
             return try Integration.binding(endpoint.target, skipTLSVerify: endpoint.skipTLSVerify)
         } catch let failure as IntegrationFailure {
             throw PromError(failure)
@@ -343,7 +353,9 @@ actor PrometheusService {
 
     private func loadAuth(context: String, endpoint: PromEndpoint) async throws -> PromAuth {
         let binding = try binding(endpoint)
-        return try await prom { try await vault.load(context: context, binding: binding) }
+        return try await prom {
+            try await vault.load(context: context, binding: binding, shared: endpoint.shared)
+        }
     }
 
     /// Checks `auth` against the endpoint's rules; returns the external base URL.
@@ -533,6 +545,15 @@ actor PrometheusService {
         }
         guard let json = JSONValue.parse(body) else { throw PromError.response("the body is not JSON") }
         return json
+    }
+
+    /// Values of `label` on the series matching `matches` (#528); empty
+    /// when the server cannot tell.
+    private func labelValues(_ session: Session, _ label: String, matches: [String]) async -> [String] {
+        guard let path = try? ClusterLabel.valuesPath(label: label, matches: matches),
+            let body = try? await get(session, path), let data = try? Prometheus.unwrapData(body)
+        else { return [] }
+        return ClusterLabel.values(data)
     }
 
     private func query(_ session: Session, _ promql: String) async throws -> JSONValue {
