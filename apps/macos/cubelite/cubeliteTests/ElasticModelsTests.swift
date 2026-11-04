@@ -60,8 +60,15 @@ final class ElasticModelsTests: XCTestCase {
         q.size = 5000
         let body = Elastic.searchBody(q, preset: .fluentBit)
         let filter = array(body["query"]?["bool"]?["filter"])
-        XCTAssertTrue(filter.contains(json(#"{"term":{"kubernetes.container_name":"worker"}}"#)))
-        XCTAssertTrue(filter.contains(json(#"{"term":{"kubernetes.pod_name":"api-0"}}"#)))
+        // Fluent Bit: the plain field (keyword template) or its `.keyword` (dynamic mapping, #529).
+        func either(_ field: String, _ value: String) -> JSONValue {
+            json(
+                #"{"bool":{"should":[{"term":{"\#(field)":"\#(value)"}},{"term":{"\#(field).keyword":"\#(value)"}}],"minimum_should_match":1}}"#
+            )
+        }
+        XCTAssertTrue(filter.contains(either("kubernetes.container_name", "worker")))
+        XCTAssertTrue(filter.contains(either("kubernetes.pod_name", "api-0")))
+        XCTAssertTrue(filter.contains(either("kubernetes.namespace_name", "shop")))
         let text = array(body["query"]?["bool"]?["must"]).first?["simple_query_string"]
         XCTAssertEqual(text?["query"], .string("timeout \"db\""))
         XCTAssertEqual(text?["fields"], json(#"["log"]"#))

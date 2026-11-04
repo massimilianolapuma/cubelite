@@ -10,6 +10,7 @@ fn query() -> HistoryQuery {
     HistoryQuery {
         namespace: "shop".into(),
         pod: "api-0".into(),
+        workload: None,
         container: None,
         from: "now-1h".into(),
         to: "now".into(),
@@ -76,6 +77,17 @@ fn cursor_serialises_camel_case_and_omits_a_missing_pit() {
     );
 }
 
+/// A Fluent Bit exact clause: the plain field or its `.keyword` subfield.
+fn either(kind: &str, field: &str, value: Value) -> Value {
+    json!({ "bool": {
+        "should": [
+            { kind: { field: value.clone() } },
+            { kind: { format!("{field}.keyword"): value } }
+        ],
+        "minimum_should_match": 1
+    } })
+}
+
 #[test]
 fn search_body_adds_container_text_paging_and_caps_size() {
     let mut q = query();
@@ -88,8 +100,13 @@ fn search_body_adds_container_text_paging_and_caps_size() {
     q.size = Some(5000);
     let body = search_body(&q, FieldPreset::FluentBit, None);
     let filter = body["query"]["bool"]["filter"].as_array().expect("filter");
-    assert!(filter.contains(&json!({ "term": { "kubernetes.container_name": "worker" } })));
-    assert!(filter.contains(&json!({ "term": { "kubernetes.pod_name": "api-0" } })));
+    assert!(filter.contains(&either(
+        "term",
+        "kubernetes.container_name",
+        json!("worker")
+    )));
+    assert!(filter.contains(&either("term", "kubernetes.pod_name", json!("api-0"))));
+    assert!(filter.contains(&either("term", "kubernetes.namespace_name", json!("shop"))));
     let text = &body["query"]["bool"]["must"][0]["simple_query_string"];
     assert_eq!(text["query"], "timeout \"db\"");
     assert_eq!(text["fields"], json!(["log"]));
@@ -108,7 +125,8 @@ fn map_response_reads_ecs_fluent_bit_and_flat_documents() {
                     "message": "disk almost full\n", "kubernetes": { "container": { "name": "web" } } },
                   "sort": [3, 1] },
                 { "_source": { "@timestamp": "2026-11-03T07:59:00Z", "log.level": "error",
-                    "message": "boom", "kubernetes.container.name": "web" }, "sort": [2, 2] },
+                    "message": "boom", "kubernetes.container.name": "web",
+                    "kubernetes.pod.name": "api-7d9f8b6c5-x7k2p" }, "sort": [2, 2] },
                 { "_source": { "@timestamp": "2026-11-03T07:58:00Z", "event": { "original": "ERROR raw" } },
                   "sort": [1, 3] }
             ]
@@ -137,6 +155,8 @@ fn map_response_reads_ecs_fluent_bit_and_flat_documents() {
     assert!(a.document.contains("\"message\":\"disk almost full\\n\""));
     assert_eq!(b.level, LogLevel::Error);
     assert_eq!(b.container.as_deref(), Some("web"));
+    assert_eq!(b.pod.as_deref(), Some("api-7d9f8b6c5-x7k2p"));
+    assert_eq!(a.pod, None);
     assert_eq!(c.message, "ERROR raw");
     assert_eq!(
         c.level,
@@ -145,7 +165,8 @@ fn map_response_reads_ecs_fluent_bit_and_flat_documents() {
     );
 
     let fluent = json!({ "hits": { "total": 1, "hits": [
-        { "_source": { "@timestamp": "t", "log": "plain line", "kubernetes": { "container_name": "c" } } }
+        { "_source": { "@timestamp": "t", "log": "plain line",
+          "kubernetes": { "container_name": "c", "pod_name": "db-0" } } }
     ] } });
     let page = map_response(&fluent, FieldPreset::FluentBit, 500).expect("page");
     assert_eq!(page.total, Some(1));
@@ -153,6 +174,7 @@ fn map_response_reads_ecs_fluent_bit_and_flat_documents() {
     assert_eq!(page.next, None, "short page is the last");
     assert_eq!(page.lines[0].message, "plain line");
     assert_eq!(page.lines[0].container.as_deref(), Some("c"));
+    assert_eq!(page.lines[0].pod.as_deref(), Some("db-0"));
 }
 
 #[test]
@@ -305,13 +327,17 @@ fn decode(url: &str) -> String {
 
 const SAFE: &str = "[bcdfghjklmnpqrstvwxz2456789]";
 
+fn deployment(name: &str) -> Workload {
+    Workload::Deployment { name: name.into() }
+}
+
 #[test]
 fn deployment_discover_url_is_a_lucene_regexp_on_the_pods() {
-    let url = kibana_deployment_discover_url(
+    let url = kibana_workload_discover_url(
         "https://kb.example/",
         FieldPreset::Ecs,
         "shop",
-        "api",
+        Some(&deployment("api")),
         "now-1h",
         "now",
     );
@@ -322,26 +348,78 @@ fn deployment_discover_url_is_a_lucene_regexp_on_the_pods() {
         "(query:(language:lucene,query:'kubernetes.namespace:\"shop\" AND kubernetes.pod.name:/api-{SAFE}{{6,10}}-{SAFE}{{5}}/'))"
     );
     assert!(decoded.contains(&expected), "{decoded}");
-    let fluent = deployment_lucene_query(FieldPreset::FluentBit, "shop", "a.b/c#d");
+    let fluent =
+        workload_lucene_query(FieldPreset::FluentBit, "shop", Some(&deployment("a.b/c#d")));
     assert!(
         fluent.starts_with(
-            "kubernetes.namespace_name:\"shop\" AND kubernetes.pod_name:/a\\.b\\/c\\#d-"
+            "kubernetes.namespace_name:\"shop\" AND (kubernetes.pod_name:/a\\.b\\/c\\#d-"
         ),
         "special characters escaped: {fluent}"
     );
+    assert!(
+        fluent.contains(" OR kubernetes.pod_name.keyword:/a\\.b\\/c\\#d-"),
+        "or the keyword subfield: {fluent}"
+    );
 }
 
-/// The pod regexp of a deployment's Lucene query, anchored like Lucene's.
-fn pods_regex(deployment: &str) -> regex::Regex {
-    let query = deployment_lucene_query(FieldPreset::Ecs, "shop", deployment);
+#[test]
+fn workload_lucene_queries_per_kind() {
+    let q = |w: Option<&Workload>| workload_lucene_query(FieldPreset::Ecs, "shop", w);
+    assert_eq!(
+        q(None),
+        "kubernetes.namespace:\"shop\"",
+        "the whole namespace"
+    );
+    assert_eq!(
+        q(Some(&Workload::Pod {
+            name: "api-0".into()
+        })),
+        "kubernetes.namespace:\"shop\" AND kubernetes.pod.name:\"api-0\""
+    );
+    assert_eq!(
+        q(Some(&Workload::StatefulSet { name: "db".into() })),
+        "kubernetes.namespace:\"shop\" AND kubernetes.pod.name:/db-[0-9]+/"
+    );
+    assert_eq!(
+        q(Some(&Workload::DaemonSet {
+            name: "agent".into()
+        })),
+        format!("kubernetes.namespace:\"shop\" AND kubernetes.pod.name:/agent-{SAFE}{{5}}/")
+    );
+    assert_eq!(
+        q(Some(&Workload::Job {
+            name: "migrate".into()
+        })),
+        format!(
+            "kubernetes.namespace:\"shop\" AND (kubernetes.pod.name:/migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}/ OR kubernetes.labels.batch_kubernetes_io\\/job\\-name:\"migrate\")"
+        ),
+        "a Job also matches its label, the field name escaped"
+    );
+    let fluent_job = workload_lucene_query(
+        FieldPreset::FluentBit,
+        "shop",
+        Some(&Workload::Job {
+            name: "migrate".into(),
+        }),
+    );
+    assert_eq!(
+        fluent_job,
+        format!("kubernetes.namespace_name:\"shop\" AND (kubernetes.pod_name:/migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}/ OR kubernetes.pod_name.keyword:/migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}/)"),
+        "no label field in the Fluent Bit preset: the regexp only"
+    );
+}
+
+/// The pod regexp of a workload's Lucene query, anchored like Lucene's.
+fn pods_regex(workload: &Workload) -> regex::Regex {
+    let query = workload_lucene_query(FieldPreset::Ecs, "shop", Some(workload));
     let start = query.find(":/").expect("regexp") + 2;
-    let body = query[start..].strip_suffix('/').expect("closing slash");
-    regex::Regex::new(&format!("^(?:{body})$")).expect("regex")
+    let end = start + query[start..].find('/').expect("closing slash");
+    regex::Regex::new(&format!("^(?:{})$", &query[start..end])).expect("regex")
 }
 
 #[test]
 fn deployment_query_matches_only_the_deployment_pods() {
-    let re = pods_regex("api");
+    let re = pods_regex(&deployment("api"));
     assert!(re.is_match("api-7d9f8b6c5-x7k2p"));
     assert!(
         !re.is_match("api-gateway-x7k2p-abcde"),
@@ -351,9 +429,201 @@ fn deployment_query_matches_only_the_deployment_pods() {
     assert!(!re.is_match("api-migrate-28374652-x7k2p"), "a CronJob pod");
     // Long names: Kubernetes cuts the generated name at 58 characters.
     let long = "x".repeat(70);
-    let re = pods_regex(&long);
+    let re = pods_regex(&deployment(&long));
     assert!(re.is_match(&format!("{}x7k2p", "x".repeat(58))));
     assert!(!re.is_match(&format!("{}-x7k2p", "y".repeat(58))));
+}
+
+#[test]
+fn workload_regexps_do_not_match_a_sibling_workload() {
+    let sts = pods_regex(&Workload::StatefulSet { name: "db".into() });
+    assert!(sts.is_match("db-0") && sts.is_match("db-12"));
+    assert!(!sts.is_match("db-backup-0"), "another StatefulSet");
+    assert!(!sts.is_match("db-7d9f8b6c5-x7k2p"), "a deployment pod");
+
+    let ds = pods_regex(&Workload::DaemonSet {
+        name: "agent".into(),
+    });
+    assert!(ds.is_match("agent-x7k2p"));
+    assert!(!ds.is_match("agent-metrics-x7k2p"), "another DaemonSet");
+    assert!(!ds.is_match("agent-0"), "a StatefulSet pod");
+
+    let job = pods_regex(&Workload::Job {
+        name: "migrate".into(),
+    });
+    assert!(job.is_match("migrate-x7k2p"));
+    assert!(job.is_match("migrate-0-x7k2p"), "an Indexed Job's pod");
+    assert!(job.is_match("migrate-1234567-x7k2p"), "a 7-digit index");
+    assert!(
+        !job.is_match("migrate-28374652-x7k2p"),
+        "a CronJob's job pod (8-digit scheduled minute)"
+    );
+    assert!(!job.is_match("migrate-db-x7k2p"), "another Job");
+    let backup = pods_regex(&Workload::Job {
+        name: "backup".into(),
+    });
+    assert!(
+        !backup.is_match("backup-28000000-x7k2p"),
+        "CronJob backup's pods are not Job backup's"
+    );
+    assert!(!backup.is_match("backup-28000000-abcde"));
+
+    // Long Job names: `name-` is cut at 58 characters, and an index keeps
+    // its whole `-<index>-` with the name cut before it.
+    let long = "j".repeat(70);
+    let job = pods_regex(&Workload::Job { name: long });
+    assert!(
+        job.is_match(&format!("{}x7k2p", "j".repeat(58))),
+        "non-indexed"
+    );
+    assert!(
+        job.is_match(&format!("{}-3-x7k2p", "j".repeat(55))),
+        "index 3"
+    );
+    assert!(
+        job.is_match(&format!("{}-42-x7k2p", "j".repeat(54))),
+        "index 42"
+    );
+    assert!(
+        !job.is_match(&format!("{}-42-x7k2p", "j".repeat(55))),
+        "cut too late"
+    );
+    let near = "n".repeat(52);
+    let job = pods_regex(&Workload::Job { name: near.clone() });
+    assert!(
+        job.is_match(&format!("{near}-1234-x7k2p")),
+        "fits without a cut"
+    );
+    assert!(
+        job.is_match(&format!("{}-12345-x7k2p", "n".repeat(51))),
+        "cut by one"
+    );
+
+    // Long DaemonSet names: `generateName` is cut at 58 characters.
+    let long = "d".repeat(70);
+    let ds = pods_regex(&Workload::DaemonSet { name: long });
+    assert!(ds.is_match(&format!("{}x7k2p", "d".repeat(58))));
+}
+
+fn workload_query(workload: Workload) -> HistoryQuery {
+    HistoryQuery {
+        pod: String::new(),
+        workload: Some(workload),
+        ..query()
+    }
+}
+
+#[test]
+fn search_body_filters_a_workload_with_a_regexp_on_the_pod_field() {
+    let body = search_body(&workload_query(deployment("api")), FieldPreset::Ecs, None);
+    let filter = body["query"]["bool"]["filter"].as_array().expect("filter");
+    assert_eq!(filter.len(), 3, "namespace, pods, time: {filter:?}");
+    assert_eq!(
+        filter[1],
+        json!({ "regexp": { "kubernetes.pod.name": {
+            "value": format!("api-{SAFE}{{6,10}}-{SAFE}{{5}}")
+        } } })
+    );
+
+    let body = search_body(
+        &workload_query(Workload::StatefulSet { name: "db".into() }),
+        FieldPreset::FluentBit,
+        None,
+    );
+    assert_eq!(
+        body["query"]["bool"]["filter"][1],
+        either(
+            "regexp",
+            "kubernetes.pod_name",
+            json!({ "value": "db-[0-9]+" })
+        ),
+        "Fluent Bit: the plain field (keyword template) or its keyword subfield (dynamic mapping)"
+    );
+
+    let body = search_body(
+        &workload_query(Workload::DaemonSet {
+            name: "agent".into(),
+        }),
+        FieldPreset::Ecs,
+        None,
+    );
+    assert_eq!(
+        body["query"]["bool"]["filter"][1],
+        json!({ "regexp": { "kubernetes.pod.name": { "value": format!("agent-{SAFE}{{5}}") } } })
+    );
+}
+
+#[test]
+fn search_body_matches_a_job_by_regexp_or_job_name_label() {
+    let job = || Workload::Job {
+        name: "migrate".into(),
+    };
+    let body = search_body(&workload_query(job()), FieldPreset::Ecs, None);
+    assert_eq!(
+        body["query"]["bool"]["filter"][1],
+        json!({ "bool": {
+            "should": [
+                { "regexp": { "kubernetes.pod.name": { "value": format!("migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}") } } },
+                { "term": { "kubernetes.labels.batch_kubernetes_io/job-name": "migrate" } }
+            ],
+            "minimum_should_match": 1
+        } })
+    );
+    let body = search_body(&workload_query(job()), FieldPreset::FluentBit, None);
+    assert_eq!(
+        body["query"]["bool"]["filter"][1],
+        either(
+            "regexp",
+            "kubernetes.pod_name",
+            json!({ "value": format!("migrate-([0-9]{{1,7}}-)?{SAFE}{{5}}") })
+        ),
+        "no label field in the preset: the regexp only"
+    );
+}
+
+#[test]
+fn search_body_for_one_pod_workload_or_the_whole_namespace() {
+    let pod = workload_query(Workload::Pod {
+        name: "api-0".into(),
+    });
+    let body = search_body(&pod, FieldPreset::Ecs, None);
+    assert_eq!(
+        body["query"]["bool"]["filter"][1],
+        json!({ "term": { "kubernetes.pod.name": "api-0" } })
+    );
+    let namespace = HistoryQuery {
+        pod: String::new(),
+        ..query()
+    };
+    let body = search_body(&namespace, FieldPreset::Ecs, None);
+    let filter = body["query"]["bool"]["filter"].as_array().expect("filter");
+    assert_eq!(filter.len(), 2, "namespace and time only: {filter:?}");
+    assert!(filter[1].get("range").is_some());
+}
+
+#[test]
+fn history_query_serde_stays_backwards_compatible() {
+    // A pre-#529 payload: a pod and no workload.
+    let old: HistoryQuery = serde_json::from_value(json!({
+        "namespace": "shop", "pod": "api-0", "from": "now-1h", "to": "now"
+    }))
+    .expect("old query");
+    assert_eq!(old.workload, None);
+    assert_eq!(old.pod, "api-0");
+    let new: HistoryQuery = serde_json::from_value(json!({
+        "namespace": "shop", "workload": { "kind": "daemon-set", "name": "agent" },
+        "from": "now-1h", "to": "now"
+    }))
+    .expect("workload query");
+    assert_eq!(
+        new.workload,
+        Some(Workload::DaemonSet {
+            name: "agent".into()
+        })
+    );
+    assert_eq!(new.pod, "");
+    let json = serde_json::to_value(query()).expect("json");
+    assert!(json.get("workload").is_none(), "omitted when unset");
 }
 
 #[test]

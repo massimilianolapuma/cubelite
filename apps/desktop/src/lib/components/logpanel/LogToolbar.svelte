@@ -5,20 +5,13 @@
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
 	import { ecsNdjson, type LogViewMode } from '#lib/log-ecs.ts';
-	import { HISTORY_RANGES, isHistoryRange } from '#lib/elastic.ts';
 	import { elastic } from '#lib/stores/elastic.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
-	import { settings } from '#lib/stores/settings.svelte.ts';
-	import { ACCENT_LINK_CLASS } from '#lib/integration.ts';
-	import {
-		HISTORY_HINT,
-		canOpenKibana,
-		kibanaBase,
-		showsIntegrationHint,
-		toastErrors
-	} from '#lib/integration-links.ts';
+	import { canOpenKibana, kibanaBase, toastErrors } from '#lib/integration-links.ts';
 	import { openKibanaDiscover } from '#lib/tauri.ts';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import HistoryControls from './HistoryControls.svelte';
+	import LogSourceSwitch from './LogSourceSwitch.svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { logWindows } from '#lib/stores/logWindows.svelte.ts';
@@ -53,16 +46,9 @@
 
 	// Elasticsearch history is offered when the cluster has an endpoint (#501).
 	const endpoint = $derived(elastic.endpointFor(app.activeCluster));
-	const SOURCES: { value: 'live' | 'history'; label: string }[] = [
-		{ value: 'live', label: 'Live' },
-		{ value: 'history', label: 'History' }
-	];
 	$effect(() => {
 		if (!endpoint && session.source === 'history') session.setSource('live');
 	});
-	// Without Elasticsearch, History stays visible but disabled, with a way to set it up (#526).
-	const historyHint = $derived(showsIntegrationHint(endpoint, settings.integrationHints.value));
-	const HINT_SOURCES = [SOURCES[0], { ...SOURCES[1], disabled: true, title: HISTORY_HINT }];
 
 	const canOpen = $derived(canOpenKibana(endpoint));
 
@@ -228,24 +214,7 @@
 	{/if}
 
 	<!-- live stream or Elasticsearch history (#501) -->
-	{#if endpoint}
-		<span data-testid="logpanel-source">
-			<SegmentedControl
-				segments={SOURCES}
-				value={session.source}
-				onChange={(v) => session.setSource(v)}
-			/>
-		</span>
-	{:else if historyHint}
-		<span class="flex items-center gap-1.5" title={HISTORY_HINT} data-testid="logpanel-history-hint">
-			<SegmentedControl segments={HINT_SOURCES} value="live" label="Log source" />
-			{#if !detached}
-				<button type="button" class={ACCENT_LINK_CLASS} onclick={() => app.openPreferences('elasticsearch')}>
-					Set up
-				</button>
-			{/if}
-		</span>
-	{/if}
+	<LogSourceSwitch value={session.source} onChange={(v) => session.setSource(v)} setup={!detached} />
 
 	<span class="flex-1"></span>
 
@@ -279,33 +248,7 @@
 	</div>
 
 	{#if session.source === 'history'}
-		<!-- history range and Elasticsearch query (#501) -->
-		<select
-			aria-label="History range"
-			class="focus-ring type-caption h-7 rounded-md border border-border-default bg-surface-window px-2 text-text-primary"
-			value={session.history.range}
-			onchange={(e) => {
-				const v = e.currentTarget.value;
-				if (isHistoryRange(v)) {
-					session.history.range = v;
-					void session.history.reload();
-				}
-			}}
-		>
-			{#each HISTORY_RANGES as r (r.value)}
-				<option value={r.value}>Last {r.label}</option>
-			{/each}
-		</select>
-		<input
-			type="text"
-			aria-label="Elasticsearch query"
-			placeholder="Query Elasticsearch… ⏎"
-			bind:value={session.history.text}
-			onkeydown={(e) => {
-				if (e.key === 'Enter') void session.history.reload();
-			}}
-			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
-		/>
+		<HistoryControls history={session.history} />
 	{:else}
 	<!-- tail size -->
 	<div class="flex overflow-hidden rounded-md border border-border-default">

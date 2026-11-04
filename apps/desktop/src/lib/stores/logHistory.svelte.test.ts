@@ -140,3 +140,30 @@ describe("LogHistory paging cursor (#531)", () => {
     expect(elasticCloseCursor).toHaveBeenLastCalledWith("/k", "dev", dev, cursor("pit-dev", 5));
   });
 });
+
+describe("LogHistory targets (#529)", () => {
+  const withPods = (pods: (string | null)[]): HistoryPage => {
+    const p = page(pods.map((_, i) => `m${i}`), null);
+    return { ...p, lines: p.lines.map((l, i) => ({ ...l, pod: pods[i] })) };
+  };
+
+  it("searches a workload's pods and tags each line with its own pod", async () => {
+    vi.mocked(elasticSearch).mockResolvedValueOnce(withPods(["db-1", "db-0"]));
+    const h = new LogHistory("shop", { kind: "stateful-set", name: "db" }, () => null);
+    await h.reload();
+    const query = vi.mocked(elasticSearch).mock.calls[0]![3];
+    expect(query).toMatchObject({ namespace: "shop", pod: "", workload: { kind: "stateful-set", name: "db" } });
+    expect(h.lines.map((l) => l.pod)).toEqual(["db-0", "db-1"]);
+  });
+
+  it("searches the whole namespace without a target, and one pod by name", async () => {
+    vi.mocked(elasticSearch).mockResolvedValue(withPods([null]));
+    await new LogHistory("shop", null, () => null).reload();
+    await new LogHistory("shop", { kind: "pod", name: "api-0" }, () => null).reload();
+    const [namespace, onePod] = vi.mocked(elasticSearch).mock.calls.map((c) => c[3]);
+    expect(namespace).toMatchObject({ pod: "" });
+    expect(namespace).not.toHaveProperty("workload");
+    expect(onePod).toMatchObject({ pod: "api-0" });
+    expect(onePod).not.toHaveProperty("workload");
+  });
+});

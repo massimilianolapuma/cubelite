@@ -195,6 +195,8 @@ export function tauriMockScript(): string {
       case "list_pvcs":
       case "list_nodes":
         return [];
+      case "list_daemonsets":
+        return [{ name: "node-agent", namespace: "default" }];
       case "probe_cluster":
         return args.context === "staging"
           ? { context: args.context, reachable: false, version: null, node_count: null, pod_count: null, issue_pod_count: null, capacity: null, error: "connection timed out" }
@@ -276,7 +278,8 @@ export function tauriMockScript(): string {
         window.__kibanaForwards = (window.__kibanaForwards ?? 0) + 1;
         return 45601;
       }
-      case "open_kibana_discover": {
+      case "open_kibana_discover":
+      case "open_kibana_workload": {
         window.__kibanaOpened = args;
         return null;
       }

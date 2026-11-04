@@ -35,6 +35,26 @@ fn selectors_match_pods_deployments_and_statefulsets_literally() {
         ),
         r#"namespace="shop", pod=~"db-[0-9]+""#
     );
+    assert_eq!(
+        selector(
+            "shop",
+            &Workload::DaemonSet {
+                name: "agent".into()
+            },
+            None
+        ),
+        r#"namespace="shop", pod=~"agent-[bcdfghjklmnpqrstvwxz2456789]{5}""#
+    );
+    assert_eq!(
+        selector(
+            "shop",
+            &Workload::Job {
+                name: "migrate".into()
+            },
+            None
+        ),
+        r#"namespace="shop", pod=~"migrate-([0-9]{1,7}-)?[bcdfghjklmnpqrstvwxz2456789]{5}""#
+    );
     assert_eq!(escape("a\"b\\c\nd"), r#""a\"b\\c\nd""#);
 }
 

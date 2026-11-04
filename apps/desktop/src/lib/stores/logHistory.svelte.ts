@@ -1,5 +1,6 @@
 /**
- * Elasticsearch history of one log session (#501): pages of a pod's logs,
+ * Elasticsearch history of one log session (#501): pages of a pod's logs —
+ * or of a workload's pods or a whole namespace for the Logs view (#529) —
  * newest first from the backend, kept oldest-first here so the panel
  * renders them like a live buffer; "Load older" prepends.
  *
@@ -13,9 +14,11 @@ import {
   type HistoryCursor,
   type HistoryLine,
   type HistoryPage,
+  type HistoryQuery,
 } from "#lib/tauri.ts";
 import { errorMessage } from "#lib/errors.ts";
 import { HistoryKeys, type HistoryRange } from "#lib/elastic.ts";
+import type { HistoryTarget } from "#lib/log-scope.ts";
 import type { KeyedLogLine } from "./logs.svelte";
 import { app } from "./app.svelte";
 import { elastic } from "./elastic.svelte";
@@ -45,7 +48,8 @@ export class LogHistory {
   loads = $state(0);
 
   readonly namespace: string;
-  readonly pod: string;
+  /** One pod (a name), a workload's pods, or the whole namespace (`null`). */
+  readonly target: HistoryTarget;
   #container: () => string | null;
   #onReplace: () => void;
   #nextId = HISTORY_ID_BASE;
@@ -59,12 +63,12 @@ export class LogHistory {
 
   constructor(
     namespace: string,
-    pod: string,
+    target: HistoryTarget,
     container: () => string | null,
     onReplace: () => void = () => {},
   ) {
     this.namespace = namespace;
-    this.pod = pod;
+    this.target = target;
     this.#container = container;
     this.#onReplace = onReplace;
   }
@@ -73,11 +77,25 @@ export class LogHistory {
     return this.next !== null && !this.loading && this.lines.length < HISTORY_CAP;
   }
 
+  /** The pod name of a one-pod history. */
+  get #pod(): string {
+    const t = this.target;
+    if (typeof t === "string") return t;
+    return t?.kind === "pod" ? t.name : "";
+  }
+
+  /** Pod filter of the query: one pod by name, else a workload (or nothing: the namespace). */
+  get #podFilter(): Pick<HistoryQuery, "pod" | "workload"> {
+    const t = this.target;
+    return t === null || typeof t === "string" || t.kind === "pod" ? { pod: this.#pod } : { pod: "", workload: t };
+  }
+
   #toLine(h: HistoryLine): KeyedLogLine {
     this.#seen.add(h);
     return {
       id: this.#nextId++,
-      pod: this.pod,
+      // A workload's or namespace's lines come from several pods (#529).
+      pod: h.pod ?? this.#pod,
       namespace: this.namespace,
       time: h.time,
       level: h.level,
@@ -100,7 +118,7 @@ export class LogHistory {
     const source = { kubeconfigPath: app.kubeconfigPath, context, endpoint };
     const page = await elasticSearch(source.kubeconfigPath, context, endpoint, {
       namespace: this.namespace,
-      pod: this.pod,
+      ...this.#podFilter,
       container: params.container,
       from: params.range,
       to: "now",
