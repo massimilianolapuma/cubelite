@@ -61,6 +61,9 @@ final class PrometheusPreferencesModel {
 
     private let backend: any PrometheusPreferencesBackend
     private let endpoints: PrometheusEndpointStore
+    /// Called with the context when Save turned Prometheus off, so the
+    /// banner does not offer it again (#527).
+    @ObservationIgnored var onTurnedOff: ((String) -> Void)?
 
     init(backend: any PrometheusPreferencesBackend, endpoints: PrometheusEndpointStore) {
         self.backend = backend
@@ -143,6 +146,32 @@ final class PrometheusPreferencesModel {
         grafanaService = found.serviceRef
     }
 
+    /// Fills the form with a service found when the context connected
+    /// (#527): in cluster and its Grafana. Nothing is saved, and a saved
+    /// endpoint is never replaced. `candidates` (every service found, best
+    /// first) fill the detected list so another can be picked.
+    func suggest(_ found: DetectedPrometheus, grafana: DetectedPrometheus?, candidates: [DetectedPrometheus] = []) {
+        guard saved == nil else { return }
+        target.mode = .inCluster
+        pick(found)
+        if let grafana { pickGrafana(grafana) }
+        if !candidates.isEmpty {
+            detected = candidates.filter { $0.kind == .prometheus }
+            detectedGrafana = candidates.filter { $0.kind == .grafana }
+        }
+        outcome = FormOutcome(ok: true, text: IntegrationForm.suggestedMessage)
+    }
+
+    /// Tests the form's endpoint, then saves it; nothing is saved when the
+    /// test fails (#527).
+    func testThenSave() async -> EnableResult<PromInfo> {
+        guard let context, let endpoint = draft() else { return .failed("Nothing to save") }
+        let auth = typedAuth()
+        return await IntegrationForm.testThenSave(
+            test: { try await self.backend.test(context: context, endpoint: endpoint, auth: auth) },
+            save: { await self.save(); return self.outcome })
+    }
+
     // MARK: Actions
 
     func detect() async {
@@ -193,6 +222,7 @@ final class PrometheusPreferencesModel {
             }
             // Stored even if the form moved to another context meanwhile.
             self.endpoints.setEndpoint(endpoint, for: context)
+            if endpoint == nil { self.onTurnedOff?(context) }
             // A changed endpoint or Grafana service must not keep old forwards.
             await self.backend.disconnect(context: context)
             guard context == self.context else { return }

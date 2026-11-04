@@ -69,6 +69,9 @@ final class ElasticPreferencesModel {
 
     private let backend: any ElasticPreferencesBackend
     private let endpoints: ElasticEndpointStore
+    /// Called with the context when Save turned Elasticsearch off, so the
+    /// banner does not offer it again (#527).
+    @ObservationIgnored var onTurnedOff: ((String) -> Void)?
 
     init(backend: any ElasticPreferencesBackend, endpoints: ElasticEndpointStore) {
         self.backend = backend
@@ -156,6 +159,34 @@ final class ElasticPreferencesModel {
         target.pick(namespace: found.namespace, name: found.name, port: found.port, https: found.https)
     }
 
+    /// Fills the form with a service found when the context connected
+    /// (#527): in cluster, its Kibana and, for ECK, ECK's `elastic` user.
+    /// Nothing is saved, and a saved endpoint is never replaced.
+    /// `candidates` (every service found, best first) fill the detected
+    /// list so another can be picked.
+    func suggest(_ found: DetectedService, kibana: DetectedService?, candidates: [DetectedService] = []) {
+        guard saved == nil else { return }
+        target.mode = .inCluster
+        pick(found)
+        if let kibana { pickKibana(kibana) }
+        authMethod = found.isECK ? .eckUser : .none
+        if !candidates.isEmpty {
+            detected = candidates.filter { $0.kind == .elasticsearch }
+            detectedKibana = candidates.filter { $0.kind == .kibana }
+        }
+        outcome = FormOutcome(ok: true, text: IntegrationForm.suggestedMessage)
+    }
+
+    /// Tests the form's endpoint, ECK's user read only now, then saves it;
+    /// nothing is saved when the test fails (#527).
+    func testThenSave() async -> EnableResult<EsInfo> {
+        guard let context, let endpoint = draft() else { return .failed("Nothing to save") }
+        let auth = authMethod == .eckUser ? EsAuth.eckUser : typedAuth()
+        return await IntegrationForm.testThenSave(
+            test: { try await self.backend.test(context: context, endpoint: endpoint, auth: auth) },
+            save: { await self.save(); return self.outcome })
+    }
+
     // MARK: Actions
 
     func detect() async {
@@ -223,6 +254,7 @@ final class ElasticPreferencesModel {
             // Stored even if the form moved to another context meanwhile:
             // the keychain already matches this endpoint.
             endpoints.setEndpoint(endpoint, for: context)
+            if endpoint == nil { onTurnedOff?(context) }
             // A changed endpoint or Kibana service must not keep old forwards.
             await backend.disconnect(context: context)
             guard context == self.context else { return }

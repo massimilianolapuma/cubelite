@@ -1,6 +1,7 @@
 /**
  * Persisted user settings (non-secret — plain localStorage per AGENTS.md).
  */
+import { isDismissals, type IntegrationKind } from "#lib/integration-suggest.ts";
 
 export type Theme = "dark" | "light" | "system";
 
@@ -98,6 +99,8 @@ export const settings = {
   onboardingSeen: persisted<boolean>("onboardingSeen", false, isBoolean),
   /** Placeholders for integrations that are not configured yet (#526). */
   integrationHints: persisted<boolean>("integrationHints", true, isBoolean),
+  /** contextName → integrations whose detection banner was dismissed (#527). */
+  integrationDismissals: persisted<Record<string, IntegrationKind[]>>("integrationDismissals", {}, isDismissals),
   /** Custom kubeconfig file list; empty = follow KUBECONFIG / ~/.kube. */
   kubeconfigPaths: persisted<string[]>("kubeconfigPaths", [], isStringArray),
   /** contextName → identity color key; written back on context discovery. */

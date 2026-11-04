@@ -343,3 +343,39 @@ async fn grafana_answers_through_a_service_tunnel() {
     let health: serde_json::Value = response.json().await.expect("health json");
     assert_eq!(health["database"], "ok");
 }
+
+#[tokio::test]
+#[ignore = "needs a live cluster (CUBELITE_LIVE_CONTEXT)"]
+async fn detect_all_finds_the_four_services_on_connect() {
+    let Some(client) = client().await else { return };
+    let found = integration::detect_all(client).await.expect("detect_all");
+    println!("detected: {found:?}");
+    // ECK controls quickstart-es-http, which selects its cluster: one click.
+    assert!(
+        found.elasticsearch_one_click,
+        "ECK controls quickstart-es-http"
+    );
+    // prometheus-operated is the operator's governing Service: its owner
+    // reference is not a controller one and it selects every Prometheus of
+    // the namespace, and the chart's Service has no owner. Review only.
+    assert!(!found.prometheus_one_click);
+    let name = |namespace: &str, name: &str| (namespace.to_string(), name.to_string());
+    let es = found.elasticsearch.expect("Elasticsearch");
+    assert_eq!(
+        (es.namespace, es.name),
+        name("logging", "quickstart-es-http")
+    );
+    assert!(es.https, "ECK serves https");
+    let kb = found.kibana.expect("Kibana");
+    assert_eq!(
+        (kb.namespace, kb.name),
+        name("logging", "quickstart-kb-http")
+    );
+    let pr = found.prometheus.expect("Prometheus");
+    assert_eq!(
+        (pr.namespace, pr.name),
+        name("monitoring", "prometheus-operated")
+    );
+    let gf = found.grafana.expect("Grafana");
+    assert_eq!((gf.namespace, gf.name), name("monitoring", "kps-grafana"));
+}

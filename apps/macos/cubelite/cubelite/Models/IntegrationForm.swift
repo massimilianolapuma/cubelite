@@ -138,11 +138,37 @@ struct FormOutcome: Equatable, Sendable {
     let text: String
 }
 
+/// What the banner's Enable got (#527): saved, with the test's facts, or
+/// why nothing was saved.
+enum EnableResult<Info: Sendable>: Sendable {
+    case saved(Info)
+    case failed(String)
+}
+
 enum IntegrationForm {
 
     /// Shown when stored secrets no longer apply after the endpoint moved.
     static let movedMessage =
         "The endpoint or TLS setting changed: enter the credentials again (or choose No authentication)."
+
+    /// Shown when the banner's Review pre-filled the form (#527).
+    static let suggestedMessage = "Found in this cluster: Test, then Save."
+
+    /// The banner's Enable (#527): `test`, then `save` only when it passed;
+    /// `save` returns the form's outcome.
+    @MainActor
+    static func testThenSave<Info: Sendable>(
+        test: () async throws -> Info, save: () async -> FormOutcome?
+    ) async -> EnableResult<Info> {
+        let info: Info
+        do {
+            info = try await test()
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+        if let outcome = await save(), !outcome.ok { return .failed(outcome.text) }
+        return .saved(info)
+    }
 
     /// Whether `draft` is bound differently from `saved` (stored secrets
     /// only work with the endpoint they were saved for).

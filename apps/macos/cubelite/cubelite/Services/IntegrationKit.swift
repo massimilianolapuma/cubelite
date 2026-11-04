@@ -63,6 +63,17 @@ enum IntegrationK8s {
         var name: String?
         var namespace: String?
         var labels: [String: String]?
+        /// Which operator manages the object (detection trust, #527).
+        var ownerReferences: [OwnerReference]?
+    }
+
+    struct OwnerReference: Decodable, Sendable {
+        var apiVersion: String
+        var kind: String
+        var name: String?
+        var uid: String?
+        /// The owner manages the object (its controller).
+        var controller: Bool?
     }
 
     enum IntOrString: Decodable, Sendable, Equatable {

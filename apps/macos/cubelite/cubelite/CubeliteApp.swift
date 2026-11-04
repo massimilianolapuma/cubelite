@@ -5,7 +5,7 @@ import SwiftUI
 struct CubeliteApp: App {
 
     @State private var clusterState = ClusterState()
-    @State private var appSettings = AppSettings()
+    @State private var appSettings: AppSettings
     @State private var resourcePreferences = ResourcePreferences()
     @State private var loginItemController: LoginItemController
     private let kubeconfigService: KubeconfigService
@@ -14,6 +14,7 @@ struct CubeliteApp: App {
     @State private var elasticEndpoints: ElasticEndpointStore
     private let prometheusService: PrometheusService
     @State private var prometheusStore: PrometheusStore
+    @State private var integrationSuggestions: IntegrationsSuggestionStore
 
     /// Persists whether the user has completed the first-launch onboarding flow.
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
@@ -42,9 +43,16 @@ struct CubeliteApp: App {
         self._elasticEndpoints = State(initialValue: endpoints)
         let prometheus = PrometheusService(cluster: api)
         self.prometheusService = prometheus
+        let promEndpoints = PrometheusEndpointStore()
         self._prometheusStore = State(
             initialValue: PrometheusStore(
-                endpoints: PrometheusEndpointStore(), querying: prometheus, grafana: prometheus))
+                endpoints: promEndpoints, querying: prometheus, grafana: prometheus))
+        let settings = AppSettings()
+        self._appSettings = State(initialValue: settings)
+        self._integrationSuggestions = State(
+            initialValue: IntegrationsSuggestionStore(
+                cluster: api, elastic: elastic, prometheus: prometheus, elasticEndpoints: endpoints,
+                prometheusEndpoints: promEndpoints, settings: settings))
         self._logSessionStore = State(
             initialValue: LogSessionStore(
                 streamer: api,
@@ -70,6 +78,7 @@ struct CubeliteApp: App {
                     .environment(loginItemController)
                     .environment(elasticEndpoints)
                     .environment(prometheusStore)
+                    .environment(integrationSuggestions)
                     .preferredColorScheme(appSettings.colorScheme)
                     .onChange(of: appSettings.appearanceMode) { _, newMode in
                         applyNSAppearance(newMode)
