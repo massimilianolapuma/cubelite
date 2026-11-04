@@ -228,15 +228,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Client-certificate clusters: intermittent TLS failure on the first
-  call** (macOS, #521): connections set up at the same time (several panels
-  loading at once, or several services in one process) each re-imported the
-  client identity, deleting the private key another connection had just
-  paired — its TLS handshake then failed with "Certificate validation
-  failed", or the import itself with OSStatus -25299. Imports are now
-  serialised, a usable stored identity is reused instead of re-imported, and
-  a re-import replaces only that certificate's key, so one
-  client-certificate cluster no longer evicts another's. The TLS error now
-  names the URLError code and OSStatus.
+  call** (macOS, #521): every new connection re-imported the client
+  identity under one key tag shared by all clusters, deleting the private
+  key another session had paired — its TLS handshake then failed with
+  "Certificate validation failed", or a concurrent import with OSStatus
+  -25299. A stored identity that can sign is now reused, each cluster's key
+  has its own tag (a rotated certificate replaces only that cluster's key,
+  so keys never pile up, and Reset stored credentials removes them), and
+  imports are serialised across the process. The TLS error now names the
+  URLError code and the stream error.
 
 - **Exact Elasticsearch history paging** (desktop and macOS, #531): Load
   older could repeat or skip lines whose timestamps were equal across shards.

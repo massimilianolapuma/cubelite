@@ -294,13 +294,20 @@ final class IsTLSErrorTests: XCTestCase {
 
     func testTLSFailureReasonCarriesTheCodes() {
         let withStatus = URLError(
-            .secureConnectionFailed, userInfo: ["_kCFStreamErrorCodeKey": -9808])
+            .secureConnectionFailed,
+            userInfo: ["_kCFStreamErrorCodeKey": -9808, "_kCFStreamErrorDomainKey": 3])
         XCTAssertEqual(
             KubeAPIService.tlsFailureReason(withStatus),
             "Certificate validation failed for the cluster API server (URLError -1200, OSStatus -9808)")
         XCTAssertEqual(
             KubeAPIService.tlsFailureReason(URLError(.clientCertificateRejected)),
             "Certificate validation failed for the cluster API server (URLError -1205)")
+        let posix = URLError(
+            .secureConnectionFailed,
+            userInfo: ["_kCFStreamErrorCodeKey": 54, "_kCFStreamErrorDomainKey": 1])
+        XCTAssertEqual(
+            KubeAPIService.tlsFailureReason(posix),
+            "Certificate validation failed for the cluster API server (URLError -1200, stream error 54)")
     }
 
 
@@ -419,10 +426,36 @@ final class LoadClientIdentityTests: XCTestCase {
         + "V2h2UVJmQQpOVlE3RS9DbUV4QUNoZTZ3UUk3ajlpV1h5YTdSTXZBQ0R3PT0KLS0tLS1F"
         + "TkQgRUMgUFJJVkFURSBLRVktLS0tLQo="
 
+    /// A second, unrelated client identity (EC P-256), for a second cluster.
+    private static let secondCertDERBase64 =
+        "MIIBOTCB4AIJAM5SdfX0QyP5MAoGCCqGSM49BAMCMCQxIjAgBgNVBAMMGUN1YmVMaXRl"
+        + "IFRlc3QgQ2xpZW50IEVDIDIwIBcNMjYxMTA0MDc1NzUyWhgPMjEyNjEwMTEwNzU3NTJa"
+        + "MCQxIjAgBgNVBAMMGUN1YmVMaXRlIFRlc3QgQ2xpZW50IEVDIDIwWTATBgcqhkjOPQIB"
+        + "BggqhkjOPQMBBwNCAASvXsAAnOxdYSi30bytAC3HqE/hAAAq5eZV8FkyMrkcAhc2UTCD"
+        + "8w60tIAUmWxxio/pnkdxYTJy6hweojtgfTQDMAoGCCqGSM49BAMCA0gAMEUCIBRNJPiq"
+        + "Fx9F4IrGaQAVdD9VpCS5P7if3KH4DP6/IEMsAiEA4gtoSLrgalObATMH2c8zmNcofJSl"
+        + "/jsFzmKNxH39zOs="
+    private static let secondKeyPEMBase64 =
+        "LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUxCSFNDQ0ZVb3pi"
+        + "L3lvNE9OZldaQkprZFlZVEtaU0FvUi9QVDJzTExVWHJvQW9HQ0NxR1NNNDkKQXdFSG9V"
+        + "UURRZ0FFcjE3QUFKenNYV0VvdDlHOHJRQXR4NmhQNFFBQUt1WG1WZkJaTWpLNUhBSVhO"
+        + "bEV3Zy9NTwp0TFNBRkpsc2NZcVA2WjVIY1dFeWN1b2NIcUk3WUgwMEF3PT0KLS0tLS1F"
+        + "TkQgRUMgUFJJVkFURSBLRVktLS0tLQo="
+
+    static let clusterA = "https://cluster-a.test:6443"
+    static let clusterB = "https://cluster-b.test:6443"
+
     // MARK: - Keychain Cleanup
 
     override func tearDown() {
         super.tearDown()
+        KubeAPIService.deleteClientKeys(account: Self.clusterA)
+        KubeAPIService.deleteClientKeys(account: Self.clusterB)
+        if let der = Data(base64Encoded: Self.secondCertDERBase64),
+            let cert = SecCertificateCreateWithData(nil, der as CFData)
+        {
+            SecItemDelete([kSecClass: kSecClassCertificate, kSecValueRef: cert] as CFDictionary)
+        }
         // Remove keychain items written during identity integration tests.
         let keyTag = "it.lapuma.cubelite.client-key".data(using: .utf8)!
         let deleteKey: [CFString: Any] = [
@@ -525,10 +558,66 @@ final class LoadClientIdentityTests: XCTestCase {
         XCTAssertNil(Self.importOutcome(user), "the stored identity still signs")
     }
 
+    /// Importing a second cluster's identity must not evict the first
+    /// cluster's key: before #521 every cluster shared one key tag, so the
+    /// first cluster's next handshake failed.
+    func testLoadClientIdentity_secondClusterKeepsTheFirstClustersKey() throws {
+        let first = try XCTUnwrap(
+            KubeAPIService.loadClientIdentity(from: firstUser(), account: Self.clusterA))
+        _ = try XCTUnwrap(
+            KubeAPIService.loadClientIdentity(from: Self.secondUser(), account: Self.clusterB))
+        XCTAssertTrue(Self.canSign(first), "cluster A's identity still signs")
+        XCTAssertEqual(Self.storedKeys(account: Self.clusterA), 1)
+        XCTAssertEqual(Self.storedKeys(account: Self.clusterB), 1)
+    }
+
+    /// A rotated certificate replaces the cluster's key: keys never pile up.
+    func testLoadClientIdentity_rotatedCertificateReplacesTheClustersKey() throws {
+        _ = try KubeAPIService.loadClientIdentity(from: firstUser(), account: Self.clusterA)
+        let rotated = try XCTUnwrap(
+            KubeAPIService.loadClientIdentity(from: Self.secondUser(), account: Self.clusterA))
+        XCTAssertTrue(Self.canSign(rotated))
+        XCTAssertEqual(Self.storedKeys(account: Self.clusterA), 1, "the old key is gone")
+        KubeAPIService.deleteClientKeys(account: Self.clusterA)
+        XCTAssertEqual(Self.storedKeys(account: Self.clusterA), 0, "Reset removes it")
+    }
+
+    private func firstUser() -> UserDetails {
+        UserDetails(clientCertificateData: testCertDERBase64, clientKeyData: testKeyPEMBase64)
+    }
+
+    private static func secondUser() -> UserDetails {
+        UserDetails(clientCertificateData: secondCertDERBase64, clientKeyData: secondKeyPEMBase64)
+    }
+
+    private static func canSign(_ identity: SecIdentity) -> Bool {
+        var key: SecKey?
+        guard SecIdentityCopyPrivateKey(identity, &key) == errSecSuccess, let key else { return false }
+        return SecKeyCreateSignature(
+            key, .ecdsaSignatureMessageX962SHA256, Data("probe".utf8) as CFData, nil) != nil
+    }
+
+    private static func storedKeys(account: String) -> Int {
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(
+            [
+                kSecClass: kSecClassKey,
+                kSecAttrApplicationTag: KubeAPIService.clientKeyTag(account: account),
+                kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+                kSecMatchLimit: kSecMatchLimitAll,
+                kSecReturnAttributes: true,
+            ] as CFDictionary, &result)
+        guard status == errSecSuccess else { return 0 }
+        return (result as? [[String: Any]])?.count ?? 0
+    }
+
     /// `nil` when importing `user`'s identity succeeds and it can sign, else why not.
     private static func importOutcome(_ user: UserDetails) -> String? {
         do {
-            guard let identity = try KubeAPIService.loadClientIdentity(from: user) else {
+            guard
+                let identity = try KubeAPIService.loadClientIdentity(
+                    from: user, account: Self.clusterA)
+            else {
                 return "no identity"
             }
             var key: SecKey?
