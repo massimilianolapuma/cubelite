@@ -20,6 +20,7 @@ vi.mock("#lib/tauri.ts", () => ({
   listSecrets: vi.fn(async () => []),
   listHelmReleases: vi.fn(async () => []),
   streamLogs: vi.fn(async () => "1"),
+  listDaemonSets: vi.fn(async () => []),
   stopLogs: vi.fn(async () => undefined),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),

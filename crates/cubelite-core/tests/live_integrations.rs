@@ -30,8 +30,8 @@ async fn client() -> Option<kube::Client> {
     )
 }
 
-/// A running pod of `namespace` whose name starts with `prefix`.
-async fn pod_named(client: &kube::Client, namespace: &str, prefix: &str) -> String {
+/// Pods of `namespace` whose names start with `prefix`.
+async fn pods_named(client: &kube::Client, namespace: &str, prefix: &str) -> Vec<String> {
     let pods: kube::Api<k8s_openapi::api::core::v1::Pod> =
         kube::Api::namespaced(client.clone(), namespace);
     pods.list(&Default::default())
@@ -40,7 +40,16 @@ async fn pod_named(client: &kube::Client, namespace: &str, prefix: &str) -> Stri
         .items
         .into_iter()
         .filter_map(|p| p.metadata.name)
-        .find(|n| n.starts_with(prefix))
+        .filter(|n| n.starts_with(prefix))
+        .collect()
+}
+
+/// A pod of `namespace` whose name starts with `prefix`.
+async fn pod_named(client: &kube::Client, namespace: &str, prefix: &str) -> String {
+    pods_named(client, namespace, prefix)
+        .await
+        .into_iter()
+        .next()
         .expect("pod")
 }
 
@@ -84,6 +93,7 @@ async fn elasticsearch_history_through_the_eck_tunnel() {
             &HistoryQuery {
                 namespace: "shop".into(),
                 pod: pod.clone(),
+                workload: None,
                 container: None,
                 from: "now-1h".into(),
                 to: "now".into(),
@@ -109,6 +119,7 @@ async fn elasticsearch_history_through_the_eck_tunnel() {
             &HistoryQuery {
                 namespace: "shop".into(),
                 pod: pod.clone(),
+                workload: None,
                 container: None,
                 from: "now-1h".into(),
                 to: "now".into(),
@@ -147,6 +158,7 @@ async fn elasticsearch_history_through_the_eck_tunnel() {
                 &HistoryQuery {
                     namespace: "shop".into(),
                     pod: pod.clone(),
+                    workload: None,
                     container: None,
                     from: "now-1h".into(),
                     to: "now".into(),
@@ -181,6 +193,7 @@ async fn elasticsearch_history_through_the_eck_tunnel() {
             &HistoryQuery {
                 namespace: "shop".into(),
                 pod,
+                workload: None,
                 container: Some("api".into()),
                 from: "now-1h".into(),
                 to: "now".into(),
@@ -195,6 +208,48 @@ async fn elasticsearch_history_through_the_eck_tunnel() {
     assert!(!text.lines.is_empty());
     if let Some(next) = &text.next {
         conn.close_cursor(next).await;
+    }
+
+    // #529: the deployment's history spans its pods (a regexp on the pod
+    // name), and every line names its pod.
+    let api_pods = pods_named(&client, "shop", "api-").await;
+    let workload = conn
+        .search(
+            &endpoint,
+            &HistoryQuery {
+                namespace: "shop".into(),
+                pod: String::new(),
+                workload: Some(Workload::Deployment { name: "api".into() }),
+                container: None,
+                from: "now-1h".into(),
+                to: "now".into(),
+                text: None,
+                search_after: None,
+                size: Some(500),
+            },
+        )
+        .await
+        .expect("deployment history");
+    if let Some(next) = &workload.next {
+        conn.close_cursor(next).await;
+    }
+    let seen: std::collections::BTreeSet<String> = workload
+        .lines
+        .iter()
+        .filter_map(|l| l.pod.clone())
+        .collect();
+    println!("api pods {api_pods:?}, history from {seen:?}");
+    assert!(!workload.lines.is_empty(), "history for deployment api");
+    assert!(
+        workload.lines.iter().all(|l| l.pod.is_some()),
+        "every line names its pod"
+    );
+    assert!(
+        seen.iter().all(|p| p.starts_with("api-")),
+        "only the deployment's pods"
+    );
+    if api_pods.len() > 1 {
+        assert!(seen.len() > 1, "lines from more than one api pod: {seen:?}");
     }
 }
 

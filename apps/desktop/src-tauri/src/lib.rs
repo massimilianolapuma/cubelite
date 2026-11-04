@@ -4,20 +4,20 @@ pub mod env;
 use commands::elastic::{
     elastic_auth_method, elastic_close_cursor, elastic_detect, elastic_disconnect,
     elastic_save_auth, elastic_search, elastic_test, elastic_use_eck_credentials,
-    kibana_discover_url, kibana_port_forward, open_kibana_deployment, open_kibana_discover,
-    open_kibana_home, ElasticState,
+    kibana_discover_url, kibana_port_forward, open_kibana_discover, open_kibana_home,
+    open_kibana_workload, ElasticState,
 };
 use commands::integrations::integrations_detect;
 use commands::kubeconfig_watch::{unwatch_kubeconfig, watch_kubeconfig, KubeconfigWatchState};
 use commands::kubernetes::{
     apply_resource_yaml, cluster_capacity, delete_pod, exec_send, export_log, get_current_context,
     get_pod_containers, get_resource_yaml, kubeconfig_sources, list_configmaps, list_contexts,
-    list_cronjobs, list_deployments, list_events, list_helm_releases, list_ingresses, list_jobs,
-    list_namespaces, list_nodes, list_pod_metrics, list_pods, list_pvcs, list_secrets,
-    list_services, list_statefulsets, probe_cluster, restart_deployment, scale_deployment,
-    set_context, start_exec, start_port_forward, stop_exec, stop_logs, stop_port_forward,
-    stream_logs, stream_pod_log, unwatch_resources, watch_resources, ExecState, LogState,
-    PortForwardState, WatchState,
+    list_cronjobs, list_daemonsets, list_deployments, list_events, list_helm_releases,
+    list_ingresses, list_jobs, list_namespaces, list_nodes, list_pod_metrics, list_pods, list_pvcs,
+    list_secrets, list_services, list_statefulsets, probe_cluster, restart_deployment,
+    scale_deployment, set_context, start_exec, start_port_forward, stop_exec, stop_logs,
+    stop_port_forward, stream_logs, stream_pod_log, unwatch_resources, watch_resources, ExecState,
+    LogState, PortForwardState, WatchState,
 };
 use commands::prometheus::{
     grafana_port_forward, open_grafana_explore, open_grafana_home, open_grafana_workload,
@@ -67,7 +67,7 @@ pub fn run() {
             elastic_disconnect,
             kibana_discover_url,
             open_kibana_discover,
-            open_kibana_deployment,
+            open_kibana_workload,
             open_kibana_home,
             list_pods,
             list_namespaces,
@@ -84,6 +84,7 @@ pub fn run() {
             list_jobs,
             list_cronjobs,
             list_statefulsets,
+            list_daemonsets,
             list_nodes,
             list_pvcs,
             get_resource_yaml,

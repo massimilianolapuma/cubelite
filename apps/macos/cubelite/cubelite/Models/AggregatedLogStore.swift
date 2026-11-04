@@ -12,7 +12,9 @@ struct AggregatedLogLine: Identifiable, Sendable {
 
 /// Aggregated multi-pod log stream for the Logs screen (desktop parity):
 /// fans out one follow-stream per pod into a single ring buffer with
-/// level/text filtering and a follow/pause marker.
+/// level/text filtering and a follow/pause marker. The screen can narrow to
+/// one workload's pods and show their Elasticsearch history (#529) with the
+/// log panel's `LogHistory`.
 @Observable
 @MainActor
 final class AggregatedLogStore {
@@ -70,9 +72,104 @@ final class AggregatedLogStore {
         return totalAppended - pausedAtCount
     }
 
+    /// Workload the screen is narrowed to (#529); nil streams every pod in scope.
+    var scope: LogScope?
+    /// DaemonSets to narrow to (listed nowhere else in the app).
+    private(set) var daemonSets: [LogScope] = []
+
+    /// Loads the DaemonSets of `namespace` (every namespace when nil), when
+    /// the streamer can list them; none on failure (RBAC).
+    func loadDaemonSets(namespace: String?, context: String?) async {
+        guard let lister = streamer as? any DaemonSetListing else { return }
+        let found = (try? await lister.listDaemonSets(namespace: namespace, inContext: context)) ?? []
+        if !Task.isCancelled { daemonSets = found }
+    }
+    /// Live stream or Elasticsearch history; the stream keeps running in History.
+    private(set) var source: LogSession.Source = .live
+    /// History of the current filter; nil when the filter has no history
+    /// query or the context no Elasticsearch endpoint.
+    private(set) var history: LogHistory?
+    /// Identity of `history`'s query (context, namespace, workload).
+    private var historyKey: String?
+    /// Elasticsearch access (the log panel's), set by the view.
+    var elastic: LogHistoryAccess?
+
+    /// History is shown.
+    var showsHistory: Bool { source == .history && history != nil }
+
+    /// Lines of the active source, with their pods.
+    var sourceLines: [AggregatedLogLine] {
+        guard showsHistory, let history else { return buffer }
+        return history.lines.map {
+            AggregatedLogLine(id: $0.id, pod: $0.pod ?? "", namespace: history.namespace, line: $0)
+        }
+    }
+
+    /// Points History at the screen's filter on `context` (#529). A
+    /// different query replaces the history (its point in time is
+    /// released); without one the screen goes back to Live.
+    func setHistory(_ mapping: LogsHistoryMapping, context: String?) {
+        let endpoint = context.flatMap { elastic?.endpoints.endpoint(for: $0) }
+        var key: String?
+        if case .query(let namespace, let target) = mapping, let context, let endpoint {
+            key = "\(context)|\(namespace)|\(String(describing: target))|\(endpoint)"
+        }
+        guard key != historyKey else { return }
+        historyKey = key
+        history?.close()
+        dropHistoryExpansions()
+        guard case .query(let namespace, let target) = mapping, let context, let elastic, endpoint != nil
+        else {
+            history = nil
+            source = .live
+            return
+        }
+        let endpoints = elastic.endpoints
+        let history = LogHistory(
+            context: context, namespace: namespace, target: target,
+            endpoint: { endpoints.endpoint(for: context) }, container: { nil },
+            searcher: elastic.searcher, onReplace: { [weak self] in self?.dropHistoryExpansions() })
+        self.history = history
+        if source == .history { Task { await history.reload() } }
+    }
+
+    /// Switches the source; the first switch to History loads a page.
+    func setSource(_ new: LogSession.Source) {
+        guard new == .live || history != nil else { return }
+        source = new
+        if new == .history, let history, !history.started {
+            Task { await history.reload() }
+        }
+    }
+
+    /// Kibana Discover with the history's filter: the configured URL, else
+    /// the in-cluster Kibana through a port-forward.
+    func kibanaURL(context: String?) async throws -> URL? {
+        guard let history, let context, let elastic,
+            let endpoint = elastic.endpoints.endpoint(for: context),
+            let base = try await elastic.kibanaBase(context: context, endpoint: endpoint)
+        else { return nil }
+        return history.kibanaURL(shown: showsHistory, base: base)
+    }
+
+    /// The screen closed: stops the streams and releases the history's
+    /// point in time (unlike `stop()`, which every restart runs and which
+    /// keeps History browsable).
+    func leave() {
+        stop()
+        history?.close()
+        history = nil
+        historyKey = nil
+        source = .live
+    }
+
+    private func dropHistoryExpansions() {
+        expandedLineIDs = expandedLineIDs.filter { $0 < LogHistory.idBase }
+    }
+
     var filtered: [AggregatedLogLine] {
         let text = textFilter.lowercased()
-        return buffer.filter { entry in
+        return sourceLines.filter { entry in
             if let levelFilter, entry.line.level != levelFilter { return false }
             if !text.isEmpty,
                 !"\(entry.pod) \(entry.line.message)".lowercased().contains(text)

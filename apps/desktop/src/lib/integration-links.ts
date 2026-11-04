@@ -13,16 +13,16 @@ import {
   kibanaPortForward,
   openGrafanaHome,
   openGrafanaWorkload,
-  openKibanaDeployment,
   openKibanaDiscover,
   openKibanaHome,
+  openKibanaWorkload,
   type EsEndpoint,
   type PromEndpoint,
   type Workload,
 } from "#lib/tauri.ts";
 
-/** Workloads with a Kibana link: pods, and deployments by pod name prefix. */
-export type LinkedWorkload = Extract<Workload, { kind: "pod" | "deployment" }>;
+/** Workloads with a Kibana link: pods, and other workloads by a regexp on their pod names. */
+export type LinkedWorkload = Workload;
 
 /** Help text of the disabled History segment. */
 export const HISTORY_HINT = "Connect Elasticsearch in Settings → Integrations to see older logs";
@@ -66,13 +66,21 @@ export async function toastErrors(action: () => Promise<void>): Promise<void> {
   }
 }
 
-/** Kibana Discover on a pod's, or a deployment's pods', last hour of logs. */
-export async function openKibanaFor(endpoint: EsEndpoint, namespace: string, workload: LinkedWorkload): Promise<void> {
+/**
+ * Kibana Discover on a pod's, a workload's pods' or (without a workload) a
+ * namespace's logs since `from` (#526, #529): the history's filter.
+ */
+export async function openKibanaFor(
+  endpoint: EsEndpoint,
+  namespace: string,
+  workload: LinkedWorkload | null,
+  from = "now-1h",
+): Promise<void> {
   const kibanaUrl = await kibanaBase(endpoint);
   if (!kibanaUrl) return;
-  const common = { kibanaUrl, preset: endpoint.preset, namespace, from: "now-1h", to: "now" };
-  if (workload.kind === "pod") await openKibanaDiscover({ ...common, pod: workload.name, container: null });
-  else await openKibanaDeployment({ ...common, deployment: workload.name });
+  const common = { kibanaUrl, preset: endpoint.preset, namespace, from, to: "now" };
+  if (workload?.kind === "pod") await openKibanaDiscover({ ...common, pod: workload.name, container: null });
+  else await openKibanaWorkload({ ...common, workload });
 }
 
 /** Grafana Explore on a workload's CPU over the last hour. */

@@ -133,8 +133,13 @@
 			type="button"
 			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-accent text-surface-window hover:brightness-110"
 			onclick={() => {
+				// The deployment's pods, live and in history (#529); set before
+				// closing, which drops the drawer's deployment.
+				logs.scope = {
+					namespace: deployment.namespace,
+					workload: { kind: 'deployment', name: deployment.name }
+				};
 				onClose();
-				logs.textFilter = deployment.name;
 				app.navigate('logs');
 			}}
 		>

@@ -164,6 +164,19 @@ enum Workload: Hashable, Sendable {
     case deployment(String)
     /// A StatefulSet's pods (`name-<ordinal>`).
     case statefulSet(String)
+    /// A DaemonSet's pods (`name-<suffix>`, #529).
+    case daemonSet(String)
+    /// A Job's pods (`name-<suffix>`, #529).
+    case job(String)
+
+    /// The pod's or the workload's name.
+    var name: String {
+        switch self {
+        case .pod(let name), .deployment(let name), .statefulSet(let name), .daemonSet(let name),
+            .job(let name):
+            name
+        }
+    }
 }
 
 /// Chart ranges (spec §4).
@@ -335,14 +348,56 @@ enum Prometheus {
         "\(literal(name))-[0-9]+"
     }
 
+    /// Regex for pods named by `generateName: name-` (DaemonSets): the
+    /// prefix, cut at 58 characters, then the 5-character suffix.
+    static func generatedPods(_ name: String, literal: (String) -> String = regexLiteral) -> String {
+        "\(literal(String("\(name)-".prefix(generatedPrefixMax))))\(safe){5}"
+    }
+
+    /// Digits of an Indexed Job's completion index (`name-<index>-<suffix>`,
+    /// Kubernetes ≥ 1.28). Indexes stay far below 10⁷, while a CronJob's jobs
+    /// are named `cron-<minutes since the epoch>` (8 digits): the cap keeps a
+    /// CronJob's pods (`backup-28000000-x7k2p`) out of the Job `backup`.
+    static let jobIndexDigitsMax = 7
+
+    /// Regex for a Job's pods: `name-<suffix>`, or `name-<index>-<suffix>`
+    /// for an Indexed Job, with Kubernetes' cuts (the name is cut so that
+    /// `name-<index>-` fits in 58 characters). Mirrors the core's
+    /// `job_pods_regex`.
+    static func jobPods(_ name: String, literal: (String) -> String = regexLiteral) -> String {
+        let maxDigits = jobIndexDigitsMax
+        if name.count + maxDigits + 2 <= generatedPrefixMax {
+            return "\(literal(name))-([0-9]{1,\(maxDigits)}-)?\(safe){5}"
+        }
+        func kept(_ digits: Int) -> Int { min(name.count, generatedPrefixMax - digits - 2) }
+        var alternatives = [literal(String("\(name)-".prefix(generatedPrefixMax)))]
+        var digits = 1
+        while digits <= maxDigits {
+            var last = digits
+            while last < maxDigits, kept(last + 1) == kept(digits) { last += 1 }
+            alternatives.append("\(literal(String(name.prefix(kept(digits)))))-[0-9]{\(digits),\(last)}-")
+            digits = last + 1
+        }
+        return "(\(alternatives.joined(separator: "|")))\(safe){5}"
+    }
+
+    /// Regex for the pods of a workload (#529); nil for one pod, matched by
+    /// name. Shared by the selector, the Elasticsearch history and Kibana
+    /// links, and the Logs view's live pods; mirrors the core's
+    /// `workload_pods_regex`.
+    static func workloadPods(_ workload: Workload, literal: (String) -> String = regexLiteral) -> String? {
+        switch workload {
+        case .pod: nil
+        case .deployment(let name): deploymentPods(name, literal: literal)
+        case .statefulSet(let name): statefulSetPods(name, literal: literal)
+        case .daemonSet(let name): generatedPods(name, literal: literal)
+        case .job(let name): jobPods(name, literal: literal)
+        }
+    }
+
     /// Label matchers for a workload: namespace, pod and the optional `cluster`.
     static func selector(namespace: String, workload: Workload, cluster: String?) -> String {
-        let pod: String
-        switch workload {
-        case .pod(let name): pod = "pod=\(escape(name))"
-        case .deployment(let name): pod = "pod=~\(escape(deploymentPods(name)))"
-        case .statefulSet(let name): pod = "pod=~\(escape(statefulSetPods(name)))"
-        }
+        let pod = workloadPods(workload).map { "pod=~\(escape($0))" } ?? "pod=\(escape(workload.name))"
         var out = "namespace=\(escape(namespace)), \(pod)"
         if let c = cluster?.trimmingCharacters(in: .whitespaces), !c.isEmpty {
             out += ", cluster=\(escape(c))"

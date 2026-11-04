@@ -7,7 +7,7 @@ use cubelite_core::{
     resources::{
         ConfigMapInfo, ContainerDetail, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo,
         JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo,
-        StatefulSetInfo,
+        StatefulSetInfo, WorkloadRef,
     },
     ResourceType, ResourceWatcher, WatchEvent,
 };
@@ -719,6 +719,22 @@ pub async fn list_statefulsets(
         .list_statefulsets(namespace.as_deref())
         .await
         .map_err(|e| e.to_string())
+}
+
+/// DaemonSets by name in the given namespace (all namespaces when `None`),
+/// for the Logs view's workload picker (#529).
+#[tauri::command]
+pub async fn list_daemonsets(
+    kubeconfig_path: String,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<Vec<WorkloadRef>, String> {
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref()).await;
+    let list = client
+        .map_err(|e| e.to_string())?
+        .list_daemonsets(namespace.as_deref())
+        .await;
+    list.map_err(|e| e.to_string())
 }
 
 /// List persistent volume claims in the given namespace (all namespaces when `None`).

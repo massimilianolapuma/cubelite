@@ -14,7 +14,7 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   kibanaPortForward: vi.fn(async () => 41000),
   grafanaPortForward: vi.fn(async () => 42000),
   openKibanaDiscover: vi.fn(async () => {}),
-  openKibanaDeployment: vi.fn(async () => {}),
+  openKibanaWorkload: vi.fn(async () => {}),
   openGrafanaWorkload: vi.fn(async () => {}),
 }));
 
@@ -32,7 +32,7 @@ import {
   grafanaPortForward,
   kibanaPortForward,
   openGrafanaWorkload,
-  openKibanaDeployment,
+  openKibanaWorkload,
   openKibanaDiscover,
   type EsEndpoint,
   type PromEndpoint,
@@ -174,11 +174,11 @@ describe("Kibana and Grafana links in the drawers (#526)", () => {
     expect(screen.queryByRole("button", { name: "Metrics in Grafana" })).toBeNull();
     await fireEvent.click(screen.getByRole("button", { name: "Logs in Kibana" }));
     await waitFor(() =>
-      expect(openKibanaDeployment).toHaveBeenCalledWith({
+      expect(openKibanaWorkload).toHaveBeenCalledWith({
         kibanaUrl: "https://127.0.0.1:41000",
         preset: "fluent-bit",
         namespace: "shop",
-        deployment: "api",
+        workload: { kind: "deployment", name: "api" },
         from: "now-1h",
         to: "now",
       }),

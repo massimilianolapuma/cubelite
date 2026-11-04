@@ -36,7 +36,8 @@ protocol LogHistorySearching: Sendable {
 
 extension ElasticService: LogHistorySearching {}
 
-/// Elasticsearch history of one log session (#503): pages of a pod's logs,
+/// Elasticsearch history of one log session (#503): pages of a pod's logs —
+/// or of a workload's pods or a whole namespace for the Logs view (#529) —
 /// newest first from the server, kept oldest-first here so the panel shows
 /// them like a live buffer; "Load older" prepends. Mirrors the desktop's
 /// `LogHistory`. The paging cursor is opaque (#531): it may hold a point in
@@ -64,7 +65,8 @@ final class LogHistory {
     private(set) var loads = 0
 
     let namespace: String
-    let pod: String
+    /// One pod, a workload's pods, or (nil) the whole namespace.
+    let target: Workload?
     private let context: String
     private let endpoint: () -> EsEndpoint?
     private let container: () -> String?
@@ -81,14 +83,25 @@ final class LogHistory {
     /// `_index`/`_id` of the lines shown: a resumed page may repeat some (#531).
     private var seen: Set<String> = []
 
-    init(
+    /// One pod's history (the log panel).
+    convenience init(
         context: String, namespace: String, pod: String,
+        endpoint: @escaping () -> EsEndpoint?, container: @escaping () -> String?,
+        searcher: any LogHistorySearching, onReplace: @escaping () -> Void = {}
+    ) {
+        self.init(
+            context: context, namespace: namespace, target: .pod(pod), endpoint: endpoint,
+            container: container, searcher: searcher, onReplace: onReplace)
+    }
+
+    init(
+        context: String, namespace: String, target: Workload?,
         endpoint: @escaping () -> EsEndpoint?, container: @escaping () -> String?,
         searcher: any LogHistorySearching, onReplace: @escaping () -> Void = {}
     ) {
         self.context = context
         self.namespace = namespace
-        self.pod = pod
+        self.target = target
         self.endpoint = endpoint
         self.container = container
         self.searcher = searcher
@@ -96,6 +109,24 @@ final class LogHistory {
     }
 
     var canLoadOlder: Bool { next != nil && !isLoading && lines.count < Self.cap }
+
+    /// The pod name of a one-pod history; "" otherwise.
+    var pod: String {
+        if case .pod(let name)? = target { name } else { "" }
+    }
+
+    /// What the history covers, for empty states: the pod, `deployment api`,
+    /// or `namespace shop`.
+    var subject: String {
+        switch target {
+        case .pod(let name)?: name
+        case .deployment(let name)?: "deployment \(name)"
+        case .statefulSet(let name)?: "StatefulSet \(name)"
+        case .daemonSet(let name)?: "DaemonSet \(name)"
+        case .job(let name)?: "job \(name)"
+        case nil: "namespace \(namespace)"
+        }
+    }
 
     /// "1,234 hits · showing 500 · 1 h", or "" before the first page.
     var statusText: String {
@@ -119,6 +150,13 @@ final class LogHistory {
         let base = base.trimmingCharacters(in: .whitespaces)
         guard let endpoint = endpoint(), !base.isEmpty else { return nil }
         let shownParams = shown ? params : nil
+        let from = (shownParams?.range ?? (shown ? range : .last1h)).rawValue
+        guard !pod.isEmpty else {
+            // A workload's pods or the namespace: the history's filter (#529).
+            return Integration.webURL(
+                Elastic.kibanaWorkloadURL(
+                    kibanaBase: base, preset: endpoint.preset, namespace: namespace, workload: target, from: from))
+        }
         let text = Elastic.kibanaDiscoverURL(
             kibanaBase: base.trimmingCharacters(in: .whitespaces), preset: endpoint.preset,
             namespace: namespace, pod: pod, container: shownParams?.container ?? container(),
@@ -243,9 +281,11 @@ final class LogHistory {
             return nil
         }
         lastEndpoint = endpoint
+        // One pod by name; a workload by a regexp on its pod names (#529).
+        let workload = pod.isEmpty ? target : nil
         let query = HistoryQuery(
-            namespace: namespace, pod: pod, container: params.container, from: params.range.rawValue,
-            to: "now", text: params.text, searchAfter: after)
+            namespace: namespace, pod: pod, workload: workload, container: params.container,
+            from: params.range.rawValue, to: "now", text: params.text, searchAfter: after)
         return try await searcher.search(context: context, endpoint: endpoint, query: query)
     }
 
@@ -262,6 +302,7 @@ final class LogHistory {
         let time = line.time.flatMap { $0.split(separator: "T").last.map(String.init) }
         return LogLine(
             id: nextID, time: time, level: line.level, message: line.message,
-            container: line.container, timestamp: line.time, document: line.document)
+            container: line.container, timestamp: line.time, document: line.document,
+            pod: line.pod ?? (pod.isEmpty ? nil : pod))
     }
 }

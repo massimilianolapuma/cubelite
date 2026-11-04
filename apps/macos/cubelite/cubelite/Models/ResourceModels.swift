@@ -691,6 +691,11 @@ struct K8sDeploymentCondition: Codable, Sendable {
     let lastTransitionTime: String?
 }
 
+/// Any Kubernetes object, read for its metadata only.
+struct K8sNamedObject: Codable, Sendable {
+    let metadata: K8sObjectMeta?
+}
+
 /// Shared metadata for Kubernetes objects.
 struct K8sObjectMeta: Codable, Sendable {
     let name: String?

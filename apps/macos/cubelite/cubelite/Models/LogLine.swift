@@ -15,6 +15,8 @@ struct LogLine: Identifiable, Equatable, Sendable {
     /// Stored Elasticsearch `_source` (compact JSON) of a history line
     /// (#503); JSON and ECS modes render it instead of the message.
     var document: String? = nil
+    /// Pod of a history line, when the document names it (#529).
+    var pod: String? = nil
 
     /// What JSON and ECS modes parse: the stored document, else the message.
     var structuredText: String { document ?? message }

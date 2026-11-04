@@ -147,6 +147,29 @@ pub enum Workload {
         /// StatefulSet name.
         name: String,
     },
+    /// A DaemonSet's pods (`name-<suffix>`, #529).
+    DaemonSet {
+        /// DaemonSet name.
+        name: String,
+    },
+    /// A Job's pods (`name-<suffix>`, #529).
+    Job {
+        /// Job name.
+        name: String,
+    },
+}
+
+impl Workload {
+    /// The pod's or the workload's name.
+    pub fn name(&self) -> &str {
+        match self {
+            Workload::Pod { name }
+            | Workload::Deployment { name }
+            | Workload::StatefulSet { name }
+            | Workload::DaemonSet { name }
+            | Workload::Job { name } => name,
+        }
+    }
 }
 
 /// Chart ranges (spec §4).
@@ -287,22 +310,80 @@ pub(crate) fn deployment_pods_regex(name: &str, literal: fn(&str) -> String) -> 
     format!("{}(-{SAFE}{{0,10}}-?)?{SAFE}{{5}}", literal(&kept))
 }
 
-fn deployment_pods(name: &str) -> String {
-    deployment_pods_regex(name, regex_literal)
+/// Regex for pods named by `generateName: name-` (DaemonSets): the
+/// prefix, cut at 58 characters, then the 5-character suffix.
+fn generated_pods_regex(name: &str, literal: fn(&str) -> String) -> String {
+    let prefix: String = format!("{name}-")
+        .chars()
+        .take(GENERATED_PREFIX_MAX)
+        .collect();
+    format!("{}{SAFE}{{5}}", literal(&prefix))
+}
+
+/// Digits of an Indexed Job's completion index in its pod names
+/// (`name-<index>-<suffix>`, Kubernetes ≥ 1.28). Indexes stay far below
+/// 10⁷ (completions are capped at 10⁵), while a CronJob's jobs are named
+/// `cron-<minutes since the epoch>`, 8 digits since 1989: capping the index
+/// at 7 digits keeps a CronJob's pods (`backup-28000000-x7k2p`) out of the
+/// Job `backup`.
+const JOB_INDEX_DIGITS_MAX: usize = 7;
+
+/// Regex for a Job's pods: `name-<suffix>`, or `name-<index>-<suffix>` for
+/// an Indexed Job. Kubernetes cuts the name so that `name-<index>-` fits in
+/// 58 characters, keeping the whole `-<index>-`; with a long name the cut
+/// depends on the index's digit count, so each count gets its prefix.
+fn job_pods_regex(name: &str, literal: fn(&str) -> String) -> String {
+    let len = name.chars().count();
+    if len + JOB_INDEX_DIGITS_MAX + 2 <= GENERATED_PREFIX_MAX {
+        return format!(
+            "{}-([0-9]{{1,{JOB_INDEX_DIGITS_MAX}}}-)?{SAFE}{{5}}",
+            literal(name)
+        );
+    }
+    // Non-indexed: `name-` cut at 58; indexed: one alternative per prefix
+    // length (index digits sharing a cut are grouped).
+    let plain: String = format!("{name}-")
+        .chars()
+        .take(GENERATED_PREFIX_MAX)
+        .collect();
+    let mut alternatives = vec![literal(&plain)];
+    let mut digits = 1;
+    while digits <= JOB_INDEX_DIGITS_MAX {
+        let kept = len.min(GENERATED_PREFIX_MAX - digits - 2);
+        let mut last = digits;
+        while last < JOB_INDEX_DIGITS_MAX && len.min(GENERATED_PREFIX_MAX - (last + 1) - 2) == kept
+        {
+            last += 1;
+        }
+        let base: String = name.chars().take(kept).collect();
+        alternatives.push(format!("{}-[0-9]{{{digits},{last}}}-", literal(&base)));
+        digits = last + 1;
+    }
+    format!("({}){SAFE}{{5}}", alternatives.join("|"))
+}
+
+/// Regex for the pods of a workload (#529); `None` for one pod, matched by
+/// name. Shared by the Prometheus selector and the Elasticsearch history
+/// and Kibana queries.
+pub(crate) fn workload_pods_regex(
+    workload: &Workload,
+    literal: fn(&str) -> String,
+) -> Option<String> {
+    match workload {
+        Workload::Pod { .. } => None,
+        Workload::Deployment { name } => Some(deployment_pods_regex(name, literal)),
+        Workload::StatefulSet { name } => Some(format!("{}-[0-9]+", literal(name))),
+        Workload::DaemonSet { name } => Some(generated_pods_regex(name, literal)),
+        Workload::Job { name } => Some(job_pods_regex(name, literal)),
+    }
 }
 
 /// Label matchers for a workload: namespace, pod (exact or regex) and the
 /// optional `cluster` label.
 pub fn selector(namespace: &str, workload: &Workload, cluster: Option<&str>) -> String {
-    let pod = match workload {
-        Workload::Pod { name } => format!("pod={}", escape(name)),
-        Workload::Deployment { name } => format!("pod=~{}", escape(&deployment_pods(name))),
-        Workload::StatefulSet { name } => {
-            format!(
-                "pod=~{}",
-                escape(&format!("{}-[0-9]+", regex_literal(name)))
-            )
-        }
+    let pod = match workload_pods_regex(workload, regex_literal) {
+        Some(pods) => format!("pod=~{}", escape(&pods)),
+        None => format!("pod={}", escape(workload.name())),
     };
     let mut out = format!("namespace={}, {pod}", escape(namespace));
     if let Some(c) = cluster.map(str::trim).filter(|c| !c.is_empty()) {
