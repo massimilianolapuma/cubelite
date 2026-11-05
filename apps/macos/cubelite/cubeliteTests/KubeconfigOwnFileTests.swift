@@ -150,6 +150,62 @@ final class KubeconfigOwnFileTests: XCTestCase {
         XCTAssertEqual(stored, "typed-by-user")
     }
 
+    /// The earlier file's token is not stale while a context of that file
+    /// still connects to the same server with it.
+    func testSameServer_tokenOfALiveContext_isKept() async throws {
+        let server = uniqueServer()
+        try await keychain.storeString("old-token", tag: .bearerToken, account: server)
+        let live = try write(
+            "config",
+            """
+            apiVersion: v1
+            kind: Config
+            contexts:
+            - name: live
+              context:
+                cluster: aks-prod
+                user: aks-user
+            clusters:
+            - name: aks-prod
+              cluster:
+                server: \(server)
+            users:
+            - name: aks-user
+              user:
+                token: old-token
+            """)
+        let own = try write("dolomiti", ownYAML(server: server, crossCluster: "aks-prod"))
+
+        let config = try await sut.loadFromPaths([live, own])
+
+        XCTAssertEqual(config.contexts, ["live", "aks-prod", "cross"])
+        let stored = try await keychain.retrieveString(tag: .bearerToken, account: server)
+        XCTAssertEqual(stored, "old-token")
+    }
+
+    func testPruneSessions_dropsOnlySessionsOfEditedEntries() async throws {
+        // Nothing listens on port 1: the request fails at once, after the
+        // session has been created and cached.
+        let (reachable, edited) = ("https://127.0.0.1:1", "https://127.0.0.2:1")
+        cleanupAccounts += [reachable, edited]
+        let url = try write("config", soloYAML(server: reachable))
+        await sut.configure(paths: [url])
+        let api = KubeAPIService(kubeconfigService: sut)
+
+        _ = try? await api.listNamespaces(inContext: "solo")
+        let created = await api.cachedSessionCount
+        XCTAssertEqual(created, 1)
+
+        await api.pruneSessions()
+        let unchanged = await api.cachedSessionCount
+        XCTAssertEqual(unchanged, 1, "a session still in use is kept")
+
+        _ = try write("config", soloYAML(server: edited))
+        await api.pruneSessions()
+        let pruned = await api.cachedSessionCount
+        XCTAssertEqual(pruned, 0, "the edited cluster's session is dropped")
+    }
+
     func testResetStoredCredentials_deletesOwnFileServerTokens() async throws {
         let (oldServer, newServer) = (uniqueServer(), uniqueServer())
         let stale = try write("config", staleYAML(server: oldServer))
@@ -215,6 +271,27 @@ final class KubeconfigOwnFileTests: XCTestCase {
         let url = dir.appendingPathComponent(name)
         try contents.write(to: url, atomically: true, encoding: .utf8)
         return url
+    }
+
+    private func soloYAML(server: String) -> String {
+        """
+        apiVersion: v1
+        kind: Config
+        current-context: solo
+        contexts:
+        - name: solo
+          context:
+            cluster: c
+            user: u
+        clusters:
+        - name: c
+          cluster:
+            server: \(server)
+        users:
+        - name: u
+          user:
+            token: solo-token
+        """
     }
 
     /// Earlier file: stale `aks-prod` cluster/user no context of its own uses.

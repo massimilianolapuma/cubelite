@@ -54,9 +54,16 @@ struct KubeconfigRedefinition: Equatable, Sendable {
         for (path, yaml) in files {
             guard let node = try? Yams.compose(yaml: yaml) else { continue }
             let dir = path.deletingLastPathComponent().path
-            let clusters = namedEntries(
-                node, list: "clusters", body: "cluster", keep: clusterIdentityKeys, dir: dir)
-            let users = namedEntries(node, list: "users", body: "user", keep: nil, dir: dir)
+            // Compose expands aliases, so a small file can describe a huge
+            // tree ("billion laughs"): a file over the budget gets no note.
+            var budget = nodeBudget
+            guard
+                let clusters = try? namedEntries(
+                    node, list: "clusters", body: "cluster", keep: clusterIdentityKeys,
+                    dir: dir, budget: &budget),
+                let users = try? namedEntries(
+                    node, list: "users", body: "user", keep: nil, dir: dir, budget: &budget)
+            else { continue }
             let redefinition = KubeconfigRedefinition(
                 path: path.path,
                 clusters: earlierClusters.redefined(clusters, in: path.path),
@@ -69,31 +76,55 @@ struct KubeconfigRedefinition: Equatable, Sendable {
         return found
     }
 
+    /// Most YAML nodes compared per file; real kubeconfigs use a few hundred.
+    static let nodeBudget = 100_000
+
     /// `(name, body)` pairs of one named list of a kubeconfig document in
-    /// `dir`, the body reduced to `keep` when given and its relative
-    /// `pathKeys` resolved against `dir`.
+    /// `dir`, the body reduced to `keep` (before it is converted) when given
+    /// and its relative `pathKeys` resolved against `dir`.
+    ///
+    /// - Throws: `ScanBudgetExceeded` once more than `budget` nodes are visited.
     private static func namedEntries(
-        _ document: Node, list: String, body: String, keep: Set<String>?, dir: String
-    ) -> [(String, ComparableYAML?)] {
+        _ document: Node, list: String, body: String, keep: Set<String>?, dir: String,
+        budget: inout Int
+    ) throws -> [(String, ComparableYAML?)] {
         let items: [Node] = document[list]?.sequence.map { Array($0) } ?? []
-        return items.compactMap { item in
-            guard let name = item["name"]?.string else { return nil }
-            guard let value = item[body] else { return (name, nil) }
-            guard case .mapping(var entries) = ComparableYAML(value) else {
-                return (name, ComparableYAML(value))
+        var entries: [(String, ComparableYAML?)] = []
+        for item in items {
+            try ComparableYAML.spend(&budget)
+            guard let name = item["name"]?.string else { continue }
+            guard let value = item[body] else {
+                entries.append((name, nil))
+                continue
             }
-            if let keep {
-                entries = entries.filter { keep.contains($0.key) }
-            }
-            for key in pathKeys {
-                if case .scalar(let file, tag: let tag)? = entries[key], !file.hasPrefix("/") {
-                    entries[key] = .scalar(dir + "/" + file, tag: tag)
-                }
-            }
-            return (name, .mapping(entries))
+            entries.append((name, try entryBody(value, keep: keep, dir: dir, budget: &budget)))
         }
+        return entries
+    }
+
+    private static func entryBody(
+        _ node: Node, keep: Set<String>?, dir: String, budget: inout Int
+    ) throws -> ComparableYAML {
+        guard case .mapping(let mapping) = node else {
+            return try ComparableYAML(node, budget: &budget)
+        }
+        var fields: [String: ComparableYAML] = [:]
+        for (key, value) in mapping {
+            let name = key.string ?? ""
+            if let keep, !keep.contains(name) { continue }
+            fields[name] = try ComparableYAML(value, budget: &budget)
+        }
+        for key in pathKeys {
+            if case .scalar(let file, tag: let tag)? = fields[key], !file.hasPrefix("/") {
+                fields[key] = .scalar(dir + "/" + file, tag: tag)
+            }
+        }
+        return .mapping(fields)
     }
 }
+
+/// The redefinition scan visited more than `KubeconfigRedefinition.nodeBudget` nodes.
+private struct ScanBudgetExceeded: Error {}
 
 /// A YAML value compared like `serde_yaml::Value` in the core: mappings
 /// regardless of key order, scalars by text and resolved tag.
@@ -102,22 +133,34 @@ private indirect enum ComparableYAML: Equatable {
     case sequence([ComparableYAML])
     case mapping([String: ComparableYAML])
 
-    init(_ node: Node) {
+    /// Converts `node`, charging one unit of `budget` per node visited.
+    init(_ node: Node, budget: inout Int) throws {
+        try Self.spend(&budget)
         switch node {
         case .scalar(let scalar):
             self = .scalar(scalar.string, tag: node.tag.description)
         case .sequence(let sequence):
-            self = .sequence(sequence.map(ComparableYAML.init))
-        case .mapping(let mapping):
-            var entries: [String: ComparableYAML] = [:]
-            for (key, value) in mapping {
-                entries[key.string ?? "\(key)"] = ComparableYAML(value)
+            var items: [ComparableYAML] = []
+            for child in sequence {
+                items.append(try ComparableYAML(child, budget: &budget))
             }
-            self = .mapping(entries)
+            self = .sequence(items)
+        case .mapping(let mapping):
+            var fields: [String: ComparableYAML] = [:]
+            for (key, value) in mapping {
+                fields[key.string ?? ""] = try ComparableYAML(value, budget: &budget)
+            }
+            self = .mapping(fields)
         case .alias:
-            // Kubeconfigs do not use anchors; compare an alias by its text.
-            self = .scalar("\(node)", tag: node.tag.description)
+            // `Yams.compose` replaces aliases with their anchored node, so a
+            // composed document holds none; kept for exhaustiveness.
+            self = .scalar("", tag: node.tag.description)
         }
+    }
+
+    static func spend(_ budget: inout Int) throws {
+        budget -= 1
+        if budget < 0 { throw ScanBudgetExceeded() }
     }
 }
 

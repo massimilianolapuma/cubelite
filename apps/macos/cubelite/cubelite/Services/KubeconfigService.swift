@@ -202,11 +202,18 @@ actor KubeconfigService {
     }
 
     /// Per file of `paths`, in order: the cluster and user names it defines
-    /// differently from an earlier file (Preferences, #543). Missing and
-    /// unreadable files are skipped; files without such names are left out.
+    /// differently from an earlier file (Preferences, #543). Missing,
+    /// unreadable and oversized files are skipped; files without such names
+    /// are left out.
     static func redefinitions(in paths: [URL]) -> [KubeconfigRedefinition] {
         let files = paths.compactMap { path -> (path: URL, yaml: String)? in
-            guard let data = try? Data(contentsOf: path) else { return nil }
+            // Same size cap as `isKubeconfigFile(at:)`; a symlink is followed.
+            let target = path.resolvingSymlinksInPath()
+            guard
+                let size = try? target.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                size <= maxKubeconfigFileSize,
+                let data = try? Data(contentsOf: target)
+            else { return nil }
             return (path, String(decoding: data, as: UTF8.self))
         }
         return KubeconfigRedefinition.scan(files)
@@ -222,7 +229,8 @@ actor KubeconfigService {
     /// clobbered — except a stale import: when the context's own file defines
     /// its user differently from an earlier file and the Keychain holds that
     /// earlier (first-wins) file token, builds before #543 imported the wrong
-    /// token, so it is replaced with the context file's token.
+    /// token, so it is replaced with the context file's token. A token some
+    /// context still connects to that server with is never treated as stale.
     private func migrateTokensToKeychain(_ config: KubeConfig) async {
         for context in config.contexts {
             guard
@@ -230,11 +238,13 @@ actor KubeconfigService {
                 !server.isEmpty,
                 let token = config.user(forContext: context)?.user?.token, !token.isEmpty
             else { continue }
-            let account = server.hasSuffix("/") ? String(server.dropLast()) : server
+            let account = Self.keychainAccount(server)
 
             if let existing = try? await keychain.retrieveString(
                 tag: .bearerToken, account: account), !existing.isEmpty,
-                existing == token || existing != Self.staleFileToken(for: context, in: config)
+                existing == token
+                    || existing
+                        != Self.staleFileToken(for: context, account: account, in: config)
             {
                 continue
             }
@@ -242,16 +252,29 @@ actor KubeconfigService {
         }
     }
 
+    /// Keychain account of a server URL: the trailing slash dropped.
+    private static func keychainAccount(_ server: String) -> String {
+        server.hasSuffix("/") ? String(server.dropLast()) : server
+    }
+
     /// The first-wins file token of the user `context` references, when the
-    /// context's own file defines that user differently; `nil` otherwise.
-    private static func staleFileToken(for context: String, in config: KubeConfig) -> String? {
+    /// context's own file defines that user differently and no context of
+    /// the merge connects to `account` with that token; `nil` otherwise.
+    private static func staleFileToken(
+        for context: String, account: String, in config: KubeConfig
+    ) -> String? {
         guard
             let own = config.ownUsers[context],
             let merged = config.raw.users?.first(where: { $0.name == own.name }),
             merged.user != own.user,
             let stale = merged.user?.token, !stale.isEmpty
         else { return nil }
-        return stale
+        let live = config.contexts.contains { other in
+            config.user(forContext: other)?.user?.token == stale
+                && config.cluster(forContext: other)?.cluster?.server.map(keychainAccount)
+                    == account
+        }
+        return live ? nil : stale
     }
 
     // MARK: - Context Management

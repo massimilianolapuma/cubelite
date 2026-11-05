@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import os
 import Security
@@ -63,6 +64,39 @@ actor KubeAPIService {
         }
         sessionCache.removeAll()
     }
+
+    /// Drops the cached sessions no context of the current kubeconfig
+    /// resolves to any more (an edited cluster or user), letting their
+    /// in-flight tasks finish; sessions still in use — open watches and log
+    /// streams included — are kept. Called after the kubeconfig changes on
+    /// disk, since sessions are keyed on the resolved cluster and user (#543).
+    func pruneSessions() async {
+        guard let config = try? await kubeconfigService.load() else { return }
+        let live = liveSessionKeys(in: config)
+        for (key, session) in sessionCache
+        where !live.contains(where: { key == $0 || key.hasPrefix($0 + "#") }) {
+            session.finishTasksAndInvalidate()
+            sessionCache[key] = nil
+        }
+    }
+
+    /// The connection cache key of every context of `config` (exec sessions
+    /// extend theirs with a certificate suffix).
+    private func liveSessionKeys(in config: KubeConfig) -> Set<String> {
+        Set(
+            config.contexts.compactMap { context -> String? in
+                guard
+                    let resolved = try? resolveConnectionInfo(from: config, contextName: context),
+                    let server = resolved.cluster.server, !server.isEmpty
+                else { return nil }
+                let base = server.hasSuffix("/") ? String(server.dropLast()) : server
+                return Self.connectionCacheKey(
+                    base: base, cluster: resolved.cluster, user: resolved.user)
+            })
+    }
+
+    /// Number of cached sessions (tests).
+    var cachedSessionCount: Int { sessionCache.count }
 
     /// Updates the global TLS-skip flag and invalidates the cached session.
     ///
@@ -521,7 +555,8 @@ actor KubeAPIService {
         contextName: String?
     ) async throws -> (base: String, token: String?, session: URLSession) {
         let config = try await kubeconfigService.load()
-        let (cluster, user) = try resolveConnectionInfo(from: config, contextName: contextName)
+        let (cluster, user, userName) = try resolveConnectionInfo(
+            from: config, contextName: contextName)
 
         guard let serverString = cluster.server, !serverString.isEmpty else {
             throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
@@ -561,7 +596,9 @@ actor KubeAPIService {
         if let cached = sessionCache[sessionKey] {
             session = cached
         } else {
-            let newSession = try makeSession(cluster: cluster, user: effectiveUser)
+            let newSession = try makeSession(
+                cluster: cluster, user: effectiveUser,
+                keyAccount: Self.clientKeyAccount(base: base, userName: userName))
             sessionCache[sessionKey] = newSession
             session = newSession
         }
@@ -911,7 +948,8 @@ actor KubeAPIService {
 
     // MARK: - Connection Resolution
 
-    /// Resolves the cluster and user details for the given or active context.
+    /// Resolves the cluster and user details (and the user's name) for the
+    /// given or active context.
     ///
     /// - Parameters:
     ///   - config: Parsed kubeconfig.
@@ -919,7 +957,7 @@ actor KubeAPIService {
     private func resolveConnectionInfo(
         from config: KubeConfig,
         contextName: String? = nil
-    ) throws -> (ClusterDetails, UserDetails) {
+    ) throws -> (cluster: ClusterDetails, user: UserDetails, userName: String) {
         let resolvedContext: String
         if let name = contextName {
             resolvedContext = name
@@ -942,26 +980,29 @@ actor KubeAPIService {
             )
         }
 
-        guard let user = config.user(forContext: resolvedContext)?.user else {
+        guard let namedUser = config.user(forContext: resolvedContext), let user = namedUser.user
+        else {
             throw CubeliteError.clientError(
                 reason: "User definition not found for context '\(resolvedContext)'"
             )
         }
 
-        return (cluster, user)
+        return (cluster, user, namedUser.name)
     }
 
     // MARK: - URLSession Factory
 
     /// Creates a configured `URLSession` with TLS and optional client certificate support.
+    ///
+    /// - Parameter keyAccount: Where the client key is stored
+    ///   (`clientKeyAccount(base:userName:)`).
     private func makeSession(
         cluster: ClusterDetails,
-        user: UserDetails
+        user: UserDetails,
+        keyAccount: String
     ) throws -> URLSession {
         let caCertificate = try Self.loadCACertificate(from: cluster)
-        let server = cluster.server ?? ""
-        let clientIdentity = try Self.loadClientIdentity(
-            from: user, account: server.hasSuffix("/") ? String(server.dropLast()) : server)
+        let clientIdentity = try Self.loadClientIdentity(from: user, account: keyAccount)
         let insecureSkip = skipTLSVerification || (cluster.insecureSkipTlsVerify ?? false)
 
         let delegate = KubeURLSessionDelegate(
@@ -1041,8 +1082,9 @@ actor KubeAPIService {
     ///
     /// - Returns: A `SecIdentity`, or `nil` when no client certificate is configured.
     /// - Throws: `CubeliteError.clientError` on any decode, read, or keychain failure.
-    /// - Parameter account: The cluster server; the stored key is tagged per
-    ///   cluster so one cluster's import never replaces another's key (#521).
+    /// - Parameter account: Where the key is stored — sessions pass
+    ///   `clientKeyAccount(base:userName:)`, so one cluster's or one user's
+    ///   import never replaces another's key (#521, #543).
     static func loadClientIdentity(from user: UserDetails, account: String) throws -> SecIdentity? {
         // --- Path 1: inline base64 data (client-certificate-data / client-key-data) ---
         if let certB64 = user.clientCertificateData, !certB64.isEmpty,
@@ -1219,16 +1261,32 @@ actor KubeAPIService {
     /// one cluster's identity deleted another's key.
     static let legacyClientKeyTag = Data("it.lapuma.cubelite.client-key".utf8)
 
-    /// The tag of a cluster's client key: a re-import (rotated certificate)
-    /// replaces only that cluster's key, and keys never pile up (#521).
+    /// The tag of a client key stored for `account`: a re-import (rotated
+    /// certificate) replaces only that account's key, and keys never pile up
+    /// (#521). Sessions pass `clientKeyAccount(base:userName:)`; before #543
+    /// the account was the bare server URL.
     static func clientKeyTag(account: String) -> Data {
         Data("it.lapuma.cubelite.cluster-client-key.\(account)".utf8)
     }
 
-    /// Deletes the stored client keys of `account`, and the pre-#521 shared
-    /// ones (Settings "Reset stored credentials").
+    /// The key account of kubeconfig user `userName` on server `base`: users
+    /// sharing a server (e.g. AKS clusterUser and clusterAdmin) keep separate
+    /// keys, while a rotated certificate of the same user replaces its key.
+    /// The name is digested (SHA-256) so the tag is stable across launches
+    /// and free of arbitrary characters.
+    static func clientKeyAccount(base: String, userName: String) -> String {
+        let digest = SHA256.hash(data: Data(userName.utf8))
+        return "\(base)#user-" + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Deletes every client key stored for server `account`: the per-user
+    /// keys, the pre-#543 per-server key and the pre-#521 shared one
+    /// (Settings "Reset stored credentials").
     static func deleteClientKeys(account: String) {
-        for tag in [clientKeyTag(account: account), legacyClientKeyTag] {
+        let perUserPrefix = clientKeyTag(account: account + "#")
+        let tags = [clientKeyTag(account: account), legacyClientKeyTag]
+            + storedClientKeyTags().filter { $0.starts(with: perUserPrefix) }
+        for tag in tags {
             SecItemDelete(
                 [
                     kSecClass: kSecClassKey,
@@ -1236,6 +1294,20 @@ actor KubeAPIService {
                     kSecAttrKeyClass: kSecAttrKeyClassPrivate,
                 ] as CFDictionary)
         }
+    }
+
+    /// Application tags of every stored private key (Reset only).
+    private static func storedClientKeyTags() -> [Data] {
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(
+            [
+                kSecClass: kSecClassKey,
+                kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+                kSecMatchLimit: kSecMatchLimitAll,
+                kSecReturnAttributes: true,
+            ] as CFDictionary, &result)
+        guard status == errSecSuccess, let items = result as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrApplicationTag as String] as? Data }
     }
 
     private static func storeAndFindIdentityLocked(

@@ -181,6 +181,9 @@ extension MainView {
             )
         )
         await loadKubeconfig()
+        // Sessions are keyed on the resolved cluster and user: drop the ones
+        // the edit made unreachable so they do not pile up (#543).
+        await kubeAPIService.pruneSessions()
         if let context = selectedContext {
             await loadNamespaces(for: context)
         }

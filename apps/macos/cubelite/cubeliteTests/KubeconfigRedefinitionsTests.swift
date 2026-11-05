@@ -49,6 +49,60 @@ final class KubeconfigRedefinitionsTests: XCTestCase {
         XCTAssertEqual(KubeconfigService.redefinitions(in: [first, second]), [])
     }
 
+    /// Anchors that expand to a million nodes ("billion laughs"): ignored
+    /// cluster keys are never converted, and a user over the node budget
+    /// skips its file instead of stalling Preferences.
+    func testAliasBomb_ignoredKeysAreSkipped_andOverBudgetFilesGetNoNote() throws {
+        let first = try write(
+            "a",
+            """
+            clusters:
+            - name: c
+              cluster:
+                server: https://one.example
+            users:
+            - name: u
+              user:
+                token: one
+            """)
+        let bombInExtensions = try write(
+            "b", Self.bomb + "\nclusters:\n- name: c\n  cluster:\n    server: https://two.example\n"
+                + "    extensions: *f\n")
+        let bombInUser = try write(
+            "c", Self.bomb + "\nusers:\n- name: u\n  user:\n    token: three\n    extra: *f\n")
+
+        let started = Date()
+        let found = KubeconfigService.redefinitions(in: [first, bombInExtensions, bombInUser])
+
+        XCTAssertEqual(
+            found, [KubeconfigRedefinition(path: bombInExtensions.path, clusters: ["c"], users: [])])
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10)
+    }
+
+    func testOversizedFile_isNotRead() throws {
+        let first = try write("a", "users:\n- name: u\n  user:\n    token: one\n")
+        let big = try write("b", "users:\n- name: u\n  user:\n    token: two\n")
+        let handle = try FileHandle(forWritingTo: big)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(repeating: 0x0A, count: KubeconfigService.maxKubeconfigFileSize))
+        try handle.close()
+
+        XCTAssertEqual(KubeconfigService.redefinitions(in: [first, big]), [])
+        // The same content under the cap is reported.
+        let small = try write("c", "users:\n- name: u\n  user:\n    token: two\n")
+        XCTAssertEqual(KubeconfigService.redefinitions(in: [first, small]).map(\.users), [["u"]])
+    }
+
+    /// `*f` expands to 10^6 scalars.
+    private static let bomb = """
+        a: &a [x, x, x, x, x, x, x, x, x, x]
+        b: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a, *a]
+        c: &c [*b, *b, *b, *b, *b, *b, *b, *b, *b, *b]
+        d: &d [*c, *c, *c, *c, *c, *c, *c, *c, *c, *c]
+        e: &e [*d, *d, *d, *d, *d, *d, *d, *d, *d, *d]
+        f: &f [*e, *e, *e, *e, *e, *e, *e, *e, *e, *e]
+        """
+
     func testCAChange_andUnparseableOrMissingFiles() throws {
         let first = try write("a", "clusters:\n- name: c\n  cluster:\n    server: s\n    certificate-authority-data: T0xE\n")
         let broken = try write("broken", "{ not yaml: [")
