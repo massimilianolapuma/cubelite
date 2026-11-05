@@ -571,15 +571,91 @@ final class LoadClientIdentityTests: XCTestCase {
         XCTAssertEqual(Self.storedKeys(account: Self.clusterB), 1)
     }
 
-    /// A rotated certificate replaces the cluster's key: keys never pile up.
+    /// A rotated certificate replaces the user's key on the cluster: keys
+    /// never pile up.
     func testLoadClientIdentity_rotatedCertificateReplacesTheClustersKey() throws {
-        _ = try KubeAPIService.loadClientIdentity(from: firstUser(), account: Self.clusterA)
+        let account = KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "admin")
+        _ = try KubeAPIService.loadClientIdentity(from: firstUser(), account: account)
         let rotated = try XCTUnwrap(
-            KubeAPIService.loadClientIdentity(from: Self.secondUser(), account: Self.clusterA))
+            KubeAPIService.loadClientIdentity(from: Self.secondUser(), account: account))
         XCTAssertTrue(Self.canSign(rotated))
-        XCTAssertEqual(Self.storedKeys(account: Self.clusterA), 1, "the old key is gone")
+        XCTAssertEqual(Self.storedKeys(account: account), 1, "the old key is gone")
         KubeAPIService.deleteClientKeys(account: Self.clusterA)
-        XCTAssertEqual(Self.storedKeys(account: Self.clusterA), 0, "Reset removes it")
+        XCTAssertEqual(Self.storedKeys(account: account), 0, "Reset removes it")
+    }
+
+    /// Two kubeconfig users on one server (AKS clusterUser / clusterAdmin)
+    /// keep separate keys: both identities sign after both imports, in
+    /// either order and after a re-import (#543).
+    func testLoadClientIdentity_twoUsersOnOneServerBothSign() throws {
+        let member = KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "clusterUser")
+        let admin = KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "clusterAdmin")
+        let orders = [
+            [(member, firstUser()), (admin, Self.secondUser())],
+            [(admin, Self.secondUser()), (member, firstUser())],
+        ]
+        for order in orders {
+            let first = try XCTUnwrap(
+                KubeAPIService.loadClientIdentity(from: order[0].1, account: order[0].0))
+            let second = try XCTUnwrap(
+                KubeAPIService.loadClientIdentity(from: order[1].1, account: order[1].0))
+            XCTAssertTrue(Self.canSign(first), "the first user's identity still signs")
+            XCTAssertTrue(Self.canSign(second))
+
+            let again = try XCTUnwrap(
+                KubeAPIService.loadClientIdentity(from: order[0].1, account: order[0].0))
+            XCTAssertTrue(Self.canSign(again))
+            XCTAssertTrue(Self.canSign(second), "a re-import keeps the other user's key")
+            XCTAssertEqual(Self.storedKeys(account: member), 1)
+            XCTAssertEqual(Self.storedKeys(account: admin), 1)
+
+            KubeAPIService.deleteClientKeys(account: Self.clusterA)
+            XCTAssertEqual(Self.storedKeys(account: member), 0)
+            XCTAssertEqual(Self.storedKeys(account: admin), 0)
+        }
+    }
+
+    /// Reset removes the pre-#543 per-server key as well as the per-user ones.
+    func testDeleteClientKeys_removesPerServerAndPerUserKeys() throws {
+        _ = try KubeAPIService.loadClientIdentity(from: firstUser(), account: Self.clusterA)
+        let admin = KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "clusterAdmin")
+        _ = try KubeAPIService.loadClientIdentity(from: Self.secondUser(), account: admin)
+        XCTAssertEqual(Self.storedKeys(account: Self.clusterA), 1)
+        XCTAssertEqual(Self.storedKeys(account: admin), 1)
+
+        // A server whose URL extends this one is another server.
+        KubeAPIService.deleteClientKeys(account: Self.clusterA + "0")
+        XCTAssertEqual(Self.storedKeys(account: admin), 1)
+
+        KubeAPIService.deleteClientKeys(account: Self.clusterA)
+        XCTAssertEqual(Self.storedKeys(account: Self.clusterA), 0)
+        XCTAssertEqual(Self.storedKeys(account: admin), 0)
+    }
+
+    /// Reset matches per-user keys by `server#user-`, not any `server#…`
+    /// account, and deletes the named users' keys directly.
+    func testDeleteClientKeys_onlyPerUserSuffixes_andNamedUsersDirectly() throws {
+        let fragment = Self.clusterA + "#fragment"
+        _ = try KubeAPIService.loadClientIdentity(from: firstUser(), account: fragment)
+        let admin = KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "clusterAdmin")
+        _ = try KubeAPIService.loadClientIdentity(from: Self.secondUser(), account: admin)
+
+        KubeAPIService.deleteClientKeys(account: Self.clusterA, userNames: ["clusterAdmin"])
+
+        XCTAssertEqual(Self.storedKeys(account: admin), 0)
+        XCTAssertEqual(Self.storedKeys(account: fragment), 1, "not a per-user key of this server")
+        KubeAPIService.deleteClientKeys(account: fragment)
+        XCTAssertEqual(Self.storedKeys(account: fragment), 0)
+    }
+
+    func testClientKeyAccount_isStablePerServerAndUser() {
+        let account = KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "u")
+        XCTAssertEqual(account, KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "u"))
+        XCTAssertNotEqual(
+            account, KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "v"))
+        XCTAssertEqual(
+            account,
+            Self.clusterA + "#user-0bfe935e70c321c7ca3afc75ce0d0ca2f98b5422e008bb31c00c6d7f1f1c0ad6")
     }
 
     private func firstUser() -> UserDetails {

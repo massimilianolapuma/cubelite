@@ -59,9 +59,10 @@ impl KubeClient {
     /// `KUBECONFIG`-style list (`:` on Unix, `;` on Windows).
     ///
     /// Several files are merged like kubectl does: the first file to define a
-    /// context, cluster or user wins, and missing files are skipped.
-    /// `context` selects a named context; when `None` the merged
-    /// `current-context` is used.
+    /// context, cluster or user wins, and missing files are skipped — except
+    /// that the selected context uses the cluster and user its own file
+    /// defines under the referenced names (#543). `context` selects a named
+    /// context; when `None` the merged `current-context` is used.
     ///
     /// # Errors
     ///
@@ -91,11 +92,13 @@ impl KubeClient {
         timeouts_secs: Option<(u64, u64)>,
     ) -> Result<Self, KubeconfigError> {
         let paths = split_kubeconfig_spec(kubeconfig);
-        let kubeconfig = tokio::task::spawn_blocking(move || merged_kubeconfig(&paths))
-            .await
-            .map_err(|e| KubeconfigError::ClientError {
-                reason: e.to_string(),
-            })??;
+        let target = context.map(str::to_string);
+        let kubeconfig =
+            tokio::task::spawn_blocking(move || merged_kubeconfig(&paths, target.as_deref()))
+                .await
+                .map_err(|e| KubeconfigError::ClientError {
+                    reason: e.to_string(),
+                })??;
 
         let options = KubeConfigOptions {
             context: context.map(str::to_string),
@@ -904,15 +907,30 @@ fn event_to_info(e: Event) -> EventInfo {
     }
 }
 
-/// Read and merge kubeconfig files with kube-rs, first file wins (kubectl
-/// semantics). Missing files are skipped; relative certificate/key paths are
-/// resolved against each file's directory by [`Kubeconfig::read_from`].
-fn merged_kubeconfig(paths: &[PathBuf]) -> Result<Kubeconfig, KubeconfigError> {
-    let mut merged: Option<Kubeconfig> = None;
+/// Read and merge kubeconfig files with kube-rs for a client of `context`
+/// (`None`: the merged `current-context`). Missing files are skipped;
+/// relative certificate/key paths are resolved against each file's directory
+/// by [`Kubeconfig::read_from`].
+///
+/// Names clash first-wins (kubectl), except that the target context's cluster
+/// and user come from the file that defines the context whenever that file
+/// defines those names (#543): a stale entry with the same name in an earlier
+/// file must not redirect the context. Only the content of the named entries
+/// changes, so names seen elsewhere stay the same.
+fn merged_kubeconfig(
+    paths: &[PathBuf],
+    context: Option<&str>,
+) -> Result<Kubeconfig, KubeconfigError> {
+    let mut files = Vec::new();
     for path in paths.iter().filter(|p| p.exists()) {
-        let next = Kubeconfig::read_from(path).map_err(|e| KubeconfigError::MergeError {
-            reason: format!("{}: {e}", path.display()),
-        })?;
+        files.push(
+            Kubeconfig::read_from(path).map_err(|e| KubeconfigError::MergeError {
+                reason: format!("{}: {e}", path.display()),
+            })?,
+        );
+    }
+    let mut merged: Option<Kubeconfig> = None;
+    for next in files.iter().cloned() {
         merged = Some(match merged {
             Some(acc) => acc.merge(next).map_err(|e| KubeconfigError::MergeError {
                 reason: e.to_string(),
@@ -920,7 +938,7 @@ fn merged_kubeconfig(paths: &[PathBuf]) -> Result<Kubeconfig, KubeconfigError> {
             None => next,
         });
     }
-    merged.ok_or_else(|| KubeconfigError::FileNotFound {
+    let mut merged = merged.ok_or_else(|| KubeconfigError::FileNotFound {
         path: if paths.is_empty() {
             "(no kubeconfig paths provided)".to_string()
         } else {
@@ -930,7 +948,48 @@ fn merged_kubeconfig(paths: &[PathBuf]) -> Result<Kubeconfig, KubeconfigError> {
                 .collect::<Vec<_>>()
                 .join(", ")
         },
-    })
+    })?;
+    let target = context
+        .map(str::to_string)
+        .or_else(|| merged.current_context.clone());
+    if let Some(target) = target {
+        prefer_context_file_entries(&mut merged, &files, &target);
+    }
+    Ok(merged)
+}
+
+/// Replace the content of the cluster and user that `context` references in
+/// `merged` with the entries of the first file in `files` that defines
+/// `context`, when that file defines them. Anything else is left as merged.
+fn prefer_context_file_entries(merged: &mut Kubeconfig, files: &[Kubeconfig], context: &str) {
+    let Some((own, details)) = files.iter().find_map(|file| {
+        file.contexts
+            .iter()
+            .find(|c| c.name == context)
+            .map(|c| (file, c.context.as_ref()))
+    }) else {
+        return;
+    };
+    let Some(details) = details else {
+        return;
+    };
+    replace_named(&mut merged.clusters, &own.clusters, &details.cluster, |c| {
+        &c.name
+    });
+    if let Some(user) = details.user.as_deref() {
+        replace_named(&mut merged.auth_infos, &own.auth_infos, user, |u| &u.name);
+    }
+}
+
+/// Overwrite the entry called `name` in `merged` with the one in `own`, when
+/// both lists have it.
+fn replace_named<T: Clone>(merged: &mut [T], own: &[T], name: &str, name_of: fn(&T) -> &String) {
+    let Some(own_entry) = own.iter().find(|e| name_of(e) == name) else {
+        return;
+    };
+    if let Some(slot) = merged.iter_mut().find(|e| name_of(e) == name) {
+        *slot = own_entry.clone();
+    }
 }
 
 #[cfg(test)]
@@ -981,39 +1040,111 @@ users:
         let a = write_kubeconfig(dir.path(), "a.yaml", FILE_A);
         let b = write_kubeconfig(dir.path(), "b.yaml", FILE_B);
         let missing = dir.path().join("missing.yaml");
-        let merged = merged_kubeconfig(&[a, missing, b]).expect("merge");
+        let paths = [a, missing, b];
 
         // A context defined only in the second file resolves to that file's
-        // cluster, and to the first file's user on a name clash (kubectl).
-        let opts = KubeConfigOptions {
-            context: Some("staging".into()),
-            ..Default::default()
-        };
-        let cfg = Config::from_custom_kubeconfig(merged.clone(), &opts)
-            .await
-            .expect("staging config");
-        assert_eq!(cfg.cluster_url.to_string(), "https://b.example:6443/");
+        // cluster, and to that file's user even though the first file
+        // defines a user with the same name (#543).
+        let (url, token) = resolved(&paths, Some("staging")).await;
+        assert_eq!(url, "https://b.example:6443/");
+        assert_eq!(token, "from-b");
 
         // A clashing context name keeps the first file's definition.
-        let opts = KubeConfigOptions {
-            context: Some("dev".into()),
-            ..Default::default()
-        };
-        let cfg = Config::from_custom_kubeconfig(merged.clone(), &opts)
-            .await
-            .expect("dev config");
-        assert_eq!(cfg.cluster_url.to_string(), "https://a.example:6443/");
+        let (url, token) = resolved(&paths, Some("dev")).await;
+        assert_eq!(url, "https://a.example:6443/");
+        assert_eq!(token, "from-a");
 
         // current-context comes from the first file that sets it.
+        let merged = merged_kubeconfig(&paths, None).expect("merge");
         assert_eq!(merged.current_context.as_deref(), Some("dev"));
+    }
+
+    /// Earlier file with a stale cluster/user no context of its own uses.
+    const STALE: &str = r#"
+apiVersion: v1
+kind: Config
+clusters:
+  - name: aks-prod
+    cluster: { server: "https://old.example:6443" }
+  - name: only-stale
+    cluster: { server: "https://only-stale.example:6443" }
+users:
+  - name: aks-user
+    user: { token: old-token }
+"#;
+
+    /// Later file that defines its context with its own cluster and user.
+    const OWN: &str = r#"
+apiVersion: v1
+kind: Config
+current-context: aks-prod
+contexts:
+  - name: aks-prod
+    context: { cluster: aks-prod, user: aks-user }
+  - name: cross
+    context: { cluster: only-stale, user: aks-user }
+clusters:
+  - name: aks-prod
+    cluster: { server: "https://new.example:6443" }
+users:
+  - name: aks-user
+    user: { token: new-token }
+"#;
+
+    /// Cluster URL and bearer token kube-rs would use for `context`.
+    async fn resolved(paths: &[PathBuf], context: Option<&str>) -> (String, serde_json::Value) {
+        let merged = merged_kubeconfig(paths, context).expect("merge");
+        let opts = KubeConfigOptions {
+            context: context.map(str::to_string),
+            ..Default::default()
+        };
+        let cfg = Config::from_custom_kubeconfig(merged, &opts)
+            .await
+            .expect("config");
+        let auth = serde_json::to_value(&cfg.auth_info).expect("auth json");
+        (cfg.cluster_url.to_string(), auth["token"].clone())
+    }
+
+    #[tokio::test]
+    async fn client_uses_the_cluster_and_user_of_the_context_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let stale = write_kubeconfig(dir.path(), "config", STALE);
+        let own = write_kubeconfig(dir.path(), "own", OWN);
+        let paths = [stale, own];
+
+        let (url, token) = resolved(&paths, Some("aks-prod")).await;
+        assert_eq!(url, "https://new.example:6443/");
+        assert_eq!(token, "new-token");
+
+        // current-context (`context: None`) follows the same rule.
+        let (url, token) = resolved(&paths, None).await;
+        assert_eq!(url, "https://new.example:6443/");
+        assert_eq!(token, "new-token");
+
+        // A cluster the context's file does not define still resolves from
+        // the earlier file (kubectl cross-file reference).
+        let (url, token) = resolved(&paths, Some("cross")).await;
+        assert_eq!(url, "https://only-stale.example:6443/");
+        assert_eq!(token, "new-token");
+    }
+
+    #[tokio::test]
+    async fn context_file_listed_first_is_unchanged() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let own = write_kubeconfig(dir.path(), "own", OWN);
+        let stale = write_kubeconfig(dir.path(), "config", STALE);
+        // Context file first: its entries win either way.
+        let (url, token) = resolved(&[own, stale], Some("aks-prod")).await;
+        assert_eq!(url, "https://new.example:6443/");
+        assert_eq!(token, "new-token");
     }
 
     #[test]
     fn merged_kubeconfig_errors_when_no_file_exists() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let err = merged_kubeconfig(&[dir.path().join("nope.yaml")]).expect_err("no files");
+        let err = merged_kubeconfig(&[dir.path().join("nope.yaml")], None).expect_err("no files");
         assert!(matches!(err, KubeconfigError::FileNotFound { .. }));
-        let err = merged_kubeconfig(&[]).expect_err("empty list");
+        let err = merged_kubeconfig(&[], None).expect_err("empty list");
         assert!(matches!(err, KubeconfigError::FileNotFound { .. }));
     }
     use k8s_openapi::api::core::v1::{EventSource, ObjectReference};

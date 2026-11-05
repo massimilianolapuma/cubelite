@@ -4,7 +4,8 @@
 //! - Load from `~/.kube/config` plus the kubeconfig files discovered in
 //!   `~/.kube/`, or from a `KUBECONFIG` list
 //! - Multi-file merge via `KUBECONFIG` environment variable (platform path
-//!   list: `:` on Unix, `;` on Windows), first file wins on name clashes
+//!   list: `:` on Unix, `;` on Windows), first file wins on name clashes;
+//!   a context resolves its cluster and user against its own file first
 //! - Context switching with optional disk persistence
 
 use std::collections::HashMap;
@@ -12,7 +13,9 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use crate::error::KubeconfigError;
-use crate::types::{ContextDetails, ContextInfo, KubeConfigFile, KubeconfigSource, NamedContext};
+use crate::types::{
+    ContextDetails, ContextInfo, KubeConfigFile, KubeconfigSource, NamedCluster, NamedContext,
+};
 
 // ---------------------------------------------------------------------------
 // Public surface: KubeConfig
@@ -44,6 +47,101 @@ pub struct KubeConfig {
     context_sources: HashMap<String, PathBuf>,
     /// Per requested file: context names hidden by an earlier file.
     shadowed: HashMap<PathBuf, Vec<String>>,
+    /// Per loaded file: the clusters it defines, so a context resolves its
+    /// cluster against the file that defines the context (#543).
+    file_clusters: HashMap<PathBuf, Vec<NamedCluster>>,
+    /// Per loaded file: cluster and user names an earlier file defines
+    /// differently.
+    redefined: HashMap<PathBuf, Redefined>,
+}
+
+/// Cluster and user names a file defines differently from an earlier file.
+#[derive(Debug, Clone, Default)]
+struct Redefined {
+    clusters: Vec<String>,
+    users: Vec<String>,
+}
+
+/// Which clusters and users count as "defined differently" by a later file
+/// (Preferences note, #543). The native app applies the same rule
+/// (`KubeconfigRedefinitions.swift`); keep both in sync.
+///
+/// - A cluster entry is compared on [`CLUSTER_IDENTITY_KEYS`] only, so
+///   cosmetic keys such as `extensions` do not count.
+/// - A user entry is compared whole, unmodelled keys (`exec`,
+///   `auth-provider`, …) included.
+/// - Mappings compare regardless of key order; scalars by value and type.
+/// - Relative file paths ([`PATH_KEYS`]) are resolved against the directory
+///   of the file that lists them first, as kubectl does, so the same relative
+///   path in two directories is two different files.
+/// - Identical duplicates are not reported.
+const CLUSTER_IDENTITY_KEYS: [&str; 6] = [
+    "server",
+    "certificate-authority",
+    "certificate-authority-data",
+    "insecure-skip-tls-verify",
+    "tls-server-name",
+    "proxy-url",
+];
+
+/// Cluster and user keys holding a file path, relative to the kubeconfig.
+const PATH_KEYS: [&str; 3] = ["certificate-authority", "client-certificate", "client-key"];
+
+/// Raw `(name, body)` pairs of one named list (`clusters`, `users`) of a
+/// kubeconfig document in `dir`, the body reduced to `keep` when given and
+/// its relative [`PATH_KEYS`] resolved against `dir`. Raw YAML so fields the
+/// typed model does not know (`exec`, `auth-provider`, …) count.
+fn raw_named_entries(
+    doc: &serde_yaml::Value,
+    list: &str,
+    body: &str,
+    keep: Option<&[&str]>,
+    dir: &Path,
+) -> Vec<(String, serde_yaml::Value)> {
+    doc.get(list)
+        .and_then(serde_yaml::Value::as_sequence)
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let name = item.get("name")?.as_str()?.to_string();
+            let mut value = item.get(body).cloned().unwrap_or(serde_yaml::Value::Null);
+            if let serde_yaml::Value::Mapping(map) = &mut value {
+                if let Some(keys) = keep {
+                    map.retain(|k, _| k.as_str().is_some_and(|k| keys.contains(&k)));
+                }
+                for key in PATH_KEYS {
+                    if let Some(serde_yaml::Value::String(file)) = map.get_mut(key) {
+                        if !Path::new(file.as_str()).is_absolute() {
+                            *file = dir.join(file.as_str()).display().to_string();
+                        }
+                    }
+                }
+            }
+            Some((name, value))
+        })
+        .collect()
+}
+
+/// Earlier definitions per name, with the file that made each one.
+type SeenEntries = HashMap<String, Vec<(PathBuf, serde_yaml::Value)>>;
+
+/// Names among `entries` (from `path`) that another, earlier file defines
+/// with a different body; records `entries` as seen.
+fn note_redefinitions(
+    seen: &mut SeenEntries,
+    path: &Path,
+    entries: Vec<(String, serde_yaml::Value)>,
+) -> Vec<String> {
+    let mut redefined = Vec::new();
+    for (name, value) in entries {
+        let earlier = seen.entry(name.clone()).or_default();
+        let differs = earlier.iter().any(|(p, v)| p != path && *v != value);
+        if differs && !redefined.contains(&name) {
+            redefined.push(name);
+        }
+        earlier.push((path.to_path_buf(), value));
+    }
+    redefined
 }
 
 impl KubeConfig {
@@ -83,7 +181,10 @@ impl KubeConfig {
     ///
     /// Contexts, clusters, and users are merged across all files; name
     /// collisions are resolved by keeping the first occurrence (first-wins).
-    /// Missing files are skipped, as kubectl does with `KUBECONFIG`.
+    /// A context resolves its cluster against the file that defines the
+    /// context first, falling back to the merged entry only when that file
+    /// does not define the name (#543). Missing files are skipped, as kubectl
+    /// does with `KUBECONFIG`.
     ///
     /// # Errors
     ///
@@ -111,10 +212,27 @@ impl KubeConfig {
         let mut first_current_context: Option<String> = None;
         let mut context_sources = HashMap::new();
         let mut shadowed: HashMap<PathBuf, Vec<String>> = HashMap::new();
+        let mut file_clusters = HashMap::new();
+        let mut redefined = HashMap::new();
+        let mut seen_clusters = SeenEntries::new();
+        let mut seen_users = SeenEntries::new();
 
         for path in &existing {
             let content = std::fs::read_to_string(path)?;
             let raw: KubeConfigFile = serde_yaml::from_str(&content)?;
+            let doc: serde_yaml::Value = serde_yaml::from_str(&content)?;
+            let dir = path.parent().unwrap_or(Path::new(""));
+            let keep = Some(CLUSTER_IDENTITY_KEYS.as_slice());
+            let clusters = raw_named_entries(&doc, "clusters", "cluster", keep, dir);
+            let users = raw_named_entries(&doc, "users", "user", None, dir);
+            redefined.insert(
+                path.clone(),
+                Redefined {
+                    clusters: note_redefinitions(&mut seen_clusters, path, clusters),
+                    users: note_redefinitions(&mut seen_users, path, users),
+                },
+            );
+            file_clusters.insert(path.clone(), raw.clusters.clone());
 
             // First file's current-context takes precedence.
             if first_current_context.is_none() {
@@ -154,20 +272,28 @@ impl KubeConfig {
             requested: paths.to_vec(),
             context_sources,
             shadowed,
+            file_clusters,
+            redefined,
         })
     }
 
     /// Describe every requested kubeconfig file in merge order: whether it
-    /// exists, how many contexts it contributes, and which of its context
-    /// names are hidden by an earlier file.
+    /// exists, how many contexts it contributes, which of its context names
+    /// are hidden by an earlier file, and which of its cluster and user names
+    /// an earlier file defines differently.
     pub fn sources(&self) -> Vec<KubeconfigSource> {
         self.requested
             .iter()
-            .map(|path| KubeconfigSource {
-                path: path.display().to_string(),
-                exists: self.paths.contains(path),
-                contexts: self.context_sources.values().filter(|p| *p == path).count(),
-                shadowed: self.shadowed.get(path).cloned().unwrap_or_default(),
+            .map(|path| {
+                let redefined = self.redefined.get(path).cloned().unwrap_or_default();
+                KubeconfigSource {
+                    path: path.display().to_string(),
+                    exists: self.paths.contains(path),
+                    contexts: self.context_sources.values().filter(|p| *p == path).count(),
+                    shadowed: self.shadowed.get(path).cloned().unwrap_or_default(),
+                    redefined_clusters: redefined.clusters,
+                    redefined_users: redefined.users,
+                }
             })
             .collect()
     }
@@ -297,7 +423,9 @@ impl KubeConfig {
     /// Return a reference to the raw merged [`KubeConfigFile`].
     ///
     /// Useful for callers that need direct access to cluster or user details
-    /// without going through the higher-level helpers.
+    /// without going through the higher-level helpers. Its clusters and users
+    /// are merged first-wins by name; to find the cluster a context actually
+    /// uses, go through [`Self::get_context`].
     pub fn raw(&self) -> &KubeConfigFile {
         &self.raw
     }
@@ -313,11 +441,15 @@ impl KubeConfig {
             .and_then(|d| d.namespace.clone())
             .unwrap_or_else(|| "default".to_string());
 
-        let cluster_server = self
-            .raw
-            .clusters
-            .iter()
-            .find(|c| c.name == cluster_name)
+        // The context's own file first; the merged (first-wins) entry only
+        // when that file does not define the name (cross-file reference).
+        let own_file = self
+            .context_sources
+            .get(&named.name)
+            .and_then(|path| self.file_clusters.get(path));
+        let cluster_server = own_file
+            .and_then(|clusters| clusters.iter().find(|c| c.name == cluster_name))
+            .or_else(|| self.raw.clusters.iter().find(|c| c.name == cluster_name))
             .and_then(|c| c.cluster.as_ref())
             .map(|cl| cl.server.clone());
 
@@ -794,6 +926,273 @@ users:
         let raw = cfg.raw();
         assert_eq!(raw.clusters.len(), 2);
         assert_eq!(raw.users.len(), 2);
+    }
+
+    // -- Own-file cluster/user resolution (#543) -----------------------------
+
+    /// Earlier file: stale `aks-prod` cluster/user that no context here uses,
+    /// plus entries a later file repeats verbatim.
+    const STALE_FIRST: &str = r#"
+apiVersion: v1
+kind: Config
+clusters:
+  - name: aks-prod
+    cluster:
+      server: https://old.example:6443
+  - name: shared
+    cluster:
+      server: https://shared.example:6443
+      certificate-authority-data: Q0E=
+  - name: only-first
+    cluster:
+      server: https://only-first.example:6443
+  - name: ca-changed
+    cluster:
+      server: https://ca.example:6443
+      certificate-authority-data: T0xE
+users:
+  - name: aks-user
+    user:
+      token: old-token
+  - name: same-user
+    user:
+      token: same-token
+  - name: exec-user
+    user:
+      exec:
+        apiVersion: client.authentication.k8s.io/v1beta1
+        command: az-old
+"#;
+
+    /// Later file: defines its contexts together with their cluster and user.
+    const OWN_SECOND: &str = r#"
+apiVersion: v1
+kind: Config
+current-context: aks-prod
+contexts:
+  - name: aks-prod
+    context:
+      cluster: aks-prod
+      user: aks-user
+  - name: shared-ctx
+    context:
+      cluster: shared
+      user: same-user
+  - name: cross
+    context:
+      cluster: only-first
+      user: aks-user
+clusters:
+  - name: aks-prod
+    cluster:
+      server: https://new.example:6443
+  - name: shared
+    cluster:
+      server: https://shared.example:6443
+      certificate-authority-data: Q0E=
+  - name: ca-changed
+    cluster:
+      server: https://ca.example:6443
+      certificate-authority-data: TkVX
+users:
+  - name: aks-user
+    user:
+      token: new-token
+  - name: same-user
+    user:
+      token: same-token
+  - name: exec-user
+    user:
+      exec:
+        apiVersion: client.authentication.k8s.io/v1beta1
+        command: kubelogin
+"#;
+
+    fn load_stale_then_own() -> (NamedTempFile, NamedTempFile, KubeConfig) {
+        let first = write_temp(STALE_FIRST);
+        let second = write_temp(OWN_SECOND);
+        let cfg =
+            KubeConfig::load_from_paths(&[first.path().to_path_buf(), second.path().to_path_buf()])
+                .expect("merge");
+        (first, second, cfg)
+    }
+
+    #[test]
+    fn context_resolves_its_cluster_against_its_own_file_on_a_clash() {
+        let (_a, _b, cfg) = load_stale_then_own();
+        let ctx = cfg.get_context("aks-prod").expect("aks-prod");
+        assert_eq!(
+            ctx.cluster_server.as_deref(),
+            Some("https://new.example:6443")
+        );
+        // Identity is unchanged: same context name, nothing synthetic.
+        assert_eq!(cfg.context_names(), vec!["aks-prod", "shared-ctx", "cross"]);
+        let listed = cfg.list_contexts();
+        assert_eq!(
+            listed[0].cluster_server.as_deref(),
+            Some("https://new.example:6443")
+        );
+        assert!(listed[0].is_active);
+    }
+
+    #[test]
+    fn context_cluster_missing_from_its_file_falls_back_to_an_earlier_file() {
+        let (_a, _b, cfg) = load_stale_then_own();
+        let cross = cfg.get_context("cross").expect("cross");
+        assert_eq!(
+            cross.cluster_server.as_deref(),
+            Some("https://only-first.example:6443")
+        );
+        let shared = cfg.get_context("shared-ctx").expect("shared-ctx");
+        assert_eq!(
+            shared.cluster_server.as_deref(),
+            Some("https://shared.example:6443")
+        );
+    }
+
+    #[test]
+    fn sources_report_clusters_and_users_an_earlier_file_defines_differently() {
+        let (_a, _b, cfg) = load_stale_then_own();
+        let sources = cfg.sources();
+        assert!(sources[0].redefined_clusters.is_empty());
+        assert!(sources[0].redefined_users.is_empty());
+        // Identical duplicates (`shared`, `same-user`) are not reported; a CA
+        // or an unmodelled field (`exec`) is enough to differ.
+        assert_eq!(
+            sources[1].redefined_clusters,
+            vec!["aks-prod", "ca-changed"]
+        );
+        assert_eq!(sources[1].redefined_users, vec!["aks-user", "exec-user"]);
+    }
+
+    #[test]
+    fn sources_report_nothing_redefined_without_clashes() {
+        let fa = write_temp(TWO_FILE_A);
+        let fb = write_temp(TWO_FILE_B);
+        let cfg = KubeConfig::load_from_paths(&[fa.path().to_path_buf(), fb.path().to_path_buf()])
+            .expect("merge");
+        for source in cfg.sources() {
+            assert!(source.redefined_clusters.is_empty());
+            assert!(source.redefined_users.is_empty());
+        }
+    }
+
+    /// Parity fixture: the native app's `KubeconfigRedefinitionsTests` uses
+    /// the same two documents and expects the same names (#543).
+    const PARITY_FIRST: &str = r#"
+apiVersion: v1
+kind: Config
+clusters:
+- name: aks-prod
+  cluster:
+    server: https://old.example:6443
+- name: same
+  cluster:
+    server: https://same.example:6443
+    certificate-authority: /etc/kube/ca.crt
+    extensions:
+    - name: example.com/meta
+      extension:
+        updated: "2026-01-01"
+- name: rel-ca
+  cluster:
+    server: https://rel.example:6443
+    certificate-authority: ca.crt
+- name: proxied
+  cluster:
+    server: https://proxied.example:6443
+    proxy-url: http://old-proxy.example:3128
+users:
+- name: aks-user
+  user:
+    token: old-token
+- name: same-user
+  user:
+    client-certificate: /etc/kube/client.crt
+    client-key: /etc/kube/client.key
+- name: rel-user
+  user:
+    client-certificate: client.crt
+- name: kubelogin
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: kubelogin
+      args:
+      - get-token
+      - --server-id
+      - old
+"#;
+
+    const PARITY_SECOND: &str = r#"
+apiVersion: v1
+kind: Config
+clusters:
+- name: aks-prod
+  cluster:
+    server: https://new.example:6443
+- name: same
+  cluster:
+    certificate-authority: /etc/kube/ca.crt
+    server: https://same.example:6443
+    extensions:
+    - name: example.com/meta
+      extension:
+        updated: "2026-11-05"
+- name: rel-ca
+  cluster:
+    server: https://rel.example:6443
+    certificate-authority: ca.crt
+- name: proxied
+  cluster:
+    server: https://proxied.example:6443
+    proxy-url: http://new-proxy.example:3128
+users:
+- name: aks-user
+  user:
+    token: new-token
+- name: same-user
+  user:
+    client-key: /etc/kube/client.key
+    client-certificate: /etc/kube/client.crt
+- name: rel-user
+  user:
+    client-certificate: client.crt
+- name: kubelogin
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: kubelogin
+      args:
+      - get-token
+      - --server-id
+      - new
+"#;
+
+    #[test]
+    fn redefinitions_parity_fixture() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let first = root.path().join("a").join("config");
+        let second = root.path().join("b").join("dolomiti");
+        for (path, yaml) in [(&first, PARITY_FIRST), (&second, PARITY_SECOND)] {
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+            std::fs::write(path, yaml).expect("write");
+        }
+        let cfg = KubeConfig::load_from_paths(&[first, second]).expect("merge");
+        let sources = cfg.sources();
+
+        assert!(sources[0].redefined_clusters.is_empty());
+        assert!(sources[0].redefined_users.is_empty());
+        // `same` / `same-user` differ only in key order and `extensions`;
+        // `rel-ca` / `rel-user` repeat a relative path from another directory.
+        assert_eq!(
+            sources[1].redefined_clusters,
+            vec!["aks-prod", "rel-ca", "proxied"]
+        );
+        assert_eq!(
+            sources[1].redefined_users,
+            vec!["aks-user", "rel-user", "kubelogin"]
+        );
     }
 
     // -- Context switching ---------------------------------------------------

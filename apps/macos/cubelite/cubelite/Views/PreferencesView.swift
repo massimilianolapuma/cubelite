@@ -344,15 +344,33 @@ private struct KubeconfigPathsSection: View {
     @Binding var paths: [String]
     /// Picked files rejected by the last Add File… (#450); non-empty shows the alert.
     @State private var rejectedFiles: [String] = []
+    /// Files of the effective list that define a cluster or user differently
+    /// from an earlier file (#543).
+    @State private var redefinitions: [KubeconfigRedefinition] = []
+    /// Optional so previews and tests without the app's state still render.
+    @Environment(ClusterState.self) private var clusterState: ClusterState?
+
+    /// Rescan when the list changes or the app reloads the kubeconfig (the
+    /// file watcher's reload after an edit on disk included).
+    private struct ScanTrigger: Equatable {
+        let paths: [String]
+        let revision: Int
+    }
 
     var body: some View {
         if paths.isEmpty {
             Text("Using default: ~/.kube/config")
                 .foregroundStyle(.secondary)
                 .typeStyle(DesignTokens.Typography.body)
+            // The default list is not shown file by file: name the file.
+            ForEach(redefinitions, id: \.path) { redefinition in
+                KubeconfigRedefinitionNote(
+                    text: "\(URL(fileURLWithPath: redefinition.path).lastPathComponent): "
+                        + redefinition.summary)
+            }
         }
         ForEach(Array(paths.enumerated()), id: \.offset) { index, path in
-            KubeconfigPathRow(path: path) { paths.remove(at: index) }
+            KubeconfigPathRow(path: path, note: note(for: path)) { paths.remove(at: index) }
         }
         Button("Add File…") { addFiles() }
             .accessibilityIdentifier("preferences.add-kubeconfig-file")
@@ -361,6 +379,26 @@ private struct KubeconfigPathsSection: View {
             } message: {
                 Text(KubeconfigPathsEditor.rejectionMessage(for: rejectedFiles))
             }
+            .task(id: ScanTrigger(paths: paths, revision: clusterState?.kubeconfigRevision ?? 0)) {
+                await loadRedefinitions()
+            }
+    }
+
+    private func note(for path: String) -> String? {
+        let key = URL(fileURLWithPath: path).path
+        return redefinitions.first(where: { $0.path == key })?.summary
+    }
+
+    /// Reads the effective file list off the main actor.
+    private func loadRedefinitions() async {
+        let custom = paths
+        redefinitions = await Task.detached {
+            let urls =
+                custom.isEmpty
+                ? KubeconfigService.resolveKubeconfigPaths()
+                : custom.map { URL(fileURLWithPath: $0) }
+            return KubeconfigService.redefinitions(in: urls)
+        }.value
     }
 
     private var showsRejection: Binding<Bool> {
@@ -393,6 +431,8 @@ private struct KubeconfigPathsSection: View {
 private struct KubeconfigPathRow: View {
 
     let path: String
+    /// Clusters / users an earlier file defines differently (#543).
+    var note: String?
     let onRemove: () -> Void
 
     private var fileExists: Bool { FileManager.default.fileExists(atPath: path) }
@@ -405,10 +445,15 @@ private struct KubeconfigPathRow: View {
             .foregroundStyle(fileExists ? DesignTokens.statusOk : DesignTokens.statusWarn)
             .typeStyle(DesignTokens.Typography.caption)
             .accessibilityLabel(fileExists ? "File found" : "File missing")
-            Text(path)
-                .typeStyle(DesignTokens.Typography.dataSm)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(path)
+                    .typeStyle(DesignTokens.Typography.dataSm)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let note {
+                    KubeconfigRedefinitionNote(text: note)
+                }
+            }
             Spacer()
             Button(role: .destructive) {
                 onRemove()
@@ -418,5 +463,22 @@ private struct KubeconfigPathRow: View {
             .buttonStyle(.borderless)
             .accessibilityLabel("Remove \(path)")
         }
+    }
+}
+
+// MARK: - Kubeconfig Redefinition Note
+
+/// Caption under a kubeconfig file naming the clusters / users an earlier
+/// file defines differently (#543).
+private struct KubeconfigRedefinitionNote: View {
+
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .typeStyle(DesignTokens.Typography.caption)
+            .foregroundStyle(DesignTokens.statusWarn)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("preferences.kubeconfig-redefined")
     }
 }

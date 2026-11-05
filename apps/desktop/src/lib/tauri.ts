@@ -63,6 +63,12 @@ export type KubeconfigSource = {
   contexts: number;
   /** Context names hidden by an earlier file with the same name. */
   shadowed: string[];
+  /**
+   * Cluster / user names an earlier file defines differently. This file's
+   * contexts still use this file's definition (informational).
+   */
+  redefined_clusters?: string[];
+  redefined_users?: string[];
 };
 
 /** Which precedence level produced the kubeconfig list (spec §1.1). */

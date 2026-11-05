@@ -39,7 +39,9 @@ actor ExecCredentialService {
     private var cache: [String: CacheEntry] = [:]
 
     /// Returns plugin credentials for `exec`, reusing the cached result until
-    /// shortly before its expiration. `cacheKey` is the cluster server URL.
+    /// shortly before its expiration. `cacheKey` identifies the connection
+    /// (`KubeAPIService.connectionCacheKey`: server URL plus resolved
+    /// cluster and user).
     func credentials(for exec: ExecConfig, cacheKey: String) async throws -> ExecCredentialResult {
         if let entry = cache[cacheKey], entry.refreshAfter > Date() {
             return entry.result

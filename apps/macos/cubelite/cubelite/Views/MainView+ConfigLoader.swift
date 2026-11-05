@@ -11,7 +11,10 @@ extension MainView {
         clusterState.isLoading = true
         clusterState.errorMessage = nil
         clusterState.clusterReachable = nil
-        defer { clusterState.isLoading = false }
+        defer {
+            clusterState.isLoading = false
+            clusterState.kubeconfigRevision += 1
+        }
         do {
             let config = try await kubeconfigService.load()
             clusterState.noConfig = false
@@ -178,6 +181,9 @@ extension MainView {
             )
         )
         await loadKubeconfig()
+        // Sessions are keyed on the resolved cluster and user: drop the ones
+        // the edit made unreachable so they do not pile up (#543).
+        await kubeAPIService.pruneSessions()
         if let context = selectedContext {
             await loadNamespaces(for: context)
         }

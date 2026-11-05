@@ -333,7 +333,35 @@ describe("PreferencesModal", () => {
     expect(within(rows[2]).getByText(/1 context\b/)).toBeInTheDocument();
     const merged = within(rows[2]).getByText(/1 merged/);
     expect(merged).toHaveAttribute("title", expect.stringContaining("prod"));
+    expect(within(rows[2]).queryByText(/redefined/)).not.toBeInTheDocument();
     expect(screen.getByText(/first file wins/)).toBeInTheDocument();
+  });
+
+  it("notes clusters and users an earlier file defines differently", () => {
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/config", exists: true, contexts: 0, shadowed: [] },
+      {
+        path: "/home/u/.kube/dolomiti",
+        exists: true,
+        contexts: 1,
+        shadowed: [],
+        redefined_clusters: ["aks-prod-01-emm"],
+        redefined_users: ["clusterUser_emm"],
+      },
+    ];
+    render(PreferencesModal);
+    const rows = within(screen.getByRole("list", { name: "Kubeconfig files" })).getAllByRole(
+      "listitem",
+    );
+    expect(within(rows[0]).queryByText(/redefined/)).not.toBeInTheDocument();
+    const note = within(rows[1]).getByText(/2 redefined/);
+    expect(note).toHaveAttribute(
+      "title",
+      expect.stringContaining(
+        "Also defined differently in an earlier file: cluster aks-prod-01-emm, user clusterUser_emm",
+      ),
+    );
+    expect(note).toHaveAttribute("title", expect.stringContaining("this file's definition"));
   });
 
   it("re-triggers onboarding", async () => {

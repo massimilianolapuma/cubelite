@@ -12,6 +12,11 @@ final class ClusterState {
     /// Currently active context name.
     var currentContext: String?
 
+    /// Bumped after every kubeconfig (re)load, including the watcher's
+    /// reload after an on-disk edit; views that read the files themselves
+    /// (Preferences, #543) refresh on it.
+    var kubeconfigRevision = 0
+
     /// Pods in the selected namespace (or all namespaces).
     var pods: [PodInfo] = []
     /// Cluster nodes (read-only inventory; empty when RBAC denies nodes).
