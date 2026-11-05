@@ -186,6 +186,17 @@ pub struct KubeconfigSource {
     /// Context names defined in this file but hidden by an earlier file with
     /// the same name (first file wins).
     pub shadowed: Vec<String>,
+
+    /// Cluster names this file defines differently from an earlier file
+    /// (server, CA or TLS settings). This file's contexts still use this
+    /// file's definition, so the list is informational.
+    #[serde(default)]
+    pub redefined_clusters: Vec<String>,
+
+    /// User names this file defines differently from an earlier file. This
+    /// file's contexts still use this file's definition.
+    #[serde(default)]
+    pub redefined_users: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
