@@ -205,15 +205,11 @@ actor KubeconfigService {
     /// differently from an earlier file (Preferences, #543). Missing and
     /// unreadable files are skipped; files without such names are left out.
     static func redefinitions(in paths: [URL]) -> [KubeconfigRedefinition] {
-        let decoder = YAMLDecoder()
-        let files = paths.compactMap { path -> (path: URL, config: RawKubeConfig)? in
-            guard
-                let data = try? Data(contentsOf: path),
-                let raw = try? decoder.decode(RawKubeConfig.self, from: data)
-            else { return nil }
-            return (path, raw)
+        let files = paths.compactMap { path -> (path: URL, yaml: String)? in
+            guard let data = try? Data(contentsOf: path) else { return nil }
+            return (path, String(decoding: data, as: UTF8.self))
         }
-        return KubeconfigMerge(files: files).redefinitions
+        return KubeconfigRedefinition.scan(files)
     }
 
     // MARK: - Credential Migration
@@ -221,9 +217,12 @@ actor KubeconfigService {
     /// Imports every bearer token referenced by a context into the Keychain,
     /// keyed by the server URL of the cluster that context connects to
     /// (trailing slash dropped, matching `KubeAPIService` session accounts).
-    /// An existing Keychain entry always wins over the file copy, so user
-    /// edits made via "Reset stored credentials" or the Keychain itself are
-    /// never clobbered.
+    /// An existing Keychain entry wins over the file copy, so user edits made
+    /// via "Reset stored credentials" or the Keychain itself are never
+    /// clobbered — except a stale import: when the context's own file defines
+    /// its user differently from an earlier file and the Keychain holds that
+    /// earlier (first-wins) file token, builds before #543 imported the wrong
+    /// token, so it is replaced with the context file's token.
     private func migrateTokensToKeychain(_ config: KubeConfig) async {
         for context in config.contexts {
             guard
@@ -234,12 +233,25 @@ actor KubeconfigService {
             let account = server.hasSuffix("/") ? String(server.dropLast()) : server
 
             if let existing = try? await keychain.retrieveString(
-                tag: .bearerToken, account: account), !existing.isEmpty
+                tag: .bearerToken, account: account), !existing.isEmpty,
+                existing == token || existing != Self.staleFileToken(for: context, in: config)
             {
                 continue
             }
             try? await keychain.storeString(token, tag: .bearerToken, account: account)
         }
+    }
+
+    /// The first-wins file token of the user `context` references, when the
+    /// context's own file defines that user differently; `nil` otherwise.
+    private static func staleFileToken(for context: String, in config: KubeConfig) -> String? {
+        guard
+            let own = config.ownUsers[context],
+            let merged = config.raw.users?.first(where: { $0.name == own.name }),
+            merged.user != own.user,
+            let stale = merged.user?.token, !stale.isEmpty
+        else { return nil }
+        return stale
     }
 
     // MARK: - Context Management

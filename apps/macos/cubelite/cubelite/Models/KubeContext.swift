@@ -43,7 +43,7 @@ struct NamedCluster: Codable, Sendable {
 }
 
 /// Details within a kubeconfig cluster entry.
-struct ClusterDetails: Codable, Sendable, Equatable {
+struct ClusterDetails: Codable, Sendable, Hashable {
     let server: String?
     let certificateAuthorityData: String?
     let certificateAuthority: String?
@@ -64,7 +64,7 @@ struct NamedUser: Codable, Sendable {
 }
 
 /// Credential details within a kubeconfig user entry.
-struct UserDetails: Codable, Sendable, Equatable {
+struct UserDetails: Codable, Sendable, Hashable {
     let token: String?
     let clientCertificateData: String?
     let clientKeyData: String?
@@ -119,7 +119,7 @@ struct UserDetails: Codable, Sendable, Equatable {
 
 /// An `users[].user.exec` credential-plugin block
 /// (client.authentication.k8s.io ExecConfig).
-struct ExecConfig: Codable, Sendable, Equatable {
+struct ExecConfig: Codable, Sendable, Hashable {
     let apiVersion: String?
     let command: String
     let args: [String]?
@@ -129,14 +129,14 @@ struct ExecConfig: Codable, Sendable, Equatable {
 }
 
 /// A single environment variable entry inside an exec block.
-struct ExecEnvVar: Codable, Sendable, Equatable {
+struct ExecEnvVar: Codable, Sendable, Hashable {
     let name: String
     let value: String
 }
 
 /// A legacy `users[].user.auth-provider` block. Parsed only so the app can
 /// surface a targeted "migrate to exec" error instead of a silent auth miss.
-struct AuthProviderConfig: Codable, Sendable, Equatable {
+struct AuthProviderConfig: Codable, Sendable, Hashable {
     let name: String?
 }
 

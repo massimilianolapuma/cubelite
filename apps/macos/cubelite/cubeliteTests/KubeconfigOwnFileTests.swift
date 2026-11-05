@@ -42,6 +42,9 @@ final class KubeconfigOwnFileTests: XCTestCase {
         // The token the session will use was imported under the new server.
         let stored = try await keychain.retrieveString(tag: .bearerToken, account: newServer)
         XCTAssertEqual(stored, "new-token")
+        // Nothing (in particular the stale token) lands under the old server.
+        let underOld = try await keychain.retrieveString(tag: .bearerToken, account: oldServer)
+        XCTAssertNil(underOld)
         // Names are unchanged: nothing synthetic leaks into the model.
         XCTAssertEqual(config.contexts, ["aks-prod", "cross"])
         XCTAssertEqual(config.raw.clusters?.map(\.name), ["aks-prod", "only-stale"])
@@ -119,20 +122,70 @@ final class KubeconfigOwnFileTests: XCTestCase {
         XCTAssertEqual(KubeconfigService.redefinitions(in: [first, missing, second]), [])
     }
 
-    func testMerge_caChangeCountsAsRedefinition() {
-        let a = RawKubeConfig(clusters: [
-            NamedCluster(name: "c", cluster: cluster("https://c.example", ca: "T0xE"))
-        ])
-        let b = RawKubeConfig(clusters: [
-            NamedCluster(name: "c", cluster: cluster("https://c.example", ca: "TkVX"))
-        ])
+    // MARK: - Stale Keychain imports
 
-        let merge = KubeconfigMerge(files: [
-            (URL(fileURLWithPath: "/a"), a), (URL(fileURLWithPath: "/b"), b),
-        ])
+    /// Same server in both files, token rotated: builds before #543 imported
+    /// the earlier file's token; loading now replaces it.
+    func testSameServer_staleImportedToken_isReplacedByOwnFileToken() async throws {
+        let server = uniqueServer()
+        try await keychain.storeString("old-token", tag: .bearerToken, account: server)
+        let stale = try write("config", staleYAML(server: server))
+        let own = try write("dolomiti", ownYAML(server: server, crossCluster: "aks-prod"))
 
-        XCTAssertEqual(merge.redefinitions.map(\.clusters), [["c"]])
-        XCTAssertEqual(merge.clusters.first?.cluster?.certificateAuthorityData, "T0xE")
+        _ = try await sut.loadFromPaths([stale, own])
+
+        let stored = try await keychain.retrieveString(tag: .bearerToken, account: server)
+        XCTAssertEqual(stored, "new-token")
+    }
+
+    func testSameServer_userEnteredToken_isKept() async throws {
+        let server = uniqueServer()
+        try await keychain.storeString("typed-by-user", tag: .bearerToken, account: server)
+        let stale = try write("config", staleYAML(server: server))
+        let own = try write("dolomiti", ownYAML(server: server, crossCluster: "aks-prod"))
+
+        _ = try await sut.loadFromPaths([stale, own])
+
+        let stored = try await keychain.retrieveString(tag: .bearerToken, account: server)
+        XCTAssertEqual(stored, "typed-by-user")
+    }
+
+    func testResetStoredCredentials_deletesOwnFileServerTokens() async throws {
+        let (oldServer, newServer) = (uniqueServer(), uniqueServer())
+        let stale = try write("config", staleYAML(server: oldServer))
+        let own = try write("dolomiti", ownYAML(server: newServer, crossCluster: "only-stale"))
+        await sut.configure(paths: [stale, own])
+        _ = try await sut.load()
+        let imported = try await keychain.retrieveString(tag: .bearerToken, account: newServer)
+        XCTAssertEqual(imported, "new-token")
+
+        await KubeAPIService(kubeconfigService: sut).resetStoredCredentials()
+
+        let left = try await keychain.retrieveString(tag: .bearerToken, account: newServer)
+        XCTAssertNil(left)
+    }
+
+    // MARK: - Connection caches
+
+    func testConnectionCacheKey_separatesDifferentEntriesOnOneServer() {
+        let base = "https://shared.example:6443"
+        let target = cluster(base)
+        let first = UserDetails(clientCertificateData: "QQ==")
+        let second = UserDetails(clientCertificateData: "Qg==")
+
+        XCTAssertNotEqual(
+            KubeAPIService.connectionCacheKey(base: base, cluster: target, user: first),
+            KubeAPIService.connectionCacheKey(base: base, cluster: target, user: second))
+        XCTAssertNotEqual(
+            KubeAPIService.connectionCacheKey(base: base, cluster: target, user: first),
+            KubeAPIService.connectionCacheKey(
+                base: base, cluster: cluster(base, ca: "Q0E="), user: first))
+        XCTAssertEqual(
+            KubeAPIService.connectionCacheKey(base: base, cluster: target, user: first),
+            KubeAPIService.connectionCacheKey(base: base, cluster: cluster(base), user: first))
+        XCTAssertTrue(
+            KubeAPIService.connectionCacheKey(base: base, cluster: target, user: first)
+                .hasPrefix(base + "#"))
     }
 
     // MARK: - Helpers

@@ -347,6 +347,15 @@ private struct KubeconfigPathsSection: View {
     /// Files of the effective list that define a cluster or user differently
     /// from an earlier file (#543).
     @State private var redefinitions: [KubeconfigRedefinition] = []
+    /// Optional so previews and tests without the app's state still render.
+    @Environment(ClusterState.self) private var clusterState: ClusterState?
+
+    /// Rescan when the list changes or the app reloads the kubeconfig (the
+    /// file watcher's reload after an edit on disk included).
+    private struct ScanTrigger: Equatable {
+        let paths: [String]
+        let revision: Int
+    }
 
     var body: some View {
         if paths.isEmpty {
@@ -370,7 +379,9 @@ private struct KubeconfigPathsSection: View {
             } message: {
                 Text(KubeconfigPathsEditor.rejectionMessage(for: rejectedFiles))
             }
-            .task(id: paths) { await loadRedefinitions() }
+            .task(id: ScanTrigger(paths: paths, revision: clusterState?.kubeconfigRevision ?? 0)) {
+                await loadRedefinitions()
+            }
     }
 
     private func note(for path: String) -> String? {

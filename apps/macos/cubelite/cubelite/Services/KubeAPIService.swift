@@ -513,7 +513,8 @@ actor KubeAPIService {
     ///
     /// Exec-plugin users bypass the keychain entirely — their tokens are
     /// short-lived and refreshing them from the plugin must always win.
-    /// Sessions are cached per server; when a plugin returns client
+    /// Sessions are cached per server and resolved cluster/user
+    /// (`connectionCacheKey`); when a plugin returns client
     /// certificates the cache key also carries the certificate hash so a
     /// rotated identity gets a fresh TLS session.
     private func connection(
@@ -526,12 +527,13 @@ actor KubeAPIService {
             throw CubeliteError.clientError(reason: "Cluster has no valid server URL")
         }
         let base = serverString.hasSuffix("/") ? String(serverString.dropLast()) : serverString
+        let cacheKey = Self.connectionCacheKey(base: base, cluster: cluster, user: user)
 
         var effectiveUser = user
         var token: String?
-        var sessionKey = base
+        var sessionKey = cacheKey
         if let exec = user.exec {
-            let cred = try await execCredentials.credentials(for: exec, cacheKey: base)
+            let cred = try await execCredentials.credentials(for: exec, cacheKey: cacheKey)
             token = cred.token
             if let certPEM = cred.clientCertificatePEM, let keyPEM = cred.clientKeyPEM {
                 // Feed the PEM pair through the existing inline-data identity
@@ -540,7 +542,7 @@ actor KubeAPIService {
                     clientCertificateData: Data(certPEM.utf8).base64EncodedString(),
                     clientKeyData: Data(keyPEM.utf8).base64EncodedString()
                 )
-                sessionKey = "\(base)#exec-\(certPEM.hashValue)"
+                sessionKey = "\(cacheKey)#exec-\(certPEM.hashValue)"
             }
         } else {
             token = await bearerToken(for: user, account: base)
@@ -564,6 +566,20 @@ actor KubeAPIService {
             session = newSession
         }
         return (base, token, session)
+    }
+
+    /// Key for the exec-credential and URLSession caches: the server base URL
+    /// plus a hash of the resolved cluster and user. Two contexts reaching the
+    /// same server through differently defined same-named entries (#543) get
+    /// separate entries; contexts sharing one definition share them. The
+    /// hash is per process, like the caches themselves.
+    static func connectionCacheKey(
+        base: String, cluster: ClusterDetails, user: UserDetails
+    ) -> String {
+        var hasher = Hasher()
+        hasher.combine(cluster)
+        hasher.combine(user)
+        return "\(base)#\(hasher.finalize())"
     }
 
     /// Bearer token for a request: the keychain copy wins. `KubeconfigService`

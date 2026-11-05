@@ -11,7 +11,10 @@ extension MainView {
         clusterState.isLoading = true
         clusterState.errorMessage = nil
         clusterState.clusterReachable = nil
-        defer { clusterState.isLoading = false }
+        defer {
+            clusterState.isLoading = false
+            clusterState.kubeconfigRevision += 1
+        }
         do {
             let config = try await kubeconfigService.load()
             clusterState.noConfig = false

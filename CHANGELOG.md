@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server and credentials. A context now resolves its `cluster` and `user`
   against the file that defines it; only names that file does not define fall
   back to the first file that does, so cross-file references keep working.
-  Contexts and `current-context` are still first-wins. Preferences notes,
+  Contexts and `current-context` are still first-wins. On macOS, a token
+  stored in the Keychain from the earlier file's stale user is replaced with
+  the context file's token for the same server; a token you entered yourself
+  is kept, and "Reset stored credentials" still clears it. Preferences notes,
   per file, the clusters and users an earlier file defines differently
   ("N redefined" on the desktop, a caption on macOS).
 
