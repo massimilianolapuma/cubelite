@@ -632,6 +632,22 @@ final class LoadClientIdentityTests: XCTestCase {
         XCTAssertEqual(Self.storedKeys(account: admin), 0)
     }
 
+    /// Reset matches per-user keys by `server#user-`, not any `server#…`
+    /// account, and deletes the named users' keys directly.
+    func testDeleteClientKeys_onlyPerUserSuffixes_andNamedUsersDirectly() throws {
+        let fragment = Self.clusterA + "#fragment"
+        _ = try KubeAPIService.loadClientIdentity(from: firstUser(), account: fragment)
+        let admin = KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "clusterAdmin")
+        _ = try KubeAPIService.loadClientIdentity(from: Self.secondUser(), account: admin)
+
+        KubeAPIService.deleteClientKeys(account: Self.clusterA, userNames: ["clusterAdmin"])
+
+        XCTAssertEqual(Self.storedKeys(account: admin), 0)
+        XCTAssertEqual(Self.storedKeys(account: fragment), 1, "not a per-user key of this server")
+        KubeAPIService.deleteClientKeys(account: fragment)
+        XCTAssertEqual(Self.storedKeys(account: fragment), 0)
+    }
+
     func testClientKeyAccount_isStablePerServerAndUser() {
         let account = KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "u")
         XCTAssertEqual(account, KubeAPIService.clientKeyAccount(base: Self.clusterA, userName: "u"))

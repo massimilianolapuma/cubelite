@@ -207,11 +207,14 @@ actor KubeconfigService {
     /// are left out.
     static func redefinitions(in paths: [URL]) -> [KubeconfigRedefinition] {
         let files = paths.compactMap { path -> (path: URL, yaml: String)? in
-            // Same size cap as `isKubeconfigFile(at:)`; a symlink is followed.
+            // Same checks as `isKubeconfigFile(at:)`: a regular file (a FIFO
+            // or a device would block or never end) within the size cap; a
+            // symlink is followed.
             let target = path.resolvingSymlinksInPath()
             guard
-                let size = try? target.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-                size <= maxKubeconfigFileSize,
+                let values = try? target.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                values.isRegularFile == true,
+                (values.fileSize ?? 0) <= maxKubeconfigFileSize,
                 let data = try? Data(contentsOf: target)
             else { return nil }
             return (path, String(decoding: data, as: UTF8.self))

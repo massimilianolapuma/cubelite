@@ -80,6 +80,21 @@ actor KubeAPIService {
         }
     }
 
+    /// Server base URL → names of the users contexts of `config` connect to
+    /// it with: the per-user client keys Reset deletes directly.
+    private func userNamesByServer(in config: KubeConfig) -> [String: Set<String>] {
+        var names: [String: Set<String>] = [:]
+        for context in config.contexts {
+            guard
+                let resolved = try? resolveConnectionInfo(from: config, contextName: context),
+                let server = resolved.cluster.server, !server.isEmpty
+            else { continue }
+            let base = server.hasSuffix("/") ? String(server.dropLast()) : server
+            names[base, default: []].insert(resolved.userName)
+        }
+        return names
+    }
+
     /// The connection cache key of every context of `config` (exec sessions
     /// extend theirs with a certificate suffix).
     private func liveSessionKeys(in config: KubeConfig) -> Set<String> {
@@ -640,6 +655,7 @@ actor KubeAPIService {
     /// credentials").
     func resetStoredCredentials() async {
         if let config = try? await kubeconfigService.load() {
+            let usersByServer = userNamesByServer(in: config)
             // Own-file clusters can carry servers the merged list hides (#543).
             for cluster in (config.raw.clusters ?? []) + config.ownClusters.values {
                 guard let server = cluster.cluster?.server, !server.isEmpty else { continue }
@@ -647,7 +663,8 @@ actor KubeAPIService {
                 try? await keychain.delete(tag: .bearerToken, account: base)
                 try? await keychain.delete(tag: .clientCertificate, account: base)
                 try? await keychain.delete(tag: .clientKey, account: base)
-                Self.deleteClientKeys(account: base)
+                Self.deleteClientKeys(
+                    account: base, userNames: Array(usersByServer[base] ?? []).sorted())
             }
         }
         await execCredentials.invalidateCache()
@@ -1276,23 +1293,35 @@ actor KubeAPIService {
     /// and free of arbitrary characters.
     static func clientKeyAccount(base: String, userName: String) -> String {
         let digest = SHA256.hash(data: Data(userName.utf8))
-        return "\(base)#user-" + digest.map { String(format: "%02x", $0) }.joined()
+        return base + clientKeyUserSeparator
+            + digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Deletes every client key stored for server `account`: the per-user
-    /// keys, the pre-#543 per-server key and the pre-#521 shared one
-    /// (Settings "Reset stored credentials").
-    static func deleteClientKeys(account: String) {
-        let perUserPrefix = clientKeyTag(account: account + "#")
-        let tags = [clientKeyTag(account: account), legacyClientKeyTag]
-            + storedClientKeyTags().filter { $0.starts(with: perUserPrefix) }
-        for tag in tags {
-            SecItemDelete(
-                [
-                    kSecClass: kSecClassKey,
-                    kSecAttrApplicationTag: tag,
-                    kSecAttrKeyClass: kSecAttrKeyClassPrivate,
-                ] as CFDictionary)
+    /// Between the server and the user digest in a per-user key account.
+    private static let clientKeyUserSeparator = "#user-"
+
+    /// Deletes every client key stored for server `account`: the keys of
+    /// `userNames` (addressed directly — a listing can miss freshly imported
+    /// items), any other per-user key a listing finds, the pre-#543
+    /// per-server key and the pre-#521 shared one (Settings "Reset stored
+    /// credentials"). Serialised with imports so none is paired mid-reset.
+    static func deleteClientKeys(account: String, userNames: [String] = []) {
+        identityImportLock.withLock {
+            let perUserPrefix = clientKeyTag(account: account + clientKeyUserSeparator)
+            let tags =
+                [clientKeyTag(account: account), legacyClientKeyTag]
+                + userNames.map {
+                    clientKeyTag(account: clientKeyAccount(base: account, userName: $0))
+                }
+                + storedClientKeyTags().filter { $0.starts(with: perUserPrefix) }
+            for tag in tags {
+                SecItemDelete(
+                    [
+                        kSecClass: kSecClassKey,
+                        kSecAttrApplicationTag: tag,
+                        kSecAttrKeyClass: kSecAttrKeyClassPrivate,
+                    ] as CFDictionary)
+            }
         }
     }
 

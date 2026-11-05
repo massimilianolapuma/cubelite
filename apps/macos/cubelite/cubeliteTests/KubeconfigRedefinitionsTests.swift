@@ -93,6 +93,19 @@ final class KubeconfigRedefinitionsTests: XCTestCase {
         XCTAssertEqual(KubeconfigService.redefinitions(in: [first, small]).map(\.users), [["u"]])
     }
 
+    /// A FIFO or a device in the list is skipped, never opened: reading one
+    /// would block or never end.
+    func testNonRegularFiles_areSkipped() throws {
+        let first = try write("a", "users:\n- name: u\n  user:\n    token: one\n")
+        let fifo = first.deletingLastPathComponent().appendingPathComponent("fifo")
+        XCTAssertEqual(mkfifo(fifo.path, 0o600), 0)
+        let device = URL(fileURLWithPath: "/dev/zero")
+
+        let started = Date()
+        XCTAssertEqual(KubeconfigService.redefinitions(in: [first, fifo, device]), [])
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+    }
+
     /// `*f` expands to 10^6 scalars.
     private static let bomb = """
         a: &a [x, x, x, x, x, x, x, x, x, x]
