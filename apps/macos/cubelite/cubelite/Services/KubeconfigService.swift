@@ -152,6 +152,9 @@ actor KubeconfigService {
     ///
     /// - The first file's `current-context` wins.
     /// - Contexts are merged; duplicate names from later files are skipped.
+    /// - A context uses the cluster and user its own file defines under the
+    ///   referenced names, falling back to the first file that defines them
+    ///   (see `KubeconfigMerge`, #543).
     /// - Bearer tokens are migrated to the Keychain and stripped from the
     ///   returned model (see the type-level documentation).
     func loadFromPaths(_ paths: [URL]) async throws -> KubeConfig {
@@ -159,108 +162,74 @@ actor KubeconfigService {
             throw CubeliteError.fileNotFound(path: "No kubeconfig paths resolved")
         }
 
-        let fileManager = FileManager.default
         let decoder = YAMLDecoder()
-
-        var mergedContexts: [NamedContext] = []
-        var seenContextNames: Set<String> = []
-        var mergedClusters: [NamedCluster] = []
-        var seenClusterNames: Set<String> = []
-        var mergedUsers: [NamedUser] = []
-        var seenUserNames: Set<String> = []
-        var currentContext: String?
-        var mergedRaw: RawKubeConfig?
-
-        for path in paths {
-            guard fileManager.fileExists(atPath: path.path) else {
-                continue
-            }
-
+        var files: [(path: URL, config: RawKubeConfig)] = []
+        for path in paths where FileManager.default.fileExists(atPath: path.path) {
             let data = try Data(contentsOf: path)
-            let raw = try decoder.decode(RawKubeConfig.self, from: data)
-
-            // First file's current-context wins
-            if currentContext == nil {
-                currentContext = raw.currentContext
-            }
-
-            // Merge contexts, skip duplicates
-            for named in raw.contexts ?? [] {
-                guard !seenContextNames.contains(named.name) else { continue }
-                seenContextNames.insert(named.name)
-                mergedContexts.append(named)
-            }
-
-            // Merge clusters, skip duplicates
-            for named in raw.clusters ?? [] {
-                guard !seenClusterNames.contains(named.name) else { continue }
-                seenClusterNames.insert(named.name)
-                mergedClusters.append(named)
-            }
-
-            // Merge users, skip duplicates
-            for named in raw.users ?? [] {
-                guard !seenUserNames.contains(named.name) else { continue }
-                seenUserNames.insert(named.name)
-                mergedUsers.append(named)
-            }
-
-            if mergedRaw == nil {
-                mergedRaw = raw
-            }
+            files.append((path, try decoder.decode(RawKubeConfig.self, from: data)))
         }
 
-        guard var raw = mergedRaw else {
+        guard var raw = files.first?.config else {
             throw CubeliteError.fileNotFound(
                 path: paths.map(\.path).joined(separator: ":")
             )
         }
 
-        await migrateTokensToKeychain(
-            contexts: mergedContexts, clusters: mergedClusters, users: mergedUsers)
-
-        // Store the fully merged collections into the raw config, with bearer
-        // tokens redacted now that the Keychain holds them.
-        raw.contexts = mergedContexts
-        raw.clusters = mergedClusters
-        raw.users = mergedUsers.map { NamedUser(name: $0.name, user: $0.user?.redactingToken()) }
-        raw.currentContext = currentContext
-
-        return KubeConfig(
-            contexts: mergedContexts.map(\.name),
-            currentContext: currentContext,
+        let merge = KubeconfigMerge(files: files)
+        raw.contexts = merge.contexts
+        raw.clusters = merge.clusters
+        raw.users = merge.users
+        raw.currentContext = merge.currentContext
+        var config = KubeConfig(
+            contexts: merge.contexts.map(\.name),
+            currentContext: merge.currentContext,
             raw: raw,
-            paths: paths
+            paths: paths,
+            ownClusters: merge.ownClusters,
+            ownUsers: merge.ownUsers
         )
+
+        await migrateTokensToKeychain(config)
+
+        // Bearer tokens are redacted now that the Keychain holds them.
+        config.raw.users = merge.users.map(Self.redactingToken)
+        config.ownUsers = merge.ownUsers.mapValues(Self.redactingToken)
+        return config
+    }
+
+    private static func redactingToken(_ named: NamedUser) -> NamedUser {
+        NamedUser(name: named.name, user: named.user?.redactingToken())
+    }
+
+    /// Per file of `paths`, in order: the cluster and user names it defines
+    /// differently from an earlier file (Preferences, #543). Missing and
+    /// unreadable files are skipped; files without such names are left out.
+    static func redefinitions(in paths: [URL]) -> [KubeconfigRedefinition] {
+        let decoder = YAMLDecoder()
+        let files = paths.compactMap { path -> (path: URL, config: RawKubeConfig)? in
+            guard
+                let data = try? Data(contentsOf: path),
+                let raw = try? decoder.decode(RawKubeConfig.self, from: data)
+            else { return nil }
+            return (path, raw)
+        }
+        return KubeconfigMerge(files: files).redefinitions
     }
 
     // MARK: - Credential Migration
 
     /// Imports every bearer token referenced by a context into the Keychain,
-    /// keyed by the cluster's server URL (trailing slash dropped, matching
-    /// `KubeAPIService` session accounts). An existing Keychain entry always
-    /// wins over the file copy, so user edits made via "Reset stored
-    /// credentials" or the Keychain itself are never clobbered.
-    private func migrateTokensToKeychain(
-        contexts: [NamedContext],
-        clusters: [NamedCluster],
-        users: [NamedUser]
-    ) async {
-        let serversByCluster = Dictionary(
-            clusters.compactMap { named in named.cluster?.server.map { (named.name, $0) } },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let tokensByUser = Dictionary(
-            users.compactMap { named in named.user?.token.map { (named.name, $0) } },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        for context in contexts {
+    /// keyed by the server URL of the cluster that context connects to
+    /// (trailing slash dropped, matching `KubeAPIService` session accounts).
+    /// An existing Keychain entry always wins over the file copy, so user
+    /// edits made via "Reset stored credentials" or the Keychain itself are
+    /// never clobbered.
+    private func migrateTokensToKeychain(_ config: KubeConfig) async {
+        for context in config.contexts {
             guard
-                let clusterName = context.context?.cluster,
-                let userName = context.context?.user,
-                let server = serversByCluster[clusterName], !server.isEmpty,
-                let token = tokensByUser[userName], !token.isEmpty
+                let server = config.cluster(forContext: context)?.cluster?.server,
+                !server.isEmpty,
+                let token = config.user(forContext: context)?.user?.token, !token.isEmpty
             else { continue }
             let account = server.hasSuffix("/") ? String(server.dropLast()) : server
 

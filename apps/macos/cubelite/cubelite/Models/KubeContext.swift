@@ -43,7 +43,7 @@ struct NamedCluster: Codable, Sendable {
 }
 
 /// Details within a kubeconfig cluster entry.
-struct ClusterDetails: Codable, Sendable {
+struct ClusterDetails: Codable, Sendable, Equatable {
     let server: String?
     let certificateAuthorityData: String?
     let certificateAuthority: String?
@@ -64,7 +64,7 @@ struct NamedUser: Codable, Sendable {
 }
 
 /// Credential details within a kubeconfig user entry.
-struct UserDetails: Codable, Sendable {
+struct UserDetails: Codable, Sendable, Equatable {
     let token: String?
     let clientCertificateData: String?
     let clientKeyData: String?
@@ -119,7 +119,7 @@ struct UserDetails: Codable, Sendable {
 
 /// An `users[].user.exec` credential-plugin block
 /// (client.authentication.k8s.io ExecConfig).
-struct ExecConfig: Codable, Sendable {
+struct ExecConfig: Codable, Sendable, Equatable {
     let apiVersion: String?
     let command: String
     let args: [String]?
@@ -129,14 +129,14 @@ struct ExecConfig: Codable, Sendable {
 }
 
 /// A single environment variable entry inside an exec block.
-struct ExecEnvVar: Codable, Sendable {
+struct ExecEnvVar: Codable, Sendable, Equatable {
     let name: String
     let value: String
 }
 
 /// A legacy `users[].user.auth-provider` block. Parsed only so the app can
 /// surface a targeted "migrate to exec" error instead of a silent auth miss.
-struct AuthProviderConfig: Codable, Sendable {
+struct AuthProviderConfig: Codable, Sendable, Equatable {
     let name: String?
 }
 
@@ -157,21 +157,44 @@ struct KubeConfig: Sendable {
     /// File paths that were merged to produce this config.
     let paths: [URL]
 
+    /// Context name → the cluster entry its own file defines under the
+    /// referenced name. Wins over the merged first-wins entry in `raw` (#543).
+    var ownClusters: [String: NamedCluster] = [:]
+
+    /// Context name → the user entry its own file defines under the
+    /// referenced name. Wins over the merged first-wins entry in `raw` (#543).
+    var ownUsers: [String: NamedUser] = [:]
+
+    /// The cluster the given context connects to: the entry its own file
+    /// defines, else the merged entry with the referenced name (kubectl's
+    /// cross-file references).
+    func cluster(forContext contextName: String) -> NamedCluster? {
+        if let own = ownClusters[contextName] { return own }
+        guard let clusterName = details(of: contextName)?.cluster else { return nil }
+        return raw.clusters?.first(where: { $0.name == clusterName })
+    }
+
+    /// The credentials the given context authenticates with, resolved like
+    /// `cluster(forContext:)`.
+    func user(forContext contextName: String) -> NamedUser? {
+        if let own = ownUsers[contextName] { return own }
+        guard let userName = details(of: contextName)?.user else { return nil }
+        return raw.users?.first(where: { $0.name == userName })
+    }
+
+    private func details(of contextName: String) -> ContextDetails? {
+        raw.contexts?.first(where: { $0.name == contextName })?.context
+    }
+
     /// Returns the default namespace for the given context, if set in the kubeconfig.
     func defaultNamespace(for contextName: String) -> String? {
-        raw.contexts?
-            .first(where: { $0.name == contextName })?
-            .context?
-            .namespace
+        details(of: contextName)?.namespace
     }
 
     /// The API server URL of the cluster the given context points at, if the
     /// kubeconfig defines one (status bar).
     func serverURL(for contextName: String) -> String? {
-        guard
-            let clusterName = raw.contexts?.first(where: { $0.name == contextName })?.context?.cluster,
-            let server = raw.clusters?.first(where: { $0.name == clusterName })?.cluster?.server,
-            !server.isEmpty
+        guard let server = cluster(forContext: contextName)?.cluster?.server, !server.isEmpty
         else { return nil }
         return server
     }

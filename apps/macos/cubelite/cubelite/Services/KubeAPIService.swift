@@ -587,7 +587,8 @@ actor KubeAPIService {
     /// credentials").
     func resetStoredCredentials() async {
         if let config = try? await kubeconfigService.load() {
-            for cluster in config.raw.clusters ?? [] {
+            // Own-file clusters can carry servers the merged list hides (#543).
+            for cluster in (config.raw.clusters ?? []) + config.ownClusters.values {
                 guard let server = cluster.cluster?.server, !server.isEmpty else { continue }
                 let base = server.hasSuffix("/") ? String(server.dropLast()) : server
                 try? await keychain.delete(tag: .bearerToken, account: base)
@@ -912,25 +913,20 @@ actor KubeAPIService {
             throw CubeliteError.contextNotFound(name: "<none> — no active context set")
         }
 
-        guard let namedContext = config.raw.contexts?.first(where: { $0.name == resolvedContext }),
-            let contextDetails = namedContext.context
+        guard config.raw.contexts?.first(where: { $0.name == resolvedContext })?.context != nil
         else {
             throw CubeliteError.contextNotFound(name: resolvedContext)
         }
 
-        guard let clusterName = contextDetails.cluster,
-            let namedCluster = config.raw.clusters?.first(where: { $0.name == clusterName }),
-            let cluster = namedCluster.cluster
-        else {
+        // The context's own file wins over an earlier file's same-named
+        // cluster or user (#543).
+        guard let cluster = config.cluster(forContext: resolvedContext)?.cluster else {
             throw CubeliteError.clientError(
                 reason: "Cluster definition not found for context '\(resolvedContext)'"
             )
         }
 
-        guard let userName = contextDetails.user,
-            let namedUser = config.raw.users?.first(where: { $0.name == userName }),
-            let user = namedUser.user
-        else {
+        guard let user = config.user(forContext: resolvedContext)?.user else {
             throw CubeliteError.clientError(
                 reason: "User definition not found for context '\(resolvedContext)'"
             )

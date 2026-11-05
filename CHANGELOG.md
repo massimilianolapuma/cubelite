@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A context uses the cluster and user of its own kubeconfig file**
+  (core, desktop and macOS, #543): when several kubeconfig files are merged
+  (`~/.kube`, the Preferences list or `KUBECONFIG`), clusters and users were
+  settled first-wins by name across the whole merge, so a stale cluster or
+  user left in an earlier file (for example `~/.kube/config` after a cluster
+  was recreated) redirected a context defined in a later file to the old API
+  server and credentials. A context now resolves its `cluster` and `user`
+  against the file that defines it; only names that file does not define fall
+  back to the first file that does, so cross-file references keep working.
+  Contexts and `current-context` are still first-wins. Preferences notes,
+  per file, the clusters and users an earlier file defines differently
+  ("N redefined" on the desktop, a caption on macOS).
+
 ## [0.7.0] - 2026-11-05
 
 ### Added
