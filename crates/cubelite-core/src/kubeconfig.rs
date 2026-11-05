@@ -62,24 +62,41 @@ struct Redefined {
     users: Vec<String>,
 }
 
-/// Cluster fields that decide where and how a client connects: two cluster
-/// entries agreeing on all of them are the same cluster.
-const CLUSTER_IDENTITY_KEYS: [&str; 5] = [
+/// Which clusters and users count as "defined differently" by a later file
+/// (Preferences note, #543). The native app applies the same rule
+/// (`KubeconfigRedefinitions.swift`); keep both in sync.
+///
+/// - A cluster entry is compared on [`CLUSTER_IDENTITY_KEYS`] only, so
+///   cosmetic keys such as `extensions` do not count.
+/// - A user entry is compared whole, unmodelled keys (`exec`,
+///   `auth-provider`, …) included.
+/// - Mappings compare regardless of key order; scalars by value and type.
+/// - Relative file paths ([`PATH_KEYS`]) are resolved against the directory
+///   of the file that lists them first, as kubectl does, so the same relative
+///   path in two directories is two different files.
+/// - Identical duplicates are not reported.
+const CLUSTER_IDENTITY_KEYS: [&str; 6] = [
     "server",
     "certificate-authority",
     "certificate-authority-data",
     "insecure-skip-tls-verify",
     "tls-server-name",
+    "proxy-url",
 ];
 
+/// Cluster and user keys holding a file path, relative to the kubeconfig.
+const PATH_KEYS: [&str; 3] = ["certificate-authority", "client-certificate", "client-key"];
+
 /// Raw `(name, body)` pairs of one named list (`clusters`, `users`) of a
-/// kubeconfig document, the body reduced to `keep` when given. Raw YAML so
-/// fields the typed model does not know (`exec`, `auth-provider`, …) count.
+/// kubeconfig document in `dir`, the body reduced to `keep` when given and
+/// its relative [`PATH_KEYS`] resolved against `dir`. Raw YAML so fields the
+/// typed model does not know (`exec`, `auth-provider`, …) count.
 fn raw_named_entries(
     doc: &serde_yaml::Value,
     list: &str,
     body: &str,
     keep: Option<&[&str]>,
+    dir: &Path,
 ) -> Vec<(String, serde_yaml::Value)> {
     doc.get(list)
         .and_then(serde_yaml::Value::as_sequence)
@@ -88,8 +105,17 @@ fn raw_named_entries(
         .filter_map(|item| {
             let name = item.get("name")?.as_str()?.to_string();
             let mut value = item.get(body).cloned().unwrap_or(serde_yaml::Value::Null);
-            if let (Some(keys), serde_yaml::Value::Mapping(map)) = (keep, &mut value) {
-                map.retain(|k, _| k.as_str().is_some_and(|k| keys.contains(&k)));
+            if let serde_yaml::Value::Mapping(map) = &mut value {
+                if let Some(keys) = keep {
+                    map.retain(|k, _| k.as_str().is_some_and(|k| keys.contains(&k)));
+                }
+                for key in PATH_KEYS {
+                    if let Some(serde_yaml::Value::String(file)) = map.get_mut(key) {
+                        if !Path::new(file.as_str()).is_absolute() {
+                            *file = dir.join(file.as_str()).display().to_string();
+                        }
+                    }
+                }
             }
             Some((name, value))
         })
@@ -195,9 +221,10 @@ impl KubeConfig {
             let content = std::fs::read_to_string(path)?;
             let raw: KubeConfigFile = serde_yaml::from_str(&content)?;
             let doc: serde_yaml::Value = serde_yaml::from_str(&content)?;
-            let clusters =
-                raw_named_entries(&doc, "clusters", "cluster", Some(&CLUSTER_IDENTITY_KEYS));
-            let users = raw_named_entries(&doc, "users", "user", None);
+            let dir = path.parent().unwrap_or(Path::new(""));
+            let keep = Some(CLUSTER_IDENTITY_KEYS.as_slice());
+            let clusters = raw_named_entries(&doc, "clusters", "cluster", keep, dir);
+            let users = raw_named_entries(&doc, "users", "user", None, dir);
             redefined.insert(
                 path.clone(),
                 Redefined {
@@ -1048,6 +1075,124 @@ users:
             assert!(source.redefined_clusters.is_empty());
             assert!(source.redefined_users.is_empty());
         }
+    }
+
+    /// Parity fixture: the native app's `KubeconfigRedefinitionsTests` uses
+    /// the same two documents and expects the same names (#543).
+    const PARITY_FIRST: &str = r#"
+apiVersion: v1
+kind: Config
+clusters:
+- name: aks-prod
+  cluster:
+    server: https://old.example:6443
+- name: same
+  cluster:
+    server: https://same.example:6443
+    certificate-authority: /etc/kube/ca.crt
+    extensions:
+    - name: example.com/meta
+      extension:
+        updated: "2026-01-01"
+- name: rel-ca
+  cluster:
+    server: https://rel.example:6443
+    certificate-authority: ca.crt
+- name: proxied
+  cluster:
+    server: https://proxied.example:6443
+    proxy-url: http://old-proxy.example:3128
+users:
+- name: aks-user
+  user:
+    token: old-token
+- name: same-user
+  user:
+    client-certificate: /etc/kube/client.crt
+    client-key: /etc/kube/client.key
+- name: rel-user
+  user:
+    client-certificate: client.crt
+- name: kubelogin
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: kubelogin
+      args:
+      - get-token
+      - --server-id
+      - old
+"#;
+
+    const PARITY_SECOND: &str = r#"
+apiVersion: v1
+kind: Config
+clusters:
+- name: aks-prod
+  cluster:
+    server: https://new.example:6443
+- name: same
+  cluster:
+    certificate-authority: /etc/kube/ca.crt
+    server: https://same.example:6443
+    extensions:
+    - name: example.com/meta
+      extension:
+        updated: "2026-11-05"
+- name: rel-ca
+  cluster:
+    server: https://rel.example:6443
+    certificate-authority: ca.crt
+- name: proxied
+  cluster:
+    server: https://proxied.example:6443
+    proxy-url: http://new-proxy.example:3128
+users:
+- name: aks-user
+  user:
+    token: new-token
+- name: same-user
+  user:
+    client-key: /etc/kube/client.key
+    client-certificate: /etc/kube/client.crt
+- name: rel-user
+  user:
+    client-certificate: client.crt
+- name: kubelogin
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: kubelogin
+      args:
+      - get-token
+      - --server-id
+      - new
+"#;
+
+    #[test]
+    fn redefinitions_parity_fixture() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let first = root.path().join("a").join("config");
+        let second = root.path().join("b").join("dolomiti");
+        for (path, yaml) in [(&first, PARITY_FIRST), (&second, PARITY_SECOND)] {
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+            std::fs::write(path, yaml).expect("write");
+        }
+        let cfg = KubeConfig::load_from_paths(&[first, second]).expect("merge");
+        let sources = cfg.sources();
+
+        assert!(sources[0].redefined_clusters.is_empty());
+        assert!(sources[0].redefined_users.is_empty());
+        // `same` / `same-user` differ only in key order and `extensions`;
+        // `rel-ca` / `rel-user` repeat a relative path from another directory.
+        assert_eq!(
+            sources[1].redefined_clusters,
+            vec!["aks-prod", "rel-ca", "proxied"]
+        );
+        assert_eq!(
+            sources[1].redefined_users,
+            vec!["aks-user", "rel-user", "kubelogin"]
+        );
     }
 
     // -- Context switching ---------------------------------------------------
