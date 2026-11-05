@@ -2,7 +2,13 @@
 	import { tick, untrack } from 'svelte';
 	import { setMode } from 'mode-watcher';
 	import { open } from '@tauri-apps/plugin-dialog';
-	import { addPaths, originLabel, removePath, seedIfEmpty } from '#lib/kubeconfig-list.ts';
+	import {
+		addPaths,
+		originLabel,
+		redefinedEntries,
+		removePath,
+		seedIfEmpty
+	} from '#lib/kubeconfig-list.ts';
 	import { applyAccent, applyDensity } from '#lib/appearance.ts';
 	import { IDENTITY_COLORS, identityVar } from '#lib/cluster-identity.ts';
 	import Modal from '#lib/components/ui/Modal.svelte';
@@ -294,6 +300,7 @@
 				aria-label="Kubeconfig files"
 			>
 				{#each kubeconfigRows as row (row.path)}
+					{@const redefined = redefinedEntries(row)}
 					<li class="flex items-start gap-2 border-b border-border-faint px-2.5 py-2 last:border-b-0">
 						<div class="min-w-0 flex-1">
 							<div
@@ -313,6 +320,16 @@
 											title="Also defined in an earlier file, which wins: {row.shadowed.join(', ')}"
 										>
 											· {row.shadowed.length} merged
+										</span>
+									{/if}
+									{#if redefined.length > 0}
+										<span
+											class="text-status-warn"
+											title="Also defined differently in an earlier file: {redefined.join(
+												', '
+											)}. Contexts in this file use this file's definition."
+										>
+											· {redefined.length} redefined
 										</span>
 									{/if}
 								{/if}

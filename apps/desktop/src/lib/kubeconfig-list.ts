@@ -1,4 +1,4 @@
-import type { KubeconfigOrigin } from "#lib/tauri.ts";
+import type { KubeconfigOrigin, KubeconfigSource } from "#lib/tauri.ts";
 
 /** Append `added` to `current`: trimmed, non-blank, deduplicated, order kept. */
 export function addPaths(current: string[], added: readonly string[]): string[] {
@@ -28,4 +28,17 @@ export function originLabel(origin: KubeconfigOrigin): string {
     default:
       return "From ~/.kube";
   }
+}
+
+/**
+ * Clusters and users `source` defines differently from an earlier file, as
+ * `cluster <name>` / `user <name>` labels in that order.
+ */
+export function redefinedEntries(
+  source: Pick<KubeconfigSource, "redefined_clusters" | "redefined_users">,
+): string[] {
+  return [
+    ...(source.redefined_clusters ?? []).map((name) => `cluster ${name}`),
+    ...(source.redefined_users ?? []).map((name) => `user ${name}`),
+  ];
 }

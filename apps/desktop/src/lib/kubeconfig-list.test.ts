@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { addPaths, originLabel, removePath, seedIfEmpty } from "#lib/kubeconfig-list.ts";
+import {
+  addPaths,
+  originLabel,
+  redefinedEntries,
+  removePath,
+  seedIfEmpty,
+} from "#lib/kubeconfig-list.ts";
 
 describe("kubeconfig-list", () => {
   it("addPaths appends new absolute paths, trims, dedupes and keeps order", () => {
@@ -8,6 +14,12 @@ describe("kubeconfig-list", () => {
   it("removePath drops only the matching entry", () => {
     expect(removePath(["/a", "/b"], "/a")).toEqual(["/b"]);
     expect(removePath(["/a"], "/zzz")).toEqual(["/a"]);
+  });
+  it("redefinedEntries labels clusters then users, tolerating absent fields", () => {
+    expect(
+      redefinedEntries({ redefined_clusters: ["aks-prod"], redefined_users: ["aks-user"] }),
+    ).toEqual(["cluster aks-prod", "user aks-user"]);
+    expect(redefinedEntries({})).toEqual([]);
   });
   it("seedIfEmpty copies the resolved list only when custom is empty", () => {
     expect(seedIfEmpty([], ["/x", "/y"])).toEqual(["/x", "/y"]);
