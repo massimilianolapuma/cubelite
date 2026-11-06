@@ -86,7 +86,7 @@ actor KubeAPIService {
         var names: [String: Set<String>] = [:]
         for context in config.contexts {
             guard
-                let resolved = try? resolveConnectionInfo(from: config, contextName: context),
+                let resolved = try? Self.resolveConnectionInfo(from: config, contextName: context),
                 let server = resolved.cluster.server, !server.isEmpty
             else { continue }
             let base = server.hasSuffix("/") ? String(server.dropLast()) : server
@@ -101,7 +101,8 @@ actor KubeAPIService {
         Set(
             config.contexts.compactMap { context -> String? in
                 guard
-                    let resolved = try? resolveConnectionInfo(from: config, contextName: context),
+                    let resolved = try? Self.resolveConnectionInfo(
+                        from: config, contextName: context),
                     let server = resolved.cluster.server, !server.isEmpty
                 else { return nil }
                 let base = server.hasSuffix("/") ? String(server.dropLast()) : server
@@ -570,7 +571,7 @@ actor KubeAPIService {
         contextName: String?
     ) async throws -> (base: String, token: String?, session: URLSession) {
         let config = try await kubeconfigService.load()
-        let (cluster, user, userName) = try resolveConnectionInfo(
+        let (cluster, user, userName) = try Self.resolveConnectionInfo(
             from: config, contextName: contextName)
 
         guard let serverString = cluster.server, !serverString.isEmpty else {
@@ -971,7 +972,7 @@ actor KubeAPIService {
     /// - Parameters:
     ///   - config: Parsed kubeconfig.
     ///   - contextName: Override which context to resolve. Defaults to `config.currentContext`.
-    private func resolveConnectionInfo(
+    static func resolveConnectionInfo(
         from config: KubeConfig,
         contextName: String? = nil
     ) throws -> (cluster: ClusterDetails, user: UserDetails, userName: String) {
@@ -997,14 +998,25 @@ actor KubeAPIService {
             )
         }
 
-        guard let namedUser = config.user(forContext: resolvedContext), let user = namedUser.user
+        let (user, userName) = try connectionUser(in: config, context: resolvedContext)
+        return (cluster, user, userName)
+    }
+
+    /// The user (and its name) a connection to `context` authenticates as;
+    /// part of `resolveConnectionInfo(from:contextName:)`.
+    ///
+    /// - Throws: `CubeliteError.clientError` when the context names no user
+    ///   or a user no file defines.
+    static func connectionUser(
+        in config: KubeConfig, context: String
+    ) throws -> (user: UserDetails, userName: String) {
+        guard let namedUser = config.user(forContext: context), let user = namedUser.user
         else {
             throw CubeliteError.clientError(
-                reason: "User definition not found for context '\(resolvedContext)'"
+                reason: "User definition not found for context '\(context)'"
             )
         }
-
-        return (cluster, user, namedUser.name)
+        return (user, namedUser.name)
     }
 
     // MARK: - URLSession Factory
@@ -1067,8 +1079,7 @@ actor KubeAPIService {
 
         // Fall back to certificate-authority file path
         if let path = cluster.certificateAuthority, !path.isEmpty {
-            let expandedPath = NSString(string: path).expandingTildeInPath
-            let url = URL(fileURLWithPath: expandedPath)
+            let url = kubeconfigFileURL(path)
 
             let pemData: Data
             do {
@@ -1103,142 +1114,178 @@ actor KubeAPIService {
     ///   `clientKeyAccount(base:userName:)`, so one cluster's or one user's
     ///   import never replaces another's key (#521, #543).
     static func loadClientIdentity(from user: UserDetails, account: String) throws -> SecIdentity? {
-        // --- Path 1: inline base64 data (client-certificate-data / client-key-data) ---
+        switch clientCertificateSource(of: user) {
+        case .inline(let certB64, let keyB64):
+            return try loadClientIdentity(certB64: certB64, keyB64: keyB64, account: account)
+        case .files(let certPath, let keyPath):
+            return try loadClientIdentity(certPath: certPath, keyPath: keyPath, account: account)
+        case nil:
+            return nil
+        }
+    }
+
+    /// Where a kubeconfig user's client certificate comes from, as
+    /// `loadClientIdentity(from:account:)` picks it: inline data when both
+    /// `client-certificate-data` and `client-key-data` are set, else the
+    /// files at `client-certificate` and `client-key` when both are set.
+    enum ClientCertificateSource: Equatable, Sendable {
+        /// Base64 `client-certificate-data` and `client-key-data`.
+        case inline(certificateData: String, keyData: String)
+        /// `client-certificate` and `client-key` as written in the
+        /// kubeconfig; read from `kubeconfigFileURL(_:)`.
+        case files(certificatePath: String, keyPath: String)
+    }
+
+    static func clientCertificateSource(of user: UserDetails) -> ClientCertificateSource? {
         if let certB64 = user.clientCertificateData, !certB64.isEmpty,
             let keyB64 = user.clientKeyData, !keyB64.isEmpty
         {
-            // Decode cert: base64 → DER (kubeconfig inline format).
-            // Fall back to PEM stripping if the decoded bytes appear to be PEM-wrapped.
-            guard let certDecoded = Data(base64Encoded: certB64) else {
-                throw CubeliteError.clientError(reason: "Invalid base64 in client-certificate-data")
-            }
-            var certificate: SecCertificate? = SecCertificateCreateWithData(
-                nil, certDecoded as CFData)
-            if certificate == nil, let certDERFromPEM = try? pemToDER(certDecoded) {
-                certificate = SecCertificateCreateWithData(nil, certDERFromPEM as CFData)
-            }
-            guard let certificate else {
-                throw CubeliteError.clientError(
-                    reason: "Failed to parse client certificate from client-certificate-data")
-            }
-
-            // Decode key: base64 → PEM text.
-            guard let keyDecoded = Data(base64Encoded: keyB64) else {
-                throw CubeliteError.clientError(reason: "Invalid base64 in client-key-data")
-            }
-            guard let keyPEMString = String(data: keyDecoded, encoding: .utf8) else {
-                throw CubeliteError.clientError(
-                    reason: "client-key-data is not valid UTF-8 after base64 decode")
-            }
-
-            // Detect key type from PEM headers (used when removing old keychain items).
-            let isEC = keyPEMString.contains("BEGIN EC PRIVATE KEY")
-            let isRSA =
-                keyPEMString.contains("BEGIN RSA PRIVATE KEY")
-                || keyPEMString.contains("BEGIN PRIVATE KEY")
-            guard isEC || isRSA else {
-                throw CubeliteError.clientError(
-                    reason: "Unsupported private key type in client-key-data")
-            }
-
-            // Import the PEM key in memory using SecItemImport, which handles SEC1, PKCS#1, and PKCS#8
-            // formats correctly — unlike SecKeyCreateWithData which only accepts X9.63 raw bytes.
-            var importFormat = SecExternalFormat.formatOpenSSL
-            var importItemType = SecExternalItemType.itemTypePrivateKey
-            var importParams = SecItemImportExportKeyParameters()
-            importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
-            var importedItems: CFArray?
-            let importStatus = SecItemImport(
-                keyDecoded as CFData, nil, &importFormat, &importItemType,
-                SecItemImportExportFlags(), &importParams, nil, &importedItems
-            )
-            guard importStatus == errSecSuccess,
-                let privateKey = (importedItems as? [SecKey])?.first
-            else {
-                throw CubeliteError.clientError(
-                    reason: "Failed to import private key from PEM: OSStatus \(importStatus)"
-                )
-            }
-
-            return try Self.storeAndFindIdentity(
-                certificate: certificate, privateKey: privateKey, account: account)
+            return .inline(certificateData: certB64, keyData: keyB64)
         }
-
-        // --- Path 2: file paths (client-certificate / client-key) ---
         if let certPath = user.clientCertificate, !certPath.isEmpty,
             let keyPath = user.clientKey, !keyPath.isEmpty
         {
-            let expandedCertPath = NSString(string: certPath).expandingTildeInPath
-            let expandedKeyPath = NSString(string: keyPath).expandingTildeInPath
+            return .files(certificatePath: certPath, keyPath: keyPath)
+        }
+        return nil
+    }
 
-            // Read the certificate PEM file.
-            let certPEM: Data
-            do {
-                certPEM = try Data(contentsOf: URL(fileURLWithPath: expandedCertPath))
-            } catch {
-                throw CubeliteError.clientError(
-                    reason: "Cannot read client certificate file: \(certPath)")
-            }
+    /// The file the app reads for a path in a kubeconfig (`certificate-authority`,
+    /// `client-certificate`, `client-key`): `~` expanded, otherwise as written.
+    static func kubeconfigFileURL(_ path: String) -> URL {
+        URL(fileURLWithPath: NSString(string: path).expandingTildeInPath)
+    }
 
-            // Convert PEM → DER and create a SecCertificate.
-            let certDER: Data
-            do {
-                certDER = try pemToDER(certPEM)
-            } catch {
-                throw CubeliteError.clientError(
-                    reason: "Failed to parse PEM certificate from file: \(certPath)")
-            }
-            guard let certificate = SecCertificateCreateWithData(nil, certDER as CFData) else {
-                throw CubeliteError.clientError(
-                    reason: "Failed to create certificate from file: \(certPath)")
-            }
-
-            // Read the private key PEM file.
-            let keyPEM: Data
-            do {
-                keyPEM = try Data(contentsOf: URL(fileURLWithPath: expandedKeyPath))
-            } catch {
-                throw CubeliteError.clientError(reason: "Cannot read client key file: \(keyPath)")
-            }
-
-            // Validate key type from PEM headers.
-            guard let keyPEMString = String(data: keyPEM, encoding: .utf8) else {
-                throw CubeliteError.clientError(
-                    reason: "Client key file is not valid UTF-8: \(keyPath)")
-            }
-            let isEC = keyPEMString.contains("BEGIN EC PRIVATE KEY")
-            let isRSA =
-                keyPEMString.contains("BEGIN RSA PRIVATE KEY")
-                || keyPEMString.contains("BEGIN PRIVATE KEY")
-            guard isEC || isRSA else {
-                throw CubeliteError.clientError(
-                    reason: "Unsupported private key type in file: \(keyPath)")
-            }
-
-            // Import the PEM key using SecItemImport.
-            var importFormat = SecExternalFormat.formatOpenSSL
-            var importItemType = SecExternalItemType.itemTypePrivateKey
-            var importParams = SecItemImportExportKeyParameters()
-            importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
-            var importedItems: CFArray?
-            let importStatus = SecItemImport(
-                keyPEM as CFData, nil, &importFormat, &importItemType,
-                SecItemImportExportFlags(), &importParams, nil, &importedItems
-            )
-            guard importStatus == errSecSuccess,
-                let privateKey = (importedItems as? [SecKey])?.first
-            else {
-                throw CubeliteError.clientError(
-                    reason:
-                        "Failed to import private key from file: \(keyPath) (OSStatus \(importStatus))"
-                )
-            }
-
-            return try Self.storeAndFindIdentity(
-                certificate: certificate, privateKey: privateKey, account: account)
+    /// Client identity from inline base64 certificate and key data.
+    private static func loadClientIdentity(
+        certB64: String, keyB64: String, account: String
+    ) throws -> SecIdentity {
+        // Decode cert: base64 → DER (kubeconfig inline format).
+        // Fall back to PEM stripping if the decoded bytes appear to be PEM-wrapped.
+        guard let certDecoded = Data(base64Encoded: certB64) else {
+            throw CubeliteError.clientError(reason: "Invalid base64 in client-certificate-data")
+        }
+        var certificate: SecCertificate? = SecCertificateCreateWithData(
+            nil, certDecoded as CFData)
+        if certificate == nil, let certDERFromPEM = try? pemToDER(certDecoded) {
+            certificate = SecCertificateCreateWithData(nil, certDERFromPEM as CFData)
+        }
+        guard let certificate else {
+            throw CubeliteError.clientError(
+                reason: "Failed to parse client certificate from client-certificate-data")
         }
 
-        return nil
+        // Decode key: base64 → PEM text.
+        guard let keyDecoded = Data(base64Encoded: keyB64) else {
+            throw CubeliteError.clientError(reason: "Invalid base64 in client-key-data")
+        }
+        guard let keyPEMString = String(data: keyDecoded, encoding: .utf8) else {
+            throw CubeliteError.clientError(
+                reason: "client-key-data is not valid UTF-8 after base64 decode")
+        }
+
+        // Detect key type from PEM headers (used when removing old keychain items).
+        let isEC = keyPEMString.contains("BEGIN EC PRIVATE KEY")
+        let isRSA =
+            keyPEMString.contains("BEGIN RSA PRIVATE KEY")
+            || keyPEMString.contains("BEGIN PRIVATE KEY")
+        guard isEC || isRSA else {
+            throw CubeliteError.clientError(
+                reason: "Unsupported private key type in client-key-data")
+        }
+
+        // Import the PEM key in memory using SecItemImport, which handles SEC1, PKCS#1, and PKCS#8
+        // formats correctly — unlike SecKeyCreateWithData which only accepts X9.63 raw bytes.
+        var importFormat = SecExternalFormat.formatOpenSSL
+        var importItemType = SecExternalItemType.itemTypePrivateKey
+        var importParams = SecItemImportExportKeyParameters()
+        importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
+        var importedItems: CFArray?
+        let importStatus = SecItemImport(
+            keyDecoded as CFData, nil, &importFormat, &importItemType,
+            SecItemImportExportFlags(), &importParams, nil, &importedItems
+        )
+        guard importStatus == errSecSuccess,
+            let privateKey = (importedItems as? [SecKey])?.first
+        else {
+            throw CubeliteError.clientError(
+                reason: "Failed to import private key from PEM: OSStatus \(importStatus)"
+            )
+        }
+
+        return try Self.storeAndFindIdentity(
+            certificate: certificate, privateKey: privateKey, account: account)
+    }
+
+    /// Client identity from PEM certificate and key files.
+    private static func loadClientIdentity(
+        certPath: String, keyPath: String, account: String
+    ) throws -> SecIdentity {
+        // Read the certificate PEM file.
+        let certPEM: Data
+        do {
+            certPEM = try Data(contentsOf: kubeconfigFileURL(certPath))
+        } catch {
+            throw CubeliteError.clientError(
+                reason: "Cannot read client certificate file: \(certPath)")
+        }
+
+        // Convert PEM → DER and create a SecCertificate.
+        let certDER: Data
+        do {
+            certDER = try pemToDER(certPEM)
+        } catch {
+            throw CubeliteError.clientError(
+                reason: "Failed to parse PEM certificate from file: \(certPath)")
+        }
+        guard let certificate = SecCertificateCreateWithData(nil, certDER as CFData) else {
+            throw CubeliteError.clientError(
+                reason: "Failed to create certificate from file: \(certPath)")
+        }
+
+        // Read the private key PEM file.
+        let keyPEM: Data
+        do {
+            keyPEM = try Data(contentsOf: kubeconfigFileURL(keyPath))
+        } catch {
+            throw CubeliteError.clientError(reason: "Cannot read client key file: \(keyPath)")
+        }
+
+        // Validate key type from PEM headers.
+        guard let keyPEMString = String(data: keyPEM, encoding: .utf8) else {
+            throw CubeliteError.clientError(
+                reason: "Client key file is not valid UTF-8: \(keyPath)")
+        }
+        let isEC = keyPEMString.contains("BEGIN EC PRIVATE KEY")
+        let isRSA =
+            keyPEMString.contains("BEGIN RSA PRIVATE KEY")
+            || keyPEMString.contains("BEGIN PRIVATE KEY")
+        guard isEC || isRSA else {
+            throw CubeliteError.clientError(
+                reason: "Unsupported private key type in file: \(keyPath)")
+        }
+
+        // Import the PEM key using SecItemImport.
+        var importFormat = SecExternalFormat.formatOpenSSL
+        var importItemType = SecExternalItemType.itemTypePrivateKey
+        var importParams = SecItemImportExportKeyParameters()
+        importParams.version = UInt32(SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION)
+        var importedItems: CFArray?
+        let importStatus = SecItemImport(
+            keyPEM as CFData, nil, &importFormat, &importItemType,
+            SecItemImportExportFlags(), &importParams, nil, &importedItems
+        )
+        guard importStatus == errSecSuccess,
+            let privateKey = (importedItems as? [SecKey])?.first
+        else {
+            throw CubeliteError.clientError(
+                reason:
+                    "Failed to import private key from file: \(keyPath) (OSStatus \(importStatus))"
+            )
+        }
+
+        return try Self.storeAndFindIdentity(
+            certificate: certificate, privateKey: privateKey, account: account)
     }
 
     /// Imports a certificate and private key into the keychain and returns the resulting `SecIdentity`.

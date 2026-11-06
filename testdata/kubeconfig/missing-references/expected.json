@@ -1,0 +1,39 @@
+{
+  "description": "Dangling references, recorded as the code handles them today: a context without a user and one whose user is defined nowhere connect without credentials (client-go does not fail either); a context whose cluster is defined nowhere has no server, and the core cannot build a client for it.",
+  "current_context": "no-user",
+  "contexts": [
+    {
+      "name": "no-user",
+      "cluster": "lab-1",
+      "server": "https://lab-1.example.net:6443",
+      "user": null,
+      "namespace": "default",
+      "auth": { "kind": "none" }
+    },
+    {
+      "name": "unknown-user",
+      "cluster": "lab-1",
+      "server": "https://lab-1.example.net:6443",
+      "user": "ghost",
+      "namespace": "default",
+      "auth": { "kind": "none" }
+    },
+    {
+      "name": "unknown-cluster",
+      "cluster": "nowhere",
+      "server": null,
+      "user": "team-b",
+      "namespace": "team-b",
+      "auth": { "kind": "exec", "command": "kubelogin", "args": ["get-token", "--login", "azurecli"] }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 3,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    }
+  ]
+}

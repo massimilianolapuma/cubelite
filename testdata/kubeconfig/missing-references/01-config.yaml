@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Config
+current-context: no-user
+clusters:
+- name: lab-1
+  cluster:
+    server: https://lab-1.example.net:6443
+contexts:
+- name: no-user
+  context:
+    cluster: lab-1
+- name: unknown-user
+  context:
+    cluster: lab-1
+    user: ghost
+- name: unknown-cluster
+  context:
+    cluster: nowhere
+    namespace: team-b
+    user: team-b
+users:
+- name: team-b
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: kubelogin
+      args:
+      - get-token
+      - --login
+      - azurecli

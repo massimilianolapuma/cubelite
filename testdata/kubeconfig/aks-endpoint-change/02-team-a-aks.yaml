@@ -1,0 +1,40 @@
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: ZmFrZS1jYS1kYXRhZmFrZS1jYS1kYXRhZmFrZS1jYS1kYXRhZmFrZS1jYS1kYXRh
+    server: https://team-a-aks-dns-7d81a0c3.hcp.westeurope.example.com:443
+  name: team-a-aks
+contexts:
+- context:
+    cluster: team-a-aks
+    user: clusterUser_rg-team-a_team-a-aks
+  name: team-a-aks
+current-context: team-a-aks
+kind: Config
+preferences: {}
+users:
+- name: clusterUser_rg-team-a_team-a-aks
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - get-token
+      - --environment
+      - AzurePublicCloud
+      - --server-id
+      - 00000000-0000-0000-0000-00000000aa01
+      - --client-id
+      - 00000000-0000-0000-0000-00000000aa02
+      - --tenant-id
+      - 00000000-0000-0000-0000-00000000aa03
+      - --login
+      - devicecode
+      command: kubelogin
+      env: null
+      installHint: |2
+
+        kubelogin is not installed which is required to connect to AAD enabled cluster.
+
+        To learn more, please go to https://aka.ms/aks/kubelogin
+      interactiveMode: IfAvailable
+      provideClusterInfo: false

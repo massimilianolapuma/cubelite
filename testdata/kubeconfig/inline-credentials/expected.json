@@ -1,0 +1,31 @@
+{
+  "description": "Inline credentials: an embedded client certificate and key (kubeadm admin.conf, k3s, `minikube --embed-certs`) and a service-account bearer token on a cluster with insecure-skip-tls-verify.",
+  "current_context": "prod-1",
+  "contexts": [
+    {
+      "name": "prod-1",
+      "cluster": "prod-1",
+      "server": "https://prod-1.example.com:6443",
+      "user": "prod-1-admin",
+      "namespace": "default",
+      "auth": { "kind": "client-cert-data", "client_certificate_data": "ZmFrZS1jbGllbnQtY2VydC0x" }
+    },
+    {
+      "name": "team-a-lab",
+      "cluster": "team-a-lab",
+      "server": "https://team-a-lab.example.net:6443",
+      "user": "team-a-sa",
+      "namespace": "team-a",
+      "auth": { "kind": "token", "token": "fake-token-2" }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 2,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    }
+  ]
+}

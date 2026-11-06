@@ -1,0 +1,61 @@
+{
+  "description": "Three files with overlapping names. current-context comes from the first file although the others set one. Contexts are first-wins: 02 loses `prod-1`, 03 loses `team-a` (an identical copy, still hidden). `team-a` resolves against its own file 02, which redefines cluster `prod-1` and user `team-a`; `shared` and `shared-user` repeat 01 verbatim (key order and extensions aside) and are not reported. `team-b` references cluster `only-home`, defined only in 01 (cross-file reference), and its own user.",
+  "current_context": "prod-1",
+  "contexts": [
+    {
+      "name": "prod-1",
+      "cluster": "prod-1",
+      "server": "https://prod-1.example.com:6443",
+      "user": "team-a",
+      "namespace": "default",
+      "auth": { "kind": "token", "token": "fake-token-a1" }
+    },
+    {
+      "name": "team-a",
+      "cluster": "prod-1",
+      "server": "https://prod-1-new.example.com:6443",
+      "user": "team-a",
+      "namespace": "team-a",
+      "auth": { "kind": "token", "token": "fake-token-a2" }
+    },
+    {
+      "name": "shared",
+      "cluster": "shared",
+      "server": "https://shared.example.com:6443",
+      "user": "shared-user",
+      "namespace": "default",
+      "auth": { "kind": "token", "token": "fake-token-shared" }
+    },
+    {
+      "name": "team-b",
+      "cluster": "only-home",
+      "server": "https://only-home.example.com:6443",
+      "user": "team-b",
+      "namespace": "team-b",
+      "auth": { "kind": "token", "token": "fake-token-b1" }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    },
+    {
+      "file": "02-team-a.yaml",
+      "contexts": 2,
+      "shadowed": ["prod-1"],
+      "redefined_clusters": ["prod-1"],
+      "redefined_users": ["team-a"]
+    },
+    {
+      "file": "03-team-b.yaml",
+      "contexts": 1,
+      "shadowed": ["team-a"],
+      "redefined_clusters": [],
+      "redefined_users": []
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: ZmFrZS1jYS1kYXRh
+    server: https://0F1E2D3C4B5A69788796A5B4C3D2E1F0.gr7.eu-west-1.eks.example.com
+  name: arn:aws:eks:eu-west-1:000000000000:cluster/prod-1
+- cluster:
+    certificate-authority-data: ZmFrZS1jYS1na2U=
+    server: https://gke-prod-1.example.net
+  name: gke_team-a-project_europe-west1_prod-1
+- cluster:
+    certificate-authority-data: ZmFrZS1jYS1kYXRh
+    server: https://team-a-aks-dns-4f2c9e1b.hcp.westeurope.example.com:443
+  name: team-a-aks
+contexts:
+- context:
+    cluster: arn:aws:eks:eu-west-1:000000000000:cluster/prod-1
+    user: arn:aws:eks:eu-west-1:000000000000:cluster/prod-1
+  name: arn:aws:eks:eu-west-1:000000000000:cluster/prod-1
+- context:
+    cluster: gke_team-a-project_europe-west1_prod-1
+    namespace: team-a
+    user: gke_team-a-project_europe-west1_prod-1
+  name: gke_team-a-project_europe-west1_prod-1
+- context:
+    cluster: team-a-aks
+    user: clusterUser_rg-team-a_team-a-aks
+  name: team-a-aks
+current-context: gke_team-a-project_europe-west1_prod-1
+kind: Config
+preferences: {}
+users:
+- name: arn:aws:eks:eu-west-1:000000000000:cluster/prod-1
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - --region
+      - eu-west-1
+      - eks
+      - get-token
+      - --cluster-name
+      - prod-1
+      - --output
+      - json
+      command: aws
+      env:
+      - name: AWS_PROFILE
+        value: team-a
+- name: gke_team-a-project_europe-west1_prod-1
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      command: gke-gcloud-auth-plugin
+      installHint: Install gke-gcloud-auth-plugin for use with kubectl by following
+        https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin
+      provideClusterInfo: true
+- name: clusterUser_rg-team-a_team-a-aks
+  user:
+    exec:
+      apiVersion: client.authentication.k8s.io/v1beta1
+      args:
+      - get-token
+      - --login
+      - azurecli
+      - --server-id
+      - 00000000-0000-0000-0000-00000000aa01
+      command: kubelogin
+      env: null
+      provideClusterInfo: false
