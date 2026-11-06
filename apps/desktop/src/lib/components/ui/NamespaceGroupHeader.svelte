@@ -39,7 +39,11 @@
 	{#if group.worst !== null}
 		<span class="flex w-12 shrink-0 items-center justify-end gap-1.5">
 			{#if group.problems > 0}
-				<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {toneColor[group.worst]};"></span>
+				<span
+					class="h-1.5 w-1.5 shrink-0 rounded-full"
+					style="background: {toneColor[group.worst]};"
+					data-marker={group.worst}
+				></span>
 				<span class="type-data-sm" style="color: {toneColor[group.worst]};">{group.problems}</span>
 			{/if}
 		</span>

@@ -41,8 +41,10 @@
 	const groups = $derived(app.groupedLists ? groupByNamespace(rows, spec, accessors) : null);
 	const flat = $derived(groups === null ? sortRows(rows, spec, accessors) : []);
 
-	// Header clicks while filtering stay with that filter text (see shownCollapse).
-	let transient = $state<{ filter: string; state: CollapseState }>({ filter: '', state: {} });
+	// Header clicks while filtering only change `transient` (a writable
+	// derived), which starts over whenever the filter text changes: retyping an
+	// earlier filter must not bring its collapses back.
+	let transient = $derived<{ filter: string; state: CollapseState }>({ filter, state: {} });
 	const collapse = $derived(shownCollapse(filter, lists.collapsed, transient));
 
 	function toggle(namespace: string, all: boolean) {

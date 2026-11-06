@@ -16,9 +16,9 @@
 	{#if app.namespace === null}
 		<button
 			type="button"
-			class="focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-md border hover:text-text-secondary {pressed
+			class="focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {pressed
 				? 'border-accent text-accent'
-				: 'border-border-default bg-surface-window text-text-tertiary'}"
+				: 'border-border-default bg-surface-window text-text-tertiary hover:text-text-secondary'}"
 			style={pressed ? 'background: var(--alpha-selection-bg);' : undefined}
 			aria-label="Group by namespace"
 			aria-pressed={pressed}

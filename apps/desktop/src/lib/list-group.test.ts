@@ -16,7 +16,7 @@ const rows: Row[] = [
   r("web-2", "team-b"),
   r("api-10", "team-a", "warn", 4),
   r("kube-dns", "kube-system"),
-  r("api-2", "team-a", "err", 1),
+  r("api-2", "team-a", "err", 9),
   r("worker", "team-a"),
 ];
 const withStatus: GroupAccessors<Row> = {
@@ -40,7 +40,7 @@ describe("groupByNamespace (#547)", () => {
 
   it("rows inside a group follow the current sort", () => {
     const byRestarts = groupByNamespace(rows, { field: "restarts", dir: "desc" }, withStatus);
-    expect(byRestarts[1].rows.map((x) => x.name)).toEqual(["api-10", "api-2", "worker"]);
+    expect(byRestarts[1].rows.map((x) => x.name)).toEqual(["api-2", "api-10", "worker"]);
     const byName = groupByNamespace(rows, { field: "name", dir: "desc" }, withStatus);
     expect(shape(byName).map(([ns]) => ns)).toEqual(["kube-system", "team-a", "team-b"]);
     expect(byName[1].rows.map((x) => x.name)).toEqual(["worker", "api-10", "api-2"]);

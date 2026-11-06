@@ -62,10 +62,15 @@ export function pvcTone(status: string | null): StatusTone {
   return "warn";
 }
 
+/**
+ * One mapping for the Helm status pill, the Status sort and the namespace
+ * group marker (#547): deployed / superseded → ok, pending-* → warn,
+ * failed / unknown → err, anything else (uninstalling, …) neutral.
+ */
 export function helmTone(status: string | null): StatusTone {
   const s = status?.toLowerCase() ?? "";
-  if (s === "deployed") return "ok";
-  if (s === "failed") return "err";
+  if (s === "deployed" || s === "superseded") return "ok";
   if (s.startsWith("pending")) return "warn";
+  if (s === "failed" || s === "unknown") return "err";
   return "neutral";
 }
