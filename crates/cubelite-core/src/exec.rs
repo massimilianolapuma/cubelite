@@ -1,11 +1,10 @@
 //! Line-based shell sessions in a pod over the Kubernetes exec API (#488).
 //!
 //! [`start_exec`] attaches to a command (by default `/bin/sh`) with stdin,
-//! stdout and stderr and no TTY, like the native app's `PodExecView`: the
-//! caller sends whole lines on [`ExecSession::input`] and receives output
-//! split into lines on [`ExecSession::output`]. The output channel closes
-//! when the remote command ends; a non-success exit adds a final
-//! [`ExecChannel::Status`] line first.
+//! stdout and stderr and no TTY: the caller sends whole lines on
+//! [`ExecSession::input`] and receives output split into lines on
+//! [`ExecSession::output`]. The output channel closes when the remote command
+//! ends; a non-success exit adds a final [`ExecChannel::Status`] line first.
 
 use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Status;

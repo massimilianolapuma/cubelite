@@ -48,7 +48,7 @@ pnpm --filter desktop test:e2e  # Playwright e2e
 - No `any` type in TypeScript — use `unknown` and narrow
 - No `localStorage` for secrets — use Tauri Store or OS keychain via Rust
 - No `console.log` in committed code — use `debug` or remove
-- No modifications to `crates/` or `apps/macos/` from this agent
+- No modifications to `crates/` from this agent
 - No overriding shadcn-svelte component internals — compose via slots/props
 
 ---

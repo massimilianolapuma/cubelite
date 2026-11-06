@@ -15,7 +15,7 @@ CubeLite is a Kubernetes context aggregator for developers and platform engineer
 
 Unlike Lens (Electron-based, cloud account required) or k9s (terminal-only), CubeLite is:
 
-- **Native** — a real macOS app built with SwiftUI, plus a cross-platform desktop app via Tauri
+- **Cross-platform** — a lightweight desktop app (Tauri) for macOS, Windows, and Linux
 - **Local-first** — reads your existing `~/.kube/config`; no setup, no cloud account
 - **Privacy-respecting** — no telemetry, no analytics, no call-home
 
@@ -24,13 +24,12 @@ Unlike Lens (Electron-based, cloud account required) or k9s (terminal-only), Cub
 - **Kubeconfig merge** — resolves `KUBECONFIG` env paths, merges multiple files, first file's `current-context` wins
 - **Kubeconfig auto-discovery** — scans `~/.kube/` directory for config files automatically
 - **Context switch** — switch active context and persist the change to disk
-- **Menu bar quick-switch** — click the status-bar icon to switch context without opening the main window
-- **Lens-like GUI** — `NavigationSplitView` sidebar listing all contexts, detail pane for cluster resources
+- **Lens-like GUI** — sidebar listing all contexts, detail pane for cluster resources
 - **All Clusters dashboard** — cross-cluster health aggregation showing online/offline/RBAC-limited status per cluster
 - **Kubernetes resources** — Pods, Namespaces, Deployments, Services, Secrets, ConfigMaps, Ingresses, Helm Releases
 - **Deployment detail** — spec grid with replica counts, rollout strategy, and conditions timeline
 - **Namespace browser** — CPU/Memory/IP columns with pod count badges per namespace
-- **Secure credential storage** — Security.framework keychain integration for bearer tokens and client certificate auth
+- **Secure credential storage** — OS keychain integration for bearer tokens and client certificate auth
 - **TLS flexibility** — skip certificate verification for self-signed clusters (minikube, dev environments)
 - **RBAC resilience** — graceful 403 Forbidden handling with per-resource tolerance; partial data shown where permitted
 - **First launch onboarding** — guided setup shown when no kubeconfig is found
@@ -39,15 +38,14 @@ Unlike Lens (Electron-based, cloud account required) or k9s (terminal-only), Cub
 
 ## Architecture
 
-CubeLite is a monorepo with three independent layers that share no runtime dependency on each other:
+CubeLite is a monorepo with two layers:
 
 ```
 cubelite/
 ├── crates/
 │   └── cubelite-core/      ← Rust library: kubeconfig parsing, kube-rs client, resource types
 ├── apps/
-│   ├── desktop/            ← Cross-platform: Tauri v2 + Svelte 5 + TypeScript
-│   └── macos/              ← Native macOS: Swift 6 + SwiftUI (menu-bar + main window)
+│   └── desktop/            ← Cross-platform: Tauri v2 + Svelte 5 + TypeScript
 ├── design/                 ← Design tokens (JSON → Tailwind CSS v4)
 └── docs/                   ← Architecture docs
 ```
@@ -56,9 +54,8 @@ cubelite/
 |---|---|---|
 | `crates/cubelite-core` | Rust 1.82+ | kube-rs 0.97, tokio, thiserror, anyhow |
 | `apps/desktop` | TypeScript + Svelte 5 | Tauri v2, shadcn-svelte, Tailwind v4, Vitest |
-| `apps/macos` | Swift 6 | SwiftUI, macOS 14+, Observation framework, Yams |
 
-The macOS app communicates with the Kubernetes API server directly via `URLSession` — no FFI bridge to the Rust core. The Rust core is used by the Tauri desktop backend via Cargo dependency.
+The Rust core is used by the Tauri desktop backend via Cargo dependency.
 
 See [docs/architecture.md](docs/architecture.md) for a full diagram.
 
@@ -69,7 +66,6 @@ See [docs/architecture.md](docs/architecture.md) for a full diagram.
 | Tool | Version |
 |---|---|
 | Rust | 1.82+ |
-| Xcode | 16+ (macOS app) |
 | Node.js | 22.17+ |
 | pnpm | 9+ |
 
@@ -79,17 +75,6 @@ See [docs/architecture.md](docs/architecture.md) for a full diagram.
 cargo build --workspace
 cargo test --workspace
 ```
-
-### Build the macOS app
-
-```sh
-xcodebuild build \
-  -project apps/macos/cubelite/cubelite.xcodeproj \
-  -scheme cubelite \
-  -destination 'platform=macOS'
-```
-
-Or open `apps/macos/cubelite/cubelite.xcodeproj` in Xcode and press ⌘R.
 
 ### Build the desktop app
 
@@ -110,9 +95,6 @@ pnpm --filter desktop test
 
 # Format Rust code
 cargo fmt
-
-# Check macOS build
-xcodebuild build -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite
 ```
 
 ## Contributing

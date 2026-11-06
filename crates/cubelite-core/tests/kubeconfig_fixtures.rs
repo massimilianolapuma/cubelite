@@ -2,8 +2,7 @@
 //! #548) through the core: [`KubeConfig::load_from_paths`] (context list,
 //! servers, Preferences sources) and the client path
 //! ([`merged_kubeconfig`] + kube-rs `Config`), and compares the result with
-//! the case's `expected.json`. The macOS app runs the same cases
-//! (`KubeconfigFixturesTests.swift`); the schema is in
+//! the case's `expected.json`. The schema is in
 //! `testdata/kubeconfig/README.md`.
 //!
 //! A new case directory is picked up without code changes.

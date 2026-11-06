@@ -1,6 +1,6 @@
 # CubeLite User Guide
 
-CubeLite is a Kubernetes context aggregator: it reads your existing kubeconfig files and gives you a native window onto your clusters — no cloud account, no telemetry.
+CubeLite is a Kubernetes context aggregator: it reads your existing kubeconfig files and gives you a lightweight window onto your clusters — no cloud account, no telemetry.
 
 | Chapter | What it covers |
 | --- | --- |
@@ -9,12 +9,9 @@ CubeLite is a Kubernetes context aggregator: it reads your existing kubeconfig f
 | [Features](features.md) | Contexts, resources, logs, shell, port-forward, manifest editing |
 | [FAQ & Troubleshooting](faq.md) | Gatekeeper warnings, RBAC limits, connection issues |
 
-## Two apps, one core
+## One app, one core
 
-- **CubeLite for macOS** — native Swift 6 + SwiftUI app with a menu-bar quick-switcher. The most complete experience today.
-- **CubeLite Desktop** — cross-platform app (Tauri v2 + Svelte 5) for macOS, Linux, and Windows. Early preview.
-
-Both read the same kubeconfig sources and never send your cluster data anywhere.
+**CubeLite Desktop** is a cross-platform app (Tauri v2 + Svelte 5) for macOS, Linux, and Windows, built on the shared Rust core. It reads your kubeconfig sources and never sends your cluster data anywhere.
 
 ## Getting help
 

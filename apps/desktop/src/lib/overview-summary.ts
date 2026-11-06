@@ -1,6 +1,5 @@
 /**
- * Overview counts (parity v2 §4). Pure, so the desktop and the macOS app
- * (`Models/OverviewSummary.swift`) count identically; keep the two in step.
+ * Overview counts (parity v2 §4). Pure, so the counting rules are unit-tested.
  * A `null` list means "not loaded" and yields `null` counts (UI shows "—").
  */
 import type {

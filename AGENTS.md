@@ -13,7 +13,6 @@ use the inter-agent protocol described below.
 | `coordinator` | Any / cross-cutting | Claude Opus 4.7 | Issue triage, milestone planning, inter-agent routing |
 | `core-agent` | `crates/**` | Claude Sonnet 4.6 | `cargo test`, `cargo clippy --deny warnings`, `cargo build` |
 | `desktop-agent` | `apps/desktop/**` | Claude Sonnet 4.6 | `pnpm --filter desktop test`, Vitest, Playwright |
-| `macos-agent` | `apps/macos/**` | Claude Opus 4.7 | `xcodebuild build`, `xcodebuild test`, Xcode |
 | `design-agent` | `apps/desktop/**` (UI only) | Claude Opus 4.7 | Penpot MCP, shadcn-svelte, Tailwind tokens |
 | `devops-agent` | `.github/**` | Claude Sonnet 4.6 | GitHub Actions, secret scanning, YAML lint |
 | `qa-agent` | Any / quality | Claude Sonnet 4.6 | Test coverage, CI validation, security review |
@@ -31,10 +30,8 @@ cubelite/
 ├── crates/                    → core-agent
 │   └── cubelite-core/         → core-agent  (see crates/cubelite-core/AGENTS.md)
 ├── apps/
-│   ├── desktop/               → desktop-agent, design-agent
-│   │   └── AGENTS.md          → (see apps/desktop/AGENTS.md)
-│   └── macos/                 → macos-agent
-│       └── AGENTS.md          → (see apps/macos/AGENTS.md)
+│   └── desktop/               → desktop-agent, design-agent
+│       └── AGENTS.md          → (see apps/desktop/AGENTS.md)
 ├── .github/
 │   ├── workflows/             → devops-agent
 │   ├── agents/                → devops-agent
@@ -68,7 +65,7 @@ When a task spans multiple subtrees:
 
 Before starting ANY task, every agent **MUST**:
 
-1. **Read its own path-scoped instructions** from `.github/instructions/` (e.g., `swift-macos.instructions.md` for macos-agent)
+1. **Read its own path-scoped instructions** from `.github/instructions/` (e.g., `ci-devops.instructions.md` for devops-agent)
 2. **Read `.github/copilot-instructions.md`** for project-wide conventions
 3. **Read the relevant `AGENTS.md`** (root or subtree) for ownership and protocol rules
 
@@ -83,9 +80,9 @@ When a task involves **creating a new UI section, view, or panel** (not a minor 
 
 1. **Design first** — delegate to `design-agent` to create the Penpot board(s) with layout, colors, typography, and component specs
 2. **Review** — the coordinator presents the design to the user for approval
-3. **Implement only after approval** — the implementing agent (macos-agent, desktop-agent) receives the approved design as reference
+3. **Implement only after approval** — the implementing agent (desktop-agent) receives the approved design as reference
 
-This applies to both `apps/desktop/` and `apps/macos/` UI work. Bug fixes, refactors,
+This applies to `apps/desktop/` UI work. Bug fixes, refactors,
 and modifications to existing views that don't introduce new sections are exempt.
 
 **Rationale**: code-first UI leads to rework; Penpot designs are cheap to iterate on.
@@ -125,7 +122,7 @@ When an agent **discovers a bug or problem during work** (not a pre-existing iss
 2. **Create a GitHub issue** — use `gh issue create` with:
    - Clear title: `fix(<scope>): <description>`
    - Body with: Bug description, Root cause (if known), Acceptance criteria, Affected files
-   - Appropriate labels (e.g., `bug`, `macos`, `desktop`, `core`)
+   - Appropriate labels (e.g., `bug`, `desktop`, `core`)
 3. **Create a dedicated branch** from `main` (or config branch per Branching Base Rule):
    ```bash
    git checkout -b fix/<N>-<slug> origin/main
@@ -133,7 +130,6 @@ When an agent **discovers a bug or problem during work** (not a pre-existing iss
 4. **Delegate to the correct agent** based on the ownership map:
    - `crates/**` → `core-agent`
    - `apps/desktop/**` → `desktop-agent`
-   - `apps/macos/**` → `macos-agent`
    - `.github/**` → `devops-agent`
 5. **Implement the fix** — the owning agent:
    - Reads its path-scoped instructions (mandatory pre-work)
@@ -192,8 +188,6 @@ for the correct commands per stack.
 | Rust format | `cargo fmt --check` |
 | Desktop lint | `pnpm --filter desktop lint` |
 | Desktop tests | `pnpm --filter desktop test` |
-| macOS build | `xcodebuild build-for-testing -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite -destination 'platform=macOS' -derivedDataPath /tmp/cubelite-build` |
-| macOS tests | `xcodebuild test-without-building -project apps/macos/cubelite/cubelite.xcodeproj -scheme cubelite -destination 'platform=macOS' -derivedDataPath /tmp/cubelite-build -skip-testing cubeliteUITests` |
 | Secret scan | `gh secret-scanning run` |
 | Rust docs | `cargo doc --workspace --no-deps` |
 | Dependency audit (Rust) | `cargo audit` |

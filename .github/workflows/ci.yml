@@ -166,5 +166,5 @@ jobs:
           persist-credentials: false
       - name: Self-test design-lint
         run: scripts/design-lint.test.sh
-      - name: design-lint (desktop held at 0, native capped by allow-list)
+      - name: design-lint (desktop held at 0)
         run: scripts/design-lint.sh

@@ -13,13 +13,6 @@ apps/desktop/src-tauri/target/
 # macOS
 .DS_Store
 **/.DS_Store
-*.xcuserstate
-*.xcworkspace/xcuserdata/
-DerivedData/
-
-# Swift Package Manager
-.build/
-*.resolved
 
 # IDE
 .idea/

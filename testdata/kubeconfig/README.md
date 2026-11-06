@@ -1,15 +1,11 @@
 # Kubeconfig fixture corpus
 
-Realistic, anonymised kubeconfig layouts that both stacks must read the same
-way (#548). Two runners load every case:
-
-- core: `crates/cubelite-core/tests/kubeconfig_fixtures.rs` (`cargo test`):
-  `KubeConfig::load_from_paths` (the context list, the server per context,
-  Preferences sources) and the client path (`client::merged_kubeconfig` plus
-  the kube-rs `Config` built from it, without a cluster);
-- macOS: `apps/macos/cubelite/cubeliteTests/KubeconfigFixturesTests.swift`:
-  `KubeconfigService.loadFromPaths`, `KubeConfig.cluster(forContext:)` /
-  `user(forContext:)` and `KubeconfigService.redefinitions(in:)`.
+Realistic, anonymised kubeconfig layouts the core must read the way kubectl
+does (#548). `crates/cubelite-core/tests/kubeconfig_fixtures.rs` (`cargo test`)
+loads every case through `KubeConfig::load_from_paths` (the context list, the
+server per context, Preferences sources) and the client path
+(`client::merged_kubeconfig` plus the kube-rs `Config` built from it, without
+a cluster).
 
 The merge invariant itself is also property-tested in
 `crates/cubelite-core/tests/kubeconfig_merge_property.rs`.
@@ -17,7 +13,7 @@ The merge invariant itself is also property-tested in
 ## Adding a case
 
 Create a directory `<case>/` with one or more kubeconfig files and an
-`expected.json`. Both runners pick it up without code changes.
+`expected.json`. The runner picks it up without code changes.
 
 - **Kubeconfig files** are every `*.yaml` file under the case directory
   (subdirectories included), merged in lexical order of their path relative
@@ -30,20 +26,16 @@ Create a directory `<case>/` with one or more kubeconfig files and an
   (`ZmFrZS1jYS1kYXRh` is `fake-ca-data`). Never copy names or values from a
   real file, and never add a `-----BEGIN … PRIVATE KEY-----` block.
 - **One credential per user** (a token, an exec plugin, or a client
-  certificate). The two stacks do not pick among several in the same order
-  (kube-rs prefers a token, the native app an exec plugin), so the core
-  runner rejects a user with more than one.
-- Every directory here is a case: one without `expected.json` fails both
-  runners.
+  certificate). Clients do not agree on which one wins when a user has
+  several (kube-rs prefers a token), so the runner rejects a user with more
+  than one.
+- Every directory here is a case: one without `expected.json` fails the
+  runner.
 - `expected.json` records the **correct** behaviour. If the code disagrees,
   open a `bug` issue and list the case, the exact field and the value
-  observed today in `KNOWN_FAILURES` (Rust) or `knownFailures` (Swift), with
-  the issue number. The case then reports the gap without failing CI. Any
+  observed today in `KNOWN_FAILURES`, with the issue number. The case then reports the gap without failing CI. Any
   other value of that field fails, and so does the field no longer showing
   the listed value, so the entry is updated or removed together with the fix.
-- The Swift runner resolves credentials with the app's own selection
-  (`KubeAPIService.connectionUser`, `clientCertificateSource`,
-  `kubeconfigFileURL`), so a fix there shows up in the corpus.
 
 ## `expected.json`
 
@@ -95,6 +87,3 @@ Create a directory `<case>/` with one or more kubeconfig files and an
 | `client-cert-file` | `client_certificate`, `client_key`: the files read, relative to the case directory (relative paths in a kubeconfig resolve against that file's directory) |
 | `client-cert-data` | `client_certificate_data` |
 | `none` | none |
-
-The native app does not expose per-file context counts or shadowed names, so
-the Swift runner checks only the redefined names in `sources`.

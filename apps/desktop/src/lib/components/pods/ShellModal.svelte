@@ -7,7 +7,7 @@
 	import { execSend, startExec, stopExec, type ExecLine } from '#lib/tauri.ts';
 
 	/**
-	 * Line-based shell in a pod (#488, parity with the native PodExecView):
+	 * Line-based shell in a pod (#488):
 	 * `/bin/sh` without a TTY, one command line at a time on stdin, stdout and
 	 * stderr streamed back into a capped scrollback.
 	 */

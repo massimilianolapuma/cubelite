@@ -1,6 +1,6 @@
 # Quickstart
 
-Five minutes from install to a live cluster view. This walkthrough uses the macOS app; the desktop app follows the same flow.
+Five minutes from install to a live cluster view. This walkthrough uses the desktop app.
 
 ## 1. Launch and onboarding
 
@@ -32,10 +32,6 @@ Click a pod to open its detail panel:
 - **Describe** — full manifest; edit it and **Apply** (kubectl-replace semantics)
 - **Port forward** — map a pod port to localhost
 - **Restart / Delete** — with confirmation; controllers recreate restarted pods
-
-## 5. Menu bar quick-switch
-
-CubeLite also lives in the macOS menu bar: click the cube icon to see contexts and switch the active one without opening the main window.
 
 ## Credentials note
 

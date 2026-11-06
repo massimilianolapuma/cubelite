@@ -63,8 +63,7 @@ struct Redefined {
 }
 
 /// Which clusters and users count as "defined differently" by a later file
-/// (Preferences note, #543). The native app applies the same rule
-/// (`KubeconfigRedefinitions.swift`); keep both in sync.
+/// (Preferences note, #543).
 ///
 /// - A cluster entry is compared on [`CLUSTER_IDENTITY_KEYS`] only, so
 ///   cosmetic keys such as `extensions` do not count.
@@ -564,8 +563,8 @@ struct KindProbe {
     kind: Option<String>,
 }
 
-/// Files larger than this are never read as kubeconfigs (same cap as the
-/// native app); real kubeconfigs are a few KiB to a few hundred KiB.
+/// Files larger than this are never read as kubeconfigs; real kubeconfigs
+/// are a few KiB to a few hundred KiB.
 pub const MAX_KUBECONFIG_FILE_SIZE: u64 = 16 * 1024 * 1024;
 
 /// True when the file is a kubeconfig document: at most
@@ -1077,9 +1076,8 @@ users:
         }
     }
 
-    // The redefinition parity fixture shared with the native app (#543) is
-    // the `redefinitions-parity` case of `testdata/kubeconfig` (#548), run
-    // by `tests/kubeconfig_fixtures.rs` and `KubeconfigFixturesTests`.
+    // The redefinition fixture (#543) is the `redefinitions-parity` case of
+    // `testdata/kubeconfig` (#548), run by `tests/kubeconfig_fixtures.rs`.
 
     // -- Context switching ---------------------------------------------------
 

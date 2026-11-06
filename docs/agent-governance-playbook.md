@@ -190,7 +190,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 type(scope): description
 
 type:  feat | fix | docs | test | chore | ci | refactor
-scope: the affected area (macos, desktop, core, ci)
+scope: the affected area (desktop, core, ci)
 ```
 
 ### PR Lifecycle
@@ -301,8 +301,6 @@ the exact commands to run before committing.
 |---|---|
 | Rust lint | `cargo clippy --deny warnings` |
 | Rust tests | `cargo test --workspace` |
-| macOS build | `xcodebuild build-for-testing -project ... -scheme ... -destination 'platform=macOS'` |
-| macOS tests | `xcodebuild test-without-building -project ... -scheme ...` |
 | Desktop lint | `pnpm --filter desktop lint` |
 | Desktop tests | `pnpm --filter desktop test` |
 

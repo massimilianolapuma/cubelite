@@ -41,50 +41,6 @@ jobs:
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
-  build-macos-native:
-    name: Build macOS app
-    needs: version
-    if: needs.version.outputs.should_release == 'true'
-    runs-on: macos-15
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Build (Release)
-        run: |
-          xcodebuild build \
-            -project apps/macos/cubelite/cubelite.xcodeproj \
-            -scheme cubelite \
-            -destination 'platform=macOS' \
-            -configuration Release \
-            -derivedDataPath dd \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_ALLOWED=NO
-
-      - name: Ad-hoc sign & package (ZIP + DMG)
-        # Apple Silicon refuses to run fully unsigned binaries; an ad-hoc
-        # signature is the floor until Developer ID signing lands (#121).
-        run: |
-          APP="dd/Build/Products/Release/cubelite.app"
-          codesign --force --deep --sign - "$APP"
-          codesign --verify --deep "$APP"
-
-          ditto -c -k --keepParent "$APP" CubeLite-macOS.zip
-
-          mkdir dmg-staging
-          cp -R "$APP" dmg-staging/
-          ln -s /Applications dmg-staging/Applications
-          hdiutil create -volname "CubeLite" -srcfolder dmg-staging \
-            -ov -format UDZO CubeLite-macOS.dmg
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: macos-native
-          path: |
-            CubeLite-macOS.zip
-            CubeLite-macOS.dmg
-          if-no-files-found: error
-
   build-desktop:
     name: Build desktop (${{ matrix.platform }})
     needs: version
@@ -178,10 +134,11 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
-    needs: [version, build-macos-native, build-desktop]
-    # Publish as long as the native macOS app built; a broken desktop
-    # platform must not hold the whole release hostage.
-    if: always() && needs.version.outputs.should_release == 'true' && needs.build-macos-native.result == 'success'
+    needs: [version, build-desktop]
+    # Publish even if one desktop platform failed (a broken Linux/Windows
+    # bundle must not hold the whole release hostage); the macOS bundle is
+    # required, checked after the download below.
+    if: always() && needs.version.outputs.should_release == 'true' && (needs.build-desktop.result == 'success' || needs.build-desktop.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -194,6 +151,13 @@ jobs:
         with:
           path: assets
           merge-multiple: true
+
+      - name: Require the macOS bundle
+        run: |
+          test -f assets/CubeLite-Desktop-macOS.dmg || {
+            echo "::error::The macOS desktop bundle is missing; not publishing."
+            exit 1
+          }
 
       - name: Generate checksums
         run: |

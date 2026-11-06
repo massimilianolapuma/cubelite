@@ -8,7 +8,6 @@ Thank you for your interest in contributing to CubeLite!
 2. Install prerequisites:
    - **Rust** 1.82+ via [rustup](https://rustup.rs/)
    - **Node.js** 22+ and **pnpm** 10+ (for `apps/desktop/`)
-   - **Xcode** 16+ (for `apps/macos/`)
 3. Run initial checks:
    ```bash
    cargo test --workspace
@@ -42,11 +41,11 @@ type(scope): description
 
 **Types:** `feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `ci`, `style`
 
-**Scopes:** `core`, `desktop`, `macos`, `ci`, `repo`
+**Scopes:** `core`, `desktop`, `ci`, `repo`
 
 Examples:
 - `feat(core): add namespace filtering to context list`
-- `fix(macos): resolve menu bar icon rendering on Retina`
+- `fix(desktop): resolve sidebar scroll jump on context switch`
 - `chore(ci): pin actions/checkout to SHA`
 
 ## Pull Requests
@@ -69,12 +68,6 @@ Examples:
 - Svelte 5 runes (`$state`, `$derived`, `$effect`) — no legacy stores
 - Components in `PascalCase.svelte`
 - Run `pnpm --filter desktop test`
-
-### Swift (`apps/macos/`)
-- Swift 6 strict concurrency (`@Sendable`, `actor`, `@MainActor`)
-- `@Observable` — not `ObservableObject`
-- No `try!` or force-unwrap (`!`) in production code
-- Run tests via Xcode or `xcodebuild test`
 
 ## Security
 
