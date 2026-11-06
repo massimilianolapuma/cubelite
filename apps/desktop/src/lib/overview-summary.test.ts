@@ -15,8 +15,6 @@ import type {
   ServiceInfo,
 } from "#lib/tauri.ts";
 
-// Same fixture as cubeliteTests/OverviewSummaryTests.swift: both apps must
-// produce the same numbers.
 const pod = (phase: string | null): PodInfo => ({
   name: `p-${phase}`,
   namespace: "default",

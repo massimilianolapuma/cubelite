@@ -1,5 +1,7 @@
 # Design audit — 2026-09
 
+> The native macOS app was removed in November 2026 (tag `macos-native-final`); native findings below are historical.
+
 Date: 2026-09-29 · Scope: `apps/desktop` and `apps/macos` against Design System v1.1
 (`design/tokens.json`, handoff `design/design_handoff_cubelite_ui/README.md` → "v1.1 amendments").
 Spec: `docs/superpowers/specs/2026-09-16-unified-parity-v2-design.md` §5 · Issue #360.

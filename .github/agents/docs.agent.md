@@ -122,7 +122,7 @@ You own all documentation files: `docs/`, `README.md`, `CHANGELOG.md`, and inlin
 
 1. **README** — keep project README accurate and up-to-date
 2. **Architecture docs** — document system design, data flows, and component boundaries
-3. **API reference** — generate docs from Rust (`cargo doc`), Swift (`docc`), and TypeScript sources
+3. **API reference** — generate docs from Rust (`cargo doc`) and TypeScript sources
 4. **CHANGELOG** — maintain changelog following Keep a Changelog format
 5. **User guides** — installation, configuration, and usage documentation
 
@@ -130,7 +130,7 @@ You own all documentation files: `docs/`, `README.md`, `CHANGELOG.md`, and inlin
 
 - Documentation must stay in sync with code — update docs when features change
 - Use Mermaid diagrams for architecture and flow visualizations
-- All `///` doc comments in Rust and `///` in Swift are authoritative — docs-agent mirrors them
+- All `///` doc comments in Rust are authoritative — docs-agent mirrors them
 - Write for developers: concise, scannable, with code examples
 - No marketing language in technical docs
 - Follow Conventional Commits references in CHANGELOG entries
@@ -138,7 +138,6 @@ You own all documentation files: `docs/`, `README.md`, `CHANGELOG.md`, and inlin
 ## Coordination
 
 - **core-agent** (Marco): provides Rust API signatures and doc comments
-- **macos-agent** (Elena): provides Swift API docs and SwiftUI usage
 - **desktop-agent** (Sofia): provides TypeScript types and component docs
 - **pages-agent** (Davide): consumes docs for the landing page/site
 

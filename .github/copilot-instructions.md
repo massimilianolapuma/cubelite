@@ -9,8 +9,8 @@ all stacks in the CubeLite monorepo.
 
 **CubeLite** is a Kubernetes context aggregator — a developer tool that lets you
 discover, switch, and manage Kubernetes contexts across clusters from a unified
-interface. It consists of a Rust core library, a cross-platform desktop app
-(Tauri + Svelte), and a native macOS menu-bar app (Swift + SwiftUI).
+interface. It consists of a Rust core library and a cross-platform desktop app
+(Tauri + Svelte) for macOS, Windows, and Linux.
 
 ---
 
@@ -21,8 +21,7 @@ cubelite/
 ├── crates/
 │   └── cubelite-core/       ← Rust library: k8s context management
 ├── apps/
-│   ├── desktop/             ← Tauri v2 + Svelte 5 + TypeScript desktop app
-│   └── macos/               ← Swift 6 + SwiftUI native macOS app
+│   └── desktop/             ← Tauri v2 + Svelte 5 + TypeScript desktop app
 ├── .github/
 │   ├── copilot-instructions.md
 │   ├── instructions/        ← Path-scoped Copilot instructions
@@ -41,7 +40,6 @@ cubelite/
 | --------------- | --------------------- | -------------------------------------------------------- |
 | `crates/`       | Rust 1.82+            | kube-rs 0.97, tokio, thiserror 2, anyhow 1               |
 | `apps/desktop/` | TypeScript + Svelte 5 | Tauri v2, shadcn-svelte, Tailwind v4, Vitest, Playwright |
-| `apps/macos/`   | Swift 6               | SwiftUI, macOS 14+, Observation framework                |
 | `.github/`      | YAML                  | GitHub Actions                                           |
 
 ---
@@ -63,12 +61,6 @@ cubelite/
 - Types and interfaces: `PascalCase`
 - Constants: `SCREAMING_SNAKE_CASE`
 
-### Swift
-
-- Types and protocols: `PascalCase`
-- Properties and methods: `camelCase`
-- Constants: `camelCase` (Swift convention)
-
 ---
 
 ## Test Patterns
@@ -85,11 +77,6 @@ cubelite/
 - Unit/component tests: Vitest
 - End-to-end: Playwright
 - Run: `pnpm --filter desktop test`
-
-### macOS (`apps/macos/`)
-
-- XCTest for unit tests; SwiftUI previews for UI tests
-- Run: `swift test` or Xcode scheme `CubeLiteTests`
 
 ---
 
@@ -152,7 +139,7 @@ and this file before starting any task. No exceptions.
 
 ## Design-First Rule
 
-New UI sections, views, or panels (in `apps/desktop/` or `apps/macos/`) **MUST** go
+New UI sections, views, or panels (in `apps/desktop/`) **MUST** go
 through Penpot design + user approval before code implementation begins. The coordinator
 delegates to `design-agent` first, presents the board for review, and only then
 dispatches the implementation.
@@ -165,7 +152,6 @@ dispatches the implementation.
 | --------------- | ------------------------- | ----------------------------------------------------------------- |
 | `core-agent`    | `crates/**`               | Rust logic, k8s API, domain models, error types                   |
 | `desktop-agent` | `apps/desktop/**`         | Svelte components, Tauri commands, frontend tests                 |
-| `macos-agent`   | `apps/macos/**`           | Swift/SwiftUI, menu-bar, macOS APIs                               |
 | `design-agent`  | `apps/desktop/**` UI only | Design tokens, shadcn-svelte, Tailwind, accessibility, Penpot MCP |
 | `devops-agent`  | `.github/**`              | GitHub Actions, CI/CD workflows, secret handling                  |
 | `ai-agent`      | Any                       | Cross-cutting AI assistance, architecture decisions               |

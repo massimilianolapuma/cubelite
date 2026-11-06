@@ -1,5 +1,7 @@
 # WCAG AA contrast audit — design tokens
 
+> The native macOS app was removed in November 2026 (tag `macos-native-final`); native findings below are historical.
+
 Date: 2026-08-09 · Scope: `design/tokens.json` (both apps, light + dark themes) ·
 Stage 1 of 3 for issue #120.
 

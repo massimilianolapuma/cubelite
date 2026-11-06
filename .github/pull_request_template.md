@@ -28,10 +28,4 @@ Closes #
 - [ ] No TypeScript `any` types without justification
 - [ ] Svelte components use runes (`$state`, `$derived`, `$effect`)
 
-### macOS (`apps/macos/`)
-- [ ] `xcodebuild test` passes
-- [ ] No force-unwrap (`!`) or `try!` in production code
-- [ ] Strict concurrency checking enabled
-- [ ] `@Observable` used (not `ObservableObject`)
-
 <!-- Delete sections that don't apply to your changes. -->

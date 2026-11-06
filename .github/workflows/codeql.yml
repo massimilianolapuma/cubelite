@@ -15,8 +15,8 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ${{ matrix.language == 'swift' && 'macos-15' || 'ubuntu-latest' }}
-    timeout-minutes: ${{ matrix.language == 'swift' && 60 || 15 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -27,8 +27,6 @@ jobs:
             build-mode: none
           - language: rust
             build-mode: none
-          - language: swift
-            build-mode: manual
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -37,18 +35,6 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-
-      - name: Build Swift (manual)
-        if: matrix.language == 'swift'
-        working-directory: apps/macos/cubelite
-        run: |
-          xcodebuild build \
-            -project cubelite.xcodeproj \
-            -scheme cubelite \
-            -destination 'platform=macOS' \
-            -configuration Debug \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_ALLOWED=NO
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1

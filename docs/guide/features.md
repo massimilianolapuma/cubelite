@@ -33,13 +33,11 @@
 ## Interface
 
 - **Command palette** — ⌘K; jump to any context or view. ⌘1–⌘5 for the main views.
-- **Menu bar extra** — quick context switch from the macOS status bar.
 - **Logs & errors console** — every warning/error CubeLite itself produces, with suggested actions.
 - **Light/dark** — follows the system or forced in Settings.
-- **Launch at login** — optional.
 
 ## Platform notes
 
-The macOS app (Swift 6 + SwiftUI, macOS 14+) is the reference implementation. The cross-platform desktop app (Tauri v2 + Svelte 5) shares the Rust core and is an early preview — expect a reduced feature set for now.
+CubeLite is a cross-platform desktop app (Tauri v2 + Svelte 5) for macOS, Linux, and Windows, built on the Rust core.
 
 Next: [FAQ & Troubleshooting →](faq.md)

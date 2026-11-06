@@ -7,13 +7,12 @@ Redesign of the CubeLite desktop app around a **single unified visual identity f
 2. **Command Palette (⌘K / Ctrl+K)** — keyboard-first switch/search/actions.
 3. **Cluster identity color** — every kubeconfig context gets a stable color used everywhere that cluster appears (rail, titlebar, palette, dashboard), so the user always knows which cluster they are acting on before destructive operations.
 
-This replaces the previous direction of following Apple HIG on macOS: the app chrome is now identical on all platforms (only native window controls differ). `docs/cubelite-macos-design-instructions.md` remains valid for accessibility/contrast rules but no longer drives the visual style.
+This replaces the previous direction of following Apple HIG on macOS: the app chrome is now identical on all platforms (only native window controls differ). `docs/a11y/` remains valid for accessibility/contrast rules but no longer drives the visual style.
 
 ## About the Design Files
 The files in this bundle are **design references created in HTML** — interactive prototypes showing intended look and behavior, **not production code**. The task is to recreate these designs in the existing CubeLite environments:
 
 - `apps/desktop` — Tauri v2 + Svelte 5 + Tailwind v4 + shadcn-svelte (primary target; the design maps 1:1 onto semantic tokens in `design/tokens.json`)
-- `apps/macos` — Swift 6 + SwiftUI (same layout and colors; use custom-styled SwiftUI views, not system list/sidebar styles)
 
 A proposed replacement for `design/tokens.json` is included as **`tokens-v2.json`** (dark theme complete; light theme TODO).
 
@@ -86,7 +85,7 @@ Families: **Geist** (UI) + **Geist Mono** (all data: resource names, metrics, IP
 - Row density: 9px vertical padding default, 5px "compact" preference. Controls height 28px, min hit target 28×28.
 
 ## v1.1 amendments (2026-09)
-Changes made after the v1 handoff while implementing it on both apps. Where they conflict with anything above, these win. The source of truth for values is `design/tokens.json` (generated into `apps/desktop/src/app.css` and `DesignTokens.swift` by `pnpm design:tokens`).
+Changes made after the v1 handoff while implementing it. Where they conflict with anything above, these win. The source of truth for values is `design/tokens.json` (generated into `apps/desktop/src/app.css` by `pnpm design:tokens`).
 
 ### Contrast fixes (#341)
 The WCAG AA audit (`docs/a11y/contrast-audit.md`) changed two dark tokens. Hue is unchanged; only lightness moved.
@@ -127,10 +126,10 @@ Most styles move up by 0.5–1px, so nothing falls below the Apple HIG 10pt mini
 - **Sidebar**: one count per item, err-colored with a tooltip when pods or events need attention. Nodes, StatefulSets, Jobs, CronJobs and PVCs are kept beyond the v1 list, each with a count once loaded. The namespace menu shows pod counts per namespace.
 - **All Clusters dashboard**: the stat cards (clusters online, pods, warnings, watched) aggregate every context. Each cluster card shows its own pods, warnings and CPU/MEM bars.
 - **Popovers and menus**: use overlay elevation (`bg/overlay`, `border/strong`, overlay shadow). Row hover is `bg/raised`.
-- **Icons**: every unicode placeholder is replaced with Lucide on desktop and SF Symbols on macOS. Toggle rows (Timestamps, Wrap lines) are `menuitemcheckbox` with a check icon.
+- **Icons**: every unicode placeholder is replaced with Lucide. Toggle rows (Timestamps, Wrap lines) are `menuitemcheckbox` with a check icon.
 - **Icon sizes** (#395): glyphs use the `icon` tokens: `2xs` 7px (badge digits), `xs` 8px (chevrons), `sm` 10px (search), `md` 11px (palette rows), `lg` 14px (sidebar rows), `xl` 28px (detail headers), `2xl` 40px (empty states).
 - **Esc**: closes only the topmost overlay, so a confirm dialog closes before the drawer under it.
-- **Native parity** (#395): every macOS view uses the design tokens; `scripts/design-lint.sh` holds both apps at zero system fonts and raw colors.
+- **Token lint** (#395): `scripts/design-lint.sh` holds the desktop app at zero system fonts and raw colors.
 - **Kubeconfig** (#392): Preferences lists every file in `KUBECONFIG` with its context count; on a name clash the first file wins.
 
 ### Still open
@@ -183,7 +182,7 @@ Appearance segmented Light/Dark/System · Auto-refresh segmented 10s/30s/1m/off 
 - Settings: theme, refresh interval, TLS skip, kubeconfig paths, onboarding-seen.
 
 ## Assets
-No image assets. Fonts: Geist + Geist Mono (Google Fonts / vendored; both open licensed — vendor them for offline-first). Icons in the prototype are unicode placeholders (⌂ ⚙ ⌕ ✕ ▾) — **replace with a real icon set** in implementation (Lucide is already the shadcn-svelte default and fits; on SwiftUI use SF Symbols with matching weight).
+No image assets. Fonts: Geist + Geist Mono (Google Fonts / vendored; both open licensed — vendor them for offline-first). Icons in the prototype are unicode placeholders (⌂ ⚙ ⌕ ✕ ▾) — **replace with a real icon set** in implementation (Lucide is already the shadcn-svelte default and fits).
 
 ## Files in this bundle
 - `CubeLite Prototype.dc.html` — interactive prototype, the primary reference (open in a browser; requires network for fonts/runtime).

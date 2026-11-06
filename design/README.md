@@ -57,8 +57,7 @@ All values are **HSL channel triples** consumed with `hsl(var(--token))` in shad
 
 `font.style.*` tokens use the compact syntax `"<weight> <size>px <sans|mono>[ · uppercase][ · ls <em>em]"`
 plus optional `$lineHeight` and `$color` (a key of the `text` group). The generator emits one
-Tailwind `@utility type-<name>` per token inside the `@generated:type` region of `app.css`, and a
-`DesignTokens.Typography.<name>` style for SwiftUI. Sizes below 10px are rejected (Apple HIG floor).
+Tailwind `@utility type-<name>` per token inside the `@generated:type` region of `app.css`. Sizes below 10px are rejected (Apple HIG floor).
 
 | Token | Value | Use |
 |---|---|---|
@@ -99,7 +98,7 @@ All semantic aliases satisfy **WCAG 2.1 AA** contrast requirements:
 
 1. Edit `design/tokens.json`
 2. Run `pnpm design:tokens` (executes `tsx design/export-tokens.ts`)
-3. Commit `tokens.json`, `apps/desktop/src/app.css` and `apps/macos/cubelite/cubelite/Helpers/DesignTokens.swift`
+3. Commit `tokens.json` and `apps/desktop/src/app.css`
 
 > The generator rewrites **only** the content between `/* @generated:*-start */` and
 > `/* @generated:*-end */` markers — manual CSS outside those blocks is preserved.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="CubeLite — Discover, switch, and manage Kubernetes contexts from a unified interface. Native, local-first, privacy-respecting.">
+  <meta name="description" content="CubeLite — Discover, switch, and manage Kubernetes contexts from a unified interface. Cross-platform, local-first, privacy-respecting.">
   <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
   <title>CubeLite — Kubernetes Context Aggregator</title>
@@ -35,7 +35,7 @@
         <p class="tagline">Kubernetes Context Aggregator</p>
         <p class="subtitle">Discover, switch, and manage Kubernetes contexts from a unified interface&nbsp;— fast, local&#8209;first, and privacy&#8209;respecting.</p>
         <div class="hero-actions">
-          <a href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-macOS.dmg" class="btn btn-primary">Download for macOS</a>
+          <a href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-Desktop-macOS.dmg" class="btn btn-primary">Download for macOS</a>
           <a href="#download" class="btn btn-outline">All platforms</a>
         </div>
         <p class="hero-version"><span id="latest-version" aria-live="polite"></span></p>
@@ -63,12 +63,7 @@
           <article class="feature-card">
             <div class="feature-icon" aria-hidden="true">🖥️</div>
             <h3>Lens-like GUI</h3>
-            <p>NavigationSplitView sidebar listing all contexts with a detail pane for Pods, Namespaces, and Deployments.</p>
-          </article>
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">📌</div>
-            <h3>Menu Bar Quick-Switch</h3>
-            <p>Click the status-bar icon to switch context without opening the main window — perfect for fast workflows.</p>
+            <p>Sidebar listing all contexts with a detail pane for Pods, Namespaces, and Deployments.</p>
           </article>
           <article class="feature-card">
             <div class="feature-icon" aria-hidden="true">🔒</div>
@@ -88,17 +83,12 @@
     <section id="architecture" class="architecture" aria-labelledby="arch-title">
       <div class="container">
         <h2 id="arch-title">Architecture</h2>
-        <p>CubeLite is a monorepo with three independent layers — no runtime dependency between them.</p>
+        <p>CubeLite is a monorepo with two layers — the Rust core and the Tauri desktop app built on it.</p>
         <div class="arch-grid">
           <article class="arch-card">
             <h3>🦀 Rust Core</h3>
             <p class="arch-path"><code>crates/cubelite-core</code></p>
             <p>Kubeconfig parsing, kube-rs client, resource types. Rust&nbsp;1.82+, tokio, thiserror, anyhow.</p>
-          </article>
-          <article class="arch-card">
-            <h3>🍎 macOS App</h3>
-            <p class="arch-path"><code>apps/macos</code></p>
-            <p>Native Swift&nbsp;6 + SwiftUI menu-bar and main window. macOS&nbsp;14+, Observation framework, direct URLSession to k8s API.</p>
           </article>
           <article class="arch-card">
             <h3>🖥️ Desktop App</h3>
@@ -110,8 +100,7 @@
 ├── crates/
 │   └── cubelite-core/      ← Rust library
 ├── apps/
-│   ├── desktop/            ← Tauri v2 + Svelte 5
-│   └── macos/              ← Swift 6 + SwiftUI
+│   └── desktop/            ← Tauri v2 + Svelte 5
 ├── design/                 ← Design tokens
 └── docs/                   ← Architecture docs</code></pre>
       </div>
@@ -125,16 +114,7 @@
         <div class="download-grid">
           <article class="download-card">
             <img src="assets/icon-128.png" alt="" width="56" height="56">
-            <h3>CubeLite for macOS</h3>
-            <p class="download-desc">Native Swift 6 + SwiftUI app with menu-bar quick-switch. macOS 14+. The complete experience.</p>
-            <div class="download-links">
-              <a class="btn btn-primary" href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-macOS.dmg">DMG</a>
-              <a class="btn btn-outline" href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-macOS.zip">ZIP</a>
-            </div>
-          </article>
-          <article class="download-card">
-            <img src="assets/icon-128.png" alt="" width="56" height="56">
-            <h3>CubeLite Desktop <span class="tag-preview">early preview</span></h3>
+            <h3>CubeLite Desktop</h3>
             <p class="download-desc">Cross-platform app built with Tauri v2 + Svelte 5. Reduced feature set for now.</p>
             <div class="download-links">
               <a class="btn btn-outline" href="https://github.com/massimilianolapuma/cubelite/releases/latest/download/CubeLite-Desktop-macOS.dmg">macOS</a>
@@ -175,7 +155,6 @@
             </thead>
             <tbody>
               <tr><td>Rust</td><td>1.82+</td></tr>
-              <tr><td>Xcode</td><td>16+ (macOS app)</td></tr>
               <tr><td>Node.js</td><td>20+</td></tr>
               <tr><td>pnpm</td><td>9+</td></tr>
             </tbody>
@@ -187,14 +166,6 @@
             <h3>Rust Core</h3>
             <pre><code>cargo build --workspace
 cargo test  --workspace</code></pre>
-          </article>
-          <article class="build-card">
-            <h3>macOS App</h3>
-            <pre><code>xcodebuild build \
-  -project apps/macos/cubelite/cubelite.xcodeproj \
-  -scheme cubelite \
-  -destination 'platform=macOS'</code></pre>
-            <p>Or open in Xcode and press <kbd>⌘R</kbd>.</p>
           </article>
           <article class="build-card">
             <h3>Desktop App</h3>

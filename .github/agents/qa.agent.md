@@ -134,13 +134,10 @@ You ensure quality across the entire CubeLite monorepo.
 | Rust    | Test   | `cargo test --workspace`                   |
 | Desktop | Lint   | `pnpm --filter desktop lint`               |
 | Desktop | Test   | `pnpm --filter desktop test`               |
-| macOS   | Build  | `xcodebuild build ...`                     |
-| macOS   | Test   | `xcodebuild test ...`                      |
 
 ## Review Checklist
 
 - [ ] No `unwrap()` / `expect()` in Rust production code
-- [ ] No `try!` / force-unwrap in Swift production code
 - [ ] No `any` types in TypeScript without justification
 - [ ] All public Rust APIs have doc comments
 - [ ] Test coverage ≥ 80% on new code

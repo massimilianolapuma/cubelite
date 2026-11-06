@@ -1,5 +1,7 @@
 # VoiceOver + keyboard accessibility (#120 stage 2)
 
+> The native macOS app was removed in November 2026 (tag `macos-native-final`); native findings below are historical.
+
 Companion to `docs/a11y/contrast-audit.md` (stage 1). This covers stage 2: every
 interactive element exposes a meaningful VoiceOver label and correct traits,
 and the app is fully operable with keyboard only — no trackpad. Delivered as

@@ -634,7 +634,7 @@ impl KubeClient {
     }
 
     /// Replace one resource with an edited YAML manifest (PUT, `kubectl
-    /// replace` semantics, like the native app's manifest sheet).
+    /// replace` semantics).
     ///
     /// The manifest must be a mapping of the target's kind whose
     /// `metadata.name` is `name` (and `metadata.namespace`, when present,

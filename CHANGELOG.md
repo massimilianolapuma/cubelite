@@ -7,19 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **The native macOS app** (`apps/macos`, SwiftUI): CubeLite is now the
+  desktop app only, on macOS, Windows and Linux. On macOS install
+  `CubeLite-Desktop-macOS.dmg`; it updates itself. Releases no longer ship
+  `CubeLite-macOS.zip` / `CubeLite-macOS.dmg`, and the macOS CI and the Swift
+  code scanning are gone. The last native source is at the git tag
+  `macos-native-final`.
+
 ### Added
 
-- **Group the macOS resource lists by namespace** (#551, part of #547): with
-  All Namespaces selected, a toggle in the list bar (and "Group by namespace"
-  in Settings → Navigation, off by default) shows one collapsible group per
-  namespace in Pods, Deployments, StatefulSets, Jobs, CronJobs, Services,
-  Ingresses, ConfigMaps, Secrets, PVCs and Helm Releases. Each header gives
-  the row count and, on lists with a status, a dot in the worst tone plus how
-  many rows are not ok; Option-click collapses or expands every group, and
-  ← / → collapse or expand the selected row's group from the keyboard.
-  Collapsed groups are remembered per namespace across lists until the
-  cluster changes; the Namespace column steps aside while grouped. With the
-  toggle off, or one namespace selected, lists are unchanged.
 - **Group the desktop resource lists by namespace** (#550, part of #547):
   with "All namespaces" selected, a "Group by namespace" toggle in each list's
   title bar (and in Preferences → Navigation, off by default, persisted) shows
@@ -41,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **A context uses the cluster and user of its own kubeconfig file**
-  (core, desktop and macOS, #543): when several kubeconfig files are merged
+  (#543): when several kubeconfig files are merged
   (`~/.kube`, the Preferences list or `KUBECONFIG`), clusters and users were
   settled first-wins by name across the whole merge, so a stale cluster or
   user left in an earlier file (for example `~/.kube/config` after a cluster
@@ -49,12 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server and credentials. A context now resolves its `cluster` and `user`
   against the file that defines it; only names that file does not define fall
   back to the first file that does, so cross-file references keep working.
-  Contexts and `current-context` are still first-wins. On macOS, a token
-  stored in the Keychain from the earlier file's stale user is replaced with
-  the context file's token for the same server; a token you entered yourself
-  is kept, and "Reset stored credentials" still clears it. Preferences notes,
+  Contexts and `current-context` are still first-wins. Preferences notes,
   per file, the clusters and users an earlier file defines differently
-  ("N redefined" on the desktop, a caption on macOS).
+  ("N redefined").
 
 ## [0.7.0] - 2026-11-05
 

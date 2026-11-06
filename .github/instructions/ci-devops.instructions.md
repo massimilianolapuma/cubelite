@@ -28,7 +28,6 @@ Guidelines for all files under `.github/` — workflows, actions, and tooling co
 - Cache dependencies:
   - Rust: `actions/cache` on `~/.cargo/registry` + `target/` keyed on `Cargo.lock` hash
   - Node: `actions/setup-node` with `cache: 'pnpm'`
-  - Swift: `actions/cache` on `.build/` keyed on `Package.resolved` hash
 
 ## Branch / PR Conventions
 

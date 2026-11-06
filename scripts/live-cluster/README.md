@@ -25,13 +25,7 @@ Wait until `kubectl --context minikube -n logging get elasticsearch,kibana,beat`
 reports health (yellow is expected with one node), then run:
 
 ```sh
-# Rust core (desktop backend)
 CUBELITE_LIVE_CONTEXT=minikube cargo test -p cubelite-core --test live_integrations -- --ignored --nocapture
-
-# Swift services (macOS)
-cd apps/macos/cubelite && TEST_RUNNER_CUBELITE_LIVE_CONTEXT=minikube xcodebuild test \
-  -project cubelite.xcodeproj -scheme cubelite -destination 'platform=macOS' \
-  -only-testing cubeliteTests/LiveIntegrationsTests
 ```
 
 In the apps: Preferences → Elasticsearch / Prometheus → In cluster → Detect.

@@ -5,7 +5,7 @@
  *
  *   "<weight> <size>px <sans|mono>[ · uppercase][ · ls <em>em]"
  *
- * Shared by the CSS and Swift emitters in export-tokens.ts.
+ * Used by the CSS emitter in export-tokens.ts.
  */
 
 export type TypeFamily = "sans" | "mono";

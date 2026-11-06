@@ -10,8 +10,5 @@
 # Desktop app (Tauri + Svelte)
 /apps/desktop/ @massimilianolapuma
 
-# macOS native app (Swift + SwiftUI)
-/apps/macos/ @massimilianolapuma
-
 # CI/CD and GitHub config
 /.github/ @massimilianolapuma
