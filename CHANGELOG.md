@@ -38,6 +38,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A kubeconfig with `contexts: null` or `users: null` no longer hides
+  every context** (#557): kubectl writes `null` for an empty list (for
+  example after `kubectl config set-cluster --kubeconfig <new file>`). Such a
+  file made the whole merge fail, so the app listed no context at all, and
+  `~/.kube` discovery skipped it. A `null` list now reads as empty, as in
+  kubectl.
 - **An empty `current-context` no longer hides the next kubeconfig's**
   (#552): when the first merged file had `current-context: ""` (kubectl
   writes it into a new file, and after `kubectl config unset

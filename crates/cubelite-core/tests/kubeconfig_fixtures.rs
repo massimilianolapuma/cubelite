@@ -27,15 +27,7 @@ struct KnownFailure {
 /// Such a mismatch is reported but does not fail the test. Any other value
 /// of the field fails it, and so does a listed field that no longer shows
 /// the value, so the entry is updated or removed with the fix.
-const KNOWN_FAILURES: &[KnownFailure] = &[
-    // `contexts: null` / `users: null`, as kubectl writes them, fail the load.
-    KnownFailure {
-        case: "kubectl-null-lists",
-        field: "load",
-        got: r#""error: failed to parse kubeconfig: contexts: invalid type: unit value, expected a sequence at line 6 column 11""#,
-        issue: 557,
-    },
-];
+const KNOWN_FAILURES: &[KnownFailure] = &[];
 
 // ---------------------------------------------------------------------------
 // Schema
