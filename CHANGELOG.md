@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Namespace column in the desktop resource lists** (#546): Pods,
+  Deployments, StatefulSets, Jobs, CronJobs, Services, Ingresses, ConfigMaps,
+  Secrets and PVCs show each row's namespace next to its name, and the header
+  sorts by namespace then name — as the native app and the Helm Releases list
+  already did. With "All namespaces" selected, rows from different namespaces
+  are no longer told apart only through the filter field.
+
 ### Fixed
 
 - **A context uses the cluster and user of its own kubeconfig file**

@@ -25,7 +25,7 @@
 		revealed = { ...revealed, [key]: !revealed[key] };
 	}
 
-	const grid = 'grid-template-columns: 2.2fr 1.3fr 0.5fr 0.55fr 0.7fr;';
+	const grid = 'grid-template-columns: 2.2fr 1fr 1.3fr 0.5fr 0.55fr 0.7fr;';
 
 	// Default sort from Preferences, header click overrides for the session (#496).
 	const sorted = $derived(sortRows(resources.secrets, lists.specFor('secrets'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp }));
@@ -48,6 +48,7 @@
 		<div class="overflow-hidden rounded-lg border border-border-default">
 			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
 				<SortHeader list="secrets" field="name" label="Name" />
+				<SortHeader list="secrets" field="namespace" label="Namespace" />
 				<span class="type-colhead">Type</span>
 				<span class="type-colhead">Data</span>
 				<SortHeader list="secrets" field="age" label="Age" />
@@ -65,6 +66,7 @@
 								style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
 							>
 								<span class="type-data truncate text-text-data-bright">{secret.name}</span>
+								<span class="type-data-sm truncate text-text-secondary">{secret.namespace}</span>
 								<span class="type-data-sm truncate text-text-secondary">{secret.secret_type ?? '—'}</span>
 								<span class="type-data-sm text-text-secondary">{Object.keys(secret.data).length}</span>
 								<span class="type-data-sm text-text-secondary">{formatAge(secret.creation_timestamp)}</span>

@@ -71,10 +71,30 @@ describe("list sort (#496)", () => {
   it("first click on the default's own field flips instead of doing nothing", async () => {
     lists.defaultSort = { field: "name", dir: "asc" };
     render(PodTable, { props: { pods } });
-    await fireEvent.click(screen.getByRole("button", { name: /^Sort by Name/ }));
+    await fireEvent.click(screen.getByRole("button", { name: "Sort by Name" }));
     expect(rowNames()).toEqual(["pod-10", "pod-2", "pod-1"]);
-    await fireEvent.click(screen.getByRole("button", { name: /^Sort by Name/ }));
+    await fireEvent.click(screen.getByRole("button", { name: "Sort by Name" }));
     expect(rowNames()).toEqual(["pod-1", "pod-2", "pod-10"]);
+  });
+
+  it("shows each pod's namespace and sorts by it, then by name (#546)", async () => {
+    render(PodTable, {
+      props: {
+        pods: [
+          pod("pod-b", { namespace: "team-b" }),
+          pod("pod-c", { namespace: "team-a" }),
+          pod("pod-a", { namespace: "team-b" }),
+        ],
+      },
+    });
+    expect(screen.getByText("team-a")).toBeInTheDocument();
+    expect(screen.getAllByText("team-b")).toHaveLength(2);
+    const header = screen.getByRole("button", { name: "Sort by Namespace" });
+    await fireEvent.click(header);
+    expect(rowNames()).toEqual(["pod-c", "pod-a", "pod-b"]);
+    expect(header).toHaveAttribute("data-sort", "ascending");
+    await fireEvent.click(header);
+    expect(rowNames()).toEqual(["pod-b", "pod-a", "pod-c"]);
   });
 
   it("status puts problems first and the override clears on cluster switch", async () => {

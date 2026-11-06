@@ -238,3 +238,40 @@ describe("workload views", () => {
     expect(screen.getByText("fast")).toBeInTheDocument();
   });
 });
+
+describe("Namespace column (#546)", () => {
+  const ns = "team-a";
+  const cases: [string, () => void, () => Promise<{ default: unknown }>][] = [
+    ["services", () => (resources.services = [{ name: "web", namespace: ns, service_type: "ClusterIP", cluster_ip: null, external_ips: [], ports: [], creation_timestamp: null }]), () => import("./ServicesView.svelte")],
+    ["ingresses", () => (resources.ingresses = [{ name: "web", namespace: ns, class: null, hosts: [], addresses: [], tls: false, creation_timestamp: null }]), () => import("./IngressesView.svelte")],
+    ["configmaps", () => (resources.configmaps = [{ name: "settings", namespace: ns, data_count: 1, creation_timestamp: null }]), () => import("./ConfigMapsView.svelte")],
+    ["jobs", () => (resources.jobs = [{ name: "migrate", namespace: ns, completions: 1, succeeded: 1, active: 0, failed: 0, creation_timestamp: null }]), () => import("./JobsView.svelte")],
+    ["cronjobs", () => (resources.cronjobs = [{ name: "backup", namespace: ns, schedule: "0 3 * * *", suspend: false, active: 0, last_schedule: null, creation_timestamp: null }]), () => import("./CronJobsView.svelte")],
+    ["statefulsets", () => (resources.statefulsets = [{ name: "db", namespace: ns, replicas: 1, ready_replicas: 1, creation_timestamp: null }]), () => import("./StatefulSetsView.svelte")],
+    ["pvcs", () => (resources.pvcs = [{ name: "data", namespace: ns, status: "Bound", volume: null, capacity: null, access_modes: [], storage_class: null, creation_timestamp: null }]), () => import("./PvcsView.svelte")],
+  ];
+
+  it.each(cases)("%s shows the namespace with a sortable header", async (_kind, seed, load) => {
+    const { default: View } = await load();
+    seed();
+    render(View as never);
+    expect(screen.getByRole("button", { name: "Sort by Namespace" })).toBeInTheDocument();
+    expect(screen.getByText(ns)).toBeInTheDocument();
+  });
+
+  it("secrets shows the namespace with a sortable header", async () => {
+    const { listSecrets } = await import("#lib/tauri.ts");
+    vi.mocked(listSecrets).mockResolvedValue([
+      { name: "creds", namespace: ns, secret_type: "Opaque", data: {}, creation_timestamp: null },
+    ]);
+    render(SecretsView);
+    expect(await screen.findByText(ns)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sort by Namespace" })).toBeInTheDocument();
+  });
+
+  it("nodes, cluster-scoped, have no namespace column", () => {
+    resources.nodeInventory = [{ name: "node-1", status: "Ready", roles: [], version: "v1.30.2", creation_timestamp: null }];
+    render(NodesView);
+    expect(screen.queryByRole("button", { name: "Sort by Namespace" })).toBeNull();
+  });
+});

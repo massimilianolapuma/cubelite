@@ -27,7 +27,7 @@
 	} = $props();
 
 	// Spec grid: NAME / STATUS / READY / AGE / CPU / MEMORY / RESTARTS
-	const grid = 'grid-template-columns: 2.4fr 0.9fr 0.7fr 0.55fr 0.6fr 0.7fr 0.5fr;';
+	const grid = 'grid-template-columns: 2.4fr 1fr 0.9fr 0.7fr 0.55fr 0.6fr 0.7fr 0.5fr;';
 
 	// Last hour of CPU and memory from Prometheus, after the rows (#510).
 	$effect(() => {
@@ -45,6 +45,7 @@
 <div class="overflow-hidden rounded-lg border border-border-default">
 	<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
 		<SortHeader list="pods" field="name" label="Name" />
+		<SortHeader list="pods" field="namespace" label="Namespace" />
 		<SortHeader list="pods" field="status" label="Status" />
 		<span class="type-colhead">Ready</span>
 		<SortHeader list="pods" field="age" label="Age" />
@@ -77,6 +78,7 @@
 					}}
 				>
 					<span class="type-data truncate text-text-data-bright">{pod.name}</span>
+					<span class="type-data-sm truncate text-text-secondary">{pod.namespace}</span>
 					<span class="flex items-center gap-1.5">
 						{#if mutations.isDeleting(pod.namespace, pod.name)}
 							<LoaderCircle size={10} class="shrink-0 animate-spin text-text-tertiary" aria-hidden="true" />
