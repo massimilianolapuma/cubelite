@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Group the macOS resource lists by namespace** (#551, part of #547): with
+  All Namespaces selected, a toggle in the list bar (and "Group by namespace"
+  in Settings → Navigation, off by default) shows one collapsible group per
+  namespace in Pods, Deployments, StatefulSets, Jobs, CronJobs, Services,
+  Ingresses, ConfigMaps, Secrets, PVCs and Helm Releases. Each header gives
+  the row count and, on lists with a status, a dot in the worst tone plus how
+  many rows are not ok; Option-click collapses or expands every group.
+  Collapsed groups are remembered per namespace across lists until the
+  cluster changes; the Namespace column steps aside while grouped. With the
+  toggle off, or one namespace selected, lists are unchanged.
 - **Namespace column in the desktop resource lists** (#546): Pods,
   Deployments, StatefulSets, Jobs, CronJobs, Services, Ingresses, ConfigMaps,
   Secrets and PVCs show each row's namespace next to its name, and the header

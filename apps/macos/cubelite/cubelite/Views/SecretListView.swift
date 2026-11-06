@@ -9,9 +9,11 @@ struct SecretListView: View {
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [SecretInfo] {
-        ListSort.sorted(clusterState.secrets, by: resourcePreferences.spec(for: "secrets"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<SecretInfo> {
+        resourcePreferences.layout(
+            clusterState.secrets, for: .secrets, namespace: clusterState.selectedNamespace)
     }
     @Binding var selectedSecretID: SecretInfo.ID?
 
@@ -47,7 +49,8 @@ struct SecretListView: View {
     // MARK: - Table
 
     private var secretTable: some View {
-        Table(sortedRows, selection: $selectedSecretID, sortOrder: resourcePreferences.sortOrder(for: "secrets", of: SecretInfo.self)) {
+        let layout = self.layout
+        return Table(of: SecretInfo.self, selection: $selectedSecretID, sortOrder: resourcePreferences.sortOrder(for: "secrets", of: SecretInfo.self)) {
             TableColumn("Name", value: \.sortKeyName) { secret in
                 Text(secret.name)
                     .typeStyle(DesignTokens.Typography.data)
@@ -55,13 +58,7 @@ struct SecretListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace", value: \.sortKeyNamespace) { secret in
-                Text(secret.namespace)
-                    .typeStyle(DesignTokens.Typography.dataSm)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .width(min: 80, ideal: 120)
+            if !layout.isGrouped { NamespaceColumn.column(SecretInfo.self) }
 
             TableColumn("Type") { secret in
                 SecretTypeTag(type: secret.type)
@@ -81,6 +78,8 @@ struct SecretListView: View {
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .secrets, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
     }

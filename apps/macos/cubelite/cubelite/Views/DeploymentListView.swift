@@ -10,9 +10,11 @@ struct DeploymentListView: View {
     @Environment(ResourcePreferences.self) private var resourcePreferences
     @Environment(PrometheusStore.self) private var prometheus: PrometheusStore?
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [DeploymentInfo] {
-        ListSort.sorted(clusterState.deployments, by: resourcePreferences.spec(for: "deployments"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<DeploymentInfo> {
+        resourcePreferences.layout(
+            clusterState.deployments, for: .deployments, namespace: clusterState.selectedNamespace)
     }
     @Binding var selectedDeploymentID: DeploymentInfo.ID?
 
@@ -59,7 +61,8 @@ struct DeploymentListView: View {
 
     private var deploymentTable: some View {
         let cpu = cpuByDeployment()
-        return Table(sortedRows, selection: $selectedDeploymentID, sortOrder: resourcePreferences.sortOrder(for: "deployments", of: DeploymentInfo.self)) {
+        let layout = self.layout
+        return Table(of: DeploymentInfo.self, selection: $selectedDeploymentID, sortOrder: resourcePreferences.sortOrder(for: "deployments", of: DeploymentInfo.self)) {
             TableColumn("") { dep in
                 DeploymentStatusDot(ready: dep.readyReplicas, desired: dep.replicas)
             }
@@ -72,13 +75,7 @@ struct DeploymentListView: View {
             }
             .width(min: 120, ideal: 220)
 
-            TableColumn("Namespace", value: \.sortKeyNamespace) { dep in
-                Text(dep.namespace)
-                    .typeStyle(DesignTokens.Typography.dataSm)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .width(min: 80, ideal: 120)
+            if !layout.isGrouped { NamespaceColumn.column(DeploymentInfo.self) }
 
             TableColumn("Ready", value: \.sortKeyStatus) { dep in
                 HStack(spacing: 6) {
@@ -88,7 +85,8 @@ struct DeploymentListView: View {
                 }
             }
             .width(ideal: 120)
-
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .deployments, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
     }

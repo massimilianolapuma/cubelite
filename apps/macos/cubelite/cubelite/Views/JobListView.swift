@@ -8,9 +8,11 @@ struct JobListView: View {
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [JobInfo] {
-        ListSort.sorted(clusterState.jobs, by: resourcePreferences.spec(for: "jobs"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<JobInfo> {
+        resourcePreferences.layout(
+            clusterState.jobs, for: .jobs, namespace: clusterState.selectedNamespace)
     }
 
     var body: some View {
@@ -44,7 +46,8 @@ struct JobListView: View {
     }
 
     private var jobTable: some View {
-        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "jobs", of: JobInfo.self)) {
+        let layout = self.layout
+        return Table(of: JobInfo.self, sortOrder: resourcePreferences.sortOrder(for: "jobs", of: JobInfo.self)) {
             TableColumn("") { job in
                 Circle()
                     .fill(tone(for: job))
@@ -83,6 +86,8 @@ struct JobListView: View {
                     .foregroundStyle(DesignTokens.textTertiary)
             }
             .width(70)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .jobs, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
     }

@@ -318,6 +318,7 @@ final class ResourcePreferences {
 
     static let navigationKey = "navigation"
     static let sortKey = "lists.sort"
+    static let groupKey = "lists.groupByNamespace"
 
     private let defaults: UserDefaults
 
@@ -329,8 +330,18 @@ final class ResourcePreferences {
         didSet { save(defaultSort, key: Self.sortKey) }
     }
 
+    /// "Group by namespace" (#551): global, off by default; applies only
+    /// with All Namespaces.
+    var groupByNamespace: Bool {
+        didSet { defaults.set(groupByNamespace, forKey: Self.groupKey) }
+    }
+
     /// List id → header-click override for this session.
     private(set) var overrides: [String: SortSpec] = [:]
+
+    /// Collapsed namespace groups, by name and shared by every list, for
+    /// the session (#551); new namespaces show expanded.
+    private(set) var collapsedNamespaces: Set<String> = []
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -338,6 +349,7 @@ final class ResourcePreferences {
             (Self.load(NavPrefs.self, key: Self.navigationKey, from: defaults) ?? .defaults)
             .normalized()
         self.defaultSort = Self.load(SortSpec.self, key: Self.sortKey, from: defaults) ?? .api
+        self.groupByNamespace = defaults.bool(forKey: Self.groupKey)
     }
 
     private static func load<T: Decodable>(_ type: T.Type, key: String, from defaults: UserDefaults)
@@ -381,7 +393,44 @@ final class ResourcePreferences {
         overrides[list] = spec
     }
 
-    func resetSession() { overrides = [:] }
+    /// Header sorts and collapsed groups are per session and cluster.
+    func resetSession() {
+        overrides = [:]
+        collapsedNamespaces = []
+    }
+
+    // Grouping (#551)
+
+    /// Whether `type`'s list groups by namespace while `namespace` is shown
+    /// (nil = All Namespaces).
+    func isGrouping(_ type: ResourceType, namespace: String?) -> Bool {
+        groupByNamespace && namespace == nil && type.groupsByNamespace
+    }
+
+    /// `rows` in the list's current sort, grouped when grouping applies.
+    func layout<T: SortableResource>(_ rows: [T], for type: ResourceType, namespace: String?)
+        -> ListLayout<T>
+    {
+        let current = spec(for: type.navID)
+        return isGrouping(type, namespace: namespace)
+            ? .grouped(ListSort.groupedByNamespace(rows, by: current))
+            : .flat(ListSort.sorted(rows, by: current))
+    }
+
+    func isCollapsed(_ namespace: String) -> Bool { collapsedNamespaces.contains(namespace) }
+
+    /// Header click: toggles `namespace`'s group; Option-click passes the
+    /// list's groups as `all`, which all take the clicked group's new state.
+    func toggleCollapsed(_ namespace: String, all: [String]? = nil) {
+        let collapse = !isCollapsed(namespace)
+        for name in all ?? [namespace] {
+            if collapse {
+                collapsedNamespaces.insert(name)
+            } else {
+                collapsedNamespaces.remove(name)
+            }
+        }
+    }
 
     /// Native `Table` sort binding for `list`: shows the effective sort as
     /// the header indicator and turns header clicks into session overrides.
