@@ -11,7 +11,7 @@
 		void resources.loadKind('ingresses');
 	});
 
-	const grid = 'grid-template-columns: 1.8fr 0.7fr 1.6fr 1.1fr 0.7fr 0.55fr;';
+	const grid = 'grid-template-columns: 1.8fr 1fr 0.7fr 1.6fr 1.1fr 0.7fr 0.55fr;';
 
 	// Default sort from Preferences, header click overrides for the session (#496).
 	const sorted = $derived(sortRows(resources.ingresses, lists.specFor('ingresses'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp }));
@@ -26,6 +26,7 @@
 		<div class="overflow-hidden rounded-lg border border-border-default">
 			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
 				<SortHeader list="ingresses" field="name" label="Name" />
+				<SortHeader list="ingresses" field="namespace" label="Namespace" />
 				<span class="type-colhead">Class</span>
 				<span class="type-colhead">Hosts</span>
 				<span class="type-colhead">Address</span>
@@ -42,6 +43,7 @@
 							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
 						>
 							<span class="type-data truncate text-text-data-bright">{ing.name}</span>
+							<span class="type-data-sm truncate text-text-secondary">{ing.namespace}</span>
 							<span class="type-data-sm text-text-secondary">{ing.class ?? '—'}</span>
 							<span class="type-data-sm truncate {ing.hosts.length ? 'text-text-secondary' : 'text-text-disabled'}">
 								{ing.hosts.length ? ing.hosts.join(', ') : '*'}

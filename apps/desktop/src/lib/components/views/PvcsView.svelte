@@ -12,7 +12,7 @@
 		void resources.loadKind('pvcs');
 	});
 
-	const grid = 'grid-template-columns: 2fr 0.7fr 1.4fr 0.7fr 0.9fr 0.9fr 0.55fr;';
+	const grid = 'grid-template-columns: 2fr 1fr 0.7fr 1.4fr 0.7fr 0.9fr 0.9fr 0.55fr;';
 
 	// Default sort from Preferences, header click overrides for the session (#496).
 	const sorted = $derived(sortRows(resources.pvcs, lists.specFor('pvcs'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp, status: (x) => pvcTone(x.status) }));
@@ -27,6 +27,7 @@
 		<div class="overflow-hidden rounded-lg border border-border-default">
 			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
 				<SortHeader list="pvcs" field="name" label="Name" />
+				<SortHeader list="pvcs" field="namespace" label="Namespace" />
 				<SortHeader list="pvcs" field="status" label="Status" />
 				<span class="type-colhead">Volume</span>
 				<span class="type-colhead">Capacity</span>
@@ -44,6 +45,7 @@
 							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
 						>
 						<span class="type-data truncate text-text-data-bright">{item.name}</span>
+						<span class="type-data-sm truncate text-text-secondary">{item.namespace}</span>
 						<span class="type-data-sm" style="color: {item.status === 'Bound' ? 'var(--color-status-ok)' : item.status === 'Lost' ? 'var(--color-status-err)' : 'var(--color-status-warn)'};">{item.status ?? '—'}</span>
 						<span class="type-data-sm truncate text-text-secondary">{item.volume ?? '—'}</span>
 						<span class="type-data-sm text-text-secondary">{item.capacity ?? '—'}</span>

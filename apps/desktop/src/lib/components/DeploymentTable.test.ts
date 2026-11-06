@@ -53,7 +53,7 @@ function dep(overrides: Partial<DeploymentInfo> = {}): DeploymentInfo {
 describe("DeploymentTable", () => {
   it("renders the spec'd column headers", () => {
     render(DeploymentTable, { props: { deployments: [] } });
-    for (const h of ["Name", "Ready", "Status", "Age", "Replicas · Actions"]) {
+    for (const h of ["Name", "Namespace", "Ready", "Status", "Age", "Replicas · Actions"]) {
       expect(screen.getByText(h)).toBeInTheDocument();
     }
   });

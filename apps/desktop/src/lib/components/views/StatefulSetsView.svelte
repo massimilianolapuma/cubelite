@@ -12,7 +12,7 @@
 		void resources.loadKind('statefulsets');
 	});
 
-	const grid = 'grid-template-columns: 2.6fr 0.7fr 0.9fr 0.55fr;';
+	const grid = 'grid-template-columns: 2.6fr 1fr 0.7fr 0.9fr 0.55fr;';
 
 	// Default sort from Preferences, header click overrides for the session (#496).
 	const sorted = $derived(sortRows(resources.statefulsets, lists.specFor('statefulsets'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp, status: (x) => replicaTone(x.replicas, x.ready_replicas) }));
@@ -27,6 +27,7 @@
 		<div class="overflow-hidden rounded-lg border border-border-default">
 			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
 				<SortHeader list="statefulsets" field="name" label="Name" />
+				<SortHeader list="statefulsets" field="namespace" label="Namespace" />
 				<span class="type-colhead">Ready</span>
 				<SortHeader list="statefulsets" field="status" label="Status" />
 				<SortHeader list="statefulsets" field="age" label="Age" />
@@ -41,6 +42,7 @@
 							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
 						>
 						<span class="type-data truncate text-text-data-bright">{item.name}</span>
+						<span class="type-data-sm truncate text-text-secondary">{item.namespace}</span>
 						<span class="type-data-sm text-text-secondary">{item.ready_replicas}/{item.replicas}</span>
 						<span class="type-data-sm" style="color: {item.replicas > 0 && item.ready_replicas >= item.replicas ? 'var(--color-status-ok)' : 'var(--color-status-warn)'};">{item.replicas > 0 && item.ready_replicas >= item.replicas ? 'Available' : 'Progressing'}</span>
 						<span class="type-data-sm text-text-secondary">{formatAge(item.creation_timestamp)}</span>

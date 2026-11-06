@@ -11,7 +11,7 @@
 		void resources.loadKind('services');
 	});
 
-	const grid = 'grid-template-columns: 2fr 0.9fr 1fr 1fr 1.4fr 0.55fr;';
+	const grid = 'grid-template-columns: 2fr 1fr 0.9fr 1fr 1fr 1.4fr 0.55fr;';
 
 	// Default sort from Preferences, header click overrides for the session (#496).
 	const sorted = $derived(sortRows(resources.services, lists.specFor('services'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp }));
@@ -26,6 +26,7 @@
 		<div class="overflow-hidden rounded-lg border border-border-default">
 			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
 				<SortHeader list="services" field="name" label="Name" />
+				<SortHeader list="services" field="namespace" label="Namespace" />
 				<span class="type-colhead">Type</span>
 				<span class="type-colhead">Cluster-IP</span>
 				<span class="type-colhead">External-IP</span>
@@ -42,6 +43,7 @@
 							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
 						>
 							<span class="type-data truncate text-text-data-bright">{svc.name}</span>
+							<span class="type-data-sm truncate text-text-secondary">{svc.namespace}</span>
 							<span class="type-data-sm text-text-secondary">{svc.service_type ?? '—'}</span>
 							<span class="type-data-sm truncate text-text-secondary">{svc.cluster_ip ?? '—'}</span>
 							<span class="type-data-sm truncate {svc.external_ips.length ? 'text-text-secondary' : 'text-text-disabled'}">

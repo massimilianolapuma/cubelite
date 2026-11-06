@@ -11,7 +11,7 @@
 		void resources.loadKind('configmaps');
 	});
 
-	const grid = 'grid-template-columns: 3fr 0.6fr 0.55fr;';
+	const grid = 'grid-template-columns: 3fr 1fr 0.6fr 0.55fr;';
 
 	// Default sort from Preferences, header click overrides for the session (#496).
 	const sorted = $derived(sortRows(resources.configmaps, lists.specFor('configmaps'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp }));
@@ -26,6 +26,7 @@
 		<div class="overflow-hidden rounded-lg border border-border-default">
 			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
 				<SortHeader list="configmaps" field="name" label="Name" />
+				<SortHeader list="configmaps" field="namespace" label="Namespace" />
 				<span class="type-colhead">Data</span>
 				<SortHeader list="configmaps" field="age" label="Age" />
 			</div>
@@ -39,6 +40,7 @@
 							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
 						>
 							<span class="type-data truncate text-text-data-bright">{cm.name}</span>
+							<span class="type-data-sm truncate text-text-secondary">{cm.namespace}</span>
 							<span class="type-data-sm text-text-secondary">{cm.data_count}</span>
 							<span class="type-data-sm text-text-secondary">{formatAge(cm.creation_timestamp)}</span>
 						</div>

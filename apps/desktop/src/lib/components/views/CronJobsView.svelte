@@ -11,7 +11,7 @@
 		void resources.loadKind('cronjobs');
 	});
 
-	const grid = 'grid-template-columns: 2fr 1fr 0.7fr 0.5fr 0.8fr 0.55fr;';
+	const grid = 'grid-template-columns: 2fr 1fr 1fr 0.7fr 0.5fr 0.8fr 0.55fr;';
 
 	// Default sort from Preferences, header click overrides for the session (#496).
 	const sorted = $derived(sortRows(resources.cronjobs, lists.specFor('cronjobs'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp }));
@@ -26,6 +26,7 @@
 		<div class="overflow-hidden rounded-lg border border-border-default">
 			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
 				<SortHeader list="cronjobs" field="name" label="Name" />
+				<SortHeader list="cronjobs" field="namespace" label="Namespace" />
 				<span class="type-colhead">Schedule</span>
 				<span class="type-colhead">Suspend</span>
 				<span class="type-colhead">Active</span>
@@ -42,6 +43,7 @@
 							style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
 						>
 						<span class="type-data truncate text-text-data-bright">{item.name}</span>
+						<span class="type-data-sm truncate text-text-secondary">{item.namespace}</span>
 						<span class="type-data-sm text-text-secondary">{item.schedule}</span>
 						<span class="type-data-sm" style="color: {item.suspend ? 'var(--color-status-warn)' : 'var(--color-text-secondary)'};">{item.suspend ? 'True' : 'False'}</span>
 						<span class="type-data-sm text-text-secondary">{item.active}</span>

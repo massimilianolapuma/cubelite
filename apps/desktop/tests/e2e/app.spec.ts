@@ -170,7 +170,7 @@ test("preferences reorder and hide sidebar types, headers sort lists (#496)", as
   await expect(sidebar.getByText("Services")).toHaveCount(0);
 
   await sidebar.getByText("Pods").click();
-  const header = page.getByRole("button", { name: /^Sort by Name/ });
+  const header = page.getByRole("button", { name: "Sort by Name", exact: true });
   await header.click();
   await expect(header).toHaveAttribute("data-sort", "ascending");
 });
