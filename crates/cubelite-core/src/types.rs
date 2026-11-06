@@ -5,7 +5,19 @@
 //!
 //! [kubeconfig v1 API spec]: https://kubernetes.io/docs/concepts/configuration/organize-cluster-access-kubeconfig/
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Reads an explicit `null` as the type's default, like a missing key.
+///
+/// kubectl writes `contexts: null` / `users: null` / `clusters: null` for an
+/// empty list (#557); kubectl and kube-rs read them as empty lists.
+fn null_as_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
 
 // ---------------------------------------------------------------------------
 // Top-level kubeconfig document
@@ -19,15 +31,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KubeConfigFile {
     /// All named contexts discovered in the kubeconfig(s).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub contexts: Vec<NamedContext>,
 
     /// All named clusters discovered in the kubeconfig(s).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub clusters: Vec<NamedCluster>,
 
     /// All named users / credentials discovered in the kubeconfig(s).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_as_default")]
     pub users: Vec<NamedUser>,
 
     /// The name of the currently active context, if any.
@@ -214,6 +226,28 @@ mod tests {
         assert!(cfg.clusters.is_empty());
         assert!(cfg.users.is_empty());
         assert!(cfg.current_context.is_none());
+    }
+
+    #[test]
+    fn null_lists_read_as_empty() {
+        // What `kubectl config set-cluster --kubeconfig <new file>` writes (#557).
+        let yaml = "apiVersion: v1\nclusters:\n- cluster:\n    server: https://c.example.com:6443\n  name: c\ncontexts: null\ncurrent-context: \"\"\nkind: Config\nusers: null\n";
+        let cfg: KubeConfigFile = serde_yaml::from_str(yaml).expect("null lists parse");
+        assert!(cfg.contexts.is_empty());
+        assert!(cfg.users.is_empty());
+        assert_eq!(cfg.clusters.len(), 1);
+
+        let all_null: KubeConfigFile =
+            serde_yaml::from_str("clusters: null\ncontexts: null\nusers: null\n")
+                .expect("all null");
+        assert!(all_null.clusters.is_empty());
+        assert!(all_null.contexts.is_empty());
+        assert!(all_null.users.is_empty());
+    }
+
+    #[test]
+    fn a_list_of_the_wrong_type_is_still_an_error() {
+        assert!(serde_yaml::from_str::<KubeConfigFile>("contexts: 42\n").is_err());
     }
 
     #[test]
