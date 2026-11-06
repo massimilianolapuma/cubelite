@@ -99,7 +99,7 @@ struct PodListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            if !layout.isGrouped { NamespaceColumn.column(PodInfo.self) }
+            if layout.showsNamespaceColumn { NamespaceColumn.column(PodInfo.self) }
 
             TableColumn("Status", value: \.sortKeyStatus) { pod in
                 Text(pod.phase ?? "—")
@@ -156,6 +156,7 @@ struct PodListView: View {
             NamespaceTableRows(layout: layout, type: .pods, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedPodID, preferences: resourcePreferences)
     }
 
 }

@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   namespace in Pods, Deployments, StatefulSets, Jobs, CronJobs, Services,
   Ingresses, ConfigMaps, Secrets, PVCs and Helm Releases. Each header gives
   the row count and, on lists with a status, a dot in the worst tone plus how
-  many rows are not ok; Option-click collapses or expands every group.
+  many rows are not ok; Option-click collapses or expands every group, and
+  ← / → collapse or expand the selected row's group from the keyboard.
   Collapsed groups are remembered per namespace across lists until the
   cluster changes; the Namespace column steps aside while grouped. With the
   toggle off, or one namespace selected, lists are unchanged.

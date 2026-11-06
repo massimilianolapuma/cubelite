@@ -57,7 +57,7 @@ struct IngressListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            if !layout.isGrouped { NamespaceColumn.column(IngressInfo.self) }
+            if layout.showsNamespaceColumn { NamespaceColumn.column(IngressInfo.self) }
 
             TableColumn("Class") { ingress in
                 Text(ingress.ingressClass ?? "—")
@@ -108,5 +108,6 @@ struct IngressListView: View {
             NamespaceTableRows(layout: layout, type: .ingresses, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedIngressID, preferences: resourcePreferences)
     }
 }

@@ -43,6 +43,21 @@ struct NamespaceTableRows<Row: Identifiable>: TableRowContent {
     }
 }
 
+extension View {
+    /// Keyboard path to the groups (#551): section headers are not focusable,
+    /// so on the table ← collapses and → expands the selected row's group.
+    /// The selection stays as it is.
+    func namespaceGroupKeys<Row: Identifiable>(
+        _ layout: ListLayout<Row>, selection: Row.ID?, preferences: ResourcePreferences
+    ) -> some View {
+        onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
+            guard let namespace = layout.namespace(ofRow: selection) else { return .ignored }
+            preferences.setCollapsed(namespace, press.key == .leftArrow)
+            return .handled
+        }
+    }
+}
+
 /// One namespace's section: its header, then its rows unless collapsed.
 struct NamespaceSectionRows<Row: Identifiable>: TableRowContent {
     let group: NamespaceGroup<Row>

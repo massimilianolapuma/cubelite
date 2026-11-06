@@ -49,6 +49,19 @@ enum ListLayout<Row> {
         if case .grouped = self { return true }
         return false
     }
+
+    /// The Namespace column repeats the group header, so it is left out
+    /// while grouped.
+    var showsNamespaceColumn: Bool { !isGrouped }
+}
+
+extension ListLayout where Row: Identifiable {
+    /// Namespace of the group holding the row `id` (keyboard ←/→ collapse
+    /// and expand the selected row's group); nil when flat or not found.
+    func namespace(ofRow id: Row.ID?) -> String? {
+        guard case .grouped(let groups) = self, let id else { return nil }
+        return groups.first { group in group.rows.contains { $0.id == id } }?.namespace
+    }
 }
 
 extension ListLayout: Sendable where Row: Sendable {}
@@ -67,8 +80,8 @@ extension ResourceType {
         case .ingresses: ListNoun(singular: "ingress", plural: "ingresses")
         case .configMaps: ListNoun(singular: "config map", plural: "config maps")
         case .secrets: ListNoun(singular: "secret", plural: "secrets")
-        case .pvcs: ListNoun(singular: "claim", plural: "claims")
-        case .helmReleases: ListNoun(singular: "release", plural: "releases")
+        case .pvcs: ListNoun(singular: "persistent volume claim", plural: "persistent volume claims")
+        case .helmReleases: ListNoun(singular: "Helm release", plural: "Helm releases")
         case .dashboard, .nodes, .events, .logs: nil
         }
     }

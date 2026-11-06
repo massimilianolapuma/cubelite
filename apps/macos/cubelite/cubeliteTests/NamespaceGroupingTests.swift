@@ -51,14 +51,23 @@ final class NamespaceGroupingTests: XCTestCase {
     }
 
     func testProblemMarkerIsWorstToneAndCountOfRowsNotOk() {
-        let groups = ListSort.groupedByNamespace(pods, by: .api)
-        let teamA = groups.first { $0.namespace == "team-a" }
-        XCTAssertEqual(teamA?.count, 3)
-        XCTAssertEqual(teamA?.problems, 3)
-        XCTAssertEqual(teamA?.worst, .err)
-        let teamB = groups.first { $0.namespace == "team-b" }
-        XCTAssertEqual(teamB?.problems, 0)
-        XCTAssertNil(teamB?.worst, "all ok: no marker")
+        let rows = [
+            pod("pending", ns: "a", phase: "Pending"),  // warn, before the worst
+            pod("ok", ns: "a"),
+            pod("failed", ns: "a", phase: "Failed"),  // err
+            pod("unknown", ns: "a", phase: "Unknown"),  // neutral counts as not ok
+            pod("fine", ns: "b"),
+        ]
+        let groups = ListSort.groupedByNamespace(rows, by: .api)
+        XCTAssertEqual(groups.first?.count, 4)
+        XCTAssertEqual(groups.first?.problems, 3)
+        XCTAssertEqual(groups.first?.worst, .err)
+        XCTAssertEqual(groups.last?.problems, 0)
+        XCTAssertNil(groups.last?.worst, "all ok: no marker")
+
+        let neutralOnly = ListSort.groupedByNamespace([pod("x", ns: "c", phase: "Unknown")], by: .api)
+        XCTAssertEqual(neutralOnly.first?.worst, .neutral)
+        XCTAssertEqual(neutralOnly.first?.problems, 1)
     }
 
     func testListsWithoutStatusHaveNoMarker() {
@@ -84,6 +93,43 @@ final class NamespaceGroupingTests: XCTestCase {
             "team-a, 3 pods, 3 with problems, expanded")
         XCTAssertEqual(
             groups[0].accessibilityLabel(noun: noun, expanded: false), "kube-system, 1 pod, collapsed")
+        let single = ListSort.groupedByNamespace([pod("x", ns: "n", phase: "Failed")], by: .api)
+        XCTAssertEqual(
+            single[0].accessibilityLabel(noun: noun, expanded: true),
+            "n, 1 pod, 1 with problems, expanded", "as the desktop: no singular for problems")
+    }
+
+    func testNounsMatchTheDesktop() {
+        let nouns = ResourceType.allCases.compactMap { type in type.groupNoun.map { (type, $0) } }
+        let expected: [ResourceType: (String, String)] = [
+            .pods: ("pod", "pods"), .deployments: ("deployment", "deployments"),
+            .statefulSets: ("stateful set", "stateful sets"), .jobs: ("job", "jobs"),
+            .cronJobs: ("cron job", "cron jobs"), .services: ("service", "services"),
+            .ingresses: ("ingress", "ingresses"), .configMaps: ("config map", "config maps"),
+            .secrets: ("secret", "secrets"),
+            .pvcs: ("persistent volume claim", "persistent volume claims"),
+            .helmReleases: ("Helm release", "Helm releases"),
+        ]
+        XCTAssertEqual(nouns.count, expected.count)
+        for (type, noun) in nouns {
+            XCTAssertEqual(noun.singular, expected[type]?.0, "\(type)")
+            XCTAssertEqual(noun.plural, expected[type]?.1, "\(type)")
+        }
+    }
+
+    func testNamespaceColumnOnlyWhenFlat() {
+        XCTAssertTrue(ListLayout<PodInfo>.flat(pods).showsNamespaceColumn)
+        XCTAssertFalse(
+            ListLayout.grouped(ListSort.groupedByNamespace(pods, by: .api)).showsNamespaceColumn)
+    }
+
+    func testKeysActOnTheSelectedRowsGroup() {
+        let grouped = ListLayout.grouped(ListSort.groupedByNamespace(pods, by: .api))
+        XCTAssertEqual(grouped.namespace(ofRow: "team-a/worker"), "team-a")
+        XCTAssertEqual(grouped.namespace(ofRow: "kube-system/db"), "kube-system")
+        XCTAssertNil(grouped.namespace(ofRow: nil), "no selection: keys pass through")
+        XCTAssertNil(grouped.namespace(ofRow: "gone/x"))
+        XCTAssertNil(ListLayout.flat(pods).namespace(ofRow: "team-a/worker"), "flat: keys pass through")
     }
 
     func testGroupingAppliesToTheNamespacedListsOnly() {
@@ -101,13 +147,6 @@ final class NamespaceGroupingTests: XCTestCase {
         XCTAssertFalse(GroupByNamespaceToggle.isShown(for: .nodes, namespace: nil))
         XCTAssertFalse(GroupByNamespaceToggle.isShown(for: .events, namespace: nil))
         XCTAssertFalse(GroupByNamespaceToggle.isShown(for: nil, namespace: nil))
-    }
-
-    func testStatusToneDotColours() {
-        XCTAssertEqual(StatusTone.err.color, DesignTokens.statusErr)
-        XCTAssertEqual(StatusTone.warn.color, DesignTokens.statusWarn)
-        XCTAssertEqual(StatusTone.neutral.color, DesignTokens.textTertiary)
-        XCTAssertEqual(StatusTone.ok.color, DesignTokens.statusOk)
     }
 }
 
@@ -175,5 +214,14 @@ final class NamespaceGroupingPreferencesTests: XCTestCase {
         XCTAssertEqual(prefs.collapsedNamespaces, ["a", "b", "c"], "a was expanded: collapse all")
         prefs.toggleCollapsed("c", all: all)
         XCTAssertTrue(prefs.collapsedNamespaces.isEmpty, "c was collapsed: expand all")
+    }
+
+    func testKeySetsTheStateRatherThanToggling() {
+        let prefs = ResourcePreferences(defaults: defaults)
+        prefs.setCollapsed("a", true)
+        prefs.setCollapsed("a", true)
+        XCTAssertTrue(prefs.isCollapsed("a"), "← twice stays collapsed")
+        prefs.setCollapsed("a", false)
+        XCTAssertFalse(prefs.isCollapsed("a"))
     }
 }

@@ -419,17 +419,19 @@ final class ResourcePreferences {
 
     func isCollapsed(_ namespace: String) -> Bool { collapsedNamespaces.contains(namespace) }
 
+    func setCollapsed(_ namespace: String, _ collapsed: Bool) {
+        if collapsed {
+            collapsedNamespaces.insert(namespace)
+        } else {
+            collapsedNamespaces.remove(namespace)
+        }
+    }
+
     /// Header click: toggles `namespace`'s group; Option-click passes the
     /// list's groups as `all`, which all take the clicked group's new state.
     func toggleCollapsed(_ namespace: String, all: [String]? = nil) {
         let collapse = !isCollapsed(namespace)
-        for name in all ?? [namespace] {
-            if collapse {
-                collapsedNamespaces.insert(name)
-            } else {
-                collapsedNamespaces.remove(name)
-            }
-        }
+        for name in all ?? [namespace] { setCollapsed(name, collapse) }
     }
 
     /// Native `Table` sort binding for `list`: shows the effective sort as

@@ -58,7 +58,7 @@ struct SecretListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            if !layout.isGrouped { NamespaceColumn.column(SecretInfo.self) }
+            if layout.showsNamespaceColumn { NamespaceColumn.column(SecretInfo.self) }
 
             TableColumn("Type") { secret in
                 SecretTypeTag(type: secret.type)
@@ -82,6 +82,7 @@ struct SecretListView: View {
             NamespaceTableRows(layout: layout, type: .secrets, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedSecretID, preferences: resourcePreferences)
     }
 }
 

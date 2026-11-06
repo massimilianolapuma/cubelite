@@ -59,7 +59,7 @@ struct ServiceListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            if !layout.isGrouped { NamespaceColumn.column(ServiceInfo.self) }
+            if layout.showsNamespaceColumn { NamespaceColumn.column(ServiceInfo.self) }
 
             TableColumn("Type") { service in
                 ServiceTypeTag(type: service.type)
@@ -93,6 +93,7 @@ struct ServiceListView: View {
             NamespaceTableRows(layout: layout, type: .services, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedServiceID, preferences: resourcePreferences)
     }
 }
 

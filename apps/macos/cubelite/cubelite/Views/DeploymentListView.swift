@@ -75,7 +75,7 @@ struct DeploymentListView: View {
             }
             .width(min: 120, ideal: 220)
 
-            if !layout.isGrouped { NamespaceColumn.column(DeploymentInfo.self) }
+            if layout.showsNamespaceColumn { NamespaceColumn.column(DeploymentInfo.self) }
 
             TableColumn("Ready", value: \.sortKeyStatus) { dep in
                 HStack(spacing: 6) {
@@ -89,6 +89,7 @@ struct DeploymentListView: View {
             NamespaceTableRows(layout: layout, type: .deployments, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedDeploymentID, preferences: resourcePreferences)
     }
 
     // MARK: - Helpers

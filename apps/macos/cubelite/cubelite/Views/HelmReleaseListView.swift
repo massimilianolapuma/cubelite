@@ -59,7 +59,7 @@ struct HelmReleaseListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            if !layout.isGrouped { NamespaceColumn.column(HelmReleaseInfo.self) }
+            if layout.showsNamespaceColumn { NamespaceColumn.column(HelmReleaseInfo.self) }
 
             TableColumn("Revision") { release in
                 Text("\(release.revision)")
@@ -83,6 +83,7 @@ struct HelmReleaseListView: View {
             NamespaceTableRows(layout: layout, type: .helmReleases, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedHelmReleaseID, preferences: resourcePreferences)
     }
 }
 

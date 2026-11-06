@@ -57,7 +57,7 @@ struct ConfigMapListView: View {
             }
             .width(min: 120, ideal: 220)
 
-            if !layout.isGrouped { NamespaceColumn.column(ConfigMapInfo.self) }
+            if layout.showsNamespaceColumn { NamespaceColumn.column(ConfigMapInfo.self) }
 
             TableColumn("Data Keys") { configMap in
                 Text("\(configMap.dataCount)")
@@ -76,6 +76,7 @@ struct ConfigMapListView: View {
             NamespaceTableRows(layout: layout, type: .configMaps, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedConfigMapID, preferences: resourcePreferences)
     }
 }
 
