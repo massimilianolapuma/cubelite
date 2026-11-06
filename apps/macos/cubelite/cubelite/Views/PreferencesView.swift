@@ -150,6 +150,14 @@ private struct NavigationPreferencesTab: View {
                     .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
             }
 
+            Section {
+                Toggle("Group by namespace", isOn: Bindable(preferences).groupByNamespace)
+                    .accessibilityIdentifier("preferences.group-by-namespace")
+            } footer: {
+                Text("With All Namespaces selected, lists show one collapsible group per namespace.")
+                    .typeStyle(DesignTokens.Typography.caption, color: DesignTokens.textTertiary)
+            }
+
             let arranged = preferences.navigation.arranged
             ForEach(Array(arranged.enumerated()), id: \.element.section) { index, entry in
                 Section {

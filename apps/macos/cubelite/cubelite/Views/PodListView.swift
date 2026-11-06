@@ -11,9 +11,11 @@ struct PodListView: View {
     @Environment(ResourcePreferences.self) private var resourcePreferences
     @Environment(PrometheusStore.self) private var prometheus: PrometheusStore?
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [PodInfo] {
-        ListSort.sorted(clusterState.pods, by: resourcePreferences.spec(for: "pods"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<PodInfo> {
+        resourcePreferences.layout(
+            clusterState.pods, for: .pods, namespace: clusterState.selectedNamespace)
     }
     @Binding var selectedPodID: PodInfo.ID?
     /// Opens the log panel for the tapped pod (selected-row `logs ⏎` chip).
@@ -62,7 +64,8 @@ struct PodListView: View {
     // MARK: - Table
 
     private var podTable: some View {
-        Table(sortedRows, selection: $selectedPodID, sortOrder: resourcePreferences.sortOrder(for: "pods", of: PodInfo.self)) {
+        let layout = self.layout
+        return Table(of: PodInfo.self, selection: $selectedPodID, sortOrder: resourcePreferences.sortOrder(for: "pods", of: PodInfo.self)) {
             TableColumn("") { pod in
                 PodStatusDot(phase: pod.phase)
             }
@@ -96,13 +99,7 @@ struct PodListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace", value: \.sortKeyNamespace) { pod in
-                Text(pod.namespace)
-                    .typeStyle(DesignTokens.Typography.dataSm)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .width(min: 80, ideal: 120)
+            if layout.showsNamespaceColumn { NamespaceColumn.column(PodInfo.self) }
 
             TableColumn("Status", value: \.sortKeyStatus) { pod in
                 Text(pod.phase ?? "—")
@@ -155,8 +152,11 @@ struct PodListView: View {
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 90)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .pods, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedPodID, preferences: resourcePreferences)
     }
 
 }

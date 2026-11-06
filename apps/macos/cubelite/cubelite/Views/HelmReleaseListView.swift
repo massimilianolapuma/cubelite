@@ -10,9 +10,11 @@ struct HelmReleaseListView: View {
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [HelmReleaseInfo] {
-        ListSort.sorted(clusterState.helmReleases, by: resourcePreferences.spec(for: "helm"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<HelmReleaseInfo> {
+        resourcePreferences.layout(
+            clusterState.helmReleases, for: .helmReleases, namespace: clusterState.selectedNamespace)
     }
     @Binding var selectedHelmReleaseID: HelmReleaseInfo.ID?
 
@@ -48,7 +50,8 @@ struct HelmReleaseListView: View {
     // MARK: - Table
 
     private var helmReleaseTable: some View {
-        Table(sortedRows, selection: $selectedHelmReleaseID, sortOrder: resourcePreferences.sortOrder(for: "helm", of: HelmReleaseInfo.self)) {
+        let layout = self.layout
+        return Table(of: HelmReleaseInfo.self, selection: $selectedHelmReleaseID, sortOrder: resourcePreferences.sortOrder(for: "helm", of: HelmReleaseInfo.self)) {
             TableColumn("Name", value: \.sortKeyName) { release in
                 Text(release.name)
                     .typeStyle(DesignTokens.Typography.data)
@@ -56,13 +59,7 @@ struct HelmReleaseListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace", value: \.sortKeyNamespace) { release in
-                Text(release.namespace)
-                    .typeStyle(DesignTokens.Typography.dataSm)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .width(min: 80, ideal: 120)
+            if layout.showsNamespaceColumn { NamespaceColumn.column(HelmReleaseInfo.self) }
 
             TableColumn("Revision") { release in
                 Text("\(release.revision)")
@@ -82,8 +79,11 @@ struct HelmReleaseListView: View {
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .helmReleases, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedHelmReleaseID, preferences: resourcePreferences)
     }
 }
 

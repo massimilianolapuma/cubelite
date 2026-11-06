@@ -8,9 +8,11 @@ struct CronJobListView: View {
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [CronJobInfo] {
-        ListSort.sorted(clusterState.cronJobs, by: resourcePreferences.spec(for: "cronjobs"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<CronJobInfo> {
+        resourcePreferences.layout(
+            clusterState.cronJobs, for: .cronJobs, namespace: clusterState.selectedNamespace)
     }
 
     var body: some View {
@@ -29,7 +31,8 @@ struct CronJobListView: View {
     }
 
     private var table: some View {
-        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "cronjobs", of: CronJobInfo.self)) {
+        let layout = self.layout
+        return Table(of: CronJobInfo.self, sortOrder: resourcePreferences.sortOrder(for: "cronjobs", of: CronJobInfo.self)) {
             TableColumn("") { job in
                 Circle()
                     .fill(job.suspend ? DesignTokens.statusWarn : DesignTokens.statusOk)
@@ -76,6 +79,8 @@ struct CronJobListView: View {
                     .foregroundStyle(DesignTokens.textTertiary)
             }
             .width(70)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .cronJobs, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
     }
