@@ -12,20 +12,18 @@ struct NamespaceTableRows<Row: Identifiable>: TableRowContent {
     let type: ResourceType
     let preferences: ResourcePreferences
 
+    // Explicit `ForEach` generics: with Swift Charts in the module, older
+    // toolchains (CI) otherwise pick the ChartContent overload.
     @TableRowBuilder<Row>
     var tableRowBody: some TableRowContent<Row> {
         switch layout {
         case .flat(let rows):
-            ForEach(rows) { row in TableRow(row) }
+            ForEach<[Row], Row.ID, TableRow<Row>>(rows) { row in TableRow(row) }
         case .grouped(let groups):
-            ForEach(groups) { group in
-                Section {
-                    if !preferences.isCollapsed(group.namespace) {
-                        ForEach(group.rows) { row in TableRow(row) }
-                    }
-                } header: {
-                    header(for: group, in: groups)
-                }
+            ForEach<[NamespaceGroup<Row>], String, NamespaceSectionRows<Row>>(groups) { group in
+                NamespaceSectionRows(
+                    group: group, collapsed: preferences.isCollapsed(group.namespace),
+                    header: header(for: group, in: groups))
             }
         }
     }
@@ -42,6 +40,24 @@ struct NamespaceTableRows<Row: Identifiable>: TableRowContent {
             toggle: { [preferences] all in
                 preferences.toggleCollapsed(group.namespace, all: all ? groups.map(\.namespace) : nil)
             })
+    }
+}
+
+/// One namespace's section: its header, then its rows unless collapsed.
+struct NamespaceSectionRows<Row: Identifiable>: TableRowContent {
+    let group: NamespaceGroup<Row>
+    let collapsed: Bool
+    let header: NamespaceGroupHeader
+
+    @TableRowBuilder<Row>
+    var tableRowBody: some TableRowContent<Row> {
+        Section {
+            if !collapsed {
+                ForEach<[Row], Row.ID, TableRow<Row>>(group.rows) { row in TableRow(row) }
+            }
+        } header: {
+            header
+        }
     }
 }
 
