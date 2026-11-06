@@ -233,9 +233,10 @@ impl KubeConfig {
             );
             file_clusters.insert(path.clone(), raw.clusters.clone());
 
-            // First file's current-context takes precedence.
+            // The first non-empty current-context wins; kubectl treats
+            // `current-context: ""` as unset (#552).
             if first_current_context.is_none() {
-                first_current_context = raw.current_context.clone();
+                first_current_context = raw.current_context.clone().filter(|c| !c.is_empty());
             }
 
             // Merge contexts — first occurrence wins on name collision.
@@ -1014,6 +1015,22 @@ users:
             KubeConfig::load_from_paths(&[first.path().to_path_buf(), second.path().to_path_buf()])
                 .expect("merge");
         (first, second, cfg)
+    }
+
+    #[test]
+    fn an_empty_current_context_does_not_hide_a_later_files() {
+        // `kubectl config set-cluster --kubeconfig <new file>` writes `""` (#552).
+        let first = write_temp("apiVersion: v1\nkind: Config\ncurrent-context: \"\"\n");
+        let second = write_temp(
+            "apiVersion: v1\nkind: Config\ncurrent-context: team\ncontexts:\n- name: team\n  context: {cluster: c, user: u}\n",
+        );
+        let cfg =
+            KubeConfig::load_from_paths(&[first.path().to_path_buf(), second.path().to_path_buf()])
+                .expect("merge");
+        assert_eq!(cfg.current_context(), Some("team"));
+
+        let only_empty = KubeConfig::load_from_paths(&[first.path().to_path_buf()]).expect("load");
+        assert_eq!(only_empty.current_context(), None);
     }
 
     #[test]

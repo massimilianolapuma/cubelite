@@ -44,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file made the whole merge fail, so the app listed no context at all, and
   `~/.kube` discovery skipped it. A `null` list now reads as empty, as in
   kubectl.
+- **An empty `current-context` no longer hides the next kubeconfig's**
+  (#552): when the first merged file had `current-context: ""` (kubectl
+  writes it into a new file, and after `kubectl config unset
+  current-context`), the app showed no active context and a client built
+  without an explicit context failed. The merged current context is now the
+  first non-empty one, as in kubectl.
 - **A context uses the cluster and user of its own kubeconfig file**
   (#543): when several kubeconfig files are merged
   (`~/.kube`, the Preferences list or `KUBECONFIG`), clusters and users were

@@ -936,11 +936,15 @@ pub fn merged_kubeconfig(
 ) -> Result<Kubeconfig, KubeconfigError> {
     let mut files = Vec::new();
     for path in paths.iter().filter(|p| p.exists()) {
-        files.push(
-            Kubeconfig::read_from(path).map_err(|e| KubeconfigError::MergeError {
-                reason: format!("{}: {e}", path.display()),
-            })?,
-        );
+        let mut file = Kubeconfig::read_from(path).map_err(|e| KubeconfigError::MergeError {
+            reason: format!("{}: {e}", path.display()),
+        })?;
+        // kubectl treats `current-context: ""` as unset, so a later file's
+        // value still applies (#552); kube-rs `merge` keeps the first `Some`.
+        if file.current_context.as_deref() == Some("") {
+            file.current_context = None;
+        }
+        files.push(file);
     }
     let mut merged: Option<Kubeconfig> = None;
     for next in files.iter().cloned() {
@@ -1150,6 +1154,22 @@ users:
         let (url, token) = resolved(&[own, stale], Some("aks-prod")).await;
         assert_eq!(url, "https://new.example:6443/");
         assert_eq!(token, "new-token");
+    }
+
+    #[test]
+    fn merged_kubeconfig_skips_an_empty_current_context() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let empty = write_kubeconfig(
+            dir.path(),
+            "a.yaml",
+            "apiVersion: v1\nkind: Config\ncurrent-context: \"\"\n",
+        );
+        let b = write_kubeconfig(dir.path(), "b.yaml", FILE_B);
+        let merged = merged_kubeconfig(&[empty.clone(), b], None).expect("merge");
+        assert_eq!(merged.current_context.as_deref(), Some("staging"));
+
+        let alone = merged_kubeconfig(&[empty], None).expect("merge");
+        assert_eq!(alone.current_context, None);
     }
 
     #[test]
