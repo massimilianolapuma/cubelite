@@ -2,14 +2,31 @@
  * Resource-list sort (#496): one global default from Preferences, plus a
  * per-list session override set by clicking a column header (cleared on
  * cluster switch and relaunch).
+ *
+ * Grouping by namespace (#547): one global persisted switch, and the
+ * collapsed groups per namespace name, shared by all lists, for the session.
  */
 import { DEFAULT_SORT, firstDir, isSortSpec, type SortDir, type SortField, type SortSpec } from "#lib/list-sort.ts";
+import type { CollapseState } from "#lib/list-group.ts";
 import { persisted } from "./settings.svelte";
+
+const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
 
 class ListsStore {
   #default = persisted<SortSpec>("lists.sort", DEFAULT_SORT, isSortSpec);
+  #grouped = persisted<boolean>("lists.groupByNamespace", false, isBoolean);
   /** List id → header-click override for this session. */
   overrides = $state<Record<string, SortSpec>>({});
+  /** Collapsed namespace groups for this session (see `list-group.ts`). */
+  collapsed = $state<CollapseState>({});
+
+  /** Preference "Group by namespace"; applies only with all namespaces shown. */
+  get groupByNamespace(): boolean {
+    return this.#grouped.value;
+  }
+  set groupByNamespace(v: boolean) {
+    this.#grouped.value = v;
+  }
 
   get defaultSort(): SortSpec {
     return this.#default.value;
@@ -45,6 +62,7 @@ class ListsStore {
 
   resetSession(): void {
     this.overrides = {};
+    this.collapsed = {};
   }
 }
 

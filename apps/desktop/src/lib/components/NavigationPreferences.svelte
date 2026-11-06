@@ -4,12 +4,13 @@
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import Switch from '#lib/components/ui/Switch.svelte';
 	import { PINNED_SECTION, PINNED_VIEW } from '#lib/navigation.ts';
 	import { SORT_FIELDS, type SortDir, type SortField } from '#lib/list-sort.ts';
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
 	import { lists } from '#lib/stores/lists.svelte.ts';
 
-	// Sidebar order / visibility and the default list sort (#496).
+	// Sidebar order / visibility, the default list sort (#496) and grouping (#547).
 	const arranged = $derived(navigation.arranged);
 
 	const dirSegments: { value: SortDir; label: string }[] = [
@@ -144,4 +145,18 @@
 			/>
 		{/if}
 	</div>
+</section>
+
+<section class="flex items-center justify-between gap-4">
+	<div>
+		<div class="type-body text-text-primary">Group by namespace</div>
+		<p class="type-caption mt-0.5 text-text-tertiary">
+			With all namespaces shown, lists get one collapsible group per namespace.
+		</p>
+	</div>
+	<Switch
+		checked={lists.groupByNamespace}
+		label="Group by namespace"
+		onChange={(on) => (lists.groupByNamespace = on)}
+	/>
 </section>
