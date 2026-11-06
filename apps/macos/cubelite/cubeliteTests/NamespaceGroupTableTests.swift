@@ -14,15 +14,6 @@ import XCTest
 final class NamespaceGroupTableTests: XCTestCase {
 
     private var selected: PodInfo.ID? = "team-a/worker"
-    private var window: NSWindow?
-
-    override func tearDown() async throws {
-        await MainActor.run {
-            window?.orderOut(nil)
-            window = nil
-        }
-        try await super.tearDown()
-    }
 
     private func host(_ prefs: ResourcePreferences) -> NSWindow {
         let state = ClusterState()
@@ -43,7 +34,6 @@ final class NamespaceGroupTableTests: XCTestCase {
             backing: .buffered, defer: false)
         window.contentView = NSHostingView(rootView: view)
         window.makeKeyAndOrderFront(nil)
-        self.window = window
         return window
     }
 
@@ -72,7 +62,9 @@ final class NamespaceGroupTableTests: XCTestCase {
 
     func testFlatTableKeepsTheNamespaceColumn() async throws {
         let prefs = ResourcePreferences(defaults: TestDefaults.fresh(for: Self.self))
-        let table = try await waitFor(host(prefs), "4 flat rows") { $0.numberOfRows == 4 }
+        let window = host(prefs)
+        defer { window.orderOut(nil) }
+        let table = try await waitFor(window, "4 flat rows") { $0.numberOfRows == 4 }
         XCTAssertTrue(titles(table).contains("Namespace"))
     }
 
@@ -81,6 +73,7 @@ final class NamespaceGroupTableTests: XCTestCase {
         prefs.groupByNamespace = true
         prefs.toggleCollapsed("kube-system")
         let window = host(prefs)
+        defer { window.orderOut(nil) }
 
         // 3 headers + team-a (2) + team-b (1); kube-system collapsed.
         let table = try await waitFor(window, "6 grouped rows") { $0.numberOfRows == 6 }
@@ -99,6 +92,7 @@ final class NamespaceGroupTableTests: XCTestCase {
         let prefs = ResourcePreferences(defaults: TestDefaults.fresh(for: Self.self))
         prefs.groupByNamespace = true
         let window = host(prefs)
+        defer { window.orderOut(nil) }
         let table = try await waitFor(window, "7 grouped rows") { $0.numberOfRows == 7 }
         window.makeFirstResponder(table)
 
