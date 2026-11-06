@@ -42,8 +42,13 @@ export type SortAccessors<T> = {
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
+/** Natural, case-insensitive text order used by every list sort ("pod-2" < "pod-10"). */
+export function compareText(a: string, b: string): number {
+  return collator.compare(a, b);
+}
+
 /** Problems first: err, warn, neutral (pending/unknown), ok. */
-const TONE_RANK: Record<StatusTone, number> = { err: 0, warn: 1, neutral: 2, ok: 3 };
+export const TONE_RANK: Record<StatusTone, number> = { err: 0, warn: 1, neutral: 2, ok: 3 };
 
 function time(iso: string | null | undefined): number {
   const t = iso ? Date.parse(iso) : Number.NaN;

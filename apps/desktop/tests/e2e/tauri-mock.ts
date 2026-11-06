@@ -138,9 +138,9 @@ export const FIXTURES = {
   ],
 };
 
-/** Serializable init script installing the IPC mock. */
-export function tauriMockScript(): string {
-  const fixtures = JSON.stringify(FIXTURES);
+/** Serializable init script installing the IPC mock; `overrides` replace fixtures by key. */
+export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): string {
+  const fixtures = JSON.stringify({ ...FIXTURES, ...overrides });
   return `
 (() => {
   const fixtures = ${fixtures};

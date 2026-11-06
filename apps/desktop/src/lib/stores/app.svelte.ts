@@ -48,6 +48,10 @@ class AppState {
   view = $state<View>("dashboard");
   /** Namespace filter; null = all namespaces. */
   namespace = $state<string | null>(null);
+  /** Lists show namespace groups: the preference is on and all namespaces are shown (#547). */
+  get groupedLists(): boolean {
+    return lists.groupByNamespace && this.namespace === null;
+  }
   /** Cluster name a switch is in flight for; null when idle. */
   connecting = $state<string | null>(null);
 
