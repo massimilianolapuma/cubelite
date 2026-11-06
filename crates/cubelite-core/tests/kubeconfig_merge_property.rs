@@ -145,10 +145,20 @@ fn runtime() -> tokio::runtime::Runtime {
         .expect("runtime")
 }
 
-/// Server and token kube-rs would connect `context` with; `None` server when
-/// no client config can be built (the cluster is defined nowhere).
-fn client_view(rt: &tokio::runtime::Runtime, paths: &[PathBuf], context: &str) -> Resolved {
-    let merged = merged_kubeconfig(paths, Some(context)).expect("merge");
+/// Server and token kube-rs would connect `context` with (`None`: the
+/// merged current-context, as `KubeClient::new(_, None)` does); `None`
+/// server when no client config can be built (the cluster is defined
+/// nowhere).
+fn client_view(
+    rt: &tokio::runtime::Runtime,
+    paths: &[PathBuf],
+    requested: Option<&str>,
+) -> Resolved {
+    let merged = merged_kubeconfig(paths, requested).expect("merge");
+    let context = requested
+        .map(str::to_string)
+        .or_else(|| merged.current_context.clone())
+        .unwrap_or_default();
     let user = merged
         .contexts
         .iter()
@@ -160,12 +170,12 @@ fn client_view(rt: &tokio::runtime::Runtime, paths: &[PathBuf], context: &str) -
         .and_then(|a| a.auth_info)
         .map(|a| serde_json::to_value(a).expect("auth json"));
     let options = KubeConfigOptions {
-        context: Some(context.to_string()),
+        context: requested.map(str::to_string),
         ..Default::default()
     };
     let config = rt.block_on(Config::from_custom_kubeconfig(merged, &options));
     Resolved {
-        name: context.to_string(),
+        name: context,
         server: config
             .ok()
             .map(|c| c.cluster_url.to_string().trim_end_matches('/').to_string()),
@@ -211,9 +221,13 @@ proptest! {
         // Client.
         let rt = runtime();
         let merged = merged_kubeconfig(&paths, None).expect("merge");
-        prop_assert_eq!(merged.current_context, current);
+        prop_assert_eq!(&merged.current_context, &current);
         for w in &want {
-            prop_assert_eq!(&client_view(&rt, &paths, &w.name), w);
+            prop_assert_eq!(&client_view(&rt, &paths, Some(&w.name)), w);
+        }
+        // No explicit context: current-context through the same rule.
+        if let Some(w) = want.iter().find(|w| Some(&w.name) == current.as_ref()) {
+            prop_assert_eq!(&client_view(&rt, &paths, None), w);
         }
     }
 }

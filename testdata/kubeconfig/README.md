@@ -33,11 +33,17 @@ Create a directory `<case>/` with one or more kubeconfig files and an
   certificate). The two stacks do not pick among several in the same order
   (kube-rs prefers a token, the native app an exec plugin), so the core
   runner rejects a user with more than one.
+- Every directory here is a case: one without `expected.json` fails both
+  runners.
 - `expected.json` records the **correct** behaviour. If the code disagrees,
-  open a `bug` issue and list the case and field in `KNOWN_FAILURES`
-  (Rust) or `knownFailures` (Swift) with the issue number. The case then
-  reports the gap without failing CI, and fails as soon as the field matches,
-  so the entry is removed together with the fix.
+  open a `bug` issue and list the case, the exact field and the value
+  observed today in `KNOWN_FAILURES` (Rust) or `knownFailures` (Swift), with
+  the issue number. The case then reports the gap without failing CI. Any
+  other value of that field fails, and so does the field no longer showing
+  the listed value, so the entry is updated or removed together with the fix.
+- The Swift runner resolves credentials with the app's own selection
+  (`KubeAPIService.connectionUser`, `clientCertificateSource`,
+  `kubeconfigFileURL`), so a fix there shows up in the corpus.
 
 ## `expected.json`
 

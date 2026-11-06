@@ -918,15 +918,18 @@ fn event_to_info(e: Event) -> EventInfo {
 /// file must not redirect the context. Only the content of the named entries
 /// changes, so names seen elsewhere stay the same.
 ///
-/// This is the document [`KubeClient::new`] builds its client from; it is
-/// public so the shared kubeconfig fixtures (`testdata/kubeconfig`, #548) can
-/// check the client path without a cluster.
+/// This is the document [`KubeClient::new`] builds its client from.
 ///
 /// # Errors
 ///
 /// Returns [`KubeconfigError::FileNotFound`] when none of `paths` exists, or
 /// [`KubeconfigError::MergeError`] when a file cannot be read, parsed or
 /// merged.
+// Public only for the shared kubeconfig fixture and property tests
+// (`tests/kubeconfig_fixtures.rs`, `tests/kubeconfig_merge_property.rs`,
+// #548), which check the client path without a cluster; not part of the
+// supported API, hence hidden from the docs.
+#[doc(hidden)]
 pub fn merged_kubeconfig(
     paths: &[PathBuf],
     context: Option<&str>,

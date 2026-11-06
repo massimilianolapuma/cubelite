@@ -13,19 +13,60 @@ use std::path::{Path, PathBuf};
 
 use cubelite_core::client::merged_kubeconfig;
 use cubelite_core::KubeConfig;
-use kube::config::{Config, KubeConfigOptions, Kubeconfig};
+use kube::config::{Config, KubeConfigOptions, Kubeconfig, KubeconfigError};
 use serde::Deserialize;
 
-/// Expectations the code does not meet yet: `(case, field prefix, issue)`.
-/// Mismatches on these fields are reported but do not fail the test; a
-/// listed field that matches fails it, so the entry is removed once fixed.
-const KNOWN_FAILURES: &[(&str, &str, u32)] = &[
+/// An expectation the code does not meet yet: the exact field and the value
+/// observed today (`{:?}` of the checked value).
+struct KnownFailure {
+    case: &'static str,
+    field: &'static str,
+    got: &'static str,
+    issue: u32,
+}
+
+/// Such a mismatch is reported but does not fail the test. Any other value
+/// of the field fails it, and so does a listed field that no longer shows
+/// the value, so the entry is updated or removed with the fix.
+const KNOWN_FAILURES: &[KnownFailure] = &[
     // The first file's `current-context: ""` wins over the next file's.
-    ("empty-current-context", "current_context", 552),
-    ("empty-current-context", "client.current_context", 552),
-    ("kubectl-null-lists", "client.current_context", 552),
+    KnownFailure {
+        case: "empty-current-context",
+        field: "current_context",
+        got: r#"Some("")"#,
+        issue: 552,
+    },
+    KnownFailure {
+        case: "empty-current-context",
+        field: "client.current_context",
+        got: r#"Some("")"#,
+        issue: 552,
+    },
+    KnownFailure {
+        case: "empty-current-context",
+        field: "client.current_context.server",
+        got: "None",
+        issue: 552,
+    },
+    KnownFailure {
+        case: "kubectl-null-lists",
+        field: "client.current_context",
+        got: r#"Some("")"#,
+        issue: 552,
+    },
+    KnownFailure {
+        case: "kubectl-null-lists",
+        field: "client.current_context.server",
+        got: "None",
+        issue: 552,
+    },
     // `contexts: null` / `users: null`, as kubectl writes them, fail the load.
-    ("kubectl-null-lists", "load", 557),
+    KnownFailure {
+        case: "kubectl-null-lists",
+        field: "load",
+        got: r#""error: failed to parse kubeconfig: contexts: invalid type: unit value, expected a sequence at line 6 column 11""#,
+        issue: 557,
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -94,11 +135,12 @@ fn corpus_dir() -> PathBuf {
     std::fs::canonicalize(&dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
 }
 
+/// Every directory of the corpus; one without `expected.json` fails.
 fn case_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(corpus_dir())
         .expect("read corpus")
         .map(|entry| entry.expect("dir entry").path())
-        .filter(|path| path.join("expected.json").is_file())
+        .filter(|path| path.is_dir())
         .collect();
     dirs.sort();
     dirs
@@ -125,16 +167,26 @@ fn kubeconfig_files(dir: &Path) -> Vec<String> {
     found
 }
 
-/// Mismatches of one case, as `(field, message)`.
+/// One mismatch: the field and the `{:?}` of the observed and expected values.
+struct Mismatch {
+    field: String,
+    got: String,
+    want: String,
+}
+
+/// Mismatches of one case.
 struct Report {
-    mismatches: Vec<(String, String)>,
+    mismatches: Vec<Mismatch>,
 }
 
 impl Report {
     fn check<T: PartialEq + Debug>(&mut self, field: impl Into<String>, got: T, want: T) {
         if got != want {
-            self.mismatches
-                .push((field.into(), format!("got {got:?}, want {want:?}")));
+            self.mismatches.push(Mismatch {
+                field: field.into(),
+                got: format!("{got:?}"),
+                want: format!("{want:?}"),
+            });
         }
     }
 }
@@ -148,28 +200,30 @@ async fn every_case_matches_its_expectations() {
     );
 
     let mut failures = Vec::new();
-    let mut known_hits: Vec<(&str, &str)> = Vec::new();
+    let mut known_hits = vec![false; KNOWN_FAILURES.len()];
     for dir in &cases {
         let case = dir.file_name().expect("name").to_string_lossy().to_string();
         let report = run_case(dir).await;
-        for (field, message) in report.mismatches {
+        for m in report.mismatches {
+            let line = format!("{case}: {}: got {}, want {}", m.field, m.got, m.want);
             let known = KNOWN_FAILURES
                 .iter()
-                .find(|(c, prefix, _)| *c == case && field.starts_with(prefix));
+                .position(|k| k.case == case && k.field == m.field && k.got == m.got);
             match known {
-                Some((c, prefix, issue)) => {
-                    eprintln!("known failure (#{issue}) {case}: {field}: {message}");
-                    known_hits.push((c, prefix));
+                Some(i) => {
+                    eprintln!("known failure (#{}) {line}", KNOWN_FAILURES[i].issue);
+                    known_hits[i] = true;
                 }
-                None => failures.push(format!("{case}: {field}: {message}")),
+                None => failures.push(line),
             }
         }
     }
-    for (case, prefix, issue) in KNOWN_FAILURES {
-        if !known_hits.contains(&(case, prefix)) {
+    for (k, hit) in KNOWN_FAILURES.iter().zip(known_hits) {
+        if !hit {
             failures.push(format!(
-                "{case}: {prefix}: listed as known failure #{issue} but matches; \
-                 remove it from KNOWN_FAILURES"
+                "{}: {}: listed as known failure #{} with {} but no longer shows it; \
+                 update KNOWN_FAILURES",
+                k.case, k.field, k.issue, k.got
             ));
         }
     }
@@ -180,7 +234,10 @@ async fn run_case(dir: &Path) -> Report {
     let mut report = Report {
         mismatches: Vec::new(),
     };
-    let text = std::fs::read_to_string(dir.join("expected.json")).expect("expected.json");
+    let Ok(text) = std::fs::read_to_string(dir.join("expected.json")) else {
+        report.check("expected.json", "missing", "present");
+        return report;
+    };
     let expected: Expected = serde_json::from_str(&text)
         .unwrap_or_else(|e| panic!("{}: expected.json: {e}", dir.display()));
 
@@ -314,13 +371,22 @@ async fn check_client_path(
                 serde_json::to_value(&config.auth_info).expect("auth json")
             }
             Err(e) => {
-                // No client without a server; anything else is a mismatch.
+                // Only a cluster defined nowhere may stop the client config.
+                let missing_cluster = matches!(
+                    &e,
+                    KubeconfigError::LoadClusterOfContext(name)
+                        if Some(name) == want.cluster.as_ref()
+                );
                 report.check(
                     field("client.server"),
-                    format!("no config: {e}"),
+                    if missing_cluster && want.server.is_none() {
+                        "no cluster".to_string()
+                    } else {
+                        format!("no config: {e}")
+                    },
                     match &want.server {
                         Some(server) => server.clone(),
-                        None => format!("no config: {e}"),
+                        None => "no cluster".to_string(),
                     },
                 );
                 merged_user(&merged, &want.name)
