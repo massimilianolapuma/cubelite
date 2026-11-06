@@ -8,9 +8,11 @@ struct PvcListView: View {
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [PvcInfo] {
-        ListSort.sorted(clusterState.pvcs, by: resourcePreferences.spec(for: "pvcs"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<PvcInfo> {
+        resourcePreferences.layout(
+            clusterState.pvcs, for: .pvcs, namespace: clusterState.selectedNamespace)
     }
 
     var body: some View {
@@ -37,7 +39,8 @@ struct PvcListView: View {
     }
 
     private var table: some View {
-        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "pvcs", of: PvcInfo.self)) {
+        let layout = self.layout
+        return Table(of: PvcInfo.self, sortOrder: resourcePreferences.sortOrder(for: "pvcs", of: PvcInfo.self)) {
             TableColumn("") { pvc in
                 Circle()
                     .fill(tone(pvc.status))
@@ -90,6 +93,8 @@ struct PvcListView: View {
                     .foregroundStyle(DesignTokens.textTertiary)
             }
             .width(60)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .pvcs, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
     }

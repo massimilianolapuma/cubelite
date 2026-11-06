@@ -8,9 +8,11 @@ struct StatefulSetListView: View {
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [StatefulSetInfo] {
-        ListSort.sorted(clusterState.statefulSets, by: resourcePreferences.spec(for: "statefulsets"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<StatefulSetInfo> {
+        resourcePreferences.layout(
+            clusterState.statefulSets, for: .statefulSets, namespace: clusterState.selectedNamespace)
     }
 
     var body: some View {
@@ -33,7 +35,8 @@ struct StatefulSetListView: View {
     }
 
     private var table: some View {
-        Table(sortedRows, sortOrder: resourcePreferences.sortOrder(for: "statefulsets", of: StatefulSetInfo.self)) {
+        let layout = self.layout
+        return Table(of: StatefulSetInfo.self, sortOrder: resourcePreferences.sortOrder(for: "statefulsets", of: StatefulSetInfo.self)) {
             TableColumn("") { set in
                 Circle()
                     .fill(isAvailable(set) ? DesignTokens.statusOk : DesignTokens.statusWarn)
@@ -66,6 +69,8 @@ struct StatefulSetListView: View {
                     .foregroundStyle(DesignTokens.textTertiary)
             }
             .width(70)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .statefulSets, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
     }

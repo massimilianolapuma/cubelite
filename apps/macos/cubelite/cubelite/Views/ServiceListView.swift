@@ -10,9 +10,11 @@ struct ServiceListView: View {
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [ServiceInfo] {
-        ListSort.sorted(clusterState.services, by: resourcePreferences.spec(for: "services"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<ServiceInfo> {
+        resourcePreferences.layout(
+            clusterState.services, for: .services, namespace: clusterState.selectedNamespace)
     }
     @Binding var selectedServiceID: ServiceInfo.ID?
 
@@ -48,7 +50,8 @@ struct ServiceListView: View {
     // MARK: - Table
 
     private var serviceTable: some View {
-        Table(sortedRows, selection: $selectedServiceID, sortOrder: resourcePreferences.sortOrder(for: "services", of: ServiceInfo.self)) {
+        let layout = self.layout
+        return Table(of: ServiceInfo.self, selection: $selectedServiceID, sortOrder: resourcePreferences.sortOrder(for: "services", of: ServiceInfo.self)) {
             TableColumn("Name", value: \.sortKeyName) { service in
                 Text(service.name)
                     .typeStyle(DesignTokens.Typography.data)
@@ -56,13 +59,7 @@ struct ServiceListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace", value: \.sortKeyNamespace) { service in
-                Text(service.namespace)
-                    .typeStyle(DesignTokens.Typography.dataSm)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .width(min: 80, ideal: 120)
+            if layout.showsNamespaceColumn { NamespaceColumn.column(ServiceInfo.self) }
 
             TableColumn("Type") { service in
                 ServiceTypeTag(type: service.type)
@@ -92,8 +89,11 @@ struct ServiceListView: View {
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .services, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedServiceID, preferences: resourcePreferences)
     }
 }
 
