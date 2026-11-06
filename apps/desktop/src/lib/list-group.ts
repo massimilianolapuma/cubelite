@@ -92,8 +92,9 @@ export function toggleCollapse(
 /**
  * Collapse state a filter shows: while the filter is not empty every group
  * starts expanded (a match must never sit in a collapsed group) and header
- * clicks only change `transient`, which belongs to that exact filter text;
- * an empty filter shows the stored session state.
+ * clicks only change `transient`, which belongs to that exact filter text
+ * (GroupedRows starts it over on every filter change); an empty filter shows
+ * the stored session state.
  */
 export function shownCollapse(
   filter: string,

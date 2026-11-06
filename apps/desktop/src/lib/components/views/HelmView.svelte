@@ -6,7 +6,6 @@
 	import { helmTone } from '#lib/status.ts';
 	import { formatAge } from '#lib/age.ts';
 	import StatusPill from '#lib/components/ui/StatusPill.svelte';
-	import type { PillTone } from '#lib/components/ui/StatusPill.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 
@@ -14,14 +13,6 @@
 		void [app.namespace, app.activeCluster];
 		void resources.loadKind('helm');
 	});
-
-	// Spec: deployed → ok, pending-* → warn, failed → err.
-	function toneOf(status: string | null): PillTone {
-		if (status === 'deployed' || status === 'superseded') return 'ok';
-		if (status?.startsWith('pending')) return 'warn';
-		if (status === 'failed' || status === 'unknown') return 'err';
-		return 'neutral';
-	}
 
 	const grid = $derived(gridColumns(['1.6fr', '1fr', '0.4fr', '1fr', '1.4fr', '0.6fr'], app.groupedLists));
 </script>
@@ -55,7 +46,7 @@
 								{#if !grouped}<span class="type-data-sm truncate text-text-secondary">{release.namespace}</span>{/if}
 								<span class="type-data-sm text-text-secondary">{release.revision}</span>
 								<span>
-									<StatusPill label={release.status ?? '—'} tone={toneOf(release.status)} />
+									<StatusPill label={release.status ?? '—'} tone={helmTone(release.status)} />
 								</span>
 								<span class="type-data-sm truncate {release.chart ? 'text-text-secondary' : 'text-text-disabled'}">
 									{release.chart ?? '—'}

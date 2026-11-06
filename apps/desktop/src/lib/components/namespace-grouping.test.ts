@@ -52,6 +52,7 @@ const pods = [
 
 const groupHeaders = () => [...document.querySelectorAll("[data-group]")].map((el) => el.getAttribute("data-group"));
 const header = (name: RegExp) => screen.getByRole("button", { name });
+const marker = (el: HTMLElement) => el.querySelector("[data-marker]");
 const rowNames = () =>
   screen
     .getAllByRole("button")
@@ -90,6 +91,15 @@ describe("PodTable grouped by namespace (#547)", () => {
     expect(header(/^team-b,/)).toHaveAccessibleName("team-b, 1 pod, expanded");
   });
 
+  it("marks only groups with a row not ok, in the worst tone", () => {
+    lists.groupByNamespace = true;
+    render(PodTable, { props: { pods } });
+    expect(marker(header(/^team-a,/))).toHaveAttribute("data-marker", "err");
+    expect(header(/^team-a,/)).toHaveTextContent(/2\s*1$/);
+    expect(marker(header(/^team-b,/))).toBeNull();
+    expect(marker(header(/^kube-system,/))).toBeNull();
+  });
+
   it("stays flat with a single namespace selected", () => {
     lists.groupByNamespace = true;
     app.namespace = "team-a";
@@ -125,6 +135,18 @@ describe("PodTable grouped by namespace (#547)", () => {
     expect(rowNames()).toEqual(["dns-0", "web-0"]);
   });
 
+  it("retyping an earlier filter does not bring back its collapses", async () => {
+    lists.groupByNamespace = true;
+    const { rerender } = render(PodTable, { props: { pods, filter: "0" } });
+    await fireEvent.click(header(/^kube-system,/));
+    expect(header(/^kube-system,/)).toHaveAccessibleName(/collapsed$/);
+    await rerender({ pods, filter: "" });
+    await rerender({ pods, filter: "0" });
+    expect(header(/^kube-system,/)).toHaveAccessibleName(/expanded$/);
+    expect(rowNames()).toContain("dns-0");
+    expect(lists.collapsed).toEqual({});
+  });
+
   it("collapse state resets on cluster switch", async () => {
     lists.groupByNamespace = true;
     render(PodTable, { props: { pods } });
@@ -149,6 +171,7 @@ describe("ServicesView grouped by namespace (#547)", () => {
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(groupHeaders()).toEqual(["team-a", "team-b"]);
     expect(header(/^team-a,/)).toHaveAccessibleName("team-a, 2 services, expanded");
+    for (const ns of [/^team-a,/, /^team-b,/]) expect(marker(header(ns))).toBeNull();
   });
 
   it("shares collapsed namespaces with the other lists", () => {

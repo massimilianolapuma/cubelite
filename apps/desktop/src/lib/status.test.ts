@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deploymentStatus, podStatusLabel, podTone } from "./status";
+import { deploymentStatus, helmTone, podStatusLabel, podTone } from "./status";
 import type { DeploymentInfo, PodInfo } from "#lib/tauri.ts";
 
 function pod(phase: string | null, ready = true): PodInfo {
@@ -54,5 +54,18 @@ describe("deploymentStatus", () => {
   it("is Available only when every replica is ready", () => {
     expect(deploymentStatus(dep(2, 2))).toEqual({ label: "Available", tone: "ok" });
     expect(deploymentStatus(dep(2, 1))).toEqual({ label: "Progressing", tone: "warn" });
+  });
+});
+
+describe("helmTone", () => {
+  it("is the one mapping for the pill, the sort and the group marker (#547)", () => {
+    expect(helmTone("deployed")).toBe("ok");
+    expect(helmTone("superseded")).toBe("ok");
+    expect(helmTone("pending-upgrade")).toBe("warn");
+    expect(helmTone("failed")).toBe("err");
+    expect(helmTone("unknown")).toBe("err");
+    expect(helmTone("Failed")).toBe("err");
+    expect(helmTone("uninstalling")).toBe("neutral");
+    expect(helmTone(null)).toBe("neutral");
   });
 });
