@@ -1,0 +1,48 @@
+{
+  "description": "The #543 layout: ~/.kube/config keeps a stale cluster and user (old endpoint, old token) that none of its contexts references, and a later file defines the context with the same cluster and user names. The context uses its own file's cluster and user; current-context comes from the first file.",
+  "current_context": "prod-1",
+  "contexts": [
+    {
+      "name": "prod-1",
+      "cluster": "prod-1",
+      "server": "https://prod-1.example.com:6443",
+      "user": "prod-1-admin",
+      "namespace": "team-a",
+      "auth": { "kind": "token", "token": "fake-token-1" }
+    },
+    {
+      "name": "team-a-aks",
+      "cluster": "team-a-aks",
+      "server": "https://team-a-aks-dns-7d81a0c3.hcp.westeurope.example.com:443",
+      "user": "clusterUser_rg-team-a_team-a-aks",
+      "namespace": "default",
+      "auth": {
+        "kind": "exec",
+        "command": "kubelogin",
+        "args": [
+          "get-token",
+          "--login",
+          "azurecli",
+          "--server-id",
+          "00000000-0000-0000-0000-00000000aa01"
+        ]
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    },
+    {
+      "file": "02-team-a-aks.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": ["team-a-aks"],
+      "redefined_users": ["clusterUser_rg-team-a_team-a-aks"]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "description": "Client certificates as files with relative paths (kind, minikube, kubeadm copies): each path resolves against the directory of the kubeconfig that lists it, as kubectl does. Both files define a user `admin` with the same relative paths, which are different files, so the second file reports `admin` as redefined and each context reads its own directory's certificate.",
+  "current_context": "lab-1",
+  "contexts": [
+    {
+      "name": "lab-1",
+      "cluster": "lab-1",
+      "server": "https://lab-1.example.net:8443",
+      "user": "admin",
+      "namespace": "team-a",
+      "auth": {
+        "kind": "client-cert-file",
+        "client_certificate": "certs/client.crt",
+        "client_key": "certs/client.key"
+      }
+    },
+    {
+      "name": "lab-2",
+      "cluster": "lab-2",
+      "server": "https://lab-2.example.net:8443",
+      "user": "admin",
+      "namespace": "default",
+      "auth": {
+        "kind": "client-cert-file",
+        "client_certificate": "02-team-b/certs/client.crt",
+        "client_key": "02-team-b/certs/client.key"
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    },
+    {
+      "file": "02-team-b/config.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": ["admin"]
+    }
+  ]
+}

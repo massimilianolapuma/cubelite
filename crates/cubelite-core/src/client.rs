@@ -917,7 +917,17 @@ fn event_to_info(e: Event) -> EventInfo {
 /// defines those names (#543): a stale entry with the same name in an earlier
 /// file must not redirect the context. Only the content of the named entries
 /// changes, so names seen elsewhere stay the same.
-fn merged_kubeconfig(
+///
+/// This is the document [`KubeClient::new`] builds its client from; it is
+/// public so the shared kubeconfig fixtures (`testdata/kubeconfig`, #548) can
+/// check the client path without a cluster.
+///
+/// # Errors
+///
+/// Returns [`KubeconfigError::FileNotFound`] when none of `paths` exists, or
+/// [`KubeconfigError::MergeError`] when a file cannot be read, parsed or
+/// merged.
+pub fn merged_kubeconfig(
     paths: &[PathBuf],
     context: Option<&str>,
 ) -> Result<Kubeconfig, KubeconfigError> {

@@ -1,0 +1,21 @@
+{
+  "description": "The redefinition rule of the Preferences note (#543), formerly the inline parity fixture of both stacks. `same` / `same-user` differ only in key order and cluster `extensions` (not reported); `rel-ca` / `rel-user` repeat a relative path from another directory, which is another file (reported); a changed server, proxy-url, token or exec argument is reported.",
+  "current_context": null,
+  "contexts": [],
+  "sources": [
+    {
+      "file": "01-home/config.yaml",
+      "contexts": 0,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    },
+    {
+      "file": "02-team-a/config.yaml",
+      "contexts": 0,
+      "shadowed": [],
+      "redefined_clusters": ["prod-1", "rel-ca", "proxied"],
+      "redefined_users": ["team-a", "rel-user", "kubelogin"]
+    }
+  ]
+}

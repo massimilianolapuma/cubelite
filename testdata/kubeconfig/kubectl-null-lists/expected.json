@@ -1,0 +1,30 @@
+{
+  "description": "01-config.yaml is the file `kubectl config set-cluster team-c --server=... --kubeconfig <new file>` writes: `contexts: null`, `users: null` and `current-context: \"\"`. kubectl reads it as empty lists and an unset current-context, so the merge uses the later file's context, which references the cluster defined only in the first file.",
+  "current_context": "team-c",
+  "contexts": [
+    {
+      "name": "team-c",
+      "cluster": "team-c",
+      "server": "https://team-c.example.com:6443",
+      "user": "team-c",
+      "namespace": "team-c",
+      "auth": { "kind": "token", "token": "fake-token-c1" }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 0,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    },
+    {
+      "file": "02-team-c.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    }
+  ]
+}

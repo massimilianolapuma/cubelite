@@ -1,0 +1,39 @@
+{
+  "description": "The file `az aks get-credentials` writes for an AAD-enabled cluster: kubectl key order, inline CA data, a kubelogin exec user named clusterUser_<resource group>_<cluster>.",
+  "current_context": "team-a-aks",
+  "contexts": [
+    {
+      "name": "team-a-aks",
+      "cluster": "team-a-aks",
+      "server": "https://team-a-aks-dns-4f2c9e1b.hcp.westeurope.example.com:443",
+      "user": "clusterUser_rg-team-a_team-a-aks",
+      "namespace": "default",
+      "auth": {
+        "kind": "exec",
+        "command": "kubelogin",
+        "args": [
+          "get-token",
+          "--environment",
+          "AzurePublicCloud",
+          "--server-id",
+          "00000000-0000-0000-0000-00000000aa01",
+          "--client-id",
+          "00000000-0000-0000-0000-00000000aa02",
+          "--tenant-id",
+          "00000000-0000-0000-0000-00000000aa03",
+          "--login",
+          "devicecode"
+        ]
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    }
+  ]
+}

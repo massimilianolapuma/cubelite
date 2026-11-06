@@ -1,0 +1,46 @@
+{
+  "description": "Before and after an AKS endpoint change: ~/.kube/config still holds the old `az aks get-credentials` output and a later file the new one, with the same context, cluster and user names. The first file wins the context, so the old server is used (as kubectl does); the later file reports the cluster as redefined, while the identical user is not reported.",
+  "current_context": "team-a-aks",
+  "contexts": [
+    {
+      "name": "team-a-aks",
+      "cluster": "team-a-aks",
+      "server": "https://team-a-aks-dns-4f2c9e1b.hcp.westeurope.example.com:443",
+      "user": "clusterUser_rg-team-a_team-a-aks",
+      "namespace": "default",
+      "auth": {
+        "kind": "exec",
+        "command": "kubelogin",
+        "args": [
+          "get-token",
+          "--environment",
+          "AzurePublicCloud",
+          "--server-id",
+          "00000000-0000-0000-0000-00000000aa01",
+          "--client-id",
+          "00000000-0000-0000-0000-00000000aa02",
+          "--tenant-id",
+          "00000000-0000-0000-0000-00000000aa03",
+          "--login",
+          "devicecode"
+        ]
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    },
+    {
+      "file": "02-team-a-aks.yaml",
+      "contexts": 0,
+      "shadowed": ["team-a-aks"],
+      "redefined_clusters": ["team-a-aks"],
+      "redefined_users": []
+    }
+  ]
+}

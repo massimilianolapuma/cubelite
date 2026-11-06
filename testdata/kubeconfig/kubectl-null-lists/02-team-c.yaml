@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Config
+current-context: team-c
+contexts:
+- name: team-c
+  context:
+    cluster: team-c
+    namespace: team-c
+    user: team-c
+users:
+- name: team-c
+  user:
+    token: fake-token-c1

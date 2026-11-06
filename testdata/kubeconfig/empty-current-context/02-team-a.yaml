@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Config
+current-context: team-a
+clusters:
+- name: team-a
+  cluster:
+    server: https://team-a.example.com:6443
+contexts:
+- name: team-a
+  context:
+    cluster: team-a
+    user: team-a
+users:
+- name: team-a
+  user:
+    token: fake-token-a1
