@@ -1,0 +1,47 @@
+{
+  "description": "Exec credential plugins as the cloud CLIs write them: `aws eks update-kubeconfig` (ARN names, AWS_PROFILE env), `gcloud container clusters get-credentials` (gke_<project>_<location>_<cluster>, provideClusterInfo) and `kubelogin convert-kubeconfig -l azurecli`.",
+  "current_context": "gke_team-a-project_europe-west1_prod-1",
+  "contexts": [
+    {
+      "name": "arn:aws:eks:eu-west-1:000000000000:cluster/prod-1",
+      "cluster": "arn:aws:eks:eu-west-1:000000000000:cluster/prod-1",
+      "server": "https://0F1E2D3C4B5A69788796A5B4C3D2E1F0.gr7.eu-west-1.eks.example.com",
+      "user": "arn:aws:eks:eu-west-1:000000000000:cluster/prod-1",
+      "namespace": "default",
+      "auth": {
+        "kind": "exec",
+        "command": "aws",
+        "args": ["--region", "eu-west-1", "eks", "get-token", "--cluster-name", "prod-1", "--output", "json"]
+      }
+    },
+    {
+      "name": "gke_team-a-project_europe-west1_prod-1",
+      "cluster": "gke_team-a-project_europe-west1_prod-1",
+      "server": "https://gke-prod-1.example.net",
+      "user": "gke_team-a-project_europe-west1_prod-1",
+      "namespace": "team-a",
+      "auth": { "kind": "exec", "command": "gke-gcloud-auth-plugin", "args": [] }
+    },
+    {
+      "name": "team-a-aks",
+      "cluster": "team-a-aks",
+      "server": "https://team-a-aks-dns-4f2c9e1b.hcp.westeurope.example.com:443",
+      "user": "clusterUser_rg-team-a_team-a-aks",
+      "namespace": "default",
+      "auth": {
+        "kind": "exec",
+        "command": "kubelogin",
+        "args": ["get-token", "--login", "azurecli", "--server-id", "00000000-0000-0000-0000-00000000aa01"]
+      }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 3,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    }
+  ]
+}

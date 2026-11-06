@@ -1,0 +1,38 @@
+{
+  "description": "A hand-written file without `apiVersion` and `kind` (kubectl accepts it, #481), in flow style, merged after a regular file.",
+  "current_context": "prod-1",
+  "contexts": [
+    {
+      "name": "prod-1",
+      "cluster": "prod-1",
+      "server": "https://prod-1.example.com:6443",
+      "user": "prod-1-admin",
+      "namespace": "default",
+      "auth": { "kind": "token", "token": "fake-token-1" }
+    },
+    {
+      "name": "lab-1",
+      "cluster": "lab-1",
+      "server": "https://lab-1.example.net:6443",
+      "user": "lab-1-admin",
+      "namespace": "team-b",
+      "auth": { "kind": "token", "token": "fake-token-lab" }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    },
+    {
+      "file": "02-lab.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    }
+  ]
+}

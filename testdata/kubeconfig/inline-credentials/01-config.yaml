@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Config
+current-context: prod-1
+preferences: {}
+clusters:
+- name: prod-1
+  cluster:
+    certificate-authority-data: ZmFrZS1jYS1kYXRh
+    server: https://prod-1.example.com:6443
+- name: team-a-lab
+  cluster:
+    insecure-skip-tls-verify: true
+    server: https://team-a-lab.example.net:6443
+contexts:
+- name: prod-1
+  context:
+    cluster: prod-1
+    user: prod-1-admin
+- name: team-a-lab
+  context:
+    cluster: team-a-lab
+    namespace: team-a
+    user: team-a-sa
+users:
+- name: prod-1-admin
+  user:
+    client-certificate-data: ZmFrZS1jbGllbnQtY2VydC0x
+    client-key-data: ZmFrZS1jbGllbnQta2V5LTE=
+- name: team-a-sa
+  user:
+    token: fake-token-2

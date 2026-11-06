@@ -1,0 +1,38 @@
+{
+  "description": "The first file carries `current-context: \"\"`, as kubectl writes it into a file whose context was never set (`kubectl config set-cluster` on a new file, `kubectl config unset current-context`). kubectl skips an empty value and takes the current-context of the first file that sets a non-empty one.",
+  "current_context": "team-a",
+  "contexts": [
+    {
+      "name": "prod-1",
+      "cluster": "prod-1",
+      "server": "https://prod-1.example.com:6443",
+      "user": "prod-1-admin",
+      "namespace": "default",
+      "auth": { "kind": "token", "token": "fake-token-1" }
+    },
+    {
+      "name": "team-a",
+      "cluster": "team-a",
+      "server": "https://team-a.example.com:6443",
+      "user": "team-a",
+      "namespace": "default",
+      "auth": { "kind": "token", "token": "fake-token-a1" }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    },
+    {
+      "file": "02-team-a.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    }
+  ]
+}

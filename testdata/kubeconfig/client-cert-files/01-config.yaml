@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Config
+current-context: lab-1
+clusters:
+- name: lab-1
+  cluster:
+    certificate-authority: certs/ca.crt
+    server: https://lab-1.example.net:8443
+contexts:
+- name: lab-1
+  context:
+    cluster: lab-1
+    namespace: team-a
+    user: admin
+users:
+- name: admin
+  user:
+    client-certificate: certs/client.crt
+    client-key: certs/client.key

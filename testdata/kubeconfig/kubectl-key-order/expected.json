@@ -1,0 +1,23 @@
+{
+  "description": "A file written by kubectl (`kubectl config view --flatten`, kubeadm): keys in alphabetical order, so ~10 KB of inline certificate-authority data sit before `kind: Config` (#479), and a `user@cluster` context name.",
+  "current_context": "prod-1-admin@prod-1",
+  "contexts": [
+    {
+      "name": "prod-1-admin@prod-1",
+      "cluster": "prod-1",
+      "server": "https://prod-1.example.com:6443",
+      "user": "prod-1-admin",
+      "namespace": "kube-system",
+      "auth": { "kind": "client-cert-data", "client_certificate_data": "ZmFrZS1jbGllbnQtY2VydC0y" }
+    }
+  ],
+  "sources": [
+    {
+      "file": "01-config.yaml",
+      "contexts": 1,
+      "shadowed": [],
+      "redefined_clusters": [],
+      "redefined_users": []
+    }
+  ]
+}

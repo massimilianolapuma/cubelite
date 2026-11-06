@@ -1,0 +1,10 @@
+clusters:
+- name: lab-1
+  cluster: {server: "https://lab-1.example.net:6443"}
+contexts:
+- name: lab-1
+  context: {cluster: lab-1, user: lab-1-admin, namespace: team-b}
+current-context: lab-1
+users:
+- name: lab-1-admin
+  user: {token: fake-token-lab}
