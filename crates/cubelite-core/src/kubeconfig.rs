@@ -1017,6 +1017,26 @@ users:
     }
 
     #[test]
+    fn a_file_with_null_lists_does_not_break_the_merge() {
+        // kubectl writes `contexts: null` / `users: null` for empty lists (#557).
+        let first = write_temp(
+            "apiVersion: v1\nkind: Config\nclusters:\n- name: c\n  cluster: {server: https://c.example.com:6443}\ncontexts: null\nusers: null\n",
+        );
+        let second = write_temp(
+            "apiVersion: v1\nkind: Config\ncurrent-context: team\ncontexts:\n- name: team\n  context: {cluster: c, user: u}\nusers:\n- name: u\n  user: {token: fake-token-1}\n",
+        );
+        let cfg =
+            KubeConfig::load_from_paths(&[first.path().to_path_buf(), second.path().to_path_buf()])
+                .expect("merge with null lists");
+        assert_eq!(cfg.context_names(), vec!["team"]);
+        let ctx = cfg.get_context("team").expect("team");
+        assert_eq!(
+            ctx.cluster_server.as_deref(),
+            Some("https://c.example.com:6443")
+        );
+    }
+
+    #[test]
     fn context_resolves_its_cluster_against_its_own_file_on_a_clash() {
         let (_a, _b, cfg) = load_stale_then_own();
         let ctx = cfg.get_context("aks-prod").expect("aks-prod");
@@ -1313,6 +1333,10 @@ contexts:
             ("no-kind-mapping.yaml", "name: x\nitems: [1, 2]\n"),
             ("secret.yaml", "apiVersion: v1\nkind: Secret\ndata: {}\n"),
             ("broken.yaml", "kind: Config\ncontexts: [\n"),
+            (
+                "null-lists.yaml",
+                "apiVersion: v1\nclusters:\n- cluster: {server: https://c.example.com}\n  name: c\ncontexts: null\nkind: Config\nusers: null\n",
+            ),
             ("empty.yaml", ""),
         ]);
         let at = |name: &str| dir.path().join(name);
@@ -1326,6 +1350,7 @@ contexts:
         assert!(!is_kubeconfig_file(&at("no-kind-mapping.yaml")));
         assert!(!is_kubeconfig_file(&at("secret.yaml")));
         assert!(!is_kubeconfig_file(&at("broken.yaml")));
+        assert!(is_kubeconfig_file(&at("null-lists.yaml")));
         assert!(!is_kubeconfig_file(&at("empty.yaml")));
         assert!(!is_kubeconfig_file(&at("missing.yaml")));
     }

@@ -49,6 +49,12 @@ const KNOWN_FAILURES: &[KnownFailure] = &[
     },
     KnownFailure {
         case: "kubectl-null-lists",
+        field: "current_context",
+        got: r#"Some("")"#,
+        issue: 552,
+    },
+    KnownFailure {
+        case: "kubectl-null-lists",
         field: "client.current_context",
         got: r#"Some("")"#,
         issue: 552,
@@ -58,13 +64,6 @@ const KNOWN_FAILURES: &[KnownFailure] = &[
         field: "client.current_context.server",
         got: "None",
         issue: 552,
-    },
-    // `contexts: null` / `users: null`, as kubectl writes them, fail the load.
-    KnownFailure {
-        case: "kubectl-null-lists",
-        field: "load",
-        got: r#""error: failed to parse kubeconfig: contexts: invalid type: unit value, expected a sequence at line 6 column 11""#,
-        issue: 557,
     },
 ];
 
