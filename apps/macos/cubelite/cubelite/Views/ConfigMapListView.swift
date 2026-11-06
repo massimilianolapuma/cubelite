@@ -8,9 +8,11 @@ struct ConfigMapListView: View {
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [ConfigMapInfo] {
-        ListSort.sorted(clusterState.configMaps, by: resourcePreferences.spec(for: "configmaps"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<ConfigMapInfo> {
+        resourcePreferences.layout(
+            clusterState.configMaps, for: .configMaps, namespace: clusterState.selectedNamespace)
     }
     @Binding var selectedConfigMapID: ConfigMapInfo.ID?
 
@@ -46,7 +48,8 @@ struct ConfigMapListView: View {
     // MARK: - Table
 
     private var configMapTable: some View {
-        Table(sortedRows, selection: $selectedConfigMapID, sortOrder: resourcePreferences.sortOrder(for: "configmaps", of: ConfigMapInfo.self)) {
+        let layout = self.layout
+        return Table(of: ConfigMapInfo.self, selection: $selectedConfigMapID, sortOrder: resourcePreferences.sortOrder(for: "configmaps", of: ConfigMapInfo.self)) {
             TableColumn("Name", value: \.sortKeyName) { configMap in
                 Text(configMap.name)
                     .typeStyle(DesignTokens.Typography.data)
@@ -54,13 +57,7 @@ struct ConfigMapListView: View {
             }
             .width(min: 120, ideal: 220)
 
-            TableColumn("Namespace", value: \.sortKeyNamespace) { configMap in
-                Text(configMap.namespace)
-                    .typeStyle(DesignTokens.Typography.dataSm)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .width(min: 80, ideal: 120)
+            if layout.showsNamespaceColumn { NamespaceColumn.column(ConfigMapInfo.self) }
 
             TableColumn("Data Keys") { configMap in
                 Text("\(configMap.dataCount)")
@@ -75,8 +72,11 @@ struct ConfigMapListView: View {
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .configMaps, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedConfigMapID, preferences: resourcePreferences)
     }
 }
 

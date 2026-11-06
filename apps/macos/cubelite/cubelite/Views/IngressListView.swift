@@ -8,9 +8,11 @@ struct IngressListView: View {
     @Environment(ClusterState.self) private var clusterState
     @Environment(ResourcePreferences.self) private var resourcePreferences
 
-    /// Preferences default sort or this session's header sort (#497).
-    private var sortedRows: [IngressInfo] {
-        ListSort.sorted(clusterState.ingresses, by: resourcePreferences.spec(for: "ingresses"))
+    /// Preferences default sort or this session's header sort (#497),
+    /// grouped by namespace when that applies (#551).
+    private var layout: ListLayout<IngressInfo> {
+        resourcePreferences.layout(
+            clusterState.ingresses, for: .ingresses, namespace: clusterState.selectedNamespace)
     }
     @Binding var selectedIngressID: IngressInfo.ID?
 
@@ -46,7 +48,8 @@ struct IngressListView: View {
     // MARK: - Table
 
     private var ingressTable: some View {
-        Table(sortedRows, selection: $selectedIngressID, sortOrder: resourcePreferences.sortOrder(for: "ingresses", of: IngressInfo.self)) {
+        let layout = self.layout
+        return Table(of: IngressInfo.self, selection: $selectedIngressID, sortOrder: resourcePreferences.sortOrder(for: "ingresses", of: IngressInfo.self)) {
             TableColumn("Name", value: \.sortKeyName) { ingress in
                 Text(ingress.name)
                     .typeStyle(DesignTokens.Typography.data)
@@ -54,13 +57,7 @@ struct IngressListView: View {
             }
             .width(min: 120, ideal: 200)
 
-            TableColumn("Namespace", value: \.sortKeyNamespace) { ingress in
-                Text(ingress.namespace)
-                    .typeStyle(DesignTokens.Typography.dataSm)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .width(min: 80, ideal: 120)
+            if layout.showsNamespaceColumn { NamespaceColumn.column(IngressInfo.self) }
 
             TableColumn("Class") { ingress in
                 Text(ingress.ingressClass ?? "—")
@@ -107,7 +104,10 @@ struct IngressListView: View {
                     .foregroundStyle(.secondary)
             }
             .width(ideal: 60)
+        } rows: {
+            NamespaceTableRows(layout: layout, type: .ingresses, preferences: resourcePreferences)
         }
         .unifiedTableBackground()
+        .namespaceGroupKeys(layout, selection: selectedIngressID, preferences: resourcePreferences)
     }
 }

@@ -70,6 +70,13 @@ extension MainView {
                     }
                     .typeStyle(DesignTokens.Typography.body)
                     Spacer()
+                    // Only where grouping applies: a namespaced list, All Namespaces
+                    // (#551) — the same namespace source the lists group on.
+                    if GroupByNamespaceToggle.isShown(
+                        for: selectedResourceType, namespace: clusterState.selectedNamespace)
+                    {
+                        GroupByNamespaceToggle()
+                    }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
