@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Group the desktop resource lists by namespace** (#550, part of #547):
+  with "All namespaces" selected, a "Group by namespace" toggle in each list's
+  title bar (and in Preferences → Navigation, off by default, persisted) shows
+  one header per namespace in Pods, Deployments, StatefulSets, Jobs, CronJobs,
+  Services, Ingresses, ConfigMaps, Secrets, PVCs and Helm Releases. A header
+  shows the row count and, on lists with a status, the worst status dot and
+  how many rows are not ok; clicking it collapses the group, Option/Alt-click
+  collapses or expands them all. Collapsed namespaces are shared by all lists
+  for the session and reset on cluster switch; a filter shows every matching
+  group expanded. The Namespace column is hidden while grouped, groups go
+  A→Z (Z→A with a Namespace-descending sort) and rows keep the list's sort.
 - **Namespace column in the desktop resource lists** (#546): Pods,
   Deployments, StatefulSets, Jobs, CronJobs, Services, Ingresses, ConfigMaps,
   Secrets and PVCs show each row's namespace next to its name, and the header

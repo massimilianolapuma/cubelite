@@ -1,7 +1,7 @@
 <script lang="ts">
 	import SortHeader from '#lib/components/ui/SortHeader.svelte';
-	import { sortRows } from '#lib/list-sort.ts';
-	import { lists } from '#lib/stores/lists.svelte.ts';
+	import GroupedRows from '#lib/components/ui/GroupedRows.svelte';
+	import { gridColumns } from '#lib/list-group.ts';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -19,10 +19,13 @@
 
 	let {
 		deployments,
+		filter = '',
 		selected = null,
 		onRowClick
 	}: {
 		deployments: DeploymentInfo[];
+		/** Filter text behind `deployments`; a non-empty one expands every namespace group. */
+		filter?: string;
 		selected?: DeploymentInfo | null;
 		onRowClick?: (dep: DeploymentInfo) => void;
 	} = $props();
@@ -30,9 +33,7 @@
 	// NAME / NAMESPACE / READY / STATUS / AGE / [CPU · 1h] / REPLICAS · ACTIONS
 	const withCpu = $derived(prometheus.active !== null);
 	const grid = $derived(
-		withCpu
-			? 'grid-template-columns: 2.2fr 1fr 0.6fr 0.9fr 0.55fr 0.6fr 1.4fr;'
-			: 'grid-template-columns: 2.2fr 1fr 0.6fr 0.9fr 0.55fr 1.4fr;'
+		gridColumns(['2.2fr', '1fr', '0.6fr', '0.9fr', '0.55fr', ...(withCpu ? ['0.6fr'] : []), '1.4fr'], app.groupedLists)
 	);
 
 	// Last hour of CPU from Prometheus, summed over each deployment's pods (#510).
@@ -60,15 +61,12 @@
 	function scale(dep: DeploymentInfo, delta: number) {
 		mutations.nudgeScale(dep.namespace, dep.name, dep.replicas, delta);
 	}
-
-	// Default sort from Preferences, header click overrides for the session (#496).
-	const sorted = $derived(sortRows(deployments, lists.specFor('deployments'), { name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp, status: (x) => deploymentStatus(x).tone }));
 </script>
 
 <div class="overflow-hidden rounded-lg border border-border-default">
 	<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
 		<SortHeader list="deployments" field="name" label="Name" />
-		<SortHeader list="deployments" field="namespace" label="Namespace" />
+		{#if !app.groupedLists}<SortHeader list="deployments" field="namespace" label="Namespace" />{/if}
 		<span class="type-colhead">Ready</span>
 		<SortHeader list="deployments" field="status" label="Status" />
 		<SortHeader list="deployments" field="age" label="Age" />
@@ -81,108 +79,110 @@
 		{#if deployments.length === 0}
 			<p class="py-8 text-center text-xs text-text-disabled">No deployments found.</p>
 		{:else}
-			{#each sorted as dep (dep.namespace + '/' + dep.name)}
-				{@const status = deploymentStatus(dep)}
-				{@const isSelected = selected?.name === dep.name && selected?.namespace === dep.namespace}
-				{@const pendingScale = mutations.pendingScale(dep.namespace, dep.name)}
-				{@const applying = mutations.isApplyingScale(dep.namespace, dep.name)}
-				{@const target = pendingScale ?? dep.replicas}
-				{@const restarting = mutations.isRestarting(dep.namespace, dep.name)}
-				<div
-					role="button"
-					tabindex="0"
-					class="focus-ring grid w-full cursor-default items-center gap-x-3 border-b border-border-faint px-3 text-left last:border-b-0 hover:bg-surface-row-hover"
-					style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default); {isSelected
-						? 'background: var(--alpha-selection-bg);'
-						: ''}"
-					onclick={() => onRowClick?.(dep)}
-					onkeydown={(e) => {
-						if (e.key === 'Enter') onRowClick?.(dep);
-					}}
-				>
-					<span class="type-data truncate text-text-data-bright">{dep.name}</span>
-					<span class="type-data-sm truncate text-text-secondary">{dep.namespace}</span>
-					<span class="type-data-sm text-text-secondary">{dep.ready_replicas}/{dep.replicas}</span>
-					<span class="flex items-center gap-1.5">
-						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {toneColor[status.tone]};"></span>
-						<span class="type-data-sm" style="color: {toneColor[status.tone]};">{status.label}</span>
-					</span>
-					<span class="type-data-sm text-text-secondary">{formatAge(dep.creation_timestamp)}</span>
-					{#if withCpu}
-						<span class="flex items-center"><Sparkline points={cpuByDeployment[`${dep.namespace}/${dep.name}`] ?? null} label="CPU, last hour" /></span>
-					{/if}
-					<span class="flex items-center gap-1.5">
-						<span class="flex items-center overflow-hidden rounded-md border border-border-default">
-							<button
-								type="button"
-								aria-label="Scale down"
-								disabled={applying || target <= 0}
-								class="focus-ring flex h-7 w-7 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
-								onclick={(e) => {
-									e.stopPropagation();
-									scale(dep, -1);
-								}}
-							>
-								<Minus class="h-3 w-3" />
-							</button>
+			<GroupedRows list="deployments" rows={deployments} accessors={{ name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp, status: (x) => deploymentStatus(x).tone }} nouns={['deployment', 'deployments']} {filter}>
+				{#snippet row(dep, grouped)}
+					{@const status = deploymentStatus(dep)}
+					{@const isSelected = selected?.name === dep.name && selected?.namespace === dep.namespace}
+					{@const pendingScale = mutations.pendingScale(dep.namespace, dep.name)}
+					{@const applying = mutations.isApplyingScale(dep.namespace, dep.name)}
+					{@const target = pendingScale ?? dep.replicas}
+					{@const restarting = mutations.isRestarting(dep.namespace, dep.name)}
+					<div
+						role="button"
+						tabindex="0"
+						class="focus-ring grid w-full cursor-default items-center gap-x-3 border-b border-border-faint px-3 text-left last:border-b-0 hover:bg-surface-row-hover"
+						style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default); {isSelected
+							? 'background: var(--alpha-selection-bg);'
+							: ''}"
+						onclick={() => onRowClick?.(dep)}
+						onkeydown={(e) => {
+							if (e.key === 'Enter') onRowClick?.(dep);
+						}}
+					>
+						<span class="type-data truncate text-text-data-bright {grouped ? 'pl-4.5' : ''}">{dep.name}</span>
+						{#if !grouped}<span class="type-data-sm truncate text-text-secondary">{dep.namespace}</span>{/if}
+						<span class="type-data-sm text-text-secondary">{dep.ready_replicas}/{dep.replicas}</span>
+						<span class="flex items-center gap-1.5">
+							<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {toneColor[status.tone]};"></span>
+							<span class="type-data-sm" style="color: {toneColor[status.tone]};">{status.label}</span>
+						</span>
+						<span class="type-data-sm text-text-secondary">{formatAge(dep.creation_timestamp)}</span>
+						{#if withCpu}
+							<span class="flex items-center"><Sparkline points={cpuByDeployment[`${dep.namespace}/${dep.name}`] ?? null} label="CPU, last hour" /></span>
+						{/if}
+						<span class="flex items-center gap-1.5">
+							<span class="flex items-center overflow-hidden rounded-md border border-border-default">
+								<button
+									type="button"
+									aria-label="Scale down"
+									disabled={applying || target <= 0}
+									class="focus-ring flex h-7 w-7 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
+									onclick={(e) => {
+										e.stopPropagation();
+										scale(dep, -1);
+									}}
+								>
+									<Minus class="h-3 w-3" />
+								</button>
+								<span
+									class="type-data-sm border-x border-border-default bg-surface-window px-2"
+									style="color: {pendingScale !== null
+										? 'var(--color-status-warn)'
+										: 'var(--color-text-secondary)'};"
+								>
+									{target}
+								</span>
+								<button
+									type="button"
+									aria-label="Scale up"
+									disabled={applying}
+									class="focus-ring flex h-7 w-7 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
+									onclick={(e) => {
+										e.stopPropagation();
+										scale(dep, 1);
+									}}
+								>
+									<Plus class="h-3 w-3" />
+								</button>
+							</span>
+							<!-- One segment per target replica: filled = ready, outlined = not yet ready. -->
 							<span
-								class="type-data-sm border-x border-border-default bg-surface-window px-2"
-								style="color: {pendingScale !== null
-									? 'var(--color-status-warn)'
-									: 'var(--color-text-secondary)'};"
+								class="flex items-center gap-0.5"
+								aria-label="{dep.ready_replicas} of {target} replicas ready"
+								role="img"
 							>
-								{target}
+								{#each Array.from({ length: Math.min(target, MAX_SEGMENTS) }, (_, i) => i) as i (i)}
+									<span
+										class="h-2.5 w-1.5 rounded-[1px] border"
+										style={i < dep.ready_replicas
+											? 'background: var(--color-status-ok); border-color: var(--color-status-ok);'
+											: `border-color: ${pendingScale !== null ? 'var(--color-status-warn)' : 'var(--color-border-strong)'};`}
+									></span>
+								{/each}
+								{#if target > MAX_SEGMENTS}
+									<span class="type-micro font-mono text-text-tertiary">+{target - MAX_SEGMENTS}</span>
+								{/if}
 							</span>
 							<button
 								type="button"
-								aria-label="Scale up"
-								disabled={applying}
-								class="focus-ring flex h-7 w-7 items-center justify-center bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
+								disabled={restarting}
+								class="focus-ring type-caption flex h-7 items-center gap-1 rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110 disabled:opacity-45"
 								onclick={(e) => {
 									e.stopPropagation();
-									scale(dep, 1);
+									void mutations.restartDeployment(dep.namespace, dep.name);
 								}}
 							>
-								<Plus class="h-3 w-3" />
+								{#if restarting}
+									<LoaderCircle class="h-3 w-3 animate-spin" />
+								{:else}
+									<RotateCw class="h-3 w-3" />
+								{/if}
+								Restart
 							</button>
 						</span>
-						<!-- One segment per target replica: filled = ready, outlined = not yet ready. -->
-						<span
-							class="flex items-center gap-0.5"
-							aria-label="{dep.ready_replicas} of {target} replicas ready"
-							role="img"
-						>
-							{#each Array.from({ length: Math.min(target, MAX_SEGMENTS) }, (_, i) => i) as i (i)}
-								<span
-									class="h-2.5 w-1.5 rounded-[1px] border"
-									style={i < dep.ready_replicas
-										? 'background: var(--color-status-ok); border-color: var(--color-status-ok);'
-										: `border-color: ${pendingScale !== null ? 'var(--color-status-warn)' : 'var(--color-border-strong)'};`}
-								></span>
-							{/each}
-							{#if target > MAX_SEGMENTS}
-								<span class="type-micro font-mono text-text-tertiary">+{target - MAX_SEGMENTS}</span>
-							{/if}
-						</span>
-						<button
-							type="button"
-							disabled={restarting}
-							class="focus-ring type-caption flex h-7 items-center gap-1 rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110 disabled:opacity-45"
-							onclick={(e) => {
-								e.stopPropagation();
-								void mutations.restartDeployment(dep.namespace, dep.name);
-							}}
-						>
-							{#if restarting}
-								<LoaderCircle class="h-3 w-3 animate-spin" />
-							{:else}
-								<RotateCw class="h-3 w-3" />
-							{/if}
-							Restart
-						</button>
-					</span>
-				</div>
-			{/each}
+					</div>
+				{/snippet}
+			</GroupedRows>
 		{/if}
 	</div>
 </div>

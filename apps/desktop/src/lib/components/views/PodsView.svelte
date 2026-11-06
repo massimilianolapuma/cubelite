@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ListTitle from '#lib/components/ui/ListTitle.svelte';
 	import PodTable from '#lib/components/PodTable.svelte';
 	import DeletePodDialog from '#lib/components/DeletePodDialog.svelte';
 	import PodDrawer from '#lib/components/pods/PodDrawer.svelte';
@@ -29,16 +30,16 @@
 </script>
 
 <div class="flex flex-col gap-3 p-4">
-	<div class="flex items-center gap-3">
-		<h1 class="type-title flex-1">Pods</h1>
+	<ListTitle title="Pods">
 		<input
 			type="text"
 			placeholder="Filter pods…"
 			bind:value={app.podFilter}
 			class="focus-ring h-7 w-52 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
 		/>
-	</div>
+	</ListTitle>
 	<PodTable
+		filter={app.podFilter}
 		pods={filtered}
 		selected={app.selectedPod}
 		onRowClick={(pod) => (app.selectedPod = pod)}

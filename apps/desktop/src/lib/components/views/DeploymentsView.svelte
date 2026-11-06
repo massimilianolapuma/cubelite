@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ListTitle from '#lib/components/ui/ListTitle.svelte';
 	import DeploymentTable from '#lib/components/DeploymentTable.svelte';
 	import DeploymentDrawer from '#lib/components/deployments/DeploymentDrawer.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -14,16 +15,16 @@
 </script>
 
 <div class="flex flex-col gap-3 p-4">
-	<div class="flex items-center gap-3">
-		<h1 class="type-title flex-1">Deployments</h1>
+	<ListTitle title="Deployments">
 		<input
 			type="text"
 			placeholder="Filter deployments…"
 			bind:value={app.deploymentFilter}
 			class="focus-ring h-7 w-52 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
 		/>
-	</div>
+	</ListTitle>
 	<DeploymentTable
+		filter={app.deploymentFilter}
 		deployments={filtered}
 		selected={app.selectedDeployment}
 		onRowClick={(dep) => (app.selectedDeployment = dep)}
