@@ -5,28 +5,44 @@ import XCTest
 // MARK: - KubeconfigFixturesTests
 
 /// Runs every case of the shared kubeconfig corpus (`testdata/kubeconfig`,
-/// #548) through `KubeconfigService.loadFromPaths`, `KubeConfig`'s
-/// `cluster(forContext:)` / `user(forContext:)` and the Preferences
-/// redefinition scan, and compares the result with the case's
-/// `expected.json`. `cubelite-core` runs the same cases
-/// (`tests/kubeconfig_fixtures.rs`); the schema is in
-/// `testdata/kubeconfig/README.md`. A new case directory is picked up without
-/// code changes.
+/// #548) through the app's own code and compares the result with the case's
+/// `expected.json`: `KubeconfigService.loadFromPaths`, `KubeConfig`'s
+/// `cluster(forContext:)`, the Preferences redefinition scan, and for
+/// credentials `KubeAPIService.connectionUser(in:context:)`,
+/// `clientCertificateSource(of:)` and `kubeconfigFileURL(_:)` — the
+/// selection `connection(contextName:)` and `loadClientIdentity` use.
+/// `cubelite-core` runs the same cases (`tests/kubeconfig_fixtures.rs`); the
+/// schema is in `testdata/kubeconfig/README.md`. A new case directory is
+/// picked up without code changes.
 ///
 /// The native app does not expose per-file context counts or shadowed names,
 /// so of `sources` only the redefined cluster and user names are checked.
 final class KubeconfigFixturesTests: XCTestCase {
 
-    /// Expectations the app does not meet yet: case → (field prefix, issue).
-    /// Mismatches on these fields are expected failures; a listed field that
-    /// matches fails the test, so the entry is removed once fixed.
-    private static let knownFailures: [(case: String, field: String, issue: Int)] = [
+    /// Expectations the app does not meet yet, with the exact field and the
+    /// value observed today. Such a mismatch is an expected failure; any
+    /// other value of the field fails, and so does a listed field that
+    /// matches, so the entry is removed once fixed.
+    private static let knownFailures: [KnownFailure] = [
         // The first file's `current-context: ""` wins over the next file's.
-        (case: "empty-current-context", field: "current_context", issue: 552),
-        (case: "kubectl-null-lists", field: "current_context", issue: 552),
+        KnownFailure("empty-current-context", "current_context", issue: 552, got: #"Optional("")"#),
+        KnownFailure("kubectl-null-lists", "current_context", issue: 552, got: #"Optional("")"#),
         // Relative certificate paths are read from the working directory.
-        (case: "client-cert-files", field: "contexts[lab-1].auth", issue: 553),
-        (case: "client-cert-files", field: "contexts[lab-2].auth", issue: 553),
+        KnownFailure(
+            "client-cert-files", "contexts[lab-1].auth", issue: 553,
+            got: "client-cert-file(client_certificate: $PWD/certs/client.crt,"
+                + " client_key: $PWD/certs/client.key)"),
+        KnownFailure(
+            "client-cert-files", "contexts[lab-2].auth", issue: 553,
+            got: "client-cert-file(client_certificate: $PWD/certs/client.crt,"
+                + " client_key: $PWD/certs/client.key)"),
+        // A context without a user, or with an undefined one, cannot connect.
+        KnownFailure(
+            "missing-references", "contexts[no-user].auth", issue: 561,
+            got: #"error(User definition not found for context 'no-user')"#),
+        KnownFailure(
+            "missing-references", "contexts[unknown-user].auth", issue: 561,
+            got: #"error(User definition not found for context 'unknown-user')"#),
     ]
 
     private let keychain = KeychainService()
@@ -46,24 +62,29 @@ final class KubeconfigFixturesTests: XCTestCase {
         var expected: [Int: [String]] = [:]
         for dir in cases {
             let name = dir.lastPathComponent
-            let mismatches = try await run(dir)
-            var matchedKnown: Set<String> = []
+            let mismatches: [Mismatch]
+            do {
+                mismatches = try await run(dir)
+            } catch {
+                mismatches = [Mismatch(field: "load", got: "error(\(error))", want: "ok")]
+            }
+            var matchedKnown: [KnownFailure] = []
             for mismatch in mismatches {
-                let line = "\(name): \(mismatch.field): \(mismatch.message)"
+                let line = "\(name): \(mismatch.field): got \(mismatch.got), want \(mismatch.want)"
                 if let known = Self.knownFailures.first(where: {
-                    $0.case == name && mismatch.field.hasPrefix($0.field)
+                    $0.case == name && $0.field == mismatch.field && $0.got == mismatch.got
                 }) {
-                    matchedKnown.insert(known.field)
+                    matchedKnown.append(known)
                     expected[known.issue, default: []].append(line)
                 } else {
                     unexpected.append(line)
                 }
             }
             for known in Self.knownFailures where known.case == name {
-                if !matchedKnown.contains(known.field) {
+                if !matchedKnown.contains(known) {
                     unexpected.append(
-                        "\(name): \(known.field): listed as known failure #\(known.issue) but"
-                            + " matches; remove it from knownFailures")
+                        "\(name): \(known.field): listed as known failure #\(known.issue) with"
+                            + " \(known.got) but no longer shows it; update knownFailures")
                 }
             }
         }
@@ -79,18 +100,36 @@ final class KubeconfigFixturesTests: XCTestCase {
 
     // MARK: - Case runner
 
+    private struct KnownFailure: Equatable {
+        let `case`: String
+        let field: String
+        let got: String
+        let issue: Int
+
+        init(_ name: String, _ field: String, issue: Int, got: String) {
+            self.case = name
+            self.field = field
+            self.got = got
+            self.issue = issue
+        }
+    }
+
     private struct Mismatch {
         let field: String
-        let message: String
+        let got: String
+        let want: String
     }
 
     private func run(_ dir: URL) async throws -> [Mismatch] {
-        let data = try Data(contentsOf: dir.appendingPathComponent("expected.json"))
-        let expected = try JSONDecoder().decode(Expected.self, from: data)
+        let expectedURL = dir.appendingPathComponent("expected.json")
+        guard FileManager.default.fileExists(atPath: expectedURL.path) else {
+            return [Mismatch(field: "expected.json", got: "missing", want: "present")]
+        }
+        let expected = try JSONDecoder().decode(Expected.self, from: Data(contentsOf: expectedURL))
         var found: [Mismatch] = []
         func check<T: Equatable>(_ field: String, _ got: T, _ want: T) {
             if got != want {
-                found.append(Mismatch(field: field, message: "got \(got), want \(want)"))
+                found.append(Mismatch(field: field, got: "\(got)", want: "\(want)"))
             }
         }
 
@@ -117,7 +156,7 @@ final class KubeconfigFixturesTests: XCTestCase {
             let server = config.cluster(forContext: want.name)?.cluster?.server
             check(field("server"), server, want.server)
             let auth = await authentication(of: want.name, server: server, in: config, dir: dir)
-            check(field("auth"), auth, want.auth)
+            check(field("auth"), auth, .ok(want.auth))
         }
 
         let redefinitions = KubeconfigService.redefinitions(in: paths)
@@ -130,45 +169,62 @@ final class KubeconfigFixturesTests: XCTestCase {
         return found
     }
 
-    /// The credential the app would authenticate `context` with, resolved
-    /// like `KubeAPIService.connection(contextName:)`: an exec plugin, else
-    /// the Keychain bearer token of the server (file tokens are moved there
-    /// at load), else a client certificate — inline, or the file
-    /// `KubeAPIService.loadClientIdentity` opens.
+    /// The credential the app authenticates `context` with, chosen by the
+    /// app's own code: the user `KubeAPIService.connectionUser` resolves
+    /// (an error when there is none), its exec plugin, else the Keychain
+    /// bearer token of the server (load moves file tokens there), else the
+    /// client certificate `KubeAPIService.clientCertificateSource` picks,
+    /// read from `KubeAPIService.kubeconfigFileURL`.
     private func authentication(
         of context: String, server: String?, in config: KubeConfig, dir: URL
-    ) async -> ExpectedAuth {
-        let user = config.user(forContext: context)?.user
-        if let exec = user?.exec {
-            return ExpectedAuth(kind: "exec", command: exec.command, args: exec.args ?? [])
+    ) async -> ObservedAuth {
+        let user: UserDetails
+        do {
+            user = try KubeAPIService.connectionUser(in: config, context: context).user
+        } catch CubeliteError.clientError(let reason) {
+            return .error(reason)
+        } catch {
+            return .error("\(error)")
+        }
+        if let exec = user.exec {
+            return .ok(ExpectedAuth(kind: "exec", command: exec.command, args: exec.args ?? []))
         }
         if let server, !server.isEmpty {
             let account = server.hasSuffix("/") ? String(server.dropLast()) : server
             if let token = try? await keychain.retrieveString(tag: .bearerToken, account: account),
                 !token.isEmpty
             {
-                return ExpectedAuth(kind: "token", token: token)
+                return .ok(ExpectedAuth(kind: "token", token: token))
             }
         }
-        if let data = user?.clientCertificateData, !data.isEmpty {
-            return ExpectedAuth(kind: "client-cert-data", clientCertificateData: data)
+        switch KubeAPIService.clientCertificateSource(of: user) {
+        case .inline(let certificateData, _):
+            return .ok(
+                ExpectedAuth(kind: "client-cert-data", clientCertificateData: certificateData))
+        case .files(let certificatePath, let keyPath):
+            let opened = { (path: String) in
+                Self.display(KubeAPIService.kubeconfigFileURL(path), in: dir)
+            }
+            return .ok(
+                ExpectedAuth(
+                    kind: "client-cert-file", clientCertificate: opened(certificatePath),
+                    clientKey: opened(keyPath)))
+        case nil:
+            return .ok(ExpectedAuth(kind: "none"))
         }
-        if let cert = user?.clientCertificate, !cert.isEmpty {
-            return ExpectedAuth(
-                kind: "client-cert-file",
-                clientCertificate: Self.openedFile(cert, relativeTo: dir),
-                clientKey: user?.clientKey.map { Self.openedFile($0, relativeTo: dir) })
-        }
-        return ExpectedAuth(kind: "none")
     }
 
-    /// The file `KubeAPIService.loadClientIdentity` reads for a kubeconfig
-    /// path, relative to `dir` when it lies inside it.
-    private static func openedFile(_ path: String, relativeTo dir: URL) -> String {
-        let expanded = NSString(string: path).expandingTildeInPath
-        let opened = URL(fileURLWithPath: expanded).standardizedFileURL.path
-        let prefix = dir.standardizedFileURL.path + "/"
-        return opened.hasPrefix(prefix) ? String(opened.dropFirst(prefix.count)) : opened
+    /// `url` relative to `dir` when it lies inside it, else with the working
+    /// directory shown as `$PWD` so the value does not depend on where the
+    /// test runs.
+    private static func display(_ url: URL, in dir: URL) -> String {
+        let path = url.standardizedFileURL.path
+        let inside = dir.standardizedFileURL.path + "/"
+        if path.hasPrefix(inside) { return String(path.dropFirst(inside.count)) }
+        let cwd = FileManager.default.currentDirectoryPath
+        let pwd = cwd.hasSuffix("/") ? cwd : cwd + "/"
+        if path.hasPrefix(pwd) { return "$PWD/" + path.dropFirst(pwd.count) }
+        return path
     }
 
     private func forgetTokens() async {
@@ -189,11 +245,13 @@ final class KubeconfigFixturesTests: XCTestCase {
         .deletingLastPathComponent()  // repository root
         .appendingPathComponent("testdata/kubeconfig")
 
+    /// Every directory of the corpus; one without `expected.json` fails.
     private static func caseDirectories() throws -> [URL] {
-        let fm = FileManager.default
-        return try fm.contentsOfDirectory(at: corpus, includingPropertiesForKeys: nil)
-            .filter { fm.fileExists(atPath: $0.appendingPathComponent("expected.json").path) }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        try FileManager.default.contentsOfDirectory(
+            at: corpus, includingPropertiesForKeys: [.isDirectoryKey]
+        )
+        .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+        .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     /// Every `*.yaml` file under `dir`, relative to it, in lexical order: the
@@ -202,6 +260,19 @@ final class KubeconfigFixturesTests: XCTestCase {
         try FileManager.default.subpathsOfDirectory(atPath: dir.path)
             .filter { $0.hasSuffix(".yaml") }
             .sorted()
+    }
+}
+
+/// What the app authenticates a context with, or why it cannot.
+private enum ObservedAuth: Equatable, CustomStringConvertible {
+    case ok(ExpectedAuth)
+    case error(String)
+
+    var description: String {
+        switch self {
+        case .ok(let auth): return auth.description
+        case .error(let reason): return "error(\(reason))"
+        }
     }
 }
 
