@@ -28,37 +28,6 @@ struct KnownFailure {
 /// of the field fails it, and so does a listed field that no longer shows
 /// the value, so the entry is updated or removed with the fix.
 const KNOWN_FAILURES: &[KnownFailure] = &[
-    // The first file's `current-context: ""` wins over the next file's.
-    KnownFailure {
-        case: "empty-current-context",
-        field: "current_context",
-        got: r#"Some("")"#,
-        issue: 552,
-    },
-    KnownFailure {
-        case: "empty-current-context",
-        field: "client.current_context",
-        got: r#"Some("")"#,
-        issue: 552,
-    },
-    KnownFailure {
-        case: "empty-current-context",
-        field: "client.current_context.server",
-        got: "None",
-        issue: 552,
-    },
-    KnownFailure {
-        case: "kubectl-null-lists",
-        field: "client.current_context",
-        got: r#"Some("")"#,
-        issue: 552,
-    },
-    KnownFailure {
-        case: "kubectl-null-lists",
-        field: "client.current_context.server",
-        got: "None",
-        issue: 552,
-    },
     // `contexts: null` / `users: null`, as kubectl writes them, fail the load.
     KnownFailure {
         case: "kubectl-null-lists",
