@@ -2,14 +2,15 @@
 //! cluster serves, lists through the API server's Table (the columns
 //! `kubectl get` prints) and single objects as YAML.
 
-use kube::discovery::{verbs, Discovery, Scope};
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{KubeClient, KubeconfigError};
 
-/// `Accept` for aggregated discovery (`apidiscovery.k8s.io/v2`, GA in 1.30).
-const AGGREGATED_DISCOVERY: &str =
-    "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList";
+/// `Accept` for aggregated discovery, as kubectl sends it: v2 (GA in 1.30),
+/// v2beta1 (1.27–1.29), else the plain legacy document.
+const AGGREGATED_DISCOVERY: &str = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList,application/json;g=apidiscovery.k8s.io;v=v2beta1;as=APIGroupDiscoveryList,application/json";
 
 /// One listable resource kind the cluster serves.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,40 +77,40 @@ struct DiscoveryKind {
 }
 
 /// The listable kinds of an aggregated discovery document (`/api` or
-/// `/apis`), each at its group's preferred version; `None` when `doc` is not
+/// `/apis`), each at the most preferred version that serves it; `None` when `doc` is not
 /// an `APIGroupDiscoveryList` (a server without aggregated discovery).
 pub(crate) fn parse_aggregated(doc: &serde_json::Value) -> Option<Vec<ResourceKindInfo>> {
     let list: DiscoveryList = serde_json::from_value(doc.clone()).ok()?;
     if list.kind != "APIGroupDiscoveryList" {
         return None;
     }
-    let mut kinds: Vec<ResourceKindInfo> = list
-        .items
-        .into_iter()
-        .filter_map(|group| {
-            let name = group.metadata.name;
-            let preferred = group.versions.into_iter().next()?;
-            let version = preferred.version;
-            Some(
-                preferred
-                    .resources
-                    .into_iter()
-                    .filter(|r| !r.resource.contains('/') && r.verbs.iter().any(|v| v == "list"))
-                    .filter_map(move |r| {
-                        Some(ResourceKindInfo {
-                            group: name.clone(),
-                            version: version.clone(),
-                            kind: r.response_kind?.kind,
-                            plural: r.resource,
-                            namespaced: r.scope == "Namespaced",
-                            short_names: r.short_names,
-                        })
-                    })
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .flatten()
-        .collect();
+    let mut kinds = Vec::new();
+    for group in list.items {
+        let name = group.metadata.name;
+        // Versions come in preference order; a kind served only in an older
+        // version keeps that version (kubectl's preferred resources).
+        let mut seen = HashSet::new();
+        for version in group.versions {
+            for r in version.resources {
+                if r.resource.contains('/') || !r.verbs.iter().any(|v| v == "list") {
+                    continue;
+                }
+                let Some(kind) = r.response_kind else {
+                    continue;
+                };
+                if seen.insert(r.resource.clone()) {
+                    kinds.push(ResourceKindInfo {
+                        group: name.clone(),
+                        version: version.version.clone(),
+                        kind: kind.kind,
+                        plural: r.resource,
+                        namespaced: r.scope == "Namespaced",
+                        short_names: r.short_names,
+                    });
+                }
+            }
+        }
+    }
     kinds.sort_by(|a, b| (&a.group, &a.kind).cmp(&(&b.group, &b.kind)));
     Some(kinds)
 }
@@ -167,6 +168,8 @@ pub struct ResourceTable {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TablePage {
+    #[serde(default)]
+    kind: String,
     #[serde(default)]
     metadata: ListMeta,
     #[serde(default)]
@@ -240,6 +243,32 @@ fn table_query(cont: Option<&str>) -> String {
         query.append_pair("continue", token);
     }
     query.finish()
+}
+
+/// The listable resources of one legacy `APIResourceList` not already in
+/// `seen` (plural names of this group, from more preferred versions).
+fn push_legacy(
+    kinds: &mut Vec<ResourceKindInfo>,
+    seen: &mut HashSet<String>,
+    group: &str,
+    version: &str,
+    list: k8s_openapi::apimachinery::pkg::apis::meta::v1::APIResourceList,
+) {
+    for r in list.resources {
+        if r.name.contains('/') || !r.verbs.iter().any(|v| v == "list") {
+            continue;
+        }
+        if seen.insert(r.name.clone()) {
+            kinds.push(ResourceKindInfo {
+                group: group.to_string(),
+                version: version.to_string(),
+                kind: r.kind,
+                plural: r.name,
+                namespaced: r.namespaced,
+                short_names: r.short_names.unwrap_or_default(),
+            });
+        }
+    }
 }
 
 /// The `priority: 0` columns and their indices in a row's cells.
@@ -317,6 +346,16 @@ impl KubeClient {
                 .body(Vec::new())
                 .map_err(client_error)?;
             let page: TablePage = self.client().request(request).await.map_err(client_error)?;
+            if page.kind != "Table" {
+                return Err(client_error(format!(
+                    "the API server answered {} instead of a Table for {path}",
+                    if page.kind.is_empty() {
+                        "an unknown document"
+                    } else {
+                        &page.kind
+                    }
+                )));
+            }
             let (_, keep) = columns.get_or_insert_with(|| shown_columns(&page.column_definitions));
             let keep = keep.clone();
             rows.extend(page.rows.into_iter().map(|row| {
@@ -378,32 +417,35 @@ impl KubeClient {
         }
     }
 
+    /// Legacy discovery (`/api`, `/apis` and one request per group
+    /// version). A group version that fails (an APIService down, e.g.
+    /// metrics-server) is skipped, as kubectl does, instead of failing all.
     async fn legacy_kinds(&self) -> Result<Vec<ResourceKindInfo>, KubeconfigError> {
-        let discovery = Discovery::new(self.client())
-            .run()
+        let client = self.client();
+        let mut kinds = Vec::new();
+        let core = client
+            .list_core_api_versions()
             .await
             .map_err(client_error)?;
-        let mut kinds: Vec<ResourceKindInfo> = discovery
-            .groups()
-            .flat_map(|group| {
-                let version = group.preferred_version_or_latest().to_string();
-                group
-                    .versioned_resources(&version)
-                    .into_iter()
-                    .filter(|(ar, caps)| {
-                        !ar.plural.contains('/') && caps.supports_operation(verbs::LIST)
-                    })
-                    .map(|(ar, caps)| ResourceKindInfo {
-                        group: ar.group,
-                        version: ar.version,
-                        kind: ar.kind,
-                        plural: ar.plural,
-                        namespaced: matches!(caps.scope, Scope::Namespaced),
-                        short_names: Vec::new(),
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
+        let mut seen = HashSet::new();
+        for version in &core.versions {
+            if let Ok(list) = client.list_core_api_resources(version).await {
+                push_legacy(&mut kinds, &mut seen, "", version, list);
+            }
+        }
+        let groups = client.list_api_groups().await.map_err(client_error)?;
+        for group in groups.groups {
+            let preferred = group.preferred_version.as_ref().map(|v| v.version.clone());
+            let mut versions: Vec<_> = group.versions.iter().collect();
+            // Preferred version first, then the order the server lists.
+            versions.sort_by_key(|v| Some(&v.version) != preferred.as_ref());
+            let mut seen = HashSet::new();
+            for v in versions {
+                if let Ok(list) = client.list_api_group_resources(&v.group_version).await {
+                    push_legacy(&mut kinds, &mut seen, &group.name, &v.version, list);
+                }
+            }
+        }
         kinds.sort_by(|a, b| (&a.group, &a.kind).cmp(&(&b.group, &b.kind)));
         Ok(kinds)
     }
@@ -481,7 +523,7 @@ mod tests {
     use http::StatusCode;
     use std::sync::{Arc, Mutex};
 
-    const AGGREGATED: &str = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList";
+    const AGGREGATED: &str = "application/json;g=apidiscovery.k8s.io;v=v2;as=APIGroupDiscoveryList,application/json;g=apidiscovery.k8s.io;v=v2beta1;as=APIGroupDiscoveryList,application/json";
 
     #[tokio::test]
     async fn discover_kinds_asks_for_aggregated_discovery_on_api_and_apis() {
@@ -817,6 +859,116 @@ mod tests {
         assert_send(&client.discover_kinds());
         assert_send(&client.list_table(&r, None));
         assert_send(&client.get_dynamic_yaml(&r, None, "x"));
+    }
+
+    #[test]
+    fn parse_aggregated_keeps_kinds_served_only_in_an_older_version() {
+        // kube-prometheus-stack: Alertmanager in v1 (preferred), AlertmanagerConfig only in v1alpha1.
+        let doc = serde_json::json!({
+            "kind": "APIGroupDiscoveryList", "apiVersion": "apidiscovery.k8s.io/v2",
+            "items": [{"metadata": {"name": "monitoring.coreos.com"}, "versions": [
+                {"version": "v1", "resources": [
+                    {"resource": "alertmanagers", "scope": "Namespaced",
+                     "responseKind": {"group": "monitoring.coreos.com", "version": "v1", "kind": "Alertmanager"}, "verbs": ["list"]}
+                ]},
+                {"version": "v1alpha1", "resources": [
+                    {"resource": "alertmanagers", "scope": "Namespaced",
+                     "responseKind": {"group": "monitoring.coreos.com", "version": "v1alpha1", "kind": "Alertmanager"}, "verbs": ["list"]},
+                    {"resource": "alertmanagerconfigs", "scope": "Namespaced",
+                     "responseKind": {"group": "monitoring.coreos.com", "version": "v1alpha1", "kind": "AlertmanagerConfig"}, "verbs": ["list"]}
+                ]}
+            ]}]
+        });
+        let kinds = parse_aggregated(&doc).expect("aggregated");
+        let found: Vec<(&str, &str)> = kinds
+            .iter()
+            .map(|k| (k.kind.as_str(), k.version.as_str()))
+            .collect();
+        assert_eq!(
+            found,
+            vec![("Alertmanager", "v1"), ("AlertmanagerConfig", "v1alpha1")]
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_discovery_skips_a_broken_group_and_merges_versions() {
+        // A plain APIGroupList answers the aggregated Accept (no aggregated discovery);
+        // metrics.k8s.io is down (503); monitoring has a kind only in its older version.
+        let (client, _server) = mock_client(|_, uri| match uri {
+            "/api" => (
+                StatusCode::OK,
+                serde_json::json!({"kind": "APIVersions", "versions": ["v1"], "serverAddressByClientCIDRs": []}),
+            ),
+            "/api/v1" => (
+                StatusCode::OK,
+                serde_json::json!({"kind": "APIResourceList", "groupVersion": "v1", "resources": [
+                    {"name": "pods", "singularName": "pod", "namespaced": true, "kind": "Pod", "verbs": ["list"], "shortNames": ["po"]}
+                ]}),
+            ),
+            "/apis" => (
+                StatusCode::OK,
+                serde_json::json!({"kind": "APIGroupList", "apiVersion": "v1", "groups": [
+                    {"name": "metrics.k8s.io", "versions": [{"groupVersion": "metrics.k8s.io/v1beta1", "version": "v1beta1"}],
+                     "preferredVersion": {"groupVersion": "metrics.k8s.io/v1beta1", "version": "v1beta1"}},
+                    {"name": "monitoring.coreos.com",
+                     "versions": [{"groupVersion": "monitoring.coreos.com/v1alpha1", "version": "v1alpha1"}, {"groupVersion": "monitoring.coreos.com/v1", "version": "v1"}],
+                     "preferredVersion": {"groupVersion": "monitoring.coreos.com/v1", "version": "v1"}}
+                ]}),
+            ),
+            "/apis/metrics.k8s.io/v1beta1" => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                serde_json::json!({
+                    "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": 503, "reason": "ServiceUnavailable"
+                }),
+            ),
+            "/apis/monitoring.coreos.com/v1" => (
+                StatusCode::OK,
+                serde_json::json!({"kind": "APIResourceList", "groupVersion": "monitoring.coreos.com/v1", "resources": [
+                    {"name": "alertmanagers", "singularName": "alertmanager", "namespaced": true, "kind": "Alertmanager", "verbs": ["list"]}
+                ]}),
+            ),
+            "/apis/monitoring.coreos.com/v1alpha1" => (
+                StatusCode::OK,
+                serde_json::json!({"kind": "APIResourceList", "groupVersion": "monitoring.coreos.com/v1alpha1", "resources": [
+                    {"name": "alertmanagers", "singularName": "alertmanager", "namespaced": true, "kind": "Alertmanager", "verbs": ["list"]},
+                    {"name": "alertmanagerconfigs", "singularName": "alertmanagerconfig", "namespaced": true, "kind": "AlertmanagerConfig", "verbs": ["list"]}
+                ]}),
+            ),
+            other => panic!("unexpected {other}"),
+        });
+        let kinds = client
+            .discover_kinds()
+            .await
+            .expect("discover despite a broken group");
+        let found: Vec<(&str, &str, &str)> = kinds
+            .iter()
+            .map(|k| (k.group.as_str(), k.version.as_str(), k.kind.as_str()))
+            .collect();
+        assert_eq!(
+            found,
+            vec![
+                ("", "v1", "Pod"),
+                ("monitoring.coreos.com", "v1", "Alertmanager"),
+                ("monitoring.coreos.com", "v1alpha1", "AlertmanagerConfig"),
+            ]
+        );
+        assert_eq!(kinds[0].short_names, vec!["po".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn list_table_rejects_an_answer_that_is_not_a_table() {
+        let (client, _server) = mock_client(|_, _| {
+            (
+                StatusCode::OK,
+                serde_json::json!({"kind": "HorizontalPodAutoscalerList", "apiVersion": "autoscaling/v2", "metadata": {}, "items": []}),
+            )
+        });
+        let text = client
+            .list_table(&hpa_ref(), Some("shop"))
+            .await
+            .expect_err("not a table")
+            .to_string();
+        assert!(text.contains("Table"), "{text}");
     }
 
     #[test]
