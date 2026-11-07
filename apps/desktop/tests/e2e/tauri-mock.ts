@@ -34,6 +34,42 @@ declare global {
 }
 
 export const FIXTURES = {
+  // Discovery (resource-kinds phase 2): every registry kind except Storage Classes.
+  resourceKinds: [
+    { group: "", version: "v1", kind: "Namespace", plural: "namespaces", namespaced: false, short_names: [] },
+    { group: "apps", version: "v1", kind: "DaemonSet", plural: "daemonsets", namespaced: true, short_names: [] },
+    { group: "apps", version: "v1", kind: "ReplicaSet", plural: "replicasets", namespaced: true, short_names: [] },
+    { group: "autoscaling", version: "v2", kind: "HorizontalPodAutoscaler", plural: "horizontalpodautoscalers", namespaced: true, short_names: [] },
+    { group: "networking.k8s.io", version: "v1", kind: "IngressClass", plural: "ingressclasses", namespaced: false, short_names: [] },
+    { group: "discovery.k8s.io", version: "v1", kind: "EndpointSlice", plural: "endpointslices", namespaced: true, short_names: [] },
+    { group: "networking.k8s.io", version: "v1", kind: "NetworkPolicy", plural: "networkpolicies", namespaced: true, short_names: [] },
+    { group: "", version: "v1", kind: "PersistentVolume", plural: "persistentvolumes", namespaced: false, short_names: [] },
+    { group: "", version: "v1", kind: "ResourceQuota", plural: "resourcequotas", namespaced: true, short_names: [] },
+    { group: "", version: "v1", kind: "LimitRange", plural: "limitranges", namespaced: true, short_names: [] },
+    { group: "policy", version: "v1", kind: "PodDisruptionBudget", plural: "poddisruptionbudgets", namespaced: true, short_names: [] },
+    { group: "scheduling.k8s.io", version: "v1", kind: "PriorityClass", plural: "priorityclasses", namespaced: false, short_names: [] },
+    { group: "", version: "v1", kind: "ServiceAccount", plural: "serviceaccounts", namespaced: true, short_names: [] },
+    { group: "rbac.authorization.k8s.io", version: "v1", kind: "Role", plural: "roles", namespaced: true, short_names: [] },
+    { group: "rbac.authorization.k8s.io", version: "v1", kind: "RoleBinding", plural: "rolebindings", namespaced: true, short_names: [] },
+    { group: "rbac.authorization.k8s.io", version: "v1", kind: "ClusterRole", plural: "clusterroles", namespaced: false, short_names: [] },
+    { group: "rbac.authorization.k8s.io", version: "v1", kind: "ClusterRoleBinding", plural: "clusterrolebindings", namespaced: false, short_names: [] },
+  ],
+  daemonSetTable: {
+    columns: [
+      { name: "Name", column_type: "string", format: "name", description: "" },
+      { name: "Desired", column_type: "integer", format: "", description: "" },
+      { name: "Node Selector", column_type: "string", format: "", description: "" },
+      { name: "Age", column_type: "date", format: "", description: "" },
+    ],
+    rows: [
+      {
+        name: "fluent-bit",
+        namespace: "logging",
+        creation_timestamp: "2026-11-01T00:00:00Z",
+        cells: ["fluent-bit", 3, "kubernetes.io/os=linux", "2026-11-01T00:00:00Z"],
+      },
+    ],
+  },
   contexts: [
     { name: "prod-aks", cluster_server: "https://prod.azmk8s.io:443", namespace: "default", is_active: true, source: "/home/test/.kube/config" },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false, source: "/home/test/.kube/team.yaml" },
@@ -314,6 +350,11 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
         window.__kibanaOpened = args;
         return null;
       }
+      case "discover_resource_kinds": return fixtures.resourceKinds;
+      case "list_resource_table":
+        return args.resource.plural === "daemonsets" ? fixtures.daemonSetTable : { columns: fixtures.daemonSetTable.columns, rows: [] };
+      case "get_dynamic_resource_yaml":
+        return "apiVersion: apps/v1\\nkind: DaemonSet\\nmetadata:\\n  name: " + args.name + "\\n";
       case "apply_resource_yaml": {
         window.__lastApply = args;
         return null;

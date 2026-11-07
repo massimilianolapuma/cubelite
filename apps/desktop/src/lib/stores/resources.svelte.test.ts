@@ -17,6 +17,7 @@ vi.mock("#lib/tauri.ts", () => ({
   listNodes: vi.fn(),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
+  listResourceTable: vi.fn(async () => ({ columns: [], rows: [] })),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -31,7 +32,10 @@ import {
   type NamespaceInfo,
   type PodInfo,
 } from "#lib/tauri.ts";
+import { listResourceTable } from "#lib/tauri.ts";
 import { resources } from "./resources.svelte";
+import { dynamic } from "./dynamic.svelte";
+import type { View } from "./app.svelte";
 import { app } from "./app.svelte";
 
 function pod(name: string, namespace: string): PodInfo {
@@ -203,5 +207,22 @@ describe("loadOverviewExtras", () => {
     expect(resources.forbiddenKinds.has("secrets")).toBe(true);
     resources.clear();
     expect(resources.forbiddenKinds.size).toBe(0);
+  });
+});
+
+describe("generic kinds (resource-kinds phase 2)", () => {
+  it("a refresh reloads the open generic list, and clear drops its table", async () => {
+    vi.mocked(listPods).mockResolvedValue([]);
+    app.view = "roles" as View;
+    await resources.load();
+    await vi.waitFor(() => expect(dynamic.count("roles")).toBe(0));
+    expect(listResourceTable).toHaveBeenCalledWith(
+      "/home/u/.kube/config",
+      expect.objectContaining({ plural: "roles" }),
+      undefined,
+      "prod",
+    );
+    resources.clear();
+    expect(dynamic.count("roles")).toBeNull();
   });
 });

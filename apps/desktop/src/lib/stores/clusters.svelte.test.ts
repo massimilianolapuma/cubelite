@@ -19,6 +19,8 @@ vi.mock("#lib/tauri.ts", () => ({
   watchKubeconfig: vi.fn(async () => "kw1"),
   unwatchKubeconfig: vi.fn(async () => undefined),
   integrationsDetect: vi.fn(async () => null),
+  discoverResourceKinds: vi.fn(async () => []),
+  listResourceTable: vi.fn(async () => ({ columns: [], rows: [] })),
 }));
 
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: vi.fn(async () => "/home/u") }));
@@ -28,6 +30,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import {
+  discoverResourceKinds,
+  listResourceTable,
   integrationsDetect,
   kubeconfigSources,
   listContexts,
@@ -116,6 +120,52 @@ describe("switchCluster", () => {
     expect(clusters.contexts.find((c) => c.name === "prod")?.is_active).toBe(false);
     // Integrations are looked for once the first load succeeded (#527).
     expect(integrationsDetect).toHaveBeenCalledWith("/home/u/.kube/config", "staging");
+  });
+
+  it("discovers before the first Table load of a connect and of a retry", async () => {
+    vi.mocked(setContext).mockResolvedValue(undefined);
+    vi.mocked(listPods).mockResolvedValue([]);
+    vi.mocked(listNamespaces).mockResolvedValue([]);
+    vi.mocked(listDeployments).mockResolvedValue([]);
+    vi.mocked(watchResources).mockResolvedValue("w1");
+    const hpa = (version: string) => [
+      { group: "autoscaling", version, kind: "HorizontalPodAutoscaler", plural: "horizontalpodautoscalers", namespaced: true, short_names: ["hpa"] },
+    ];
+    vi.mocked(discoverResourceKinds).mockResolvedValueOnce(hpa("v1")).mockResolvedValueOnce(hpa("v2"));
+    const old = { name: "old-k8s", cluster_server: "https://old:6443", namespace: "default", is_active: false };
+    clusters.contexts = [...contexts, old];
+    app.view = "hpas";
+
+    await clusters.switchCluster("old-k8s");
+    const versions = () => vi.mocked(listResourceTable).mock.calls.map(([, ref]) => ref.version);
+    await vi.waitFor(() => expect(versions().length).toBeGreaterThan(0));
+    expect(versions()[0]).toBe("v1");
+
+    vi.mocked(listResourceTable).mockClear();
+    await clusters.retry();
+    await vi.waitFor(() => expect(versions().length).toBeGreaterThan(0));
+    expect(versions()[0]).toBe("v2");
+  });
+
+  it("discovers the served kinds on connect, once per context, and again on retry", async () => {
+    vi.mocked(setContext).mockResolvedValue(undefined);
+    vi.mocked(listPods).mockResolvedValue([]);
+    vi.mocked(listNamespaces).mockResolvedValue([]);
+    vi.mocked(listDeployments).mockResolvedValue([]);
+    vi.mocked(watchResources).mockResolvedValue("w1");
+    // The discovery cache lives for the session: use a context no other test connects to.
+    const lab = { name: "lab", cluster_server: "https://lab:6443", namespace: "default", is_active: false };
+    clusters.contexts = [...contexts, lab];
+
+    await clusters.switchCluster("lab");
+    await clusters.switchCluster("prod");
+    await clusters.switchCluster("lab");
+    const labCalls = () => vi.mocked(discoverResourceKinds).mock.calls.filter(([, ctx]) => ctx === "lab");
+    await vi.waitFor(() => expect(labCalls()).toHaveLength(1));
+    expect(discoverResourceKinds).toHaveBeenCalledWith("/home/u/.kube/config", "lab");
+
+    await clusters.retry();
+    await vi.waitFor(() => expect(labCalls()).toHaveLength(2));
   });
 
   it("lands unreachable with the reason when the probe fails", async () => {

@@ -22,6 +22,9 @@ import {
   unwatchResources,
   watchKubeconfig,
   unwatchKubeconfig,
+  discoverResourceKinds,
+  listResourceTable,
+  getDynamicResourceYaml,
 } from "#lib/tauri.ts";
 import type {
   EsEndpoint,
@@ -444,6 +447,43 @@ describe("Elasticsearch bindings (#500)", () => {
       context: "prod",
       endpoint,
       auth: { method: "api-key", key: "k" },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Resource kinds (phase 2 of the resource-kinds design)
+// ---------------------------------------------------------------------------
+
+describe("resource kinds", () => {
+  it("discoverResourceKinds invokes discover_resource_kinds", async () => {
+    mockedInvoke.mockResolvedValueOnce([]);
+    await discoverResourceKinds("/k", "prod");
+    expect(mockedInvoke).toHaveBeenCalledWith("discover_resource_kinds", { kubeconfigPath: "/k", context: "prod" });
+  });
+
+  it("listResourceTable passes the resource and a null namespace for all namespaces", async () => {
+    const resource = { group: "apps", version: "v1", plural: "daemonsets", namespaced: true };
+    mockedInvoke.mockResolvedValueOnce({ columns: [], rows: [] });
+    await listResourceTable("/k", resource, undefined, "prod");
+    expect(mockedInvoke).toHaveBeenCalledWith("list_resource_table", {
+      kubeconfigPath: "/k",
+      resource,
+      namespace: null,
+      context: "prod",
+    });
+  });
+
+  it("getDynamicResourceYaml passes namespace and name", async () => {
+    const resource = { group: "", version: "v1", plural: "serviceaccounts", namespaced: true };
+    mockedInvoke.mockResolvedValueOnce("kind: ServiceAccount");
+    await getDynamicResourceYaml("/k", resource, "default", "builder", "prod");
+    expect(mockedInvoke).toHaveBeenCalledWith("get_dynamic_resource_yaml", {
+      kubeconfigPath: "/k",
+      resource,
+      namespace: "default",
+      name: "builder",
+      context: "prod",
     });
   });
 });

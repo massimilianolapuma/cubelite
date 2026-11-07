@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **18 more resource types** (#578): Namespaces, DaemonSets, ReplicaSets,
+  Autoscalers, Ingress Classes, EndpointSlices, Network Policies, Persistent
+  Volumes, Storage Classes, Resource Quotas, Limit Ranges, Disruption
+  Budgets, Priority Classes, Service Accounts, Roles, Role Bindings, Cluster
+  Roles and Cluster Role Bindings. Each opens as a list with the columns
+  `kubectl get` prints, sortable by Name, Namespace and Age, with a name
+  filter and namespace grouping; a row opens its YAML read-only. The sidebar
+  gains the Storage (PVCs move there) and Access Control sections; types the
+  cluster does not serve are greyed and say "Not available on this
+  cluster".
 - **Needs attention / Warnings only filters** (#574): Pods has a
   `Needs attention` toggle and Events a `Warnings only` toggle in the title
   bar; both reset on context switch.

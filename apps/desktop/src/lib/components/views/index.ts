@@ -2,6 +2,8 @@
 
 import type { Component } from "svelte";
 import type { View } from "#lib/stores/app.svelte.ts";
+import { GENERIC_VIEWS, type GenericView } from "#lib/resource-kinds.ts";
+import GenericKindView from "./GenericKindView.svelte";
 import AllClustersView from "./AllClustersView.svelte";
 import ConfigMapsView from "./ConfigMapsView.svelte";
 import CronJobsView from "./CronJobsView.svelte";
@@ -49,4 +51,8 @@ export const viewRegistry: Record<View, ViewEntry> = {
   events: asEntry(EventsView),
   logs: asEntry(LogsView),
   nodes: asEntry(NodesView),
+  ...(Object.fromEntries(GENERIC_VIEWS.map((view) => [view, asEntry(GenericKindView, { view })])) as Record<
+    GenericView,
+    ViewEntry
+  >),
 };

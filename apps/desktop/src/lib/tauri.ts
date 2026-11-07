@@ -553,6 +553,94 @@ export function applyResourceYaml(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Any resource kind: discovery, Table lists and YAML (resource-kinds design)
+// ---------------------------------------------------------------------------
+
+/** One kind the API server serves, from discovery (preferred version first). */
+export interface ResourceKindInfo {
+  /** API group; `""` for the core group. */
+  group: string;
+  version: string;
+  kind: string;
+  plural: string;
+  namespaced: boolean;
+  short_names: string[];
+}
+
+/** Which resource to list or fetch. */
+export interface ResourceRef {
+  group: string;
+  version: string;
+  plural: string;
+  namespaced: boolean;
+}
+
+/** One `priority: 0` column of the API server's Table. */
+export interface TableColumn {
+  name: string;
+  /** OpenAPI type: `string`, `integer`, `number`, `boolean` or `date`. */
+  column_type: string;
+  format: string;
+  description: string;
+}
+
+/** One object of a Table: its identity plus the cells of the columns. */
+export interface TableRow {
+  name: string;
+  namespace: string | null;
+  creation_timestamp: string | null;
+  cells: unknown[];
+}
+
+/** A list as `kubectl get` prints it. */
+export interface ResourceTable {
+  columns: TableColumn[];
+  rows: TableRow[];
+}
+
+export function discoverResourceKinds(
+  kubeconfigPath: string,
+  context?: string,
+): Promise<ResourceKindInfo[]> {
+  return invoke<ResourceKindInfo[]>("discover_resource_kinds", {
+    kubeconfigPath,
+    context: context ?? null,
+  });
+}
+
+/** Any kind as the API server's Table; all namespaces when `namespace` is undefined. */
+export function listResourceTable(
+  kubeconfigPath: string,
+  resource: ResourceRef,
+  namespace?: string,
+  context?: string,
+): Promise<ResourceTable> {
+  return invoke<ResourceTable>("list_resource_table", {
+    kubeconfigPath,
+    resource,
+    namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+/** Any object as clean YAML (read-only). */
+export function getDynamicResourceYaml(
+  kubeconfigPath: string,
+  resource: ResourceRef,
+  namespace: string | undefined,
+  name: string,
+  context?: string,
+): Promise<string> {
+  return invoke<string>("get_dynamic_resource_yaml", {
+    kubeconfigPath,
+    resource,
+    namespace: namespace ?? null,
+    name,
+    context: context ?? null,
+  });
+}
+
 /**
  * Reachability probe (short timeouts). `summary` adds pod and capacity
  * totals for the All Clusters dashboard; leave it off on hot paths.

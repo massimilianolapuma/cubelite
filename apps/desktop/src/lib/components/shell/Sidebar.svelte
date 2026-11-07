@@ -2,6 +2,8 @@
 	import { app, type View } from '#lib/stores/app.svelte.ts';
 	import { isExtraKind, resources } from '#lib/stores/resources.svelte.ts';
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
+	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
+	import { isGenericView } from '#lib/resource-kinds.ts';
 
 	// Order and visibility come from Preferences (#496).
 	const sections = $derived(navigation.sections);
@@ -67,6 +69,10 @@
 							: null
 				};
 			default: {
+				if (isGenericView(view)) {
+					const value = dynamic.count(view);
+					return value === null ? null : { value, attention: null };
+				}
 				if (!isExtraKind(view)) return null;
 				const value = resources.kindCount(view);
 				return value === null ? null : { value, attention: null };
@@ -88,6 +94,7 @@
 				{@const active = app.view === item.view}
 				{@const count = countFor(item.view)}
 				{@const attention = count?.attention ?? null}
+				{@const unavailable = isGenericView(item.view) && dynamic.isUnavailable(item.view)}
 				<div
 					class="flex items-center rounded-md hover:bg-surface-row-hover"
 					style={active ? 'background: var(--alpha-active-nav-bg);' : ''}
@@ -97,10 +104,17 @@
 						class="focus-ring flex min-w-0 flex-1 items-center gap-2 rounded-md py-1.5 pl-2.5 text-left {attention
 							? 'pr-1.5'
 							: 'pr-2.5'}"
+						title={unavailable ? 'Not available on this cluster' : undefined}
 						onclick={() => app.navigate(item.view)}
 					>
 						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {section.dot};"></span>
-						<span class="type-body flex-1 truncate {active ? 'text-text-primary' : 'text-text-secondary'}">
+						<span
+							class="type-body flex-1 truncate {unavailable
+								? 'text-text-disabled'
+								: active
+									? 'text-text-primary'
+									: 'text-text-secondary'}"
+						>
 							{item.label}
 						</span>
 						{#if count}

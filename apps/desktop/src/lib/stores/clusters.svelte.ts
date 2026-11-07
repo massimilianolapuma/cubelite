@@ -18,6 +18,7 @@ import { assignIdentityColors, type IdentityColor } from "#lib/cluster-identity.
 import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
 import { integrations } from "./integrations.svelte";
+import { dynamic } from "./dynamic.svelte";
 import { logPanel } from "./logPanel.svelte";
 import { portforward } from "./portforward.svelte";
 import { resources } from "./resources.svelte";
@@ -97,6 +98,9 @@ class ClustersStore {
       }
       if (epoch !== this.#switchEpoch) return;
       app.activeCluster = name;
+      // Before any Table load (the open view reloads on this change): loads
+      // wait for it to pick the served version (resource-kinds §5.4).
+      void dynamic.discover(name);
       app.resetForClusterSwitch();
       this.contexts = this.contexts.map((c) => ({ ...c, is_active: c.name === name }));
 
@@ -231,6 +235,8 @@ class ClustersStore {
 
   /** Re-probe the active cluster (Retry on the unreachable screen). */
   async retry(): Promise<void> {
+    // Fresh discovery first: the loads below wait for it.
+    if (app.activeCluster) void dynamic.discover(app.activeCluster, true);
     const ok = await resources.load();
     this.connectionState = ok ? "connected" : "unreachable";
     this.unreachableReason = ok ? null : resources.error;

@@ -110,8 +110,9 @@ describe("navigation preferences (#496)", () => {
   it("hiding a type removes it from the sidebar, empty sections disappear", async () => {
     render(NavigationPreferences);
     render(Sidebar);
-    await fireEvent.click(screen.getByRole("button", { name: "Hide Services" }));
-    await fireEvent.click(screen.getByRole("button", { name: "Hide Ingresses" }));
+    for (const label of ["Services", "Ingresses", "Ingress Classes", "EndpointSlices", "Network Policies"]) {
+      await fireEvent.click(screen.getByRole("button", { name: `Hide ${label}` }));
+    }
     const aside = document.querySelector("aside")!;
     expect(within(aside).queryByText("Services")).toBeNull();
     expect(within(aside).queryByText("Network")).toBeNull();
@@ -126,7 +127,9 @@ describe("navigation preferences (#496)", () => {
     const aside = document.querySelector("aside")!;
     const labels = [...aside.querySelectorAll("button")].map((b) => b.textContent?.trim().split(/\s+/)[0]);
     expect(labels.indexOf("Deployments")).toBeLessThan(labels.indexOf("Pods"));
-    expect(labels.indexOf("Events")).toBeLessThan(labels.indexOf("ConfigMaps"));
+    // One step up puts Observe above Access Control (the section before it).
+    expect(labels.indexOf("Events")).toBeLessThan(labels.indexOf("Roles"));
+    expect(labels.indexOf("ConfigMaps")).toBeLessThan(labels.indexOf("Events"));
   });
 
   it("Overview cannot be moved or hidden; first items cannot move up", () => {

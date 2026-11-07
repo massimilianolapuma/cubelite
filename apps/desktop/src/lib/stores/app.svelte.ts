@@ -3,6 +3,7 @@
  */
 
 import { lists } from "./lists.svelte";
+import { GENERIC_VIEWS } from "#lib/resource-kinds.ts";
 import type { DeploymentInfo, KubeconfigOrigin, KubeconfigSource, PodInfo } from "#lib/tauri.ts";
 
 export const VIEWS = [
@@ -22,6 +23,8 @@ export const VIEWS = [
   "events",
   "logs",
   "nodes",
+  // Listed through the API server's Table (resource-kinds design §5.1).
+  ...GENERIC_VIEWS,
 ] as const;
 
 export type View = (typeof VIEWS)[number];
@@ -78,6 +81,8 @@ class AppState {
   selectedDeployment = $state<DeploymentInfo | null>(null);
   /** Node whose drawer is open in the Nodes view (#530). */
   selectedNode = $state<string | null>(null);
+  /** Object whose YAML drawer is open in a generic list (resource-kinds §5.1). */
+  selectedObject = $state<{ name: string; namespace: string | null } | null>(null);
   podFilter = $state("");
   /** Pods list shows only the pods needing attention (#574). */
   podIssuesOnly = $state(false);
@@ -90,6 +95,7 @@ class AppState {
     this.selectedPod = null;
     this.selectedDeployment = null;
     this.selectedNode = null;
+    this.selectedObject = null;
   }
 
   /** Reset per-cluster state on switch (spec: reset namespace, clear selections). */
@@ -99,6 +105,7 @@ class AppState {
     this.selectedPod = null;
     this.selectedDeployment = null;
     this.selectedNode = null;
+    this.selectedObject = null;
     this.podFilter = "";
     this.podIssuesOnly = false;
     this.eventWarningsOnly = false;
@@ -134,10 +141,11 @@ class AppState {
       this.onboardingOpen = false;
       return true;
     }
-    if (this.selectedPod || this.selectedDeployment || this.selectedNode) {
+    if (this.selectedPod || this.selectedDeployment || this.selectedNode || this.selectedObject) {
       this.selectedPod = null;
       this.selectedDeployment = null;
       this.selectedNode = null;
+      this.selectedObject = null;
       return true;
     }
     return false;

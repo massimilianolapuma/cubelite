@@ -6,14 +6,19 @@
 
 	// Title bar of a resource list: the title, the "Group by namespace" toggle
 	// (#547; only with all namespaces shown) and the list's own controls.
-	let { title, children }: { title: string; children?: Snippet } = $props();
+	// `groupable = false` (cluster-scoped kinds) never offers the toggle.
+	let {
+		title,
+		groupable = true,
+		children
+	}: { title: string; groupable?: boolean; children?: Snippet } = $props();
 
 	const pressed = $derived(lists.groupByNamespace);
 </script>
 
 <div class="flex min-h-7 items-center gap-3">
 	<h1 class="type-title flex-1">{title}</h1>
-	{#if app.namespace === null}
+	{#if groupable && app.namespace === null}
 		<button
 			type="button"
 			class="focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {pressed

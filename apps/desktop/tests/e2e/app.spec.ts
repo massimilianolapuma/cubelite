@@ -160,7 +160,7 @@ test("preferences reorder and hide sidebar types, headers sort lists (#496)", as
   await page.getByRole("button", { name: "Move Deployments up" }).click();
   await page.keyboard.press("Escape");
 
-  await expect(sidebar.getByText("Network")).toHaveCount(0);
+  // Network keeps its other types (resource-kinds phase 2); empty sections are covered by unit tests.
   await expect(sidebar.getByText("Services")).toHaveCount(0);
   const items = await sidebar.locator("button").allTextContents();
   const pos = (label: string) => items.findIndex((t) => t.trim().startsWith(label));
