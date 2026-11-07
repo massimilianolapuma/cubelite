@@ -37,7 +37,7 @@ class DynamicStore {
   discover(context: string, force = false): Promise<void> {
     if (!force && context in this.#kinds) return Promise.resolve();
     const inFlight = this.#pending[context];
-    if (inFlight && !force) return inFlight;
+    if (inFlight !== undefined && !force) return inFlight;
     const run = this.#runDiscovery(context);
     this.#pending[context] = run;
     void run.finally(() => {
