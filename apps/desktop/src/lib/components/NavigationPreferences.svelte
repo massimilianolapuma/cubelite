@@ -5,6 +5,7 @@
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import Switch from '#lib/components/ui/Switch.svelte';
+	import ProfilesPreferences from '#lib/components/ProfilesPreferences.svelte';
 	import { PINNED_SECTION, PINNED_VIEW } from '#lib/navigation.ts';
 	import { SORT_FIELDS, type SortDir, type SortField } from '#lib/list-sort.ts';
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
@@ -21,6 +22,8 @@
 	const iconButton =
 		'focus-ring flex h-6 w-6 items-center justify-center rounded-sm text-text-tertiary hover:text-text-secondary disabled:opacity-30 disabled:hover:text-text-tertiary';
 </script>
+
+<ProfilesPreferences />
 
 <section>
 	<div class="mb-1.5 flex items-baseline justify-between gap-3">
