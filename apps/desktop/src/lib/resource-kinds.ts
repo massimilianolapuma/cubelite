@@ -5,6 +5,7 @@
  * the cluster actually prefers. Imported by `app.svelte.ts`: no store
  * imports here.
  */
+import type { View } from "#lib/stores/app.svelte.ts";
 
 export const GENERIC_VIEWS = [
   "namespaces",
@@ -83,4 +84,42 @@ export const GENERIC_KINDS = Object.fromEntries(
 
 export function isGenericView(v: unknown): v is GenericView {
   return typeof v === "string" && (GENERIC_VIEWS as readonly string[]).includes(v);
+}
+
+/** kubectl short names and singular/plural words of the hand-written views. */
+const BUILTIN_KEYWORDS: Partial<Record<View, readonly string[]>> = {
+  overview: ["overview", "dashboard"],
+  nodes: ["no", "node", "nodes"],
+  pods: ["po", "pod", "pods"],
+  deployments: ["deploy", "deployment", "deployments"],
+  statefulsets: ["sts", "statefulset", "statefulsets"],
+  jobs: ["job", "jobs"],
+  cronjobs: ["cj", "cronjob", "cronjobs"],
+  helm: ["helm", "release", "releases", "chart"],
+  services: ["svc", "service", "services"],
+  ingresses: ["ing", "ingress", "ingresses"],
+  configmaps: ["cm", "configmap", "configmaps"],
+  secrets: ["secret", "secrets"],
+  pvcs: ["pvc", "persistentvolumeclaim", "persistentvolumeclaims"],
+  events: ["ev", "event", "events"],
+  logs: ["log", "logs", "tail"],
+};
+
+/** Aliases people type that kubectl has no short name for (spec §6: `crb`). */
+const ALIASES: Partial<Record<GenericView, readonly string[]>> = {
+  rolebindings: ["rb"],
+  clusterroles: ["cr"],
+  clusterrolebindings: ["crb"],
+};
+
+/** Words the ⌘K palette matches a type by: label, kind, plural, short names. */
+export function searchKeywords(view: View, label: string): string[] {
+  const words = [label];
+  if (isGenericView(view)) {
+    const k = GENERIC_KINDS[view];
+    words.push(k.kind, k.plural, ...k.shortNames, ...(ALIASES[view] ?? []));
+  } else {
+    words.push(...(BUILTIN_KEYWORDS[view] ?? []));
+  }
+  return [...new Set(words.map((w) => w.toLowerCase()))];
 }
