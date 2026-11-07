@@ -14,6 +14,7 @@ async function boot(page: Page) {
 test("a new kind opens as kubectl's columns with a read-only YAML drawer", async ({ page }) => {
   await boot(page);
   const sidebar = page.locator("aside").first();
+  await sidebar.getByRole("button", { name: /^Workloads/ }).click();
   await sidebar.getByText("DaemonSets").click();
   await expect(page.getByRole("heading", { name: "DaemonSets" })).toBeVisible();
   for (const h of ["Desired", "Node Selector"]) await expect(page.getByText(h, { exact: true })).toBeVisible();
@@ -31,6 +32,7 @@ test("a new kind opens as kubectl's columns with a read-only YAML drawer", async
 test("a kind the cluster does not serve says so", async ({ page }) => {
   await boot(page);
   const sidebar = page.locator("aside").first();
+  await sidebar.getByRole("button", { name: /^Storage \d+$/ }).click();
   const row = sidebar.getByText("Storage Classes");
   await expect(row.locator("..")).toHaveAttribute("title", "Not available on this cluster");
   await row.click();
@@ -39,6 +41,7 @@ test("a kind the cluster does not serve says so", async ({ page }) => {
 
 test("a cluster-scoped kind says so and has no Namespace column", async ({ page }) => {
   await boot(page);
+  await page.locator("aside").first().getByRole("button", { name: /^Access Control \d+$/ }).click();
   await page.locator("aside").first().getByText("Cluster Roles").click();
   await expect(page.getByText("cluster-scoped")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort by Namespace" })).toHaveCount(0);

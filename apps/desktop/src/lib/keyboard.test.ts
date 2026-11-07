@@ -55,4 +55,28 @@ describe("mod+F", () => {
     expect(matchShortcut(key({ key: "f", ctrlKey: true }), false)).toEqual({ type: "log-search" });
     expect(matchShortcut(key({ key: "f" }), true)).toBeNull();
   });
+
+  it("maps mod+alt+1..9 to profiles by physical key (⌥ changes event.key on macOS)", () => {
+    expect(matchShortcut(key({ key: "¡", code: "Digit1", metaKey: true, altKey: true }), true)).toEqual({
+      type: "switch-profile",
+      index: 0,
+    });
+    expect(matchShortcut(key({ key: "9", code: "Digit9", ctrlKey: true, altKey: true }), false)).toEqual({
+      type: "switch-profile",
+      index: 8,
+    });
+    expect(matchShortcut(key({ key: "º", code: "Digit0", metaKey: true, altKey: true }), true)).toBeNull();
+    expect(matchShortcut(key({ key: "1", code: "Digit1", metaKey: true }), true)).toEqual({ type: "switch-cluster", index: 0 });
+    expect(matchShortcut(key({ key: "k", code: "KeyK", metaKey: true, altKey: true }), true)).toBeNull();
+  });
+
+  it("leaves AltGr characters alone: Ctrl+Alt+digit that types a character is not a shortcut", () => {
+    // Windows reports AltGr as Ctrl+Alt; on a German layout AltGr+7 types "{".
+    expect(matchShortcut(key({ key: "{", code: "Digit7", ctrlKey: true, altKey: true }), false)).toBeNull();
+    expect(matchShortcut(key({ key: "@", code: "Digit2", ctrlKey: true, altKey: true }), false)).toBeNull();
+    expect(matchShortcut(key({ key: "3", code: "Digit3", ctrlKey: true, altKey: true }), false)).toEqual({
+      type: "switch-profile",
+      index: 2,
+    });
+  });
 });

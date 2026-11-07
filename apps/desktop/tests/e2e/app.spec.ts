@@ -157,19 +157,26 @@ test("preferences reorder and hide sidebar types, headers sort lists (#496)", as
   await page.getByLabel("Preferences").click();
   await page.getByRole("button", { name: "Hide Services" }).click();
   await page.getByRole("button", { name: "Hide Ingresses" }).click();
-  await page.getByRole("button", { name: "Move Deployments up" }).click();
+  await page.getByRole("button", { name: "Move Deployments up", exact: true }).click();
   await page.keyboard.press("Escape");
 
   // Network keeps its other types (resource-kinds phase 2); empty sections are covered by unit tests.
+  const network = sidebar.getByRole("button", { name: /^Network \d+$/ });
+  await network.click();
+  await expect(sidebar.getByText("Ingress Classes")).toBeVisible();
   await expect(sidebar.getByText("Services")).toHaveCount(0);
-  const items = await sidebar.locator("button").allTextContents();
+  // Section order (#496) applies inside All resources; Pinned keeps the profile's order.
+  await sidebar.getByRole("button", { name: /^Workloads/ }).click();
+  const items = await sidebar.getByRole("list", { name: "Workloads types" }).getByRole("listitem").allTextContents();
   const pos = (label: string) => items.findIndex((t) => t.trim().startsWith(label));
   expect(pos("Deployments")).toBeLessThan(pos("Pods"));
 
   await page.reload();
+  await network.click();
+  await expect(sidebar.getByText("Ingress Classes")).toBeVisible();
   await expect(sidebar.getByText("Services")).toHaveCount(0);
 
-  await sidebar.getByText("Pods").click();
+  await sidebar.getByText("Pods", { exact: true }).click();
   const header = page.getByRole("button", { name: "Sort by Name", exact: true });
   await header.click();
   await expect(header).toHaveAttribute("data-sort", "ascending");

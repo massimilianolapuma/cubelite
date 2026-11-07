@@ -30,7 +30,7 @@ export const VIEWS = [
 export type View = (typeof VIEWS)[number];
 
 /** Preferences sections that can be opened directly (#526). */
-export type PreferencesSection = "integrations" | "elasticsearch" | "prometheus";
+export type PreferencesSection = "navigation" | "integrations" | "elasticsearch" | "prometheus";
 
 export function isView(v: unknown): v is View {
   return typeof v === "string" && (VIEWS as readonly string[]).includes(v);

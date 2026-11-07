@@ -31,6 +31,8 @@ import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
 import { dynamic } from "#lib/stores/dynamic.svelte.ts";
+import { sidebar } from "#lib/stores/sidebar.svelte.ts";
+import { profiles } from "#lib/stores/profiles.svelte.ts";
 import { discoverResourceKinds } from "#lib/tauri.ts";
 import type { PodInfo } from "#lib/tauri.ts";
 
@@ -54,6 +56,8 @@ function pod(overrides: Partial<PodInfo> = {}): PodInfo {
 }
 
 beforeEach(() => {
+  sidebar.close();
+  profiles.reset();
   app.view = "overview";
   app.namespace = null;
   app.activeCluster = "prod-aks";
@@ -138,23 +142,12 @@ describe("ClusterRail", () => {
 });
 
 describe("Sidebar", () => {
-  it("renders every section and item", () => {
+  it("renders every section and the On-call pins (sidebar C)", () => {
     render(Sidebar);
     for (const section of ["Cluster", "Workloads", "Network", "Storage", "Config", "Access Control", "Observe"]) {
       expect(screen.getByText(section)).toBeInTheDocument();
     }
-    for (const item of [
-      "Overview",
-      "Pods",
-      "Deployments",
-      "Helm Releases",
-      "Services",
-      "Ingresses",
-      "ConfigMaps",
-      "Secrets",
-      "Events",
-      "Logs",
-    ]) {
+    for (const item of ["Overview", "Nodes", "Pods", "Deployments", "Jobs", "Events", "Logs"]) {
       expect(screen.getByText(item)).toBeInTheDocument();
     }
   });
@@ -168,11 +161,13 @@ describe("Sidebar", () => {
     ]);
     await dynamic.discover("sidebar-ctx");
     await dynamic.load("daemonsets");
+    sidebar.open("workloads");
     render(Sidebar);
     const daemonsets = screen.getByText("DaemonSets").closest("button")!;
     expect(daemonsets.querySelector("[data-testid=nav-count]")).toHaveTextContent("2");
     expect(daemonsets).not.toHaveAttribute("title");
-    const storageClasses = screen.getByText("Storage Classes").closest("button")!;
+    sidebar.open("storage");
+    const storageClasses = (await screen.findByText("Storage Classes")).closest("button")!;
     expect(storageClasses).toHaveAttribute("title", "Not available on this cluster");
     expect(screen.getByText("Storage Classes")).toHaveClass("text-text-disabled");
     dynamic.clear();
@@ -184,8 +179,9 @@ describe("Sidebar", () => {
       { name: "api", namespace: "default", replicas: 2, ready_replicas: 2, images: [], selector: {}, strategy: null, conditions: [], creation_timestamp: null },
     ];
     render(Sidebar);
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByText("1")).toBeInTheDocument();
+    const count = (label: string) => screen.getByText(label).closest("button")!.querySelector("[data-testid=nav-count]");
+    expect(count("Pods")).toHaveTextContent("2");
+    expect(count("Deployments")).toHaveTextContent("1");
   });
 
   it("keeps the pods total neutral and badges only the pods needing attention (#574)", async () => {
@@ -245,6 +241,7 @@ describe("Sidebar", () => {
       },
     ];
     const row = () => screen.getByText("Services").closest("button");
+    sidebar.open("network");
     const { unmount } = render(Sidebar);
     expect(row()).not.toHaveTextContent("1");
     unmount();

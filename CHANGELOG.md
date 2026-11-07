@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sidebar with profiles and pinned resources** (#580): the sidebar now
+  starts with a profile menu (On-call, Developer, Security, All, plus your
+  own profiles; ⌥⌘1–9 switch, ⌘1–5 still switch clusters), `Go to resource`
+  (⌘K) and the active profile's pinned resources (up to 9). Below,
+  `All resources` lists every section with one open at a time, so the
+  sidebar does not scroll on a laptop screen. Pin or unpin any list from the
+  pin button in its title bar or right-click a pinned row; create, rename,
+  delete and reorder profiles and their pins in Preferences › Navigation.
 - **18 more resource types** (#578): Namespaces, DaemonSets, ReplicaSets,
   Autoscalers, Ingress Classes, EndpointSlices, Network Policies, Persistent
   Volumes, Storage Classes, Resource Quotas, Limit Ranges, Disruption

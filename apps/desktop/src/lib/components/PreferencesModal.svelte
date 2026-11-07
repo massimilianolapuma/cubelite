@@ -39,6 +39,7 @@
 
 	// "Set up" in a panel opens Preferences on an integration (#526).
 	const sections = $state<Record<PreferencesSection, HTMLElement | null>>({
+		navigation: null,
 		integrations: null,
 		elasticsearch: null,
 		prometheus: null
@@ -257,7 +258,9 @@
 			</section>
 		{/if}
 
-		<NavigationPreferences />
+		<div bind:this={sections.navigation} class="flex flex-col gap-5">
+			<NavigationPreferences />
+		</div>
 
 		<div bind:this={sections.integrations} class="flex flex-col gap-5" data-testid="integrations-prefs">
 			<section class="flex items-center justify-between gap-4">

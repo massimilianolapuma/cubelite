@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PinToggle from '#lib/components/ui/PinToggle.svelte';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Box from '@lucide/svelte/icons/box';
 	import FileText from '@lucide/svelte/icons/file-text';
@@ -78,6 +79,7 @@
 <div class="flex flex-col gap-4 p-4">
 	<div class="flex items-center gap-2">
 		<h1 class="type-title">Overview</h1>
+		<PinToggle />
 		{#if firing.count > 0}
 			<button
 				type="button"

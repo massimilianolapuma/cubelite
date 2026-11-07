@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PinToggle from '#lib/components/ui/PinToggle.svelte';
 	import { formatAge } from '#lib/age.ts';
 	import FilterToggle from '#lib/components/ui/FilterToggle.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -13,6 +14,7 @@
 <div class="flex flex-col gap-3 p-4">
 	<div class="flex min-h-7 items-center gap-3">
 		<h1 class="type-title flex-1">Events</h1>
+		<PinToggle />
 		{#if warnings > 0 || app.eventWarningsOnly}
 			<FilterToggle
 				label="Warnings only"
