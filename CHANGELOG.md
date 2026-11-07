@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Overview's firing badge says what it counts and opens the list**
+  (#566): it read just `8 firing`, with no hint of what it counted, and did
+  nothing on click. It now reads `8 alerts firing`, its tooltip gives the
+  split by severity (`3 critical, 5 warning`), and clicking it scrolls to
+  the Alerts card and focuses it.
+
 ## [0.8.0] - 2026-11-06
 
 ### Removed

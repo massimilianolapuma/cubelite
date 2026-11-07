@@ -54,9 +54,15 @@
 </script>
 
 {#if endpoint}
-	<div class="rounded-xl border border-border-default bg-surface-surface p-4" data-testid="alerts-card">
+	<section
+		id="overview-alerts"
+		tabindex="-1"
+		aria-labelledby="overview-alerts-title"
+		class="focus-ring scroll-mt-4 rounded-xl border border-border-default bg-surface-surface p-4"
+		data-testid="alerts-card"
+	>
 		<div class="mb-2 flex items-center gap-2">
-			<div class="type-colhead">Alerts</div>
+			<h2 id="overview-alerts-title" class="type-colhead">Alerts</h2>
 			{#if alerts}
 				<span
 					class="type-micro rounded-full border border-border-default px-1.5 font-mono text-text-secondary"
@@ -131,7 +137,7 @@
 				{/if}
 			</div>
 		{/if}
-	</div>
+	</section>
 {:else if hint}
 	<PrometheusHint title="Alerts" text={CLUSTER_HINT} testid="overview-prometheus-hint" />
 {/if}

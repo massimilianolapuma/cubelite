@@ -40,6 +40,14 @@
 	});
 	// Informational alerts (Watchdog) neither count nor colour the badge.
 	const firing = $derived(firingBadge(promOverview.alerts));
+	const firingLabel = $derived(`${firing.count} ${firing.count === 1 ? 'alert' : 'alerts'} firing`);
+
+	/** The badge opens the Alerts card further down (#566). */
+	function showAlerts() {
+		const card = document.getElementById('overview-alerts');
+		card?.scrollIntoView({ block: 'start' });
+		card?.focus({ preventScroll: true });
+	}
 
 	const warnings = $derived(resources.warningEvents);
 	const capacity = $derived(resources.capacityTotals);
@@ -71,14 +79,17 @@
 	<div class="flex items-center gap-2">
 		<h1 class="type-title">Overview</h1>
 		{#if firing.count > 0}
-			<span
-				class="type-caption rounded-full border px-2 font-mono"
+			<button
+				type="button"
+				class="focus-ring type-caption rounded-full border px-2 font-mono hover:bg-surface-row-hover"
 				style="color: {toneColor[firing.tone]}; border-color: {toneColor[firing.tone]};"
 				data-testid="overview-alerts-badge"
-				title="Firing alerts from Prometheus"
+				title="Prometheus alerts firing now: {firing.severities}. Show the list."
+				aria-label="{firingLabel}: {firing.severities}. Show the alerts."
+				onclick={showAlerts}
 			>
-				{firing.count} firing
-			</span>
+				{firingLabel}
+			</button>
 		{/if}
 	</div>
 
