@@ -29,6 +29,9 @@ export function matchShortcut(event: KeyLike, mac: boolean): ShortcutAction | nu
   const mod = mac ? event.metaKey : event.ctrlKey;
   if (!mod) return null;
   if (event.altKey) {
+    // Off macOS, AltGr arrives as Ctrl+Alt: a key that typed a character
+    // ("{" from AltGr+7 on a German layout) is text, not a shortcut.
+    if (!mac && !/^[1-9]$/.test(event.key)) return null;
     const digit = /^Digit([1-9])$/.exec(event.code ?? "");
     return digit ? { type: "switch-profile", index: Number(digit[1]) - 1 } : null;
   }

@@ -31,6 +31,27 @@ test("the sidebar does not scroll at 800 px", async ({ page }) => {
   await expect(aside(page).getByText("Helm Releases")).toBeVisible();
   const fits = await aside(page).evaluate((el) => el.scrollHeight <= el.clientHeight);
   expect(fits).toBe(true);
+  // With the default profile even the open section's types fit without their own scroll.
+  const types = aside(page).getByRole("list", { name: "Workloads types" });
+  expect(await types.evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+});
+
+test("a full profile with Workloads open still does not scroll at 800 px", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await boot(page);
+  // On-call (7 pins) + Services + Ingresses = the 9-pin cap.
+  await section(page, "Network").click();
+  for (const label of ["Services", "Ingresses"]) {
+    await aside(page).getByText(label, { exact: true }).first().click();
+    await page.getByRole("button", { name: "Pin to On-call" }).click();
+  }
+  await expect(pinned(page, "On-call").getByRole("listitem")).toHaveCount(9);
+  await section(page, "Workloads").click();
+  await expect(aside(page).getByText("Helm Releases")).toBeVisible();
+  expect(await aside(page).evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+  // The pins and the section rows stay in view; only the open section's types may scroll.
+  await expect(pinned(page, "On-call").getByText("Logs", { exact: true })).toBeInViewport();
+  await expect(section(page, "Observe")).toBeInViewport();
 });
 
 test("switch profile from the menu and the keyboard, pin from a list header, survives reload", async ({ page }) => {

@@ -41,21 +41,22 @@
 		'flex cursor-default items-center gap-3 rounded-md px-2.5 py-1.5 type-body text-text-secondary data-highlighted:text-text-primary';
 </script>
 
-<aside class="flex w-[216px] shrink-0 flex-col gap-2 overflow-y-auto bg-surface-panel px-2 py-2.5">
-	<div class="flex flex-col gap-1">
-		<ProfileMenu />
+<aside class="flex min-h-0 w-[216px] shrink-0 flex-col gap-2 overflow-y-auto bg-surface-panel px-2 py-2.5">
+	<div class="flex shrink-0 items-center gap-1">
+		<div class="min-w-0 flex-1"><ProfileMenu /></div>
 		<button
 			type="button"
-			class="focus-ring flex h-[26px] items-center gap-2 rounded-md px-2.5 text-left text-text-tertiary hover:bg-surface-row-hover hover:text-text-secondary"
+			class="focus-ring flex h-7 shrink-0 items-center gap-1 rounded-md border border-border-default bg-surface-window px-1.5 text-text-tertiary hover:text-text-secondary"
+			aria-label="Go to resource"
+			title="Go to resource ({modLabel}K)"
 			onclick={() => (app.paletteOpen = true)}
 		>
-			<Search class="h-3 w-3 shrink-0" aria-hidden="true" />
-			<span class="type-body flex-1">Go to resource</span>
+			<Search class="h-3 w-3" aria-hidden="true" />
 			<Kbd label="{modLabel}K" />
 		</button>
 	</div>
 
-	<div>
+	<div class="shrink-0">
 		<div class="{label} mb-0.5" id="sidebar-pinned-label">Pinned · {profiles.active.name}</div>
 		<ul aria-label="Pinned · {profiles.active.name}">
 			{#each pins as pin (pin.view)}
@@ -80,8 +81,8 @@
 		{/if}
 	</div>
 
-	<div class="border-t border-border-faint pt-2">
-		<div class="{label} mb-0.5">All resources</div>
+	<div class="flex min-h-0 flex-1 flex-col border-t border-border-faint pt-2">
+		<div class="{label} mb-0.5 shrink-0">All resources</div>
 		<AllResources {sections} />
 	</div>
 </aside>

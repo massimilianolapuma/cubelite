@@ -33,14 +33,15 @@
 	const podsNeedAttention = $derived(resources.issuePods.length > 0);
 </script>
 
-<div bind:this={list} class="flex flex-col">
+<!-- Section rows never scroll away; a short window scrolls only the open section's types. -->
+<div bind:this={list} class="flex min-h-0 flex-1 flex-col">
 	{#each sections as section (section.id)}
 		{@const open = sidebar.openSection === section.id}
 		{@const alert = !open && podsNeedAttention && section.items.some((i) => i.view === 'pods')}
 		<button
 			type="button"
 			data-section-toggle
-			class="focus-ring flex h-[26px] items-center gap-2 rounded-md pr-2 pl-2.5 text-left hover:bg-surface-row-hover"
+			class="focus-ring flex h-[26px] shrink-0 items-center gap-2 rounded-md pr-2 pl-2.5 text-left hover:bg-surface-row-hover"
 			aria-expanded={open}
 			aria-controls="sidebar-section-{section.id}"
 			onclick={() => sidebar.toggle(section.id)}
@@ -62,7 +63,7 @@
 			/>
 		</button>
 		{#if open}
-			<ul id="sidebar-section-{section.id}" aria-label="{section.label} types" class="mb-0.5 pl-2">
+			<ul id="sidebar-section-{section.id}" aria-label="{section.label} types" class="mb-0.5 min-h-0 overflow-y-auto pl-2">
 				{#each section.items as item (item.view)}
 					<li><NavRow view={item.view} label={item.label} dot={section.dot} compact /></li>
 				{/each}

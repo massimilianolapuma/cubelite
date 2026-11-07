@@ -69,4 +69,14 @@ describe("mod+F", () => {
     expect(matchShortcut(key({ key: "1", code: "Digit1", metaKey: true }), true)).toEqual({ type: "switch-cluster", index: 0 });
     expect(matchShortcut(key({ key: "k", code: "KeyK", metaKey: true, altKey: true }), true)).toBeNull();
   });
+
+  it("leaves AltGr characters alone: Ctrl+Alt+digit that types a character is not a shortcut", () => {
+    // Windows reports AltGr as Ctrl+Alt; on a German layout AltGr+7 types "{".
+    expect(matchShortcut(key({ key: "{", code: "Digit7", ctrlKey: true, altKey: true }), false)).toBeNull();
+    expect(matchShortcut(key({ key: "@", code: "Digit2", ctrlKey: true, altKey: true }), false)).toBeNull();
+    expect(matchShortcut(key({ key: "3", code: "Digit3", ctrlKey: true, altKey: true }), false)).toEqual({
+      type: "switch-profile",
+      index: 2,
+    });
+  });
 });
