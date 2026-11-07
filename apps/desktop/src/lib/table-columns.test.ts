@@ -12,12 +12,19 @@ describe("planColumns", () => {
       { kind: "namespace" },
       { kind: "cell", index: 1, label: "Desired", date: false },
       { kind: "cell", index: 2, label: "Node Selector", date: false },
-      { kind: "age" },
+      { kind: "age", label: "Age" },
     ]);
   });
 
   it("leaves out Namespace when asked", () => {
-    expect(planColumns([col("Name", "string", "name"), col("Age", "date")], false)).toEqual([{ kind: "name" }, { kind: "age" }]);
+    expect(planColumns([col("Name", "string", "name"), col("Age", "date")], false)).toEqual([{ kind: "name" }, { kind: "age", label: "Age" }]);
+  });
+
+  it("treats RBAC's Created At as the Age column, keeping its label", () => {
+    expect(planColumns([col("Name", "string", "name"), col("Created At", "date")], false)).toEqual([
+      { kind: "name" },
+      { kind: "age", label: "Created At" },
+    ]);
   });
 
   it("adds no Age column when the server has none", () => {
@@ -68,7 +75,7 @@ describe("cellText", () => {
 
 describe("gridTemplate", () => {
   it("gives the name the room and Age a narrow column", () => {
-    expect(gridTemplate([{ kind: "name" }, { kind: "namespace" }, { kind: "cell", index: 1, label: "X", date: false }, { kind: "age" }])).toBe(
+    expect(gridTemplate([{ kind: "name" }, { kind: "namespace" }, { kind: "cell", index: 1, label: "X", date: false }, { kind: "age", label: "Age" }])).toBe(
       "grid-template-columns: minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) 0.55fr;",
     );
   });

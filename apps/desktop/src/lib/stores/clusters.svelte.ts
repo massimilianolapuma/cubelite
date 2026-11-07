@@ -98,6 +98,9 @@ class ClustersStore {
       }
       if (epoch !== this.#switchEpoch) return;
       app.activeCluster = name;
+      // Before any Table load (the open view reloads on this change): loads
+      // wait for it to pick the served version (resource-kinds §5.4).
+      void dynamic.discover(name);
       app.resetForClusterSwitch();
       this.contexts = this.contexts.map((c) => ({ ...c, is_active: c.name === name }));
 
@@ -120,8 +123,6 @@ class ClustersStore {
         resources.applyRefreshInterval();
         // Once per connect, in the background (#527).
         void integrations.detect(name);
-        // Served kinds, cached per context for the session (resource-kinds §5.4).
-        void dynamic.discover(name);
       }
     } finally {
       if (epoch === this.#switchEpoch) {
@@ -234,16 +235,15 @@ class ClustersStore {
 
   /** Re-probe the active cluster (Retry on the unreachable screen). */
   async retry(): Promise<void> {
+    // Fresh discovery first: the loads below wait for it.
+    if (app.activeCluster) void dynamic.discover(app.activeCluster, true);
     const ok = await resources.load();
     this.connectionState = ok ? "connected" : "unreachable";
     this.unreachableReason = ok ? null : resources.error;
     if (ok) {
       await resources.startWatching();
       resources.applyRefreshInterval();
-      if (app.activeCluster) {
-        void integrations.detect(app.activeCluster);
-        void dynamic.discover(app.activeCluster, true);
-      }
+      if (app.activeCluster) void integrations.detect(app.activeCluster);
     }
   }
 }

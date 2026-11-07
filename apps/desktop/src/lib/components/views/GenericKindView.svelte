@@ -77,7 +77,7 @@
 					{:else if column.kind === 'namespace'}
 						<SortHeader list={view} field="namespace" label="Namespace" />
 					{:else if column.kind === 'age'}
-						<SortHeader list={view} field="age" label="Age" />
+						<SortHeader list={view} field="age" label={column.label} />
 					{:else}
 						<span class="type-colhead truncate" title={table.columns[column.index]?.description}>{column.label}</span>
 					{/if}
