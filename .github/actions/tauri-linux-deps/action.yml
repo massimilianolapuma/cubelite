@@ -20,13 +20,19 @@ runs:
     # the runner image or the package list changes (#569). Keyed on the image
     # (its package index moves with it); an older image's cache still seeds
     # every package whose version did not change.
+    # ImageOS / ImageVersion are runner environment variables, not workflow
+    # `env`, so `${{ env.ImageOS }}` is empty here: read them in a step.
+    - name: Identify the runner image
+      id: image
+      shell: bash
+      run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
     - name: Restore the .deb cache
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/tauri-linux-debs
-        key: tauri-linux-debs-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-${{ env.ImageVersion }}-recommends-${{ inputs.install-recommends }}-${{ hashFiles('.github/actions/tauri-linux-deps/install.sh') }}
+        key: tauri-linux-debs-${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.id }}-recommends-${{ inputs.install-recommends }}-${{ hashFiles('.github/actions/tauri-linux-deps/install.sh') }}
         restore-keys: |
-          tauri-linux-debs-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}-
+          tauri-linux-debs-${{ runner.os }}-${{ runner.arch }}-
     - name: apt-get install with retries
       shell: bash
       env:
