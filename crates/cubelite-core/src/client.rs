@@ -875,7 +875,7 @@ fn apply_error(error: kube::Error) -> KubeconfigError {
 
 /// Serialize an API object to YAML with noisy server-side bookkeeping
 /// (`metadata.managedFields`) stripped, like `kubectl get -o yaml`.
-fn to_clean_yaml<T: serde::Serialize>(obj: &T) -> Result<String, KubeconfigError> {
+pub(crate) fn to_clean_yaml<T: serde::Serialize>(obj: &T) -> Result<String, KubeconfigError> {
     let mut value = serde_json::to_value(obj).map_err(|e| KubeconfigError::ClientError {
         reason: e.to_string(),
     })?;

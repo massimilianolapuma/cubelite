@@ -333,6 +333,28 @@ impl KubeClient {
         Ok(ResourceTable { columns, rows })
     }
 
+    /// One object of `resource` as YAML, `managedFields` stripped (like
+    /// `kubectl get -o yaml`). A cluster-scoped kind ignores `namespace`.
+    ///
+    /// # Errors
+    ///
+    /// [`KubeconfigError::ClientError`] when the API server refuses (a 403
+    /// keeps its status in the message) or the object does not exist.
+    pub async fn get_dynamic_yaml(
+        &self,
+        resource: &ResourceRef,
+        namespace: Option<&str>,
+        name: &str,
+    ) -> Result<String, KubeconfigError> {
+        let path = format!("{}/{name}", resource_path(resource, namespace));
+        let request = http::Request::get(path)
+            .body(Vec::new())
+            .map_err(client_error)?;
+        let object: serde_json::Value =
+            self.client().request(request).await.map_err(client_error)?;
+        crate::client::to_clean_yaml(&object)
+    }
+
     async fn aggregated(&self, path: &str) -> Result<Aggregated, KubeconfigError> {
         let request = http::Request::get(path)
             .header(http::header::ACCEPT, AGGREGATED_DISCOVERY)
@@ -700,6 +722,79 @@ mod tests {
         });
         let text = client
             .list_table(&hpa_ref(), Some("shop"))
+            .await
+            .expect_err("403")
+            .to_string();
+        assert!(text.contains("403") || text.contains("orbidden"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_yaml_fetches_the_object_and_strips_managed_fields() {
+        let pdb = ResourceRef {
+            group: "policy".into(),
+            version: "v1".into(),
+            plural: "poddisruptionbudgets".into(),
+            namespaced: true,
+        };
+        let (client, server) = mock_client(|_, _| {
+            (
+                StatusCode::OK,
+                serde_json::json!({
+                    "apiVersion": "policy/v1", "kind": "PodDisruptionBudget",
+                    "metadata": {"name": "web", "namespace": "shop", "managedFields": [{"manager": "kubectl"}]},
+                    "spec": {"minAvailable": 1}
+                }),
+            )
+        });
+        let yaml = client
+            .get_dynamic_yaml(&pdb, Some("shop"), "web")
+            .await
+            .expect("yaml");
+        assert!(yaml.contains("name: web"), "{yaml}");
+        assert!(yaml.contains("minAvailable: 1"), "{yaml}");
+        assert!(!yaml.contains("managedFields"), "{yaml}");
+        let seen = requests(client, server).await;
+        assert_eq!(
+            seen[0].uri,
+            "/apis/policy/v1/namespaces/shop/poddisruptionbudgets/web"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_yaml_of_a_cluster_scoped_core_type() {
+        let pv = ResourceRef {
+            group: "".into(),
+            version: "v1".into(),
+            plural: "persistentvolumes".into(),
+            namespaced: false,
+        };
+        let (client, server) = mock_client(|_, _| {
+            (
+                StatusCode::OK,
+                serde_json::json!({"apiVersion": "v1", "kind": "PersistentVolume", "metadata": {"name": "pv-1"}}),
+            )
+        });
+        let yaml = client
+            .get_dynamic_yaml(&pv, Some("shop"), "pv-1")
+            .await
+            .expect("yaml");
+        assert!(yaml.contains("kind: PersistentVolume"), "{yaml}");
+        let seen = requests(client, server).await;
+        assert_eq!(seen[0].uri, "/api/v1/persistentvolumes/pv-1");
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_yaml_reports_403() {
+        let (client, _server) = mock_client(|_, _| {
+            (
+                StatusCode::FORBIDDEN,
+                serde_json::json!({
+                    "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": 403, "reason": "Forbidden", "message": "forbidden"
+                }),
+            )
+        });
+        let text = client
+            .get_dynamic_yaml(&hpa_ref(), Some("shop"), "web")
             .await
             .expect_err("403")
             .to_string();
