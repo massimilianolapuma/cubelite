@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Needs attention / Warnings only filters** (#574): Pods has a
   `Needs attention` toggle and Events a `Warnings only` toggle in the title
   bar; both reset on context switch.
+- **The Overview Alerts card shows every firing alert on request** (#568):
+  past 8 alerts it read `and N more` with no way to see them. It now offers
+  `Show N more` and `Show fewer`; the card collapses again when the context
+  changes.
 
 ### Fixed
 

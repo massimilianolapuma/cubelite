@@ -31,7 +31,11 @@
 	const informational = $derived((alerts ?? []).filter(isInformational));
 	const nodes = $derived([...resources.nodeInventory.map((n) => n.name), ...resources.nodes.map((n) => n.name)]);
 	const SHOWN = 8;
-	const shown = $derived([...actionable, ...informational].slice(0, SHOWN));
+	// Expanded for one context only: switching context collapses it (#568).
+	let expandedFor = $state<string | null>(null);
+	const expanded = $derived(expandedFor !== null && expandedFor === app.activeCluster);
+	const ordered = $derived([...actionable, ...informational]);
+	const shown = $derived(expanded ? ordered : ordered.slice(0, SHOWN));
 
 	function open(target: AlertTarget) {
 		if (target.kind === 'pod') {
@@ -85,7 +89,7 @@
 		{:else if alerts.length === 0}
 			<p class="type-caption text-text-disabled">No firing alerts.</p>
 		{:else}
-			<div class="flex flex-col">
+			<div class="flex flex-col" id="overview-alerts-list">
 				{#each shown as alert, i (i)}
 					{@const target = alertTarget(alert, resources.pods, nodes)}
 					{@const subject = alertSubject(alert)}
@@ -132,8 +136,17 @@
 						{/if}
 					</div>
 				{/each}
-				{#if alerts.length > SHOWN}
-					<p class="type-caption px-1.5 pt-1 text-text-disabled">and {alerts.length - SHOWN} more</p>
+				{#if ordered.length > SHOWN}
+					<button
+						type="button"
+						class="focus-ring type-caption self-start rounded-sm px-1.5 pt-1 text-text-tertiary hover:text-text-secondary"
+						aria-expanded={expanded}
+						aria-controls="overview-alerts-list"
+						data-testid="alerts-toggle"
+						onclick={() => (expandedFor = expanded ? null : app.activeCluster)}
+					>
+						{expanded ? 'Show fewer' : `Show ${ordered.length - SHOWN} more`}
+					</button>
 				{/if}
 			</div>
 		{/if}
