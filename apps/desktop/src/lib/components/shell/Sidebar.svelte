@@ -11,20 +11,31 @@
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
 	import { sidebar } from '#lib/stores/sidebar.svelte.ts';
+	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
+	import { isCustomView, parseCustomView } from '#lib/resource-kinds.ts';
+	import { CUSTOM_DOT } from './CustomResources.svelte';
 
 	// Sidebar variant C (resource-kinds §3): profile switch, Go to resource,
 	// the active profile's pins, then every section with one open at a time.
 	// Order and visibility of sections and types come from Preferences (#496).
 	const sections = $derived(navigation.sections);
 
-	/** Every type's label and section dot, hidden ones included. */
+	/** Every type's label and section dot, hidden ones included, plus the cluster's custom kinds. */
 	const meta = $derived(
-		new Map(navigation.arranged.flatMap((s) => s.items.map((i) => [i.view, { label: i.label, dot: s.dot }] as const)))
+		new Map<View, { label: string; dot: string }>([
+			...navigation.arranged.flatMap((s) => s.items.map((i) => [i.view, { label: i.label, dot: s.dot }] as const)),
+			...dynamic.customGroups.flatMap((g) => g.kinds.map((k) => [k.view, { label: k.kind, dot: CUSTOM_DOT }] as const))
+		])
 	);
+	/** A pin the cluster does not serve: custom kinds fall back to their plural. */
+	const fallback = (view: View) => ({
+		label: (isCustomView(view) && parseCustomView(view)?.plural) || view,
+		dot: CUSTOM_DOT
+	});
 	const pins = $derived(
 		profiles.active.pins
 			.filter((v) => !navigation.isHidden(v))
-			.map((view) => ({ view, ...(meta.get(view) ?? { label: view, dot: 'var(--color-text-tertiary)' }) }))
+			.map((view) => ({ view, ...(meta.get(view) ?? fallback(view)) }))
 	);
 
 	// A view reached from elsewhere (palette, badges, links) that is not
@@ -32,6 +43,16 @@
 	$effect(() => {
 		const view: View = app.view;
 		if (pins.some((p) => p.view === view)) return;
+		const custom = isCustomView(view) ? parseCustomView(view) : null;
+		if (custom) {
+			untrack(() => {
+				sidebar.open('custom');
+				sidebar.openGroup = custom.group;
+				// A filter left from earlier could hide the kind just opened.
+				sidebar.customFilter = '';
+			});
+			return;
+		}
 		const home = sections.find((s) => s.items.some((i) => i.view === view));
 		if (home) untrack(() => sidebar.open(home.id));
 	});

@@ -43,7 +43,7 @@ import {
 } from "#lib/tauri.ts";
 import { errorMessage } from "#lib/errors.ts";
 import { isForbiddenError } from "#lib/overview-summary.ts";
-import { isGenericView } from "#lib/resource-kinds.ts";
+import { isKindView } from "#lib/resource-kinds.ts";
 import { app } from "./app.svelte";
 import { dynamic } from "./dynamic.svelte";
 import { settings } from "./settings.svelte";
@@ -199,7 +199,7 @@ class ResourcesStore {
       void this.#loadMetrics(kc, ns ?? undefined, cluster, seq);
       // Keep the currently open extra view in sync with refresh/watch cycles.
       if (isExtraKind(app.view)) void this.loadKind(app.view);
-      else if (isGenericView(app.view)) void dynamic.load(app.view);
+      else if (isKindView(app.view)) void dynamic.load(app.view);
       else if (app.view === "overview") void this.loadOverviewExtras();
       return true;
     } catch (e) {

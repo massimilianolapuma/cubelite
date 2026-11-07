@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { GENERIC_KINDS, GENERIC_VIEWS, isGenericView, searchKeywords } from "#lib/resource-kinds.ts";
+import {
+  GENERIC_KINDS,
+  GENERIC_VIEWS,
+  customView,
+  isCustomKind,
+  isCustomView,
+  isGenericView,
+  isKindView,
+  parseCustomView,
+  searchKeywords,
+} from "#lib/resource-kinds.ts";
+import { isView } from "#lib/stores/app.svelte.ts";
 import { DEFAULT_SECTIONS } from "#lib/navigation.ts";
 
 describe("resource kind registry", () => {
@@ -51,5 +62,64 @@ describe("searchKeywords", () => {
     expect(owner("crb")).toEqual(["clusterrolebindings"]);
     expect(owner("ns")).toEqual(["namespaces"]);
     expect(owner("horizontalpodautoscaler")).toEqual(["hpas"]);
+  });
+});
+
+describe("custom view ids", () => {
+  it("builds and parses custom ids", () => {
+    const v = customView("monitoring.coreos.com", "servicemonitors");
+    expect(v).toBe("crd:monitoring.coreos.com/servicemonitors");
+    expect(parseCustomView(v)).toEqual({ group: "monitoring.coreos.com", plural: "servicemonitors" });
+    expect(isCustomView(v)).toBe(true);
+    expect(isKindView(v)).toBe(true);
+    expect(isKindView("roles")).toBe(true);
+    expect(isKindView("pods")).toBe(false);
+  });
+
+  it("rejects malformed custom ids", () => {
+    for (const bad of ["crd:", "crd:x", "crd:a/b/c", "crd:Monitoring.coreos.com/x", "crd:a/", "crd:/x", "crd:-a/x", "pods", 3]) {
+      expect(isCustomView(bad), String(bad)).toBe(false);
+      expect(parseCustomView(String(bad)), String(bad)).toBeNull();
+    }
+  });
+
+  it("isView accepts custom ids", () => {
+    expect(isView("crd:cert-manager.io/certificates")).toBe(true);
+    expect(isView("crd:x")).toBe(false);
+    expect(isView("pods")).toBe(true);
+  });
+
+  it("built-in groups are not custom", () => {
+    for (const group of ["", "apps", "batch", "metrics.k8s.io", "rbac.authorization.k8s.io", "apiextensions.k8s.io"]) {
+      expect(isCustomKind({ group }), group).toBe(false);
+    }
+    for (const group of ["gateway.networking.k8s.io", "snapshot.storage.k8s.io", "cert-manager.io", "monitoring.coreos.com"]) {
+      expect(isCustomKind({ group }), group).toBe(true);
+    }
+  });
+});
+
+describe("searchKeywords for custom kinds", () => {
+  it("uses kind, plural, short names and group", () => {
+    const words = searchKeywords("crd:monitoring.coreos.com/servicemonitors", "ServiceMonitor", {
+      kind: "ServiceMonitor",
+      plural: "servicemonitors",
+      shortNames: ["smon"],
+    });
+    expect(words).toEqual(expect.arrayContaining(["servicemonitor", "servicemonitors", "smon", "monitoring.coreos.com"]));
+  });
+
+  it("falls back to the id", () => {
+    expect(searchKeywords("crd:example.com/widgets", "widgets")).toEqual(expect.arrayContaining(["widgets", "example.com"]));
+  });
+});
+
+describe("real-world CRD names", () => {
+  it("accepts hyphenated plurals (Multus network-attachment-definitions)", () => {
+    const v = customView("k8s.cni.cncf.io", "network-attachment-definitions");
+    expect(isCustomView(v)).toBe(true);
+    expect(parseCustomView(v)).toEqual({ group: "k8s.cni.cncf.io", plural: "network-attachment-definitions" });
+    expect(isCustomView("crd:x.io/-bad")).toBe(false);
+    expect(isCustomView("crd:x.io/bad-")).toBe(false);
   });
 });

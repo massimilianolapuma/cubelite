@@ -22,6 +22,8 @@
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
 	import { countFor } from '#lib/stores/nav-counts.svelte.ts';
+	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
+	import { CUSTOM_DOT } from '#lib/components/shell/CustomResources.svelte';
 	import { searchKeywords } from '#lib/resource-kinds.ts';
 	import { RESOURCE_PREFIX, paletteFilter } from '#lib/palette-filter.ts';
 	import { identityVar } from '#lib/cluster-identity.ts';
@@ -73,18 +75,33 @@
 	// Go to resource (resource-kinds §6): every type of the sidebar, hidden
 	// ones included. `value` starts with "Go to" so it never collides with a
 	// cluster context of the same name (bits-ui highlights by value).
-	const resourceItems = $derived(
-		navigation.arranged.flatMap((section) =>
+	const resourceItems = $derived<
+		{ view: View; label: string; caption: string | null; section: string; dot: string; value: string; keywords: string[] }[]
+	>([
+		...navigation.arranged.flatMap((section) =>
 			section.items.map((item) => ({
 				view: item.view,
 				label: item.label,
+				caption: null,
 				section: section.label,
 				dot: section.dot,
 				value: `${RESOURCE_PREFIX}${item.label}`,
 				keywords: searchKeywords(item.view, item.label)
 			}))
+		),
+		// The active cluster's custom kinds (§5.3); the group keeps same-named kinds apart.
+		...dynamic.customGroups.flatMap((g) =>
+			g.kinds.map((k) => ({
+				view: k.view,
+				label: k.kind,
+				caption: g.group,
+				section: 'Custom Resources',
+				dot: CUSTOM_DOT,
+				value: `${RESOURCE_PREFIX}${k.kind} · ${g.group}`,
+				keywords: searchKeywords(k.view, k.kind, k)
+			}))
 		)
-	);
+	]);
 	const viewByValue = $derived(new Map(resourceItems.map((r) => [r.value, r.view] as const)));
 	/** Value of the highlighted row (bits-ui `bind:value`). */
 	let highlighted = $state('');
@@ -239,7 +256,8 @@
 									class="flex items-center gap-2.5 rounded-lg px-2 py-1.5 data-selected:bg-(--alpha-active-nav-bg)"
 								>
 									<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {item.dot};"></span>
-									<span class="type-body flex-1 truncate text-text-secondary">{item.label}</span>
+									<span class="type-body truncate text-text-secondary">{item.label}</span>
+									<span class="type-caption flex-1 truncate font-mono text-text-disabled">{item.caption ?? ''}</span>
 									{#if navigation.isHidden(item.view)}
 										<span class="type-caption text-text-disabled">Hidden in Preferences</span>
 									{:else if profiles.isPinned(item.view)}

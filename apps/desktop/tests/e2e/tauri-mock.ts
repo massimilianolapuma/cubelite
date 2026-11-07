@@ -53,6 +53,11 @@ export const FIXTURES = {
     { group: "rbac.authorization.k8s.io", version: "v1", kind: "RoleBinding", plural: "rolebindings", namespaced: true, short_names: [] },
     { group: "rbac.authorization.k8s.io", version: "v1", kind: "ClusterRole", plural: "clusterroles", namespaced: false, short_names: [] },
     { group: "rbac.authorization.k8s.io", version: "v1", kind: "ClusterRoleBinding", plural: "clusterrolebindings", namespaced: false, short_names: [] },
+    // Custom kinds (resource-kinds phase 5).
+    { group: "monitoring.coreos.com", version: "v1", kind: "ServiceMonitor", plural: "servicemonitors", namespaced: true, short_names: ["smon"] },
+    { group: "monitoring.coreos.com", version: "v1", kind: "PodMonitor", plural: "podmonitors", namespaced: true, short_names: ["pmon"] },
+    { group: "monitoring.coreos.com", version: "v1", kind: "PrometheusRule", plural: "prometheusrules", namespaced: true, short_names: ["promrule"] },
+    { group: "elasticsearch.k8s.elastic.co", version: "v1", kind: "Elasticsearch", plural: "elasticsearches", namespaced: true, short_names: ["es"] },
   ],
   daemonSetTable: {
     columns: [

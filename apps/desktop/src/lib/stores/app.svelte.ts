@@ -3,7 +3,7 @@
  */
 
 import { lists } from "./lists.svelte";
-import { GENERIC_VIEWS } from "#lib/resource-kinds.ts";
+import { GENERIC_VIEWS, isCustomView, type CustomView } from "#lib/resource-kinds.ts";
 import type { DeploymentInfo, KubeconfigOrigin, KubeconfigSource, PodInfo } from "#lib/tauri.ts";
 
 export const VIEWS = [
@@ -27,13 +27,16 @@ export const VIEWS = [
   ...GENERIC_VIEWS,
 ] as const;
 
-export type View = (typeof VIEWS)[number];
+/** Views with their own entry in the view registry. */
+export type FixedView = (typeof VIEWS)[number];
+/** A fixed view, or a custom kind `crd:<group>/<plural>` (resource-kinds §5.3). */
+export type View = FixedView | CustomView;
 
 /** Preferences sections that can be opened directly (#526). */
 export type PreferencesSection = "navigation" | "integrations" | "elasticsearch" | "prometheus";
 
 export function isView(v: unknown): v is View {
-  return typeof v === "string" && (VIEWS as readonly string[]).includes(v);
+  return typeof v === "string" && ((VIEWS as readonly string[]).includes(v) || isCustomView(v));
 }
 
 class AppState {

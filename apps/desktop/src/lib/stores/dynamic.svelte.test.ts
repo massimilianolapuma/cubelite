@@ -219,3 +219,94 @@ describe("tables", () => {
     expect(dynamic.isUnavailable("roles")).toBe(false);
   });
 });
+
+describe("custom kinds", () => {
+  const sm = { group: "monitoring.coreos.com", version: "v1", kind: "ServiceMonitor", plural: "servicemonitors", namespaced: true, short_names: ["smon"] };
+  const pm = { group: "monitoring.coreos.com", version: "v1", kind: "PodMonitor", plural: "podmonitors", namespaced: true, short_names: [] };
+  const cert = (group: string) => ({ group, version: "v1", kind: "Certificate", plural: "certificates", namespaced: true, short_names: [] });
+  const es = { group: "elasticsearch.k8s.elastic.co", version: "v1", kind: "Elasticsearch", plural: "elasticsearches", namespaced: true, short_names: ["es"] };
+
+  async function discovered(...kinds: ResourceKindInfo[]) {
+    const ctx = fresh();
+    discover.mockResolvedValueOnce([kind("apps", "v1", "daemonsets"), ...kinds]);
+    await dynamic.discover(ctx);
+    app.activeCluster = ctx;
+  }
+
+  it("custom groups of the active context, sorted", async () => {
+    expect(dynamic.customKnown).toBe(false);
+    expect(dynamic.customGroups).toEqual([]);
+    await discovered(sm, es, pm);
+    expect(dynamic.customKnown).toBe(true);
+    expect(dynamic.customGroups.map((g) => [g.group, g.kinds.map((k) => k.kind)])).toEqual([
+      ["elasticsearch.k8s.elastic.co", ["Elasticsearch"]],
+      ["monitoring.coreos.com", ["PodMonitor", "ServiceMonitor"]],
+    ]);
+    expect(dynamic.customGroups[1].kinds[1]).toMatchObject({ view: "crd:monitoring.coreos.com/servicemonitors", plural: "servicemonitors", shortNames: ["smon"] });
+  });
+
+  it("same kind name in two groups gives two views", async () => {
+    await discovered(cert("cert-manager.io"), cert("acme.example.com"));
+    const views = dynamic.customGroups.flatMap((g) => g.kinds.map((k) => k.view));
+    expect(views).toEqual(["crd:acme.example.com/certificates", "crd:cert-manager.io/certificates"]);
+  });
+
+  it("meta of a custom kind comes from discovery, else from the id", async () => {
+    await discovered(sm);
+    expect(dynamic.meta("crd:monitoring.coreos.com/servicemonitors")).toEqual({
+      label: "ServiceMonitor",
+      nouns: ["servicemonitor", "servicemonitors"],
+      namespaced: true,
+      group: "monitoring.coreos.com",
+    });
+    expect(dynamic.meta("crd:example.com/widgets")).toMatchObject({ label: "widgets", group: "example.com" });
+    expect(dynamic.meta("roles")).toMatchObject({ label: "Roles", group: "rbac.authorization.k8s.io", namespaced: true });
+  });
+
+  it("a custom kind loads and counts like a ★ kind", async () => {
+    await discovered(sm);
+    table.mockResolvedValueOnce(tableOf(row("a"), row("b")));
+    await dynamic.load("crd:monitoring.coreos.com/servicemonitors");
+    expect(table).toHaveBeenCalledWith(
+      "/k",
+      { group: "monitoring.coreos.com", version: "v1", plural: "servicemonitors", namespaced: true },
+      undefined,
+      app.activeCluster,
+    );
+    expect(dynamic.count("crd:monitoring.coreos.com/servicemonitors")).toBe(2);
+  });
+
+  it("an undiscovered custom kind is unavailable once discovery is known", async () => {
+    expect(dynamic.isUnavailable("crd:example.com/widgets")).toBe(false);
+    await discovered(sm);
+    expect(dynamic.isUnavailable("crd:example.com/widgets")).toBe(true);
+    await dynamic.load("crd:example.com/widgets");
+    expect(table).not.toHaveBeenCalled();
+  });
+});
+
+describe("custom kinds robustness", () => {
+  it("skips kinds whose id would not parse, keeps hyphenated plurals", async () => {
+    const ctx = fresh();
+    discover.mockResolvedValueOnce([
+      { group: "k8s.cni.cncf.io", version: "v1", kind: "NetworkAttachmentDefinition", plural: "network-attachment-definitions", namespaced: true, short_names: ["net-attach-def"] },
+      { group: "weird.example.com", version: "v1", kind: "Weird", plural: "Weird_Things", namespaced: true, short_names: [] },
+    ]);
+    await dynamic.discover(ctx);
+    app.activeCluster = ctx;
+    expect(dynamic.customGroups.map((g) => g.group)).toEqual(["k8s.cni.cncf.io"]);
+  });
+
+  it("remembers a failed discovery for the active context until it succeeds", async () => {
+    const ctx = fresh();
+    discover.mockRejectedValueOnce(new Error("boom"));
+    await dynamic.discover(ctx);
+    app.activeCluster = ctx;
+    expect(dynamic.customKnown).toBe(false);
+    expect(dynamic.discoveryFailed).toBe(true);
+    discover.mockResolvedValueOnce([]);
+    await dynamic.discover(ctx, true);
+    expect(dynamic.discoveryFailed).toBe(false);
+    expect(dynamic.customKnown).toBe(true);
+  });
+});

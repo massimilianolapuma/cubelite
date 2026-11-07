@@ -1,8 +1,8 @@
 /** View registry: maps the app view enum to a component (+ static props). */
 
 import type { Component } from "svelte";
-import type { View } from "#lib/stores/app.svelte.ts";
-import { GENERIC_VIEWS, type GenericView } from "#lib/resource-kinds.ts";
+import type { FixedView, View } from "#lib/stores/app.svelte.ts";
+import { GENERIC_VIEWS, isCustomView, type GenericView } from "#lib/resource-kinds.ts";
 import GenericKindView from "./GenericKindView.svelte";
 import AllClustersView from "./AllClustersView.svelte";
 import ConfigMapsView from "./ConfigMapsView.svelte";
@@ -34,7 +34,7 @@ export function asEntry<P extends Record<string, unknown>>(
   return { component: component as unknown as ViewEntry["component"], props };
 }
 
-export const viewRegistry: Record<View, ViewEntry> = {
+export const viewRegistry: Record<FixedView, ViewEntry> = {
   dashboard: asEntry(AllClustersView),
   overview: asEntry(OverviewView),
   pods: asEntry(PodsView),
@@ -56,3 +56,10 @@ export const viewRegistry: Record<View, ViewEntry> = {
     ViewEntry
   >),
 };
+
+/** The entry for any view: fixed ones from the registry, custom kinds as generic lists. */
+export function viewEntry(view: View): ViewEntry {
+  if (isCustomView(view)) return asEntry(GenericKindView, { view });
+  // A view id this build does not know (e.g. from an older or newer build): land on Overview.
+  return viewRegistry[view] ?? viewRegistry.overview;
+}

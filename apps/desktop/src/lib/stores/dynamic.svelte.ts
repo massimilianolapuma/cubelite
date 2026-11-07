@@ -15,21 +15,60 @@ import {
   type ResourceTable,
 } from "#lib/tauri.ts";
 import { errorMessage } from "#lib/errors.ts";
-import { GENERIC_KINDS, type GenericView } from "#lib/resource-kinds.ts";
+import {
+  GENERIC_KINDS,
+  customView,
+  isCustomKind,
+  isCustomView,
+  isGenericView,
+  parseCustomView,
+  type CustomView,
+  type KindView,
+} from "#lib/resource-kinds.ts";
 import { app } from "./app.svelte";
 
+/** What a list and the sidebar need to show a Table-listed kind. */
+export interface KindMeta {
+  label: string;
+  nouns: readonly [string, string];
+  namespaced: boolean;
+  group: string;
+}
+
+export interface CustomKind {
+  view: CustomView;
+  kind: string;
+  plural: string;
+  shortNames: string[];
+}
+
+export interface CustomGroup {
+  group: string;
+  kinds: CustomKind[];
+}
+
+const byName = new Intl.Collator(undefined, { sensitivity: "base" }).compare;
+
+/** Group and plural of a Table-listed view (registry for ★, the id for custom). */
+function identity(view: KindView): { group: string; plural: string } {
+  if (isGenericView(view)) return GENERIC_KINDS[view];
+  return parseCustomView(view) ?? { group: "", plural: view };
+}
+
 class DynamicStore {
-  tables = $state<Partial<Record<GenericView, ResourceTable>>>({});
-  errors = $state<Partial<Record<GenericView, string>>>({});
-  loading = $state<Partial<Record<GenericView, boolean>>>({});
+  tables = $state<Partial<Record<KindView, ResourceTable>>>({});
+  errors = $state<Partial<Record<KindView, string>>>({});
+  loading = $state<Partial<Record<KindView, boolean>>>({});
 
   /** Context → kinds it serves; a context missing here is unknown. */
   #kinds = $state<Record<string, ResourceKindInfo[]>>({});
+  /** Contexts whose last discovery failed (cleared by a success). */
+  #failed = $state<Record<string, true>>({});
   /** Context → discovery in flight. */
   #pending: Record<string, Promise<void>> = {};
   /** Namespace each kind was last loaded with (null = all); missing = not loaded. */
-  #loadedFor = $state<Partial<Record<GenericView, string | null>>>({});
-  #seq: Partial<Record<GenericView, number>> = {};
+  #loadedFor = $state<Partial<Record<KindView, string | null>>>({});
+  #seq: Partial<Record<KindView, number>> = {};
   /** Bumped by clear(): answers from before it are dropped. */
   #epoch = 0;
 
@@ -49,39 +88,99 @@ class DynamicStore {
   async #runDiscovery(context: string): Promise<void> {
     try {
       const kinds = await discoverResourceKinds(app.kubeconfigPath, context);
-      if (Array.isArray(kinds)) this.#kinds = { ...this.#kinds, [context]: kinds };
+      if (!Array.isArray(kinds)) throw new Error("no discovery answer");
+      this.#kinds = { ...this.#kinds, [context]: kinds };
+      if (context in this.#failed) {
+        const failed = { ...this.#failed };
+        delete failed[context];
+        this.#failed = failed;
+      }
     } catch {
       // Unknown discovery: nothing greyed, registry versions used.
+      if (!(context in this.#kinds)) this.#failed = { ...this.#failed, [context]: true };
     }
   }
 
-  #served(view: GenericView): ResourceKindInfo | null | undefined {
+  /** The active context's discovery, or undefined while unknown. */
+  get #activeKinds(): ResourceKindInfo[] | undefined {
     const cluster = app.activeCluster;
-    const kinds = cluster === null ? undefined : this.#kinds[cluster];
+    return cluster === null ? undefined : this.#kinds[cluster];
+  }
+
+  #served(view: KindView): ResourceKindInfo | null | undefined {
+    const kinds = this.#activeKinds;
     if (!kinds) return undefined;
-    const { group, plural } = GENERIC_KINDS[view];
+    const { group, plural } = identity(view);
     return kinds.find((k) => k.group === group && k.plural === plural) ?? null;
   }
 
+  /** The active context's discovery failed and nothing is known yet. */
+  get discoveryFailed(): boolean {
+    const cluster = app.activeCluster;
+    return cluster !== null && cluster in this.#failed && !(cluster in this.#kinds);
+  }
+
+  /** Discovery is known for the active context (custom groups are final). */
+  get customKnown(): boolean {
+    return this.#activeKinds !== undefined;
+  }
+
+  /** The active context's custom kinds by API group, groups and kinds by name. */
+  get customGroups(): CustomGroup[] {
+    const groups: Record<string, CustomKind[]> = {};
+    for (const k of this.#activeKinds ?? []) {
+      // Skip a kind whose id would not parse (it could not be opened or pinned).
+      if (!isCustomKind(k) || !isCustomView(customView(k.group, k.plural))) continue;
+      (groups[k.group] ??= []).push({
+        view: customView(k.group, k.plural),
+        kind: k.kind,
+        plural: k.plural,
+        shortNames: k.short_names,
+      });
+    }
+    return Object.entries(groups)
+      .map(([group, kinds]) => ({ group, kinds: kinds.sort((a, b) => byName(a.kind, b.kind)) }))
+      .sort((a, b) => byName(a.group, b.group));
+  }
+
+  /** Label, row nouns, scope and group of a Table-listed kind. */
+  meta(view: KindView): KindMeta {
+    if (isGenericView(view)) {
+      const k = GENERIC_KINDS[view];
+      return { label: k.label, nouns: k.nouns, namespaced: this.refFor(view).namespaced, group: k.group };
+    }
+    const { group, plural } = identity(view);
+    const served = this.#served(view);
+    if (!served) return { label: plural, nouns: [plural, plural], namespaced: true, group };
+    return {
+      label: served.kind,
+      nouns: [served.kind.toLowerCase(), served.plural],
+      namespaced: served.namespaced,
+      group,
+    };
+  }
+
   /** True only when the active context's discovery is known and lacks the kind. */
-  isUnavailable(view: GenericView): boolean {
+  isUnavailable(view: KindView): boolean {
     return this.#served(view) === null;
   }
 
   /** The discovered version and scope, else the registry's. */
-  refFor(view: GenericView): ResourceRef {
-    const reg = GENERIC_KINDS[view];
+  refFor(view: KindView): ResourceRef {
     const served = this.#served(view);
+    const { group, plural } = identity(view);
+    // An unknown custom kind is never listed (unavailable once discovery is known).
+    const fallback = isGenericView(view) ? GENERIC_KINDS[view] : { version: "v1", namespaced: true };
     return {
-      group: reg.group,
-      version: served?.version ?? reg.version,
-      plural: reg.plural,
-      namespaced: served?.namespaced ?? reg.namespaced,
+      group,
+      version: served?.version ?? fallback.version,
+      plural,
+      namespaced: served?.namespaced ?? fallback.namespaced,
     };
   }
 
   /** Loads one kind's Table for the active cluster and namespace. Never rejects. */
-  async load(view: GenericView): Promise<void> {
+  async load(view: KindView): Promise<void> {
     const kc = app.kubeconfigPath;
     const cluster = app.activeCluster;
     if (!kc || !cluster) return;
@@ -114,7 +213,7 @@ class DynamicStore {
   }
 
   /** Rows of a loaded kind, or null when not loaded for the current namespace. */
-  count(view: GenericView): number | null {
+  count(view: KindView): number | null {
     const loadedFor = this.#loadedFor[view];
     const rows = this.tables[view]?.rows;
     if (loadedFor === undefined || !rows) return null;
