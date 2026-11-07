@@ -66,6 +66,8 @@ beforeEach(() => {
   app.selectedPod = null;
   app.selectedDeployment = null;
   app.podFilter = "";
+  app.podIssuesOnly = false;
+  app.eventWarningsOnly = false;
   app.deploymentFilter = "";
   clusters.contexts = [
     { name: "prod", cluster_server: "https://prod:6443", namespace: "default", is_active: true },
@@ -223,6 +225,42 @@ describe("PodsView", () => {
   });
 });
 
+describe("PodsView needs-attention filter (#574)", () => {
+  it("shows only the pods needing attention while pressed, combined with the text filter", async () => {
+    resources.pods = [
+      pod(),
+      pod({ name: "api-1", ready: false, phase: "Pending" }),
+      pod({ name: "worker-0", restarts: 9 }),
+    ];
+    render(PodsView);
+    const toggle = screen.getByRole("button", { name: /Needs attention/ });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle).toHaveTextContent("2");
+    await fireEvent.click(toggle);
+    expect(app.podIssuesOnly).toBe(true);
+    expect(screen.queryByText("api-0")).toBeNull();
+    expect(screen.getByText("api-1")).toBeInTheDocument();
+    expect(screen.getByText("worker-0")).toBeInTheDocument();
+    await fireEvent.input(screen.getByPlaceholderText("Filter pods…"), { target: { value: "worker" } });
+    expect(screen.queryByText("api-1")).toBeNull();
+    expect(screen.getByText("worker-0")).toBeInTheDocument();
+  });
+
+  it("hides the toggle when every pod is fine", () => {
+    resources.pods = [pod()];
+    render(PodsView);
+    expect(screen.queryByRole("button", { name: /Needs attention/ })).toBeNull();
+  });
+
+  it("is cleared on context switch", () => {
+    app.podIssuesOnly = true;
+    app.eventWarningsOnly = true;
+    app.resetForClusterSwitch();
+    expect(app.podIssuesOnly).toBe(false);
+    expect(app.eventWarningsOnly).toBe(false);
+  });
+});
+
 describe("PodDrawer", () => {
   it("shows meta grid with real fields and live footer actions", async () => {
     const onClose = vi.fn();
@@ -302,6 +340,26 @@ describe("EventsView", () => {
   it("shows the empty state", () => {
     render(EventsView);
     expect(screen.getByText("No events found.")).toBeInTheDocument();
+  });
+
+  it("filters to warnings with the Warnings only toggle (#574)", async () => {
+    const event = (event_type: string, object: string) => ({
+      event_type,
+      reason: "x",
+      object,
+      message: null,
+      namespace: "default",
+      count: 1,
+      last_timestamp: null,
+    });
+    resources.events = [event("Warning", "Pod/bad"), event("Normal", "Pod/good")];
+    render(EventsView);
+    const toggle = screen.getByRole("button", { name: /Warnings only/ });
+    expect(toggle).toHaveTextContent("1");
+    await fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Pod/bad")).toBeInTheDocument();
+    expect(screen.queryByText("Pod/good")).toBeNull();
   });
 });
 

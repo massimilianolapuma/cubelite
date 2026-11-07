@@ -79,6 +79,10 @@ class AppState {
   /** Node whose drawer is open in the Nodes view (#530). */
   selectedNode = $state<string | null>(null);
   podFilter = $state("");
+  /** Pods list shows only the pods needing attention (#574). */
+  podIssuesOnly = $state(false);
+  /** Events list shows only warnings (#574). */
+  eventWarningsOnly = $state(false);
   deploymentFilter = $state("");
 
   navigate(view: View): void {
@@ -96,6 +100,8 @@ class AppState {
     this.selectedDeployment = null;
     this.selectedNode = null;
     this.podFilter = "";
+    this.podIssuesOnly = false;
+    this.eventWarningsOnly = false;
     this.deploymentFilter = "";
     if (this.view === "dashboard") this.view = "overview";
   }

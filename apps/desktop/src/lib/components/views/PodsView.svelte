@@ -2,11 +2,12 @@
 	import ListTitle from '#lib/components/ui/ListTitle.svelte';
 	import PodTable from '#lib/components/PodTable.svelte';
 	import DeletePodDialog from '#lib/components/DeletePodDialog.svelte';
+	import FilterToggle from '#lib/components/ui/FilterToggle.svelte';
 	import PodDrawer from '#lib/components/pods/PodDrawer.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
-	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { needsAttention, resources } from '#lib/stores/resources.svelte.ts';
 	import type { PodInfo } from '#lib/tauri.ts';
 
 	let deleteTarget = $state<PodInfo | null>(null);
@@ -20,17 +21,28 @@
 		}
 	}
 
-	const filtered = $derived(
-		app.podFilter
-			? resources.pods.filter((p) =>
-					`${p.namespace}/${p.name}`.toLowerCase().includes(app.podFilter.toLowerCase())
-				)
-			: resources.pods
-	);
+	const issues = $derived(resources.issuePods.length);
+	const filtered = $derived.by(() => {
+		const text = app.podFilter.toLowerCase();
+		return resources.pods.filter(
+			(p) =>
+				(!app.podIssuesOnly || needsAttention(p)) &&
+				(!text || `${p.namespace}/${p.name}`.toLowerCase().includes(text))
+		);
+	});
 </script>
 
 <div class="flex flex-col gap-3 p-4">
 	<ListTitle title="Pods">
+		{#if issues > 0 || app.podIssuesOnly}
+			<FilterToggle
+				label="Needs attention"
+				count={issues}
+				tone="err"
+				pressed={app.podIssuesOnly}
+				onToggle={() => (app.podIssuesOnly = !app.podIssuesOnly)}
+			/>
+		{/if}
 		<input
 			type="text"
 			placeholder="Filter pods…"

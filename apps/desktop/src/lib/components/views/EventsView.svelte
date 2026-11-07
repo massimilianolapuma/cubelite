@@ -1,12 +1,28 @@
 <script lang="ts">
 	import { formatAge } from '#lib/age.ts';
+	import FilterToggle from '#lib/components/ui/FilterToggle.svelte';
+	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+
+	const warnings = $derived(resources.warningEvents.length);
+	const shown = $derived(app.eventWarningsOnly ? resources.warningEvents : resources.events);
 
 	const grid = 'grid-template-columns: 0.7fr 1fr 1.4fr 2.6fr 0.5fr;';
 </script>
 
 <div class="flex flex-col gap-3 p-4">
-	<h1 class="type-title">Events</h1>
+	<div class="flex min-h-7 items-center gap-3">
+		<h1 class="type-title flex-1">Events</h1>
+		{#if warnings > 0 || app.eventWarningsOnly}
+			<FilterToggle
+				label="Warnings only"
+				count={warnings}
+				tone="warn"
+				pressed={app.eventWarningsOnly}
+				onToggle={() => (app.eventWarningsOnly = !app.eventWarningsOnly)}
+			/>
+		{/if}
+	</div>
 
 	<div class="overflow-hidden rounded-lg border border-border-default">
 		<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
@@ -17,10 +33,12 @@
 			<span class="type-colhead">Age</span>
 		</div>
 		<div class="bg-surface-panel">
-			{#if resources.events.length === 0}
-				<p class="py-8 text-center text-xs text-text-disabled">No events found.</p>
+			{#if shown.length === 0}
+				<p class="py-8 text-center text-xs text-text-disabled">
+					{app.eventWarningsOnly ? 'No warning events.' : 'No events found.'}
+				</p>
 			{:else}
-				{#each resources.events as event, i (i)}
+				{#each shown as event, i (i)}
 					{@const warning = event.event_type === 'Warning'}
 					<div
 						class="grid items-center gap-x-3 border-b border-border-faint px-3 last:border-b-0 hover:bg-surface-row-hover"
