@@ -184,12 +184,29 @@ export function isInformational(alert: Alert): boolean {
   return alert.severity?.toLowerCase() === "none";
 }
 
-/** The firing badge: actionable alerts only, red with a critical one, else amber. */
-export function firingBadge(alerts: Alert[] | null): { count: number; tone: StatusTone } {
+const TONE_RANK: Record<StatusTone, number> = { err: 0, warn: 1, ok: 2, neutral: 2 };
+
+/**
+ * The firing badge: actionable alerts only, red with a critical one, else
+ * amber, with the split by severity ("1 critical, 3 warning"), most severe
+ * first and alerts without a severity last (#566).
+ */
+export function firingBadge(alerts: Alert[] | null): { count: number; tone: StatusTone; severities: string } {
   const actionable = (alerts ?? []).filter((a) => !isInformational(a));
+  const counts = new Map<string, number>();
+  for (const a of actionable) {
+    const key = a.severity?.toLowerCase() ?? "";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const rank = (severity: string) => (severity === "" ? 3 : TONE_RANK[alertTone(severity)]);
+  const severities = [...counts]
+    .sort(([a], [b]) => rank(a) - rank(b))
+    .map(([severity, n]) => `${n} ${severity || "no severity"}`)
+    .join(", ");
   return {
     count: actionable.length,
     tone: actionable.some((a) => alertTone(a.severity) === "err") ? "err" : "warn",
+    severities,
   };
 }
 

@@ -130,10 +130,31 @@ describe("alerts (#530)", () => {
     const watchdog = alert({ name: "Watchdog", severity: "none" });
     expect(isInformational(watchdog)).toBe(true);
     expect(isInformational(alert({}))).toBe(false);
-    expect(firingBadge([watchdog])).toEqual({ count: 0, tone: "warn" });
-    expect(firingBadge([watchdog, alert({})])).toEqual({ count: 1, tone: "warn" });
-    expect(firingBadge([alert({ severity: "critical" }), alert({})])).toEqual({ count: 2, tone: "err" });
+    expect(firingBadge([watchdog])).toEqual({ count: 0, tone: "warn", severities: "" });
+    expect(firingBadge([watchdog, alert({})])).toEqual({ count: 1, tone: "warn", severities: "1 warning" });
+    expect(firingBadge([alert({ severity: "critical" }), alert({})])).toEqual({
+      count: 2,
+      tone: "err",
+      severities: "1 critical, 1 warning",
+    });
     expect(firingBadge(null).count).toBe(0);
+  });
+
+  it("splits the firing badge by severity, most severe first (#566)", () => {
+    const alerts = [
+      alert({}),
+      alert({ severity: null }),
+      alert({ severity: "Warning" }),
+      alert({ severity: "info" }),
+      alert({ severity: "critical" }),
+      alert({ severity: "warning" }),
+      alert({ name: "Watchdog", severity: "none" }),
+    ];
+    expect(firingBadge(alerts)).toEqual({
+      count: 6,
+      tone: "err",
+      severities: "1 critical, 3 warning, 1 info, 1 no severity",
+    });
   });
 
   it("tells how long it has been firing", () => {
