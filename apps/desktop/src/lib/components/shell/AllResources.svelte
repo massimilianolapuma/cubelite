@@ -1,12 +1,14 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import NavRow from './NavRow.svelte';
+	import CustomResources from './CustomResources.svelte';
 	import type { NavSection } from '#lib/navigation.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
-	import { sidebar } from '#lib/stores/sidebar.svelte.ts';
+	import { sidebar, type OpenSection } from '#lib/stores/sidebar.svelte.ts';
 
 	// All resources (resource-kinds §3): one disclosure per section, one open
-	// at a time. ↑/↓ move between section rows, → opens, ← closes.
+	// at a time. ↑/↓ move between section rows, → opens, ← closes. Custom
+	// Resources (§5.3) sits right before Observe.
 	let { sections }: { sections: NavSection[] } = $props();
 
 	let list = $state<HTMLElement | null>(null);
@@ -16,17 +18,17 @@
 		toggles[toggles.indexOf(current) + delta]?.focus();
 	}
 
-	function onKeydown(event: KeyboardEvent, section: NavSection) {
+	function onKeydown(event: KeyboardEvent, id: OpenSection) {
 		const target = event.currentTarget as HTMLElement;
 		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
 			event.preventDefault();
 			focusSibling(target, event.key === 'ArrowDown' ? 1 : -1);
 		} else if (event.key === 'ArrowRight') {
 			event.preventDefault();
-			sidebar.open(section.id);
+			sidebar.open(id);
 		} else if (event.key === 'ArrowLeft') {
 			event.preventDefault();
-			if (sidebar.openSection === section.id) sidebar.close();
+			if (sidebar.openSection === id) sidebar.close();
 		}
 	}
 
@@ -36,6 +38,9 @@
 <!-- Section rows never scroll away; a short window scrolls only the open section's types. -->
 <div bind:this={list} class="flex min-h-0 flex-1 flex-col">
 	{#each sections as section (section.id)}
+		{#if section.id === 'observe'}
+			<CustomResources onkeydown={(e) => onKeydown(e, 'custom')} />
+		{/if}
 		{@const open = sidebar.openSection === section.id}
 		{@const alert = !open && podsNeedAttention && section.items.some((i) => i.view === 'pods')}
 		<button
@@ -45,7 +50,7 @@
 			aria-expanded={open}
 			aria-controls="sidebar-section-{section.id}"
 			onclick={() => sidebar.toggle(section.id)}
-			onkeydown={(e) => onKeydown(e, section)}
+			onkeydown={(e) => onKeydown(e, section.id)}
 		>
 			<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {section.dot};"></span>
 			<span class="type-body flex-1 truncate {open ? 'text-text-primary' : 'text-text-secondary'}">
@@ -70,4 +75,7 @@
 			</ul>
 		{/if}
 	{/each}
+	{#if !sections.some((s) => s.id === 'observe')}
+		<CustomResources onkeydown={(e) => onKeydown(e, 'custom')} />
+	{/if}
 </div>
