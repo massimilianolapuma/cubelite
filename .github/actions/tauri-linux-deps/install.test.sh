@@ -24,14 +24,14 @@ check() { # check <description> <command...>
 
 # --- mirror rewrite ---------------------------------------------------------
 mkdir -p "$TMP/apt"
-printf 'http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' \
+printf 'https://azure.archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' \
   > "$TMP/apt/apt-mirrors.txt"
 printf 'Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: resolute\n' > "$TMP/apt/ubuntu.sources"
-ONLY=switch-mirror SUDO="" FALLBACK_MIRROR="http://fallback.example/ubuntu/" \
+ONLY=switch-mirror SUDO="" FALLBACK_MIRROR="https://fallback.example/ubuntu/" \
   SOURCES_FILES="$TMP/apt/apt-mirrors.txt $TMP/apt/ubuntu.sources $TMP/apt/missing.list" \
   "$INSTALL" > "$TMP/switch.log"
 check "mirror list points at the fallback" \
-  grep -q $'^http://fallback.example/ubuntu/\tpriority:1$' "$TMP/apt/apt-mirrors.txt"
+  grep -q $'^https://fallback.example/ubuntu/\tpriority:1$' "$TMP/apt/apt-mirrors.txt"
 check "security mirror is left alone" grep -q '^https://security.ubuntu.com/ubuntu/' "$TMP/apt/apt-mirrors.txt"
 check "mirror+file source is left alone" grep -q 'mirror+file:/etc/apt/apt-mirrors.txt' "$TMP/apt/ubuntu.sources"
 check "a missing file is skipped" fails grep -q missing.list "$TMP/switch.log"
