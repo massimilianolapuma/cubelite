@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PinToggle from '#lib/components/ui/PinToggle.svelte';
 	import type { Snippet } from 'svelte';
 	import Rows3 from '@lucide/svelte/icons/rows-3';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -18,6 +19,7 @@
 
 <div class="flex min-h-7 items-center gap-3">
 	<h1 class="type-title flex-1">{title}</h1>
+	<PinToggle />
 	{#if groupable && app.namespace === null}
 		<button
 			type="button"

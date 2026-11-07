@@ -20,6 +20,7 @@
 	import { applyAccent, applyDensity } from '#lib/appearance.ts';
 	import { KUBECONFIG_CHANGED } from '#lib/tauri.ts';
 	import { matchShortcut } from '#lib/keyboard.ts';
+	import { profiles } from '#lib/stores/profiles.svelte.ts';
 	import { isMac } from '#lib/platform.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusters } from '#lib/stores/clusters.svelte.ts';
@@ -110,6 +111,8 @@
 			app.paletteOpen = !app.paletteOpen;
 		} else if (action.type === 'preferences') {
 			app.preferencesOpen = true;
+		} else if (action.type === 'switch-profile') {
+			profiles.activateIndex(action.index);
 		} else {
 			const target = clusters.contexts[action.index];
 			if (target && target.name !== app.activeCluster) {

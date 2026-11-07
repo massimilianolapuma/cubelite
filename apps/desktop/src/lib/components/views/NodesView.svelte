@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PinToggle from '#lib/components/ui/PinToggle.svelte';
 	import NodeDrawer from '#lib/components/nodes/NodeDrawer.svelte';
 	import SortHeader from '#lib/components/ui/SortHeader.svelte';
 	import { sortRows } from '#lib/list-sort.ts';
@@ -20,7 +21,10 @@
 </script>
 
 <div class="flex flex-col gap-3 p-4">
-	<h1 class="type-title">Nodes</h1>
+	<div class="flex min-h-7 items-center gap-3">
+		<h1 class="type-title flex-1">Nodes</h1>
+		<PinToggle />
+	</div>
 
 	{#if resources.extraError}
 		<p class="py-8 text-center text-xs text-status-err">{resources.extraError}</p>

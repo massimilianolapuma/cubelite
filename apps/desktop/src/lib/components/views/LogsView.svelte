@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PinToggle from '#lib/components/ui/PinToggle.svelte';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import { onDestroy, untrack } from 'svelte';
 	import { listDaemonSets, type WorkloadRef } from '#lib/tauri.ts';
@@ -156,6 +157,7 @@
 <div class="flex min-h-0 flex-1 flex-col gap-3 p-4">
 	<div class="flex flex-wrap items-center gap-2">
 		<h1 class="type-title">Logs</h1>
+		<PinToggle />
 		<span class="type-caption flex-1 text-text-tertiary">
 			streaming {Math.min(streamedPods.length, MAX_STREAMED_PODS)}{streamedPods.length >
 			MAX_STREAMED_PODS
