@@ -96,8 +96,8 @@ test("YAML modal edits and applies the pod manifest", async ({ page }) => {
 test("command palette navigates views", async ({ page }) => {
   await boot(page);
   await page.getByText("Search & switch…").click();
-  await expect(page.getByPlaceholder("Search clusters, views, actions…")).toBeVisible();
-  await page.getByText("Go to Deployments").click();
+  await expect(page.getByPlaceholder("Search clusters, resources, actions…")).toBeVisible();
+  await page.locator('[data-resource="deployments"]').click();
   await expect(page.getByText("Replicas · Actions")).toBeVisible();
 });
 

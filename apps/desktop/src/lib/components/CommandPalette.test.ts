@@ -43,6 +43,11 @@ import { clusters } from "#lib/stores/clusters.svelte.ts";
 import { logPanel } from "#lib/stores/logPanel.svelte.ts";
 import { elastic } from "#lib/stores/elastic.svelte.ts";
 import { prometheus } from "#lib/stores/prometheus.svelte.ts";
+import { navigation } from "#lib/stores/navigation.svelte.ts";
+import { profiles } from "#lib/stores/profiles.svelte.ts";
+import { resources } from "#lib/stores/resources.svelte.ts";
+import { toasts } from "#lib/stores/toasts.svelte.ts";
+import { isMac } from "#lib/platform.ts";
 import {
   grafanaPortForward,
   kibanaPortForward,
@@ -110,9 +115,9 @@ describe("CommandPalette", () => {
   it("navigates and closes when selecting an action", async () => {
     render(CommandPalette);
     await flush();
-    await fireEvent.click(screen.getByText("Go to Pods"));
+    await fireEvent.click(screen.getByText("Tail logs"));
     await flush();
-    expect(app.view).toBe("pods");
+    expect(app.view).toBe("logs");
     expect(app.paletteOpen).toBe(false);
   });
 
@@ -212,5 +217,141 @@ describe("CommandPalette integrations (#526)", () => {
     expect(openGrafanaHome).toHaveBeenCalledWith("https://grafana.example");
     expect(grafanaPortForward).not.toHaveBeenCalled();
     elastic.setEndpoint("staging", null);
+  });
+});
+
+describe("Go to resource (resource-kinds §6)", () => {
+  const mod = isMac ? { metaKey: true } : { ctrlKey: true };
+  const shown = () =>
+    [...document.querySelectorAll<HTMLElement>("[data-resource]")].filter((el) => !el.closest("[hidden]") && !el.hidden);
+  const row = (view: string) => document.querySelector<HTMLElement>(`[data-resource="${view}"]`);
+  async function search(text: string) {
+    await fireEvent.input(screen.getByPlaceholderText("Search clusters, resources, actions…"), { target: { value: text } });
+    await flush();
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    profiles.reset();
+    navigation.reset();
+    resources.pods = [];
+    app.view = "overview";
+  });
+
+  it("lists every type with its section, after Actions", async () => {
+    render(CommandPalette);
+    await flush();
+    const headings = [...document.querySelectorAll("[data-command-group-heading]")].map((h) => h.textContent?.trim());
+    expect(headings).toEqual(["Switch cluster", "Actions", "Go to resource"]);
+    const views = shown().map((el) => el.dataset.resource);
+    expect(views).toHaveLength(navigation.arranged.flatMap((sec) => sec.items).length);
+    expect(views[0]).toBe("overview");
+    expect(views).toContain("clusterrolebindings");
+    expect(row("networkpolicies")).toHaveTextContent("Network Policies");
+    expect(row("networkpolicies")).toHaveTextContent("Network");
+    expect(screen.queryByText("Go to Pods")).toBeNull();
+  });
+
+  it("finds a type by short name", async () => {
+    render(CommandPalette);
+    await flush();
+    await search("netpol");
+    expect(shown().map((el) => el.dataset.resource)).toEqual(["networkpolicies"]);
+  });
+
+  it("a short name ranks its own type first", async () => {
+    render(CommandPalette);
+    await flush();
+    await search("ing");
+    expect(shown()[0]?.dataset.resource).toBe("ingresses");
+  });
+
+  it("shows the count once loaded and tags pinned and hidden types", async () => {
+    resources.pods = [pod(), pod({ name: "api-1" })];
+    navigation.setHidden("services", true);
+    render(CommandPalette);
+    await flush();
+    expect(row("pods")).toHaveTextContent("2");
+    expect(row("pods")).toHaveTextContent("Pinned");
+    expect(row("services")).toHaveTextContent("Hidden in Preferences");
+    expect(row("secrets")).not.toHaveTextContent("Pinned");
+  });
+
+  it("↵ opens the type", async () => {
+    render(CommandPalette);
+    await flush();
+    await fireEvent.click(row("pvs")!);
+    await flush();
+    expect(app.view).toBe("pvs");
+    expect(app.paletteOpen).toBe(false);
+  });
+
+  it("⌘↵ opens and pins to the active profile", async () => {
+    render(CommandPalette);
+    await flush();
+    await search("secrets");
+    await fireEvent.keyDown(screen.getByPlaceholderText("Search clusters, resources, actions…"), { key: "Enter", ...mod });
+    await flush();
+    expect(app.view).toBe("secrets");
+    expect(profiles.isPinned("secrets")).toBe(true);
+    expect(app.paletteOpen).toBe(false);
+  });
+
+  it("⌘↵ on a full profile still opens the type", async () => {
+    profiles.togglePin("services");
+    profiles.togglePin("ingresses");
+    const push = vi.spyOn(toasts, "push");
+    render(CommandPalette);
+    await flush();
+    await search("secrets");
+    await fireEvent.keyDown(screen.getByPlaceholderText("Search clusters, resources, actions…"), { key: "Enter", ...mod });
+    await flush();
+    expect(push).toHaveBeenCalledWith("A profile holds up to 9 pins", "err");
+    expect(app.view).toBe("secrets");
+    expect(app.paletteOpen).toBe(false);
+    push.mockRestore();
+  });
+
+  it("⌘↵ on a non-resource row just selects it", async () => {
+    const switchCluster = vi.spyOn(clusters, "switchCluster").mockResolvedValue();
+    const before = [...profiles.active.pins];
+    render(CommandPalette);
+    await flush();
+    await search("staging");
+    await fireEvent.keyDown(screen.getByPlaceholderText("Search clusters, resources, actions…"), { key: "Enter", ...mod });
+    await flush();
+    expect(switchCluster).toHaveBeenCalledWith("staging");
+    expect(profiles.active.pins).toEqual(before);
+    switchCluster.mockRestore();
+  });
+
+  it("a context named like a type keeps both rows", async () => {
+    clusters.contexts = [...clusters.contexts, { name: "Nodes", cluster_server: "https://n:6443", namespace: "default", is_active: false }];
+    const switchCluster = vi.spyOn(clusters, "switchCluster").mockResolvedValue();
+    render(CommandPalette);
+    await flush();
+    await search("nodes");
+    expect(screen.getAllByText("Nodes")).toHaveLength(2);
+    await fireEvent.keyDown(screen.getByPlaceholderText("Search clusters, resources, actions…"), { key: "Enter", ...mod });
+    await flush();
+    // The cluster row is first and highlighted: ⌘↵ switches, it does not pin Nodes.
+    expect(switchCluster).toHaveBeenCalledWith("Nodes");
+    switchCluster.mockRestore();
+  });
+
+  it("hidden types stay reachable", async () => {
+    navigation.setHidden("networkpolicies", true);
+    render(CommandPalette);
+    await flush();
+    await search("netpol");
+    await fireEvent.click(row("networkpolicies")!);
+    await flush();
+    expect(app.view).toBe("networkpolicies");
+  });
+
+  it("shows the ↵ / ⌘↵ hint for the active profile", async () => {
+    render(CommandPalette);
+    await flush();
+    expect(screen.getByText(/open and pin to On-call/)).toBeInTheDocument();
   });
 });
