@@ -230,6 +230,18 @@ pub(crate) fn resource_path(resource: &ResourceRef, namespace: Option<&str>) -> 
     }
 }
 
+/// The query of one Table page. A plain function: the serializer is not
+/// `Send`, so it must not live across an `.await`.
+fn table_query(cont: Option<&str>) -> String {
+    let mut query = url::form_urlencoded::Serializer::new(String::new());
+    query.append_pair("includeObject", "Metadata");
+    query.append_pair("limit", PAGE_SIZE);
+    if let Some(token) = cont {
+        query.append_pair("continue", token);
+    }
+    query.finish()
+}
+
 /// The `priority: 0` columns and their indices in a row's cells.
 fn shown_columns(defs: &[ColumnDefinition]) -> (Vec<TableColumn>, Vec<usize>) {
     defs.iter()
@@ -299,13 +311,8 @@ impl KubeClient {
         let mut rows = Vec::new();
         let mut cont: Option<String> = None;
         loop {
-            let mut query = url::form_urlencoded::Serializer::new(String::new());
-            query.append_pair("includeObject", "Metadata");
-            query.append_pair("limit", PAGE_SIZE);
-            if let Some(token) = &cont {
-                query.append_pair("continue", token);
-            }
-            let request = http::Request::get(format!("{path}?{}", query.finish()))
+            let query = table_query(cont.as_deref());
+            let request = http::Request::get(format!("{path}?{query}"))
                 .header(http::header::ACCEPT, TABLE_ACCEPT)
                 .body(Vec::new())
                 .map_err(client_error)?;
@@ -799,6 +806,17 @@ mod tests {
             .expect_err("403")
             .to_string();
         assert!(text.contains("403") || text.contains("orbidden"), "{text}");
+    }
+
+    /// Tauri commands spawn these futures on a multi-threaded runtime.
+    #[tokio::test]
+    async fn the_client_futures_are_send() {
+        fn assert_send<T: Send>(_: &T) {}
+        let (client, _server) = mock_client(|_, _| (StatusCode::OK, serde_json::json!({})));
+        let r = hpa_ref();
+        assert_send(&client.discover_kinds());
+        assert_send(&client.list_table(&r, None));
+        assert_send(&client.get_dynamic_yaml(&r, None, "x"));
     }
 
     #[test]
