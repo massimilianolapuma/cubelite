@@ -34,7 +34,11 @@ const KINDS = [
 ];
 
 const custom = () => screen.getByRole("button", { name: /^Custom Resources \d+$/ });
-const groupRow = (group: string) => screen.getByRole("button", { name: new RegExp(`^${group.replace(/\./g, "\\.")} \\d+$`) });
+// Group rows read "<group> <number of kinds>"; compare strings, no regex built from the group name.
+const groupRow = (group: string) =>
+  screen.getByRole("button", {
+    name: (name) => name.startsWith(`${group} `) && /^\d+$/.test(name.slice(group.length + 1)),
+  });
 
 let n = 0;
 async function connect(kinds: ResourceKindInfo[] = KINDS) {
