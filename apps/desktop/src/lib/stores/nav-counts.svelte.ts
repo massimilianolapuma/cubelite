@@ -6,7 +6,7 @@
 import { app, type View } from "./app.svelte";
 import { dynamic } from "./dynamic.svelte";
 import { isExtraKind, resources } from "./resources.svelte";
-import { isGenericView } from "#lib/resource-kinds.ts";
+import { isKindView } from "#lib/resource-kinds.ts";
 
 export interface Attention {
   value: number;
@@ -70,7 +70,7 @@ export function countFor(v: View): Count | null {
       };
     }
     default: {
-      if (isGenericView(v)) {
+      if (isKindView(v)) {
         const value = dynamic.count(v);
         return value === null ? null : { value, attention: null };
       }

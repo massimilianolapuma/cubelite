@@ -86,6 +86,67 @@ export function isGenericView(v: unknown): v is GenericView {
   return typeof v === "string" && (GENERIC_VIEWS as readonly string[]).includes(v);
 }
 
+// ---------------------------------------------------------------------------
+// Custom kinds (resource-kinds §5.3): any kind discovery reports outside the
+// built-in Kubernetes groups, as the view id `crd:<group>/<plural>`.
+// ---------------------------------------------------------------------------
+
+export type CustomView = `crd:${string}`;
+
+/** API groups of Kubernetes itself; anything else served is a custom kind. */
+export const BUILTIN_GROUPS: ReadonlySet<string> = new Set([
+  "",
+  "apps",
+  "batch",
+  "autoscaling",
+  "policy",
+  "networking.k8s.io",
+  "rbac.authorization.k8s.io",
+  "storage.k8s.io",
+  "scheduling.k8s.io",
+  "discovery.k8s.io",
+  "coordination.k8s.io",
+  "node.k8s.io",
+  "events.k8s.io",
+  "admissionregistration.k8s.io",
+  "apiextensions.k8s.io",
+  "apiregistration.k8s.io",
+  "authentication.k8s.io",
+  "authorization.k8s.io",
+  "certificates.k8s.io",
+  "flowcontrol.apiserver.k8s.io",
+  "internal.apiserver.k8s.io",
+  "resource.k8s.io",
+  "storagemigration.k8s.io",
+  "metrics.k8s.io",
+]);
+
+const CUSTOM_ID = /^crd:([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)\/([a-z0-9]+)$/;
+
+export function customView(group: string, plural: string): CustomView {
+  return `crd:${group}/${plural}`;
+}
+
+export function parseCustomView(v: string): { group: string; plural: string } | null {
+  const m = CUSTOM_ID.exec(v);
+  return m ? { group: m[1], plural: m[2] } : null;
+}
+
+export function isCustomView(v: unknown): v is CustomView {
+  return typeof v === "string" && CUSTOM_ID.test(v);
+}
+
+/** Views listed through the API server's Table: the ★ kinds and custom kinds. */
+export type KindView = GenericView | CustomView;
+
+export function isKindView(v: unknown): v is KindView {
+  return isGenericView(v) || isCustomView(v);
+}
+
+export function isCustomKind(k: { group: string }): boolean {
+  return !BUILTIN_GROUPS.has(k.group);
+}
+
 /** kubectl short names and singular/plural words of the hand-written views. */
 const BUILTIN_KEYWORDS: Partial<Record<View, readonly string[]>> = {
   overview: ["overview", "dashboard"],

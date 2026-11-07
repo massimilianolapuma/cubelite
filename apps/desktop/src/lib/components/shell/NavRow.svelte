@@ -2,7 +2,7 @@
 	import { app, type View } from '#lib/stores/app.svelte.ts';
 	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
 	import { countFor } from '#lib/stores/nav-counts.svelte.ts';
-	import { isGenericView } from '#lib/resource-kinds.ts';
+	import { isKindView } from '#lib/resource-kinds.ts';
 
 	// One sidebar row (#574, resource-kinds §3): section dot, label, neutral
 	// total and a separate attention badge; greyed when the cluster does not
@@ -22,7 +22,7 @@
 	const active = $derived(app.view === view);
 	const count = $derived(countFor(view));
 	const attention = $derived(count?.attention ?? null);
-	const unavailable = $derived(isGenericView(view) && dynamic.isUnavailable(view));
+	const unavailable = $derived(isKindView(view) && dynamic.isUnavailable(view));
 	// Mockup C: 26 px rows, 24 px inside an open section.
 	const pad = $derived(compact ? 'h-6' : 'h-[26px]');
 </script>
