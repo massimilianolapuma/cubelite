@@ -1,141 +1,87 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { ContextMenu } from 'bits-ui';
+	import Search from '@lucide/svelte/icons/search';
+	import Kbd from '#lib/components/ui/Kbd.svelte';
+	import AllResources from './AllResources.svelte';
+	import NavRow from './NavRow.svelte';
+	import ProfileMenu from './ProfileMenu.svelte';
+	import { modLabel } from '#lib/platform.ts';
 	import { app, type View } from '#lib/stores/app.svelte.ts';
-	import { isExtraKind, resources } from '#lib/stores/resources.svelte.ts';
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
-	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
-	import { isGenericView } from '#lib/resource-kinds.ts';
+	import { profiles } from '#lib/stores/profiles.svelte.ts';
+	import { sidebar } from '#lib/stores/sidebar.svelte.ts';
 
-	// Order and visibility come from Preferences (#496).
+	// Sidebar variant C (resource-kinds §3): profile switch, Go to resource,
+	// the active profile's pins, then every section with one open at a time.
+	// Order and visibility of sections and types come from Preferences (#496).
 	const sections = $derived(navigation.sections);
 
-	const issueCount = $derived(resources.issuePods.length);
-	const warningCount = $derived(resources.warningEvents.length);
+	/** Every type's label and section dot, hidden ones included. */
+	const meta = $derived(
+		new Map(navigation.arranged.flatMap((s) => s.items.map((i) => [i.view, { label: i.label, dot: s.dot }] as const)))
+	);
+	const pins = $derived(
+		profiles.active.pins
+			.filter((v) => !navigation.isHidden(v))
+			.map((view) => ({ view, ...(meta.get(view) ?? { label: view, dot: 'var(--color-text-tertiary)' }) }))
+	);
 
-	interface Attention {
-		value: number;
-		/** Tooltip and accessible name, e.g. "3 pods need attention". */
-		label: string;
-		tone: 'err' | 'warn';
-		/** Opens the list filtered to these items. */
-		open: () => void;
-	}
+	// A view reached from elsewhere (palette, badges, links) that is not
+	// pinned: open its section so the active row is visible.
+	$effect(() => {
+		const view: View = app.view;
+		if (pins.some((p) => p.view === view)) return;
+		const home = sections.find((s) => s.items.some((i) => i.view === view));
+		if (home) untrack(() => sidebar.open(home.id));
+	});
 
-	interface Count {
-		value: number;
-		/**
-		 * Items needing attention: a separate badge next to the neutral total
-		 * (#574), so 24 failing pods out of 187 do not turn all 187 red.
-		 */
-		attention: Attention | null;
-	}
-
-	const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-	/** One right-aligned count per row; null when the kind is not loaded. */
-	function countFor(view: View): Count | null {
-		switch (view) {
-			case 'pods':
-				return {
-					value: resources.pods.length,
-					attention:
-						issueCount > 0
-							? {
-									value: issueCount,
-									label: `${plural(issueCount, 'pod needs', 'pods need')} attention`,
-									tone: 'err',
-									open: () => {
-										app.navigate('pods');
-										app.podIssuesOnly = true;
-									}
-								}
-							: null
-				};
-			case 'deployments':
-				return { value: resources.deployments.length, attention: null };
-			case 'events':
-				return {
-					value: resources.events.length,
-					attention:
-						warningCount > 0
-							? {
-									value: warningCount,
-									label: plural(warningCount, 'warning', 'warnings'),
-									tone: 'warn',
-									open: () => {
-										app.navigate('events');
-										app.eventWarningsOnly = true;
-									}
-								}
-							: null
-				};
-			default: {
-				if (isGenericView(view)) {
-					const value = dynamic.count(view);
-					return value === null ? null : { value, attention: null };
-				}
-				if (!isExtraKind(view)) return null;
-				const value = resources.kindCount(view);
-				return value === null ? null : { value, attention: null };
-			}
-		}
-	}
-
-	const badgeStyle = {
-		err: 'color: var(--color-status-err); background: var(--alpha-pill-err);',
-		warn: 'color: var(--color-status-warn); background: var(--alpha-pill-warn);'
-	} as const;
+	const label = 'type-section px-2.5 text-text-tertiary';
+	const menuItem =
+		'flex cursor-default items-center gap-3 rounded-md px-2.5 py-1.5 type-body text-text-secondary data-highlighted:text-text-primary';
 </script>
 
-<aside class="flex w-[198px] shrink-0 flex-col gap-4 overflow-y-auto bg-surface-panel px-2 py-3">
-	{#each sections as section (section.id)}
-		<div>
-			<div class="type-section mb-1 px-2.5 text-text-tertiary">{section.label}</div>
-			{#each section.items as item (item.view)}
-				{@const active = app.view === item.view}
-				{@const count = countFor(item.view)}
-				{@const attention = count?.attention ?? null}
-				{@const unavailable = isGenericView(item.view) && dynamic.isUnavailable(item.view)}
-				<div
-					class="flex items-center rounded-md hover:bg-surface-row-hover"
-					style={active ? 'background: var(--alpha-active-nav-bg);' : ''}
-				>
-					<button
-						type="button"
-						class="focus-ring flex min-w-0 flex-1 items-center gap-2 rounded-md py-1.5 pl-2.5 text-left {attention
-							? 'pr-1.5'
-							: 'pr-2.5'}"
-						title={unavailable ? 'Not available on this cluster' : undefined}
-						onclick={() => app.navigate(item.view)}
-					>
-						<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {section.dot};"></span>
-						<span
-							class="type-body flex-1 truncate {unavailable
-								? 'text-text-disabled'
-								: active
-									? 'text-text-primary'
-									: 'text-text-secondary'}"
-						>
-							{item.label}
-						</span>
-						{#if count}
-							<span class="type-micro font-mono text-text-tertiary" data-testid="nav-count">{count.value}</span>
-						{/if}
-					</button>
-					{#if attention}
-						<button
-							type="button"
-							class="focus-ring type-micro mr-1.5 shrink-0 rounded-full px-1.5 font-mono"
-							style={badgeStyle[attention.tone]}
-							title="{attention.label} — show them"
-							aria-label="{attention.label}: show them"
-							data-testid="nav-attention"
-							onclick={attention.open}
-						>
-							{attention.value}
-						</button>
-					{/if}
-				</div>
+<aside class="flex w-[216px] shrink-0 flex-col gap-3 overflow-y-auto bg-surface-panel px-2 py-3">
+	<div class="flex flex-col gap-1.5">
+		<ProfileMenu />
+		<button
+			type="button"
+			class="focus-ring flex h-7 items-center gap-2 rounded-md px-2.5 text-left text-text-tertiary hover:bg-surface-row-hover hover:text-text-secondary"
+			onclick={() => (app.paletteOpen = true)}
+		>
+			<Search class="h-3 w-3 shrink-0" aria-hidden="true" />
+			<span class="type-body flex-1">Go to resource</span>
+			<Kbd label="{modLabel}K" />
+		</button>
+	</div>
+
+	<div>
+		<div class="{label} mb-1" id="sidebar-pinned-label">Pinned · {profiles.active.name}</div>
+		<ul aria-label="Pinned · {profiles.active.name}">
+			{#each pins as pin (pin.view)}
+				<li>
+					<ContextMenu.Root>
+						<ContextMenu.Trigger>
+							<NavRow view={pin.view} label={pin.label} dot={pin.dot} />
+						</ContextMenu.Trigger>
+						<ContextMenu.Portal>
+							<ContextMenu.Content
+								class="animate-popin z-50 min-w-40 rounded-xl border border-border-strong bg-surface-overlay p-1 shadow-overlay"
+							>
+								<ContextMenu.Item class={menuItem} onSelect={() => profiles.unpin(pin.view)}>Unpin</ContextMenu.Item>
+							</ContextMenu.Content>
+						</ContextMenu.Portal>
+					</ContextMenu.Root>
+				</li>
 			{/each}
-		</div>
-	{/each}
+		</ul>
+		{#if pins.length === 0}
+			<p class="type-caption px-2.5 text-text-tertiary">Pin any resource from its list header.</p>
+		{/if}
+	</div>
+
+	<div class="border-t border-border-faint pt-3">
+		<div class="{label} mb-1">All resources</div>
+		<AllResources {sections} />
+	</div>
 </aside>

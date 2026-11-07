@@ -7,6 +7,7 @@ import Sidebar from "./shell/Sidebar.svelte";
 import { navigation } from "#lib/stores/navigation.svelte.ts";
 import { lists } from "#lib/stores/lists.svelte.ts";
 import { app } from "#lib/stores/app.svelte.ts";
+import { sidebar } from "#lib/stores/sidebar.svelte.ts";
 import type { PodInfo } from "#lib/tauri.ts";
 
 function pod(name: string, overrides: Partial<PodInfo> = {}): PodInfo {
@@ -124,12 +125,16 @@ describe("navigation preferences (#496)", () => {
     render(Sidebar);
     await fireEvent.click(screen.getByRole("button", { name: "Move Deployments up" }));
     await fireEvent.click(screen.getByRole("button", { name: "Move Observe section up" }));
-    const aside = document.querySelector("aside")!;
-    const labels = [...aside.querySelectorAll("button")].map((b) => b.textContent?.trim().split(/\s+/)[0]);
-    expect(labels.indexOf("Deployments")).toBeLessThan(labels.indexOf("Pods"));
+    sidebar.open("workloads");
+    const workloads = await screen.findByRole("list", { name: "Workloads types" });
+    const items = within(workloads).getAllByRole("listitem").map((li) => li.textContent?.trim().split(/\s+/)[0]);
+    expect(items.indexOf("Deployments")).toBeLessThan(items.indexOf("Pods"));
     // One step up puts Observe above Access Control (the section before it).
-    expect(labels.indexOf("Events")).toBeLessThan(labels.indexOf("Roles"));
-    expect(labels.indexOf("ConfigMaps")).toBeLessThan(labels.indexOf("Events"));
+    const aside = document.querySelector("aside")!;
+    const toggles = [...aside.querySelectorAll("[data-section-toggle]")].map((b) => b.textContent?.trim().split(/\s+/)[0]);
+    expect(toggles.indexOf("Observe")).toBeLessThan(toggles.indexOf("Access"));
+    expect(toggles.indexOf("Config")).toBeLessThan(toggles.indexOf("Observe"));
+    sidebar.close();
   });
 
   it("Overview cannot be moved or hidden; first items cannot move up", () => {
