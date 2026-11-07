@@ -36,6 +36,8 @@ test("open logs from pod drawer, panel persists across navigation", async ({ pag
   await expect(page.getByText("e2e-hello")).toBeVisible();
 
   // navigate elsewhere: panel stays
+  // Services lives in the Network section of All resources (sidebar C).
+  await page.getByRole("complementary").getByRole("button", { name: /^Network \d+$/ }).click();
   await page.getByRole("complementary").getByText("Services", { exact: true }).click();
   await expect(page.getByLabel("Pod logs panel")).toBeVisible();
   await expect(page.getByText("e2e-hello")).toBeVisible();

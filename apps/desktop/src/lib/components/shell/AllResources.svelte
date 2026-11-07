@@ -40,7 +40,7 @@
 		<button
 			type="button"
 			data-section-toggle
-			class="focus-ring flex items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 text-left hover:bg-surface-row-hover"
+			class="focus-ring flex h-[26px] items-center gap-2 rounded-md pr-2 pl-2.5 text-left hover:bg-surface-row-hover"
 			aria-expanded={open}
 			aria-controls="sidebar-section-{section.id}"
 			onclick={() => sidebar.toggle(section.id)}
@@ -62,7 +62,7 @@
 			/>
 		</button>
 		{#if open}
-			<ul id="sidebar-section-{section.id}" aria-label="{section.label} types" class="mb-1 pl-2">
+			<ul id="sidebar-section-{section.id}" aria-label="{section.label} types" class="mb-0.5 pl-2">
 				{#each section.items as item (item.view)}
 					<li><NavRow view={item.view} label={item.label} dot={section.dot} compact /></li>
 				{/each}

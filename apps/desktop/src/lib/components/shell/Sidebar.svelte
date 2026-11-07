@@ -41,12 +41,12 @@
 		'flex cursor-default items-center gap-3 rounded-md px-2.5 py-1.5 type-body text-text-secondary data-highlighted:text-text-primary';
 </script>
 
-<aside class="flex w-[216px] shrink-0 flex-col gap-3 overflow-y-auto bg-surface-panel px-2 py-3">
-	<div class="flex flex-col gap-1.5">
+<aside class="flex w-[216px] shrink-0 flex-col gap-2 overflow-y-auto bg-surface-panel px-2 py-2.5">
+	<div class="flex flex-col gap-1">
 		<ProfileMenu />
 		<button
 			type="button"
-			class="focus-ring flex h-7 items-center gap-2 rounded-md px-2.5 text-left text-text-tertiary hover:bg-surface-row-hover hover:text-text-secondary"
+			class="focus-ring flex h-[26px] items-center gap-2 rounded-md px-2.5 text-left text-text-tertiary hover:bg-surface-row-hover hover:text-text-secondary"
 			onclick={() => (app.paletteOpen = true)}
 		>
 			<Search class="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -56,7 +56,7 @@
 	</div>
 
 	<div>
-		<div class="{label} mb-1" id="sidebar-pinned-label">Pinned · {profiles.active.name}</div>
+		<div class="{label} mb-0.5" id="sidebar-pinned-label">Pinned · {profiles.active.name}</div>
 		<ul aria-label="Pinned · {profiles.active.name}">
 			{#each pins as pin (pin.view)}
 				<li>
@@ -80,8 +80,8 @@
 		{/if}
 	</div>
 
-	<div class="border-t border-border-faint pt-3">
-		<div class="{label} mb-1">All resources</div>
+	<div class="border-t border-border-faint pt-2">
+		<div class="{label} mb-0.5">All resources</div>
 		<AllResources {sections} />
 	</div>
 </aside>

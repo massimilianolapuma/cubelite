@@ -96,7 +96,8 @@
 	const count = $derived(countFor(view));
 	const attention = $derived(count?.attention ?? null);
 	const unavailable = $derived(isGenericView(view) && dynamic.isUnavailable(view));
-	const pad = $derived(compact ? 'py-1' : 'py-1.5');
+	// Mockup C: 26 px rows, 24 px inside an open section.
+	const pad = $derived(compact ? 'h-6' : 'h-[26px]');
 </script>
 
 <div
