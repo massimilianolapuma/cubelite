@@ -3,6 +3,11 @@
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
+use crate::KubeClient;
+use http::{Method, Request, Response, StatusCode};
+use kube::client::Body;
+use kube::Client;
+
 /// Serves one canned HTTP response per connection and records the requests.
 pub(crate) async fn mock_server(
     responses: Vec<(u16, String)>,
@@ -78,4 +83,67 @@ pub(crate) fn prom_vector(result: serde_json::Value) -> (u16, String) {
 /// A successful range query answer.
 pub(crate) fn prom_matrix(result: serde_json::Value) -> (u16, String) {
     prom_success(serde_json::json!({ "resultType": "matrix", "result": result }))
+}
+
+// --- A KubeClient against a mock apiserver (no network) ---
+
+/// One request as the mock apiserver saw it.
+pub(crate) struct Seen {
+    pub method: Method,
+    pub uri: String,
+    pub content_type: Option<String>,
+    /// The request's `Accept` header.
+    pub accept: Option<String>,
+    pub body: serde_json::Value,
+}
+
+/// A [`KubeClient`] backed by a mock apiserver that answers every
+/// request with `respond(method, uri)`. The returned handle resolves to
+/// the requests seen once the client is dropped.
+pub(crate) fn mock_client(
+    respond: impl Fn(&Method, &str) -> (StatusCode, serde_json::Value) + Send + 'static,
+) -> (KubeClient, tokio::task::JoinHandle<Vec<Seen>>) {
+    let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
+    let server = tokio::spawn(async move {
+        let mut handle = std::pin::pin!(handle);
+        let mut seen = Vec::new();
+        while let Some((request, send)) = handle.next_request().await {
+            let (parts, body) = request.into_parts();
+            let bytes = body.collect_bytes().await.expect("request body");
+            let (status, reply) = respond(&parts.method, &parts.uri.to_string());
+            seen.push(Seen {
+                method: parts.method,
+                uri: parts.uri.to_string(),
+                content_type: parts
+                    .headers
+                    .get(http::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_string),
+                accept: parts
+                    .headers
+                    .get(http::header::ACCEPT)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_string),
+                body: serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+            });
+            let response = Response::builder()
+                .status(status)
+                .body(Body::from(serde_json::to_vec(&reply).expect("reply json")))
+                .expect("response");
+            send.send_response(response);
+        }
+        seen
+    });
+    (
+        KubeClient::from_client(Client::new(service, "default")),
+        server,
+    )
+}
+
+pub(crate) async fn requests(
+    client: KubeClient,
+    server: tokio::task::JoinHandle<Vec<Seen>>,
+) -> Vec<Seen> {
+    drop(client);
+    server.await.expect("mock apiserver")
 }
