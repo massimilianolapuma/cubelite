@@ -113,3 +113,13 @@ describe("searchKeywords for custom kinds", () => {
     expect(searchKeywords("crd:example.com/widgets", "widgets")).toEqual(expect.arrayContaining(["widgets", "example.com"]));
   });
 });
+
+describe("real-world CRD names", () => {
+  it("accepts hyphenated plurals (Multus network-attachment-definitions)", () => {
+    const v = customView("k8s.cni.cncf.io", "network-attachment-definitions");
+    expect(isCustomView(v)).toBe(true);
+    expect(parseCustomView(v)).toEqual({ group: "k8s.cni.cncf.io", plural: "network-attachment-definitions" });
+    expect(isCustomView("crd:x.io/-bad")).toBe(false);
+    expect(isCustomView("crd:x.io/bad-")).toBe(false);
+  });
+});

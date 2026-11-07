@@ -47,3 +47,25 @@ test("60 groups stay in an 8-row area", async ({ page }) => {
   expect(box.scroll).toBeGreaterThan(box.client);
   expect(await aside(page).evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
 });
+
+test("opening a kind far down a long group list scrolls its row into view", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const groups = Array.from({ length: 60 }, (_, i) => ({
+    group: `group${String(i).padStart(2, "0")}.example.com`,
+    version: "v1",
+    kind: `Widget${i}`,
+    plural: `widget${i}s`,
+    namespaced: true,
+    short_names: [],
+  }));
+  await boot(page, { resourceKinds: [...FIXTURES.resourceKinds, ...groups] });
+  await expect(custom(page)).toHaveText(/62/);
+  const mac = await page.evaluate(() => navigator.userAgent.includes("Mac"));
+  await page.keyboard.press(`${mac ? "Meta" : "Control"}+KeyK`);
+  await page.getByPlaceholder("Search clusters, resources, actions…").fill("widget55");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Widget55" })).toBeVisible();
+  const row = aside(page).getByTestId("custom-groups").locator('[aria-current="page"]');
+  await expect(row).toHaveText(/Widget55/);
+  await expect(row).toBeInViewport();
+});

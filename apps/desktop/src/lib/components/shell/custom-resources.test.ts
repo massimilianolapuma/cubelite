@@ -148,6 +148,30 @@ describe("Custom Resources section", () => {
     expect(screen.getByText("PrometheusRule").closest("button")).toHaveAttribute("aria-current", "page");
   });
 
+  it("navigating to a custom kind clears a filter that would hide it and scrolls its row into view", async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    await connect();
+    sidebar.open("custom");
+    sidebar.customFilter = "elastic";
+    render(Sidebar);
+    app.navigate("crd:monitoring.coreos.com/servicemonitors");
+    await vi.waitFor(() => expect(screen.getByText("ServiceMonitor").closest("button")).toHaveAttribute("aria-current", "page"));
+    expect(sidebar.customFilter).toBe("");
+    await vi.waitFor(() => expect(scroll).toHaveBeenCalled());
+    expect(scroll.mock.contexts.some((el) => (el as Element).textContent?.includes("ServiceMonitor"))).toBe(true);
+  });
+
+  it("says when discovery failed", async () => {
+    const ctx = `custom-fail-${++n}`;
+    vi.mocked(discoverResourceKinds).mockRejectedValueOnce(new Error("boom"));
+    await dynamic.discover(ctx);
+    app.activeCluster = ctx;
+    sidebar.open("custom");
+    render(Sidebar);
+    expect(screen.getByText("Couldn't discover custom resources")).toBeInTheDocument();
+  });
+
   it("keyboard: the section toggles like the others", async () => {
     await connect();
     render(Sidebar);

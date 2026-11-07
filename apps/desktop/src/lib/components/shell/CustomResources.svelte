@@ -4,7 +4,9 @@
 </script>
 
 <script lang="ts">
+	import { tick } from 'svelte';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import { app } from '#lib/stores/app.svelte.ts';
 	import NavRow from './NavRow.svelte';
 	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
 	import { sidebar } from '#lib/stores/sidebar.svelte.ts';
@@ -18,6 +20,15 @@
 	const MAX_ROWS = 8;
 
 	const open = $derived(sidebar.openSection === 'custom');
+
+	// The active custom kind may sit below the 8-row area (60 groups): bring it into view.
+	let area = $state<HTMLElement | null>(null);
+	$effect(() => {
+		void [app.view, sidebar.openGroup, sidebar.customFilter];
+		if (!open || !area) return;
+		const el = area;
+		void tick().then(() => el.querySelector('[aria-current="page"]')?.scrollIntoView?.({ block: 'nearest' }));
+	});
 	const groups = $derived(dynamic.customGroups);
 	const needle = $derived(sidebar.customFilter.trim().toLowerCase());
 	/** While filtering: matching groups, each with its matching kinds (all of them when the group matches). */
@@ -55,7 +66,9 @@
 </button>
 {#if open}
 	<div id="sidebar-section-custom" class="mb-0.5 flex min-h-0 flex-col gap-1 pl-2">
-		{#if !dynamic.customKnown}
+		{#if dynamic.discoveryFailed}
+			<p class="type-caption px-2.5 text-text-tertiary">Couldn't discover custom resources</p>
+		{:else if !dynamic.customKnown}
 			<p class="type-caption px-2.5 text-text-tertiary">Loading…</p>
 		{:else if groups.length === 0}
 			<p class="type-caption px-2.5 text-text-tertiary">No custom resources on this cluster</p>
@@ -68,6 +81,7 @@
 				class="focus-ring type-caption h-6 shrink-0 rounded-md border border-border-default bg-surface-window px-2 text-text-primary placeholder:text-text-disabled"
 			/>
 			<ul
+				bind:this={area}
 				aria-label="Custom resource groups"
 				class="min-h-0 overflow-y-auto"
 				style="max-height: {ROW_PX * MAX_ROWS}px;"

@@ -48,6 +48,8 @@
 			untrack(() => {
 				sidebar.open('custom');
 				sidebar.openGroup = custom.group;
+				// A filter left from earlier could hide the kind just opened.
+				sidebar.customFilter = '';
 			});
 			return;
 		}

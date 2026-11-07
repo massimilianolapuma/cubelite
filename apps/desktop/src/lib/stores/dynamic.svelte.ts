@@ -19,6 +19,7 @@ import {
   GENERIC_KINDS,
   customView,
   isCustomKind,
+  isCustomView,
   isGenericView,
   parseCustomView,
   type CustomView,
@@ -61,6 +62,8 @@ class DynamicStore {
 
   /** Context → kinds it serves; a context missing here is unknown. */
   #kinds = $state<Record<string, ResourceKindInfo[]>>({});
+  /** Contexts whose last discovery failed (cleared by a success). */
+  #failed = $state<Record<string, true>>({});
   /** Context → discovery in flight. */
   #pending: Record<string, Promise<void>> = {};
   /** Namespace each kind was last loaded with (null = all); missing = not loaded. */
@@ -85,9 +88,16 @@ class DynamicStore {
   async #runDiscovery(context: string): Promise<void> {
     try {
       const kinds = await discoverResourceKinds(app.kubeconfigPath, context);
-      if (Array.isArray(kinds)) this.#kinds = { ...this.#kinds, [context]: kinds };
+      if (!Array.isArray(kinds)) throw new Error("no discovery answer");
+      this.#kinds = { ...this.#kinds, [context]: kinds };
+      if (context in this.#failed) {
+        const failed = { ...this.#failed };
+        delete failed[context];
+        this.#failed = failed;
+      }
     } catch {
       // Unknown discovery: nothing greyed, registry versions used.
+      if (!(context in this.#kinds)) this.#failed = { ...this.#failed, [context]: true };
     }
   }
 
@@ -104,6 +114,12 @@ class DynamicStore {
     return kinds.find((k) => k.group === group && k.plural === plural) ?? null;
   }
 
+  /** The active context's discovery failed and nothing is known yet. */
+  get discoveryFailed(): boolean {
+    const cluster = app.activeCluster;
+    return cluster !== null && cluster in this.#failed && !(cluster in this.#kinds);
+  }
+
   /** Discovery is known for the active context (custom groups are final). */
   get customKnown(): boolean {
     return this.#activeKinds !== undefined;
@@ -113,7 +129,8 @@ class DynamicStore {
   get customGroups(): CustomGroup[] {
     const groups: Record<string, CustomKind[]> = {};
     for (const k of this.#activeKinds ?? []) {
-      if (!isCustomKind(k)) continue;
+      // Skip a kind whose id would not parse (it could not be opened or pinned).
+      if (!isCustomKind(k) || !isCustomView(customView(k.group, k.plural))) continue;
       (groups[k.group] ??= []).push({
         view: customView(k.group, k.plural),
         kind: k.kind,

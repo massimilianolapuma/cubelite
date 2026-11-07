@@ -284,3 +284,29 @@ describe("custom kinds", () => {
     expect(table).not.toHaveBeenCalled();
   });
 });
+
+describe("custom kinds robustness", () => {
+  it("skips kinds whose id would not parse, keeps hyphenated plurals", async () => {
+    const ctx = fresh();
+    discover.mockResolvedValueOnce([
+      { group: "k8s.cni.cncf.io", version: "v1", kind: "NetworkAttachmentDefinition", plural: "network-attachment-definitions", namespaced: true, short_names: ["net-attach-def"] },
+      { group: "weird.example.com", version: "v1", kind: "Weird", plural: "Weird_Things", namespaced: true, short_names: [] },
+    ]);
+    await dynamic.discover(ctx);
+    app.activeCluster = ctx;
+    expect(dynamic.customGroups.map((g) => g.group)).toEqual(["k8s.cni.cncf.io"]);
+  });
+
+  it("remembers a failed discovery for the active context until it succeeds", async () => {
+    const ctx = fresh();
+    discover.mockRejectedValueOnce(new Error("boom"));
+    await dynamic.discover(ctx);
+    app.activeCluster = ctx;
+    expect(dynamic.customKnown).toBe(false);
+    expect(dynamic.discoveryFailed).toBe(true);
+    discover.mockResolvedValueOnce([]);
+    await dynamic.discover(ctx, true);
+    expect(dynamic.discoveryFailed).toBe(false);
+    expect(dynamic.customKnown).toBe(true);
+  });
+});

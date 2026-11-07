@@ -59,5 +59,7 @@ export const viewRegistry: Record<FixedView, ViewEntry> = {
 
 /** The entry for any view: fixed ones from the registry, custom kinds as generic lists. */
 export function viewEntry(view: View): ViewEntry {
-  return isCustomView(view) ? asEntry(GenericKindView, { view }) : viewRegistry[view];
+  if (isCustomView(view)) return asEntry(GenericKindView, { view });
+  // A view id this build does not know (e.g. from an older or newer build): land on Overview.
+  return viewRegistry[view] ?? viewRegistry.overview;
 }

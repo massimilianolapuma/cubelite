@@ -121,7 +121,9 @@ export const BUILTIN_GROUPS: ReadonlySet<string> = new Set([
   "metrics.k8s.io",
 ]);
 
-const CUSTOM_ID = /^crd:([a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)\/([a-z0-9]+)$/;
+// Group: a DNS subdomain. Plural: a DNS-1035 label, so hyphens are allowed
+// (Multus: `network-attachment-definitions.k8s.cni.cncf.io`).
+const CUSTOM_ID = /^crd:([a-z0-9](?:[-a-z0-9.]*[a-z0-9])?)\/([a-z](?:[-a-z0-9]*[a-z0-9])?)$/;
 
 export function customView(group: string, plural: string): CustomView {
   return `crd:${group}/${plural}`;

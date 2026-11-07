@@ -123,6 +123,12 @@ describe("custom kinds (resource-kinds §5.3)", () => {
     await dynamic.discover(app.activeCluster as string);
   }
 
+  it("viewEntry falls back to Overview for a view it does not know", () => {
+    const entry = viewEntry("crd:x" as never);
+    expect(entry).toBeDefined();
+    expect(entry.component).toBe(viewEntry("overview").component);
+  });
+
   it("viewEntry renders GenericKindView for a custom id", () => {
     const entry = viewEntry("crd:monitoring.coreos.com/servicemonitors");
     expect(entry.component).toBe(GenericKindView);
