@@ -98,3 +98,18 @@ describe("custom view ids", () => {
     }
   });
 });
+
+describe("searchKeywords for custom kinds", () => {
+  it("uses kind, plural, short names and group", () => {
+    const words = searchKeywords("crd:monitoring.coreos.com/servicemonitors", "ServiceMonitor", {
+      kind: "ServiceMonitor",
+      plural: "servicemonitors",
+      shortNames: ["smon"],
+    });
+    expect(words).toEqual(expect.arrayContaining(["servicemonitor", "servicemonitors", "smon", "monitoring.coreos.com"]));
+  });
+
+  it("falls back to the id", () => {
+    expect(searchKeywords("crd:example.com/widgets", "widgets")).toEqual(expect.arrayContaining(["widgets", "example.com"]));
+  });
+});

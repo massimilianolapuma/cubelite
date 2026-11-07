@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Custom Resources** (#586): every custom kind the cluster serves (any API
+  group outside Kubernetes' own) is listed under `Custom Resources` in the
+  sidebar, right before Observe: a filter, one row per API group with its
+  number of kinds in an area of at most 8 rows that scrolls on its own, and
+  the group's kinds when it opens. Each kind opens as a list with the
+  columns `kubectl get` prints and a read-only YAML view, can be pinned like
+  any other type (a pin the current cluster does not serve is greyed), and
+  is in ⌘K by kind, plural, short name or group.
 - **Go to any resource from ⌘K** (#583): the palette lists every resource
   type, hidden ones included, matched by name, kind or short name (`deploy`,
   `svc`, `pvc`, `hpa`, `netpol`, `sa`, `crb`…), with its section, its count

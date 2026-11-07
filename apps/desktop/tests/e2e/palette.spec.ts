@@ -38,3 +38,11 @@ test("⌘↵ opens the type and pins it to the active profile", async ({ page })
     page.getByRole("list", { name: "Pinned · On-call" }).getByText("Service Accounts", { exact: true }),
   ).toBeVisible();
 });
+
+test("a custom kind is reachable by short name (phase 5)", async ({ page }) => {
+  await boot(page);
+  await expect(page.getByRole("list", { name: "Pinned · On-call" })).toBeVisible();
+  await palette(page, "smon");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "ServiceMonitor" })).toBeVisible();
+});

@@ -23,6 +23,8 @@ vi.mock("#lib/tauri.ts", () => ({
   grafanaPortForward: vi.fn(async () => 42000),
   openKibanaHome: vi.fn(async () => {}),
   openGrafanaHome: vi.fn(async () => {}),
+  discoverResourceKinds: vi.fn(async () => []),
+  listResourceTable: vi.fn(async () => ({ columns: [], rows: [] })),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -48,6 +50,8 @@ import { profiles } from "#lib/stores/profiles.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
 import { toasts } from "#lib/stores/toasts.svelte.ts";
 import { isMac } from "#lib/platform.ts";
+import { dynamic } from "#lib/stores/dynamic.svelte.ts";
+import { discoverResourceKinds } from "#lib/tauri.ts";
 import {
   grafanaPortForward,
   kibanaPortForward,
@@ -382,5 +386,76 @@ describe("Go to resource (resource-kinds §6)", () => {
     render(CommandPalette);
     await flush();
     expect(screen.getByText(/open and pin to On-call/)).toBeInTheDocument();
+  });
+});
+
+describe("custom kinds in Go to resource (resource-kinds §5.3)", () => {
+  const mod = isMac ? { metaKey: true } : { ctrlKey: true };
+  const k = (group: string, kind: string, plural: string, short_names: string[] = []) => ({
+    group, version: "v1", kind, plural, namespaced: true, short_names,
+  });
+  const row = (view: string) => document.querySelector<HTMLElement>(`[data-resource="${view}"]`);
+  const shown = () =>
+    [...document.querySelectorAll<HTMLElement>("[data-resource]")].filter((el) => !el.closest("[hidden]") && !el.hidden);
+  async function search(text: string) {
+    await fireEvent.input(screen.getByPlaceholderText("Search clusters, resources, actions…"), { target: { value: text } });
+    await flush();
+  }
+  let n = 0;
+
+  beforeEach(async () => {
+    window.localStorage.clear();
+    profiles.reset();
+    navigation.reset();
+    app.view = "overview";
+    app.kubeconfigPath = "/k";
+    const ctx = `palette-custom-${++n}`;
+    vi.mocked(discoverResourceKinds).mockResolvedValueOnce([
+      k("monitoring.coreos.com", "ServiceMonitor", "servicemonitors", ["smon"]),
+      k("cert-manager.io", "Certificate", "certificates", ["cert"]),
+      k("acme.example.com", "Certificate", "certificates"),
+    ]);
+    await dynamic.discover(ctx);
+    app.activeCluster = ctx;
+    clusters.contexts = [{ name: ctx, cluster_server: "https://c:6443", namespace: "default", is_active: true }];
+  });
+
+  it("custom kinds of the active cluster are in Go to resource", async () => {
+    render(CommandPalette);
+    await flush();
+    const r = row("crd:monitoring.coreos.com/servicemonitors")!;
+    expect(r).toHaveTextContent("ServiceMonitor");
+    expect(r).toHaveTextContent("monitoring.coreos.com");
+    expect(r).toHaveTextContent("Custom Resources");
+  });
+
+  it("finds a custom kind by short name and by group", async () => {
+    render(CommandPalette);
+    await flush();
+    await search("smon");
+    expect(shown()[0]?.dataset.resource).toBe("crd:monitoring.coreos.com/servicemonitors");
+    await search("coreos");
+    expect(shown().map((el) => el.dataset.resource)).toContain("crd:monitoring.coreos.com/servicemonitors");
+  });
+
+  it("same kind name in two groups", async () => {
+    render(CommandPalette);
+    await flush();
+    await search("certificate");
+    const views = shown().map((el) => el.dataset.resource);
+    expect(views).toEqual(expect.arrayContaining(["crd:cert-manager.io/certificates", "crd:acme.example.com/certificates"]));
+    await fireEvent.click(row("crd:acme.example.com/certificates")!);
+    await flush();
+    expect(app.view).toBe("crd:acme.example.com/certificates");
+  });
+
+  it("⌘↵ pins a custom kind", async () => {
+    render(CommandPalette);
+    await flush();
+    await search("smon");
+    await fireEvent.keyDown(screen.getByPlaceholderText("Search clusters, resources, actions…"), { key: "Enter", ...mod });
+    await flush();
+    expect(app.view).toBe("crd:monitoring.coreos.com/servicemonitors");
+    expect(profiles.isPinned("crd:monitoring.coreos.com/servicemonitors")).toBe(true);
   });
 });

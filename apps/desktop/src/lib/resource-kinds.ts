@@ -173,14 +173,21 @@ const ALIASES: Partial<Record<GenericView, readonly string[]>> = {
   clusterrolebindings: ["crb"],
 };
 
-/** Words the ⌘K palette matches a type by: label, kind, plural, short names. */
-export function searchKeywords(view: View, label: string): string[] {
+/** Words the ⌘K palette matches a type by: label, kind, plural, short names (and group for custom kinds). */
+export function searchKeywords(
+  view: View,
+  label: string,
+  custom?: { kind: string; plural: string; shortNames: readonly string[] },
+): string[] {
   const words = [label];
-  if (isGenericView(view)) {
+  const id = isCustomView(view) ? parseCustomView(view) : null;
+  if (id) {
+    words.push(custom?.kind ?? "", custom?.plural ?? id.plural, ...(custom?.shortNames ?? []), id.group);
+  } else if (isGenericView(view)) {
     const k = GENERIC_KINDS[view];
     words.push(k.kind, k.plural, ...k.shortNames, ...(ALIASES[view] ?? []));
   } else {
     words.push(...(BUILTIN_KEYWORDS[view] ?? []));
   }
-  return [...new Set(words.map((w) => w.toLowerCase()))];
+  return [...new Set(words.filter((w) => w !== "").map((w) => w.toLowerCase()))];
 }
