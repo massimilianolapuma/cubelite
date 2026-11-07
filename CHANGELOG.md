@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Needs attention / Warnings only filters** (#574): Pods has a
+  `Needs attention` toggle and Events a `Warnings only` toggle in the title
+  bar; both reset on context switch.
+
 ### Fixed
 
+- **Sidebar counts no longer turn the whole total red** (#574): with 24 of
+  187 pods failing the Pods row showed `187` in red. The total now stays
+  neutral and a separate badge shows only the pods needing attention (red)
+  or the warning events (amber); clicking it opens the list filtered to
+  them.
 - **The Overview's firing badge says what it counts and opens the list**
   (#566): it read just `8 firing`, with no hint of what it counted, and did
   nothing on click. It now reads `8 alerts firing`, its tooltip gives the
