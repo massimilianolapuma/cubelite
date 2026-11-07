@@ -11,8 +11,16 @@
 		view,
 		label,
 		dot,
-		compact = false
-	}: { view: View; label: string; dot: string; compact?: boolean } = $props();
+		compact = false,
+		hint
+	}: {
+		view: View;
+		label: string;
+		dot: string;
+		compact?: boolean;
+		/** Tooltip, e.g. a custom kind's API group. */
+		hint?: string;
+	} = $props();
 
 	const badgeStyle = {
 		err: 'color: var(--color-status-err); background: var(--alpha-pill-err);',
@@ -37,7 +45,7 @@
 			? 'pr-1.5'
 			: 'pr-2.5'}"
 		aria-current={active ? 'page' : undefined}
-		title={unavailable ? 'Not available on this cluster' : undefined}
+		title={unavailable ? 'Not available on this cluster' : hint}
 		onclick={() => app.navigate(view)}
 	>
 		<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {dot};"></span>

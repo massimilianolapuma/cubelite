@@ -17,7 +17,8 @@ const custom = (page: Page) => aside(page).getByRole("button", { name: /^Custom 
 test("open a custom kind from its group, pin it, see it in Pinned", async ({ page }) => {
   await boot(page);
   await custom(page).click();
-  await aside(page).getByRole("button", { name: /^monitoring\.coreos\.com \d+$/ }).click();
+  // Kinds show right away under their vendor (#589).
+  await expect(aside(page).getByText("coreos.com", { exact: true })).toBeVisible();
   await aside(page).getByText("ServiceMonitor", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "ServiceMonitor" })).toBeVisible();
   await expect(page.getByText("monitoring.coreos.com").first()).toBeVisible();
@@ -27,7 +28,7 @@ test("open a custom kind from its group, pin it, see it in Pinned", async ({ pag
   ).toBeVisible();
 });
 
-test("60 groups stay in an 8-row area", async ({ page }) => {
+test("60 groups: only the section's list scrolls, the sidebar does not", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const groups = Array.from({ length: 60 }, (_, i) => ({
     group: `group${String(i).padStart(2, "0")}.example.com`,
@@ -38,14 +39,14 @@ test("60 groups stay in an 8-row area", async ({ page }) => {
     short_names: [],
   }));
   await boot(page, { resourceKinds: [...FIXTURES.resourceKinds, ...groups] });
-  await expect(custom(page)).toHaveText(/62/);
+  await expect(custom(page)).toHaveText(/64/);
   await custom(page).click();
-  const area = aside(page).getByTestId("custom-groups");
-  await expect(area).toBeVisible();
-  const box = await area.evaluate((el) => ({ client: el.clientHeight, scroll: el.scrollHeight }));
-  expect(box.client).toBeLessThanOrEqual(8 * 26);
+  const types = aside(page).getByRole("list", { name: "Custom Resources types" });
+  await expect(types).toBeVisible();
+  const box = await types.evaluate((el) => ({ client: el.clientHeight, scroll: el.scrollHeight }));
   expect(box.scroll).toBeGreaterThan(box.client);
   expect(await aside(page).evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+  await expect(aside(page).getByRole("button", { name: /^Observe \d+$/ })).toBeInViewport();
 });
 
 test("opening a kind far down a long group list scrolls its row into view", async ({ page }) => {
@@ -59,13 +60,13 @@ test("opening a kind far down a long group list scrolls its row into view", asyn
     short_names: [],
   }));
   await boot(page, { resourceKinds: [...FIXTURES.resourceKinds, ...groups] });
-  await expect(custom(page)).toHaveText(/62/);
+  await expect(custom(page)).toHaveText(/64/);
   const mac = await page.evaluate(() => navigator.userAgent.includes("Mac"));
   await page.keyboard.press(`${mac ? "Meta" : "Control"}+KeyK`);
   await page.getByPlaceholder("Search clusters, resources, actions…").fill("widget55");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("heading", { name: "Widget55" })).toBeVisible();
-  const row = aside(page).getByTestId("custom-groups").locator('[aria-current="page"]');
+  const row = aside(page).getByRole("list", { name: "Custom Resources types" }).locator('[aria-current="page"]');
   await expect(row).toHaveText(/Widget55/);
   await expect(row).toBeInViewport();
 });

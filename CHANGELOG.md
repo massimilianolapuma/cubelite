@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Custom Resources shows its kinds right away** (#589): the section listed
+  one row per API group to open one by one (ECK alone registers twelve
+  groups with one kind each), and filtering switched to a different look.
+  It now lists every custom kind at once, in the same rows as the other
+  sections, under small vendor headers (`elastic.co`, `coreos.com`…); the
+  filter narrows those same rows, the API group is in each row's tooltip,
+  and a long list scrolls inside the section like any other.
+
 ## [0.10.0] - 2026-11-07
 
 ### Added

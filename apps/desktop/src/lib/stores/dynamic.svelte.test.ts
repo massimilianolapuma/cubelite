@@ -310,3 +310,27 @@ describe("custom kinds robustness", () => {
     expect(dynamic.customKnown).toBe(true);
   });
 });
+
+describe("custom kinds by vendor", () => {
+  it("groups every custom kind under its vendor, kinds by name", async () => {
+    const ctx = fresh();
+    const k = (group: string, kind: string, plural: string) => ({ group, version: "v1", kind, plural, namespaced: true, short_names: [] });
+    discover.mockResolvedValueOnce([
+      k("monitoring.coreos.com", "ServiceMonitor", "servicemonitors"),
+      k("agent.k8s.elastic.co", "Agent", "agents"),
+      k("monitoring.coreos.com", "Alertmanager", "alertmanagers"),
+      k("kibana.k8s.elastic.co", "Kibana", "kibanas"),
+      k("cert-manager.io", "Certificate", "certificates"),
+      k("acme.cert-manager.io", "Certificate", "certificates"),
+      k("apps", "Deployment", "deployments"),
+    ]);
+    await dynamic.discover(ctx);
+    app.activeCluster = ctx;
+    expect(dynamic.customVendors.map((v) => [v.vendor, v.kinds.map((x) => `${x.kind}@${x.group}`)])).toEqual([
+      ["cert-manager.io", ["Certificate@acme.cert-manager.io", "Certificate@cert-manager.io"]],
+      ["coreos.com", ["Alertmanager@monitoring.coreos.com", "ServiceMonitor@monitoring.coreos.com"]],
+      ["elastic.co", ["Agent@agent.k8s.elastic.co", "Kibana@kibana.k8s.elastic.co"]],
+    ]);
+    expect(dynamic.customKindCount).toBe(6);
+  });
+});

@@ -149,6 +149,15 @@ export function isCustomKind(k: { group: string }): boolean {
   return !BUILTIN_GROUPS.has(k.group);
 }
 
+/**
+ * The vendor a custom API group belongs to: its registrable domain (the last
+ * two labels), so ECK's twelve `*.k8s.elastic.co` groups read as elastic.co.
+ */
+export function vendorOf(group: string): string {
+  const labels = group.split(".");
+  return labels.length <= 2 ? group : labels.slice(-2).join(".");
+}
+
 /** kubectl short names and singular/plural words of the hand-written views. */
 const BUILTIN_KEYWORDS: Partial<Record<View, readonly string[]>> = {
   overview: ["overview", "dashboard"],
