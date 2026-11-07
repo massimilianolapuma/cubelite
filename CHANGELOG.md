@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-07
+
 ### Added
 
 - **Sidebar with profiles and pinned resources** (#580): the sidebar now
