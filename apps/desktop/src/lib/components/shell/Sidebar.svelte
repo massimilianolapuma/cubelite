@@ -22,13 +22,15 @@
 
 	/** Every type's label and section dot, hidden ones included, plus the cluster's custom kinds. */
 	const meta = $derived(
-		new Map<View, { label: string; dot: string }>([
+		new Map<View, { label: string; dot: string; hint?: string }>([
 			...navigation.arranged.flatMap((s) => s.items.map((i) => [i.view, { label: i.label, dot: s.dot }] as const)),
-			...dynamic.customGroups.flatMap((g) => g.kinds.map((k) => [k.view, { label: k.kind, dot: CUSTOM_DOT }] as const))
+			...dynamic.customGroups.flatMap((g) =>
+				g.kinds.map((k) => [k.view, { label: k.kind, dot: CUSTOM_DOT, hint: g.group }] as const)
+			)
 		])
 	);
 	/** A pin the cluster does not serve: custom kinds fall back to their plural. */
-	const fallback = (view: View) => ({
+	const fallback = (view: View): { label: string; dot: string; hint?: string } => ({
 		label: (isCustomView(view) && parseCustomView(view)?.plural) || view,
 		dot: CUSTOM_DOT
 	});
@@ -47,7 +49,6 @@
 		if (custom) {
 			untrack(() => {
 				sidebar.open('custom');
-				sidebar.openGroup = custom.group;
 				// A filter left from earlier could hide the kind just opened.
 				sidebar.customFilter = '';
 			});
@@ -84,7 +85,7 @@
 				<li>
 					<ContextMenu.Root>
 						<ContextMenu.Trigger>
-							<NavRow view={pin.view} label={pin.label} dot={pin.dot} />
+							<NavRow view={pin.view} label={pin.label} dot={pin.dot} hint={pin.hint} />
 						</ContextMenu.Trigger>
 						<ContextMenu.Portal>
 							<ContextMenu.Content

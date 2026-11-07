@@ -25,20 +25,24 @@ const k = (group: string, kind: string, plural: string): ResourceKindInfo => ({
   namespaced: true,
   short_names: [],
 });
+// Like minikube with kube-prometheus-stack and ECK: one group with many kinds, many groups with one.
 const KINDS = [
   k("apps", "Deployment", "deployments"),
   k("monitoring.coreos.com", "ServiceMonitor", "servicemonitors"),
   k("monitoring.coreos.com", "PodMonitor", "podmonitors"),
   k("monitoring.coreos.com", "PrometheusRule", "prometheusrules"),
   k("elasticsearch.k8s.elastic.co", "Elasticsearch", "elasticsearches"),
+  k("kibana.k8s.elastic.co", "Kibana", "kibanas"),
+  k("agent.k8s.elastic.co", "Agent", "agents"),
 ];
 
 const custom = () => screen.getByRole("button", { name: /^Custom Resources \d+$/ });
-// Group rows read "<group> <number of kinds>"; compare strings, no regex built from the group name.
-const groupRow = (group: string) =>
-  screen.getByRole("button", {
-    name: (name) => name.startsWith(`${group} `) && /^\d+$/.test(name.slice(group.length + 1)),
-  });
+const list = () => within(screen.getByRole("list", { name: "Custom Resources types" }));
+/** Visible lines of the open section: vendor headers in capitals, kinds as their label. */
+const lines = () =>
+  list()
+    .getAllByRole("listitem")
+    .map((li) => (li.querySelector("button") ? li.textContent?.trim() : `# ${li.textContent?.trim()}`));
 
 let n = 0;
 async function connect(kinds: ResourceKindInfo[] = KINDS) {
@@ -63,15 +67,35 @@ beforeEach(() => {
 });
 
 describe("Custom Resources section", () => {
-  it("shows one row per group with its number of kinds", async () => {
+  it("shows every kind right away, grouped by vendor", async () => {
     await connect();
     render(Sidebar);
-    expect(custom()).toHaveTextContent("2");
+    expect(custom()).toHaveTextContent("6");
     await fireEvent.click(custom());
-    expect(custom()).toHaveAttribute("aria-expanded", "true");
-    expect(groupRow("elasticsearch.k8s.elastic.co")).toHaveTextContent("1");
-    expect(groupRow("monitoring.coreos.com")).toHaveTextContent("3");
-    expect(screen.queryByText("Deployment")).toBeNull();
+    expect(lines()).toEqual([
+      "# coreos.com",
+      "PodMonitor",
+      "PrometheusRule",
+      "ServiceMonitor",
+      "# elastic.co",
+      "Agent",
+      "Elasticsearch",
+      "Kibana",
+    ]);
+    expect(screen.queryByRole("button", { name: /coreos\.com/ })).toBeNull();
+  });
+
+  it("uses the same rows as the other sections, with the API group as tooltip", async () => {
+    await connect();
+    sidebar.open("custom");
+    render(Sidebar);
+    const row = list().getByText("Kibana").closest("button")!;
+    expect(row).toHaveAttribute("title", "kibana.k8s.elastic.co");
+    await fireEvent.click(row);
+    expect(app.view).toBe("crd:kibana.k8s.elastic.co/kibanas");
+    expect(row.className).toBe(
+      within(screen.getByRole("list", { name: "Pinned · On-call" })).getByText("Pods").closest("button")!.className.replace("h-[26px]", "h-6"),
+    );
   });
 
   it("sits right before Observe", async () => {
@@ -81,56 +105,52 @@ describe("Custom Resources section", () => {
     expect(toggles.slice(-3)).toEqual(["Access", "Custom", "Observe"]);
   });
 
-  it("a group opens to its kinds and closes the other group", async () => {
+  it("the filter narrows the same rows by kind, API group or vendor", async () => {
     await connect();
+    sidebar.open("custom");
     render(Sidebar);
-    await fireEvent.click(custom());
-    await fireEvent.click(groupRow("monitoring.coreos.com"));
-    expect(groupRow("monitoring.coreos.com")).toHaveAttribute("aria-expanded", "true");
-    const kinds = within(screen.getByRole("list", { name: "monitoring.coreos.com kinds" }));
-    expect(kinds.getAllByRole("listitem").map((li) => li.textContent?.trim())).toEqual(["PodMonitor", "PrometheusRule", "ServiceMonitor"]);
-    await fireEvent.click(groupRow("elasticsearch.k8s.elastic.co"));
-    expect(groupRow("monitoring.coreos.com")).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByText("Elasticsearch")).toBeInTheDocument();
-    await fireEvent.click(screen.getByText("Elasticsearch"));
-    expect(app.view).toBe("crd:elasticsearch.k8s.elastic.co/elasticsearches");
-  });
-
-  it("the filter matches group and kind names", async () => {
-    await connect();
-    render(Sidebar);
-    await fireEvent.click(custom());
     const filter = screen.getByLabelText("Filter custom resources");
     await fireEvent.input(filter, { target: { value: "podmon" } });
-    expect(screen.queryByRole("button", { name: /^elasticsearch/ })).toBeNull();
-    expect(screen.getByText("PodMonitor")).toBeInTheDocument();
-    expect(screen.queryByText("ServiceMonitor")).toBeNull();
+    expect(lines()).toEqual(["# coreos.com", "PodMonitor"]);
+    await fireEvent.input(filter, { target: { value: "kibana.k8s" } });
+    expect(lines()).toEqual(["# elastic.co", "Kibana"]);
     await fireEvent.input(filter, { target: { value: "ELASTIC" } });
-    expect(screen.getByText("Elasticsearch")).toBeInTheDocument();
-    expect(screen.queryByText("PodMonitor")).toBeNull();
+    expect(lines()).toEqual(["# elastic.co", "Agent", "Elasticsearch", "Kibana"]);
     await fireEvent.input(filter, { target: { value: "zzz" } });
     expect(screen.getByText("No match")).toBeInTheDocument();
   });
 
-  it("says when the cluster has no custom resources, or while discovery is unknown", async () => {
+  it("a kind name that appears twice under one vendor shows its group", async () => {
+    await connect([k("cert-manager.io", "Certificate", "certificates"), k("acme.cert-manager.io", "Certificate", "certificates")]);
     sidebar.open("custom");
-    const { unmount } = render(Sidebar);
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
-    unmount();
-    await connect([k("apps", "Deployment", "deployments")]);
     render(Sidebar);
-    expect(screen.getByText("No custom resources on this cluster")).toBeInTheDocument();
+    expect(lines()).toEqual(["# cert-manager.io", "Certificate (acme.cert-manager.io)", "Certificate (cert-manager.io)"]);
   });
 
-  it("a pinned custom kind shows its kind name and section dot", async () => {
+  it("says when the cluster has no custom resources, while discovery is unknown, or when it failed", async () => {
+    sidebar.open("custom");
+    const first = render(Sidebar);
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    first.unmount();
+    await connect([k("apps", "Deployment", "deployments")]);
+    const second = render(Sidebar);
+    expect(screen.getByText("No custom resources on this cluster")).toBeInTheDocument();
+    second.unmount();
+    const ctx = `custom-fail-${++n}`;
+    vi.mocked(discoverResourceKinds).mockRejectedValueOnce(new Error("boom"));
+    await dynamic.discover(ctx);
+    app.activeCluster = ctx;
+    render(Sidebar);
+    expect(screen.getByText("Couldn't discover custom resources")).toBeInTheDocument();
+  });
+
+  it("a pinned custom kind shows its kind name, the grey dot and its API group", async () => {
     await connect();
-    app.view = "crd:monitoring.coreos.com/servicemonitors";
     profiles.togglePin("crd:monitoring.coreos.com/servicemonitors");
-    app.view = "overview";
     render(Sidebar);
     const pinned = within(screen.getByRole("list", { name: "Pinned · On-call" }));
     const row = pinned.getByText("ServiceMonitor").closest("button")!;
-    expect(row).not.toHaveAttribute("title");
+    expect(row).toHaveAttribute("title", "monitoring.coreos.com");
     expect(row.querySelector("span")!.getAttribute("style")).toContain("--color-text-tertiary");
   });
 
@@ -139,41 +159,20 @@ describe("Custom Resources section", () => {
     await connect([k("apps", "Deployment", "deployments")]);
     render(Sidebar);
     const pinned = within(screen.getByRole("list", { name: "Pinned · On-call" }));
-    const row = pinned.getByText("servicemonitors").closest("button")!;
-    expect(row).toHaveAttribute("title", "Not available on this cluster");
+    expect(pinned.getByText("servicemonitors").closest("button")).toHaveAttribute("title", "Not available on this cluster");
   });
 
-  it("navigating to a custom kind opens its section and group", async () => {
-    await connect();
-    render(Sidebar);
-    app.navigate("crd:monitoring.coreos.com/prometheusrules");
-    await vi.waitFor(() => expect(custom()).toHaveAttribute("aria-expanded", "true"));
-    expect(groupRow("monitoring.coreos.com")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("PrometheusRule").closest("button")).toHaveAttribute("aria-current", "page");
-  });
-
-  it("navigating to a custom kind clears a filter that would hide it and scrolls its row into view", async () => {
+  it("navigating to a custom kind opens its section, clears the filter and scrolls its row into view", async () => {
     const scroll = vi.fn();
     Element.prototype.scrollIntoView = scroll;
     await connect();
-    sidebar.open("custom");
-    sidebar.customFilter = "elastic";
+    sidebar.customFilter = "agent";
     render(Sidebar);
-    app.navigate("crd:monitoring.coreos.com/servicemonitors");
-    await vi.waitFor(() => expect(screen.getByText("ServiceMonitor").closest("button")).toHaveAttribute("aria-current", "page"));
+    app.navigate("crd:monitoring.coreos.com/prometheusrules");
+    await vi.waitFor(() => expect(custom()).toHaveAttribute("aria-expanded", "true"));
     expect(sidebar.customFilter).toBe("");
-    await vi.waitFor(() => expect(scroll).toHaveBeenCalled());
-    expect(scroll.mock.contexts.some((el) => (el as Element).textContent?.includes("ServiceMonitor"))).toBe(true);
-  });
-
-  it("says when discovery failed", async () => {
-    const ctx = `custom-fail-${++n}`;
-    vi.mocked(discoverResourceKinds).mockRejectedValueOnce(new Error("boom"));
-    await dynamic.discover(ctx);
-    app.activeCluster = ctx;
-    sidebar.open("custom");
-    render(Sidebar);
-    expect(screen.getByText("Couldn't discover custom resources")).toBeInTheDocument();
+    expect(list().getByText("PrometheusRule").closest("button")).toHaveAttribute("aria-current", "page");
+    await vi.waitFor(() => expect(scroll.mock.contexts.some((el) => (el as Element).textContent?.includes("PrometheusRule"))).toBe(true));
   });
 
   it("keyboard: the section toggles like the others", async () => {

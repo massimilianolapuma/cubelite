@@ -137,6 +137,14 @@ namespace, exactly like today's on-demand kinds (`loadedKinds`). No background c
 
 ### 5.3 Custom resources
 
+> **Revised 2026-11-07 (#589, user decision after trying v0.10.0):** the section no longer shows
+> one row per API group to open. Opening it shows every custom kind right away, with the same rows as
+> the other sections, grouped under small non-clickable vendor headers (the API group's registrable
+> domain: `*.k8s.elastic.co` → elastic.co, `monitoring.coreos.com` → coreos.com). The filter narrows
+> the same rows by kind, plural, group or vendor; the full API group is the row's tooltip; there is
+> no fixed 8-row cap — like any open section only its list scrolls when space runs out. The text
+> below describes the first version.
+
 Custom kinds come from discovery (§5.4), not from a separate CRD list. Opening the Custom
 Resources section shows a **filter box** and one row per API group (`monitoring.coreos.com`,
 `elasticsearch.k8s.elastic.co`…) with its number of kinds; a group opens inline to its kinds. The

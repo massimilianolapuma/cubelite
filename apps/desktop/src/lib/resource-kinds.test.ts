@@ -8,6 +8,7 @@ import {
   isGenericView,
   isKindView,
   parseCustomView,
+  vendorOf,
   searchKeywords,
 } from "#lib/resource-kinds.ts";
 import { isView } from "#lib/stores/app.svelte.ts";
@@ -121,5 +122,17 @@ describe("real-world CRD names", () => {
     expect(parseCustomView(v)).toEqual({ group: "k8s.cni.cncf.io", plural: "network-attachment-definitions" });
     expect(isCustomView("crd:x.io/-bad")).toBe(false);
     expect(isCustomView("crd:x.io/bad-")).toBe(false);
+  });
+});
+
+describe("vendorOf", () => {
+  it("is the registrable domain of an API group", () => {
+    expect(vendorOf("agent.k8s.elastic.co")).toBe("elastic.co");
+    expect(vendorOf("elasticsearch.k8s.elastic.co")).toBe("elastic.co");
+    expect(vendorOf("monitoring.coreos.com")).toBe("coreos.com");
+    expect(vendorOf("cert-manager.io")).toBe("cert-manager.io");
+    expect(vendorOf("acme.cert-manager.io")).toBe("cert-manager.io");
+    expect(vendorOf("gateway.networking.k8s.io")).toBe("k8s.io");
+    expect(vendorOf("localhost")).toBe("localhost");
   });
 });

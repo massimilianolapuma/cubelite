@@ -21,6 +21,7 @@ import {
   isCustomKind,
   isCustomView,
   isGenericView,
+  vendorOf,
   parseCustomView,
   type CustomView,
   type KindView,
@@ -37,6 +38,7 @@ export interface KindMeta {
 
 export interface CustomKind {
   view: CustomView;
+  group: string;
   kind: string;
   plural: string;
   shortNames: string[];
@@ -44,6 +46,11 @@ export interface CustomKind {
 
 export interface CustomGroup {
   group: string;
+  kinds: CustomKind[];
+}
+
+export interface CustomVendor {
+  vendor: string;
   kinds: CustomKind[];
 }
 
@@ -133,6 +140,7 @@ class DynamicStore {
       if (!isCustomKind(k) || !isCustomView(customView(k.group, k.plural))) continue;
       (groups[k.group] ??= []).push({
         view: customView(k.group, k.plural),
+        group: k.group,
         kind: k.kind,
         plural: k.plural,
         shortNames: k.short_names,
@@ -141,6 +149,23 @@ class DynamicStore {
     return Object.entries(groups)
       .map(([group, kinds]) => ({ group, kinds: kinds.sort((a, b) => byName(a.kind, b.kind)) }))
       .sort((a, b) => byName(a.group, b.group));
+  }
+
+  /** The active context's custom kinds by vendor (registrable domain), kinds by name then group. */
+  get customVendors(): CustomVendor[] {
+    const vendors: Record<string, CustomKind[]> = {};
+    for (const g of this.customGroups) (vendors[vendorOf(g.group)] ??= []).push(...g.kinds);
+    return Object.entries(vendors)
+      .map(([vendor, kinds]) => ({
+        vendor,
+        kinds: kinds.sort((a, b) => byName(a.kind, b.kind) || byName(a.group, b.group)),
+      }))
+      .sort((a, b) => byName(a.vendor, b.vendor));
+  }
+
+  /** Number of custom kinds the active context serves. */
+  get customKindCount(): number {
+    return this.customGroups.reduce((n, g) => n + g.kinds.length, 0);
   }
 
   /** Label, row nouns, scope and group of a Table-listed kind. */
