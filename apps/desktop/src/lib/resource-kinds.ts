@@ -79,7 +79,7 @@ export const GENERIC_KINDS = Object.fromEntries(
     view,
     { label, nouns: [noun, pluralNoun(noun)], group, version, kind, plural, namespaced, shortNames },
   ]),
-) as Record<GenericView, GenericKind>;
+) as unknown as Record<GenericView, GenericKind>;
 
 export function isGenericView(v: unknown): v is GenericView {
   return typeof v === "string" && (GENERIC_VIEWS as readonly string[]).includes(v);

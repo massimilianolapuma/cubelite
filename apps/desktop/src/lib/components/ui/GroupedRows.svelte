@@ -23,6 +23,7 @@
 		accessors,
 		nouns,
 		filter = '',
+		groupable = true,
 		row
 	}: {
 		/** Sort id of the list (see `lists.specFor`). */
@@ -34,11 +35,13 @@
 		nouns: readonly [string, string];
 		/** The list's filter text; while it is not empty every group shows expanded. */
 		filter?: string;
+		/** false for cluster-scoped kinds: always flat. */
+		groupable?: boolean;
 		row: Snippet<[T, boolean]>;
 	} = $props();
 
 	const spec = $derived(lists.specFor(list));
-	const groups = $derived(app.groupedLists ? groupByNamespace(rows, spec, accessors) : null);
+	const groups = $derived(groupable && app.groupedLists ? groupByNamespace(rows, spec, accessors) : null);
 	const flat = $derived(groups === null ? sortRows(rows, spec, accessors) : []);
 
 	// Header clicks while filtering only change `transient` (a writable

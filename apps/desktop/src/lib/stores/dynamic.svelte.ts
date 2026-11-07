@@ -6,6 +6,7 @@
  * unknown or failed nothing is greyed and lists use the registry's version.
  */
 
+import { untrack } from "svelte";
 import {
   discoverResourceKinds,
   listResourceTable,
@@ -90,7 +91,8 @@ class DynamicStore {
     const current = () => this.#seq[view] === seq && this.#epoch === epoch;
     const ns = app.namespace;
 
-    this.loading = { ...this.loading, [view]: true };
+    // Views call load() from an effect: reading `loading` here must not subscribe it.
+    untrack(() => (this.loading = { ...this.loading, [view]: true }));
     try {
       await this.#pending[cluster];
       if (!current() || this.isUnavailable(view)) return;
