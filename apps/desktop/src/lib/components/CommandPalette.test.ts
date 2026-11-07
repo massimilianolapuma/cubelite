@@ -332,9 +332,18 @@ describe("Go to resource (resource-kinds §6)", () => {
     await flush();
     await search("nodes");
     expect(screen.getAllByText("Nodes")).toHaveLength(2);
+    // The exact keyword ranks the type first: ⌘↵ opens Nodes (already pinned) and switches nothing.
     await fireEvent.keyDown(screen.getByPlaceholderText("Search clusters, resources, actions…"), { key: "Enter", ...mod });
     await flush();
-    // The cluster row is first and highlighted: ⌘↵ switches, it does not pin Nodes.
+    expect(app.view).toBe("nodes");
+    expect(switchCluster).not.toHaveBeenCalled();
+    // The cluster row still selects the cluster.
+    app.paletteOpen = true;
+    await flush();
+    await search("nodes");
+    const clusterRow = screen.getAllByText("Nodes").find((el) => !el.closest("[data-resource]"))!;
+    await fireEvent.click(clusterRow);
+    await flush();
     expect(switchCluster).toHaveBeenCalledWith("Nodes");
     switchCluster.mockRestore();
   });
@@ -347,6 +356,26 @@ describe("Go to resource (resource-kinds §6)", () => {
     await fireEvent.click(row("networkpolicies")!);
     await flush();
     expect(app.view).toBe("networkpolicies");
+  });
+
+  it("reopening starts from the top, not the last highlighted type", async () => {
+    render(CommandPalette);
+    await flush();
+    await search("secrets");
+    expect(row("secrets")).toHaveAttribute("data-selected");
+    app.paletteOpen = false; // Esc closes through closeTopOverlay, not close()
+    await flush();
+    app.paletteOpen = true;
+    await flush();
+    expect(row("secrets")).not.toHaveAttribute("data-selected");
+  });
+
+  it("ranking does not depend on the previous query", async () => {
+    render(CommandPalette);
+    await flush();
+    await search("ingressc");
+    await search("ing");
+    expect(shown()[0]?.dataset.resource).toBe("ingresses");
   });
 
   it("shows the ↵ / ⌘↵ hint for the active profile", async () => {

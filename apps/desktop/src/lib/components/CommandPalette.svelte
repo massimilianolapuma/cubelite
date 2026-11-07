@@ -23,7 +23,7 @@
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
 	import { countFor } from '#lib/stores/nav-counts.svelte.ts';
 	import { searchKeywords } from '#lib/resource-kinds.ts';
-	import { paletteFilter } from '#lib/palette-filter.ts';
+	import { RESOURCE_PREFIX, paletteFilter } from '#lib/palette-filter.ts';
 	import { identityVar } from '#lib/cluster-identity.ts';
 	import { providerOf } from '#lib/provider.ts';
 	import type { Component } from 'svelte';
@@ -80,7 +80,7 @@
 				label: item.label,
 				section: section.label,
 				dot: section.dot,
-				value: `Go to ${item.label}`,
+				value: `${RESOURCE_PREFIX}${item.label}`,
 				keywords: searchKeywords(item.view, item.label)
 			}))
 		)
@@ -88,6 +88,11 @@
 	const viewByValue = $derived(new Map(resourceItems.map((r) => [r.value, r.view] as const)));
 	/** Value of the highlighted row (bits-ui `bind:value`). */
 	let highlighted = $state('');
+	// Every opening starts from the top: a highlight left over from the last
+	// search would make ↵ / ⌘↵ act on it (Esc closes via closeTopOverlay).
+	$effect.pre(() => {
+		if (!app.paletteOpen) highlighted = '';
+	});
 
 	function openResource(view: View, pin: boolean) {
 		close();
