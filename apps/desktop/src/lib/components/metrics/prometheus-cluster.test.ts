@@ -141,6 +141,49 @@ describe("Overview alerts (#530)", () => {
     );
   });
 
+  it("expands to every alert and collapses again, per context (#568)", async () => {
+    useContext();
+    const firing = Array.from({ length: 10 }, (_, i) => alert({ name: `Alert${i}`, severity: "warning" }));
+    vi.mocked(prometheusAlerts).mockResolvedValue({ source: "alerts-api", alerts: [alert({}), ...firing] });
+    vi.mocked(prometheusClusterUsage).mockResolvedValue(host([]));
+    render(AlertsCard);
+    await promOverview.load(clock);
+    await waitFor(() => expect(screen.getAllByTestId("alert-row")).toHaveLength(8));
+    const toggle = screen.getByTestId("alerts-toggle");
+    expect(toggle).toHaveTextContent("Show 3 more");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await fireEvent.click(toggle);
+    expect(screen.getAllByTestId("alert-row")).toHaveLength(11);
+    // Informational alerts stay last.
+    expect(screen.getAllByTestId("alert-row")[10]).toHaveTextContent("Watchdog");
+    expect(toggle).toHaveTextContent("Show fewer");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    await fireEvent.click(toggle);
+    expect(screen.getAllByTestId("alert-row")).toHaveLength(8);
+
+    // Expanded in one context, collapsed after switching to another.
+    await fireEvent.click(toggle);
+    useContext();
+    await promOverview.load(clock);
+    await waitFor(() => expect(screen.getAllByTestId("alert-row")).toHaveLength(8));
+    expect(screen.getByTestId("alerts-toggle")).toHaveTextContent("Show 3 more");
+  });
+
+  it("has no toggle when every alert fits (#568)", async () => {
+    useContext();
+    vi.mocked(prometheusAlerts).mockResolvedValue({
+      source: "alerts-api",
+      alerts: Array.from({ length: 8 }, (_, i) => alert({ name: `Alert${i}`, severity: "warning" })),
+    });
+    vi.mocked(prometheusClusterUsage).mockResolvedValue(host([]));
+    render(AlertsCard);
+    await promOverview.load(clock);
+    await waitFor(() => expect(screen.getAllByTestId("alert-row")).toHaveLength(8));
+    expect(screen.queryByTestId("alerts-toggle")).not.toBeInTheDocument();
+  });
+
   it("says when nothing fires and shows the error inline", async () => {
     useContext();
     vi.mocked(prometheusClusterUsage).mockResolvedValue(host([]));
