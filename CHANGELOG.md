@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The Overview Alerts card shows every firing alert on request** (#568):
+  past 8 alerts it read `and N more` with no way to see them. It now offers
+  `Show N more` and `Show fewer`; the card collapses again when the context
+  changes.
+
 ### Fixed
 
 - **The Overview's firing badge says what it counts and opens the list**
