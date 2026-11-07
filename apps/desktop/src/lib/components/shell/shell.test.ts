@@ -165,12 +165,47 @@ describe("Sidebar", () => {
     expect(screen.getByText("1")).toBeInTheDocument();
   });
 
-  it("shows one count for pods, red with a tooltip when pods need attention", () => {
-    resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" })];
+  it("keeps the pods total neutral and badges only the pods needing attention (#574)", async () => {
+    app.podIssuesOnly = false;
+    resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" }), pod({ name: "api-2" })];
     render(Sidebar);
-    const count = screen.getByTitle("1 need attention");
-    expect(count).toHaveTextContent("2");
-    expect(count).toHaveClass("text-status-err");
+    const row = screen.getByText("Pods").closest("button")!;
+    expect(row).toHaveTextContent("3");
+    expect(row.querySelector("[data-testid=nav-count]")).toHaveClass("text-text-tertiary");
+    const badge = screen.getByRole("button", { name: "1 pod needs attention: show them" });
+    expect(badge).toHaveTextContent("1");
+    expect(badge.getAttribute("style")).toContain("--color-status-err");
+
+    await fireEvent.click(badge);
+    expect(app.view).toBe("pods");
+    expect(app.podIssuesOnly).toBe(true);
+  });
+
+  it("badges warning events in amber and opens Events filtered (#574)", async () => {
+    app.eventWarningsOnly = false;
+    const event = (event_type: string) => ({
+      event_type,
+      reason: "x",
+      object: "Pod/api-0",
+      message: null,
+      namespace: "default",
+      count: 1,
+      last_timestamp: null,
+    });
+    resources.events = [event("Warning"), event("Warning"), event("Normal")];
+    render(Sidebar);
+    const badge = screen.getByRole("button", { name: "2 warnings: show them" });
+    expect(badge.getAttribute("style")).toContain("--color-status-warn");
+    await fireEvent.click(badge);
+    expect(app.view).toBe("events");
+    expect(app.eventWarningsOnly).toBe(true);
+  });
+
+  it("has no badge when nothing needs attention (#574)", () => {
+    resources.pods = [pod()];
+    resources.events = [];
+    render(Sidebar);
+    expect(screen.queryByTestId("nav-attention")).not.toBeInTheDocument();
   });
 
   it("shows counts for on-demand kinds only once loaded for the current namespace", () => {

@@ -94,6 +94,11 @@ function countByNamespace(pods: PodInfo[]): Record<string, number> {
   return counts;
 }
 
+/** A pod that is not ready (and not completed) or restarting hard. */
+export function needsAttention(p: PodInfo): boolean {
+  return (!p.ready && p.phase !== "Succeeded") || p.restarts > 3;
+}
+
 class ResourcesStore {
   pods = $state<PodInfo[]>([]);
   namespaces = $state<NamespaceInfo[]>([]);
@@ -143,9 +148,7 @@ class ResourcesStore {
 
   /** Pods that are not ready or restarting hard. */
   get issuePods(): PodInfo[] {
-    return this.pods.filter(
-      (p) => (!p.ready && p.phase !== "Succeeded") || p.restarts > 3,
-    );
+    return this.pods.filter(needsAttention);
   }
 
   /** Warning-type events (drives sidebar/status-bar counts and Overview). */
