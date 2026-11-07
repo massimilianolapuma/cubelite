@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Go to any resource from ⌘K** (#583): the palette lists every resource
+  type, hidden ones included, matched by name, kind or short name (`deploy`,
+  `svc`, `pvc`, `hpa`, `netpol`, `sa`, `crb`…), with its section, its count
+  and whether it is pinned or hidden. ↵ opens it; ⌘↵ (Ctrl+↵) opens it and
+  pins it to the active profile. The "Go to Overview / Pods / Deployments"
+  actions are gone: the resource list covers them.
+
 ## [0.9.0] - 2026-11-07
 
 ### Added

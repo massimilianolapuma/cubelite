@@ -55,10 +55,13 @@ class ProfilesStore {
 
   /** Pins or unpins `view` in the active profile; a refused pin shows a toast. */
   togglePin(view: View): void {
-    if (this.isPinned(view)) {
-      this.#prefs.value = unpin(this.prefs, view);
-      return;
-    }
+    if (this.isPinned(view)) this.#prefs.value = unpin(this.prefs, view);
+    else this.pin(view);
+  }
+
+  /** Pins `view` to the active profile (never unpins); a refusal shows a toast. */
+  pin(view: View): void {
+    if (this.isPinned(view)) return;
     const error = this.#apply(pin(this.prefs, view, navigation.prefs.hidden));
     if (error) toasts.push(error, "err");
   }
