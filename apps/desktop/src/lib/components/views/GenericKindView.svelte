@@ -4,7 +4,7 @@
 	import SortHeader from '#lib/components/ui/SortHeader.svelte';
 	import ObjectYamlDrawer from '#lib/components/dynamic/ObjectYamlDrawer.svelte';
 	import { formatAge } from '#lib/age.ts';
-	import { GENERIC_KINDS, type GenericView } from '#lib/resource-kinds.ts';
+	import { isCustomView, type KindView } from '#lib/resource-kinds.ts';
 	import { cellText, gridTemplate, planColumns } from '#lib/table-columns.ts';
 	import type { TableRow } from '#lib/tauri.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -12,10 +12,10 @@
 
 	// Any ★ kind of the resource-kinds design (§5.1): the columns `kubectl get`
 	// prints, from the API server's Table; Name, Namespace and Age are ours.
-	let { view }: { view: GenericView } = $props();
+	let { view }: { view: KindView } = $props();
 
-	const meta = $derived(GENERIC_KINDS[view]);
-	const namespaced = $derived(dynamic.refFor(view).namespaced);
+	const meta = $derived(dynamic.meta(view));
+	const namespaced = $derived(meta.namespaced);
 	const grouped = $derived(namespaced && app.groupedLists);
 
 	let filter = $state('');
@@ -50,6 +50,9 @@
 
 <div class="flex flex-col gap-3 p-4">
 	<ListTitle title={meta.label} groupable={namespaced}>
+		{#if isCustomView(view)}
+			<span class="type-caption text-text-tertiary">{meta.group}</span>
+		{/if}
 		{#if !namespaced}
 			<span class="type-caption text-text-tertiary">cluster-scoped</span>
 		{/if}

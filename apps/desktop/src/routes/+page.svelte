@@ -14,7 +14,7 @@
 	import ConnectingOverlay from '#lib/components/ui/ConnectingOverlay.svelte';
 	import Toaster from '#lib/components/ui/Toaster.svelte';
 	import UnreachableView from '#lib/components/views/UnreachableView.svelte';
-	import { viewRegistry } from '#lib/components/views/index.ts';
+	import { viewEntry } from '#lib/components/views/index.ts';
 	import LogPanel from '#lib/components/logpanel/LogPanel.svelte';
 	import LogWindowShell from '#lib/components/logpanel/LogWindowShell.svelte';
 	import { applyAccent, applyDensity } from '#lib/appearance.ts';
@@ -31,7 +31,7 @@
 	import { settings } from '#lib/stores/settings.svelte.ts';
 	import { updater } from '#lib/stores/updater.svelte.ts';
 
-	const entry = $derived(viewRegistry[app.view]);
+	const entry = $derived(viewEntry(app.view));
 	const Current = $derived(entry.component);
 
 	const logWindowKey =

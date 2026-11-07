@@ -3,7 +3,7 @@
 	import Copy from '@lucide/svelte/icons/copy';
 	import Drawer from '#lib/components/ui/Drawer.svelte';
 	import { errorMessage } from '#lib/errors.ts';
-	import type { GenericView } from '#lib/resource-kinds.ts';
+	import type { KindView } from '#lib/resource-kinds.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
 	import { getDynamicResourceYaml } from '#lib/tauri.ts';
@@ -15,7 +15,7 @@
 		name,
 		namespace,
 		onClose
-	}: { view: GenericView; name: string; namespace: string | null; onClose: () => void } = $props();
+	}: { view: KindView; name: string; namespace: string | null; onClose: () => void } = $props();
 
 	let yaml = $state<string | null>(null);
 	let error = $state<string | null>(null);

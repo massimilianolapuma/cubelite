@@ -27,8 +27,10 @@ export const VIEWS = [
   ...GENERIC_VIEWS,
 ] as const;
 
+/** Views with their own entry in the view registry. */
+export type FixedView = (typeof VIEWS)[number];
 /** A fixed view, or a custom kind `crd:<group>/<plural>` (resource-kinds §5.3). */
-export type View = (typeof VIEWS)[number] | CustomView;
+export type View = FixedView | CustomView;
 
 /** Preferences sections that can be opened directly (#526). */
 export type PreferencesSection = "navigation" | "integrations" | "elasticsearch" | "prometheus";
