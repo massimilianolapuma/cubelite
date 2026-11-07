@@ -120,6 +120,135 @@ fn client_error(e: impl std::fmt::Display) -> KubeconfigError {
     }
 }
 
+/// `Accept` for the server-side Table (what `kubectl get` prints).
+const TABLE_ACCEPT: &str = "application/json;as=Table;v=v1;g=meta.k8s.io";
+/// Rows per Table page, as `kubectl get` chunks.
+const PAGE_SIZE: &str = "500";
+
+/// Which resource to list or fetch: what discovery tells about a kind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceRef {
+    /// API group; `""` for the core group.
+    pub group: String,
+    pub version: String,
+    pub plural: String,
+    pub namespaced: bool,
+}
+
+/// One column of a Table (a `priority: 0` column definition).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableColumn {
+    pub name: String,
+    /// OpenAPI type: `string`, `integer`, `number`, `boolean` or `date`.
+    pub column_type: String,
+    pub format: String,
+    pub description: String,
+}
+
+/// One object of a Table: its identity plus the cells of [`ResourceTable::columns`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableRow {
+    pub name: String,
+    pub namespace: Option<String>,
+    /// RFC 3339 creation timestamp.
+    pub creation_timestamp: Option<String>,
+    /// Cells of the `priority: 0` columns, in column order.
+    pub cells: Vec<serde_json::Value>,
+}
+
+/// A whole list as the API server's Table: the columns `kubectl get` shows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResourceTable {
+    pub columns: Vec<TableColumn>,
+    pub rows: Vec<TableRow>,
+}
+
+// Serde mirrors of `meta.k8s.io/v1` Table (with `includeObject=Metadata`).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TablePage {
+    #[serde(default)]
+    metadata: ListMeta,
+    #[serde(default)]
+    column_definitions: Vec<ColumnDefinition>,
+    #[serde(default)]
+    rows: Vec<PageRow>,
+}
+
+#[derive(Deserialize, Default)]
+struct ListMeta {
+    #[serde(rename = "continue")]
+    cont: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ColumnDefinition {
+    name: String,
+    #[serde(rename = "type", default)]
+    column_type: String,
+    #[serde(default)]
+    format: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    priority: i32,
+}
+
+#[derive(Deserialize)]
+struct PageRow {
+    #[serde(default)]
+    cells: Vec<serde_json::Value>,
+    object: Option<RowObject>,
+}
+
+#[derive(Deserialize)]
+struct RowObject {
+    #[serde(default)]
+    metadata: RowMeta,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RowMeta {
+    #[serde(default)]
+    name: String,
+    namespace: Option<String>,
+    creation_timestamp: Option<String>,
+}
+
+/// The collection URL of `resource`: in `namespace` for a namespaced kind
+/// (all namespaces when `None`); a cluster-scoped kind ignores `namespace`.
+pub(crate) fn resource_path(resource: &ResourceRef, namespace: Option<&str>) -> String {
+    let base = if resource.group.is_empty() {
+        format!("/api/{}", resource.version)
+    } else {
+        format!("/apis/{}/{}", resource.group, resource.version)
+    };
+    match namespace {
+        Some(ns) if resource.namespaced => format!("{base}/namespaces/{ns}/{}", resource.plural),
+        _ => format!("{base}/{}", resource.plural),
+    }
+}
+
+/// The `priority: 0` columns and their indices in a row's cells.
+fn shown_columns(defs: &[ColumnDefinition]) -> (Vec<TableColumn>, Vec<usize>) {
+    defs.iter()
+        .enumerate()
+        .filter(|(_, d)| d.priority == 0)
+        .map(|(i, d)| {
+            (
+                TableColumn {
+                    name: d.name.clone(),
+                    column_type: d.column_type.clone(),
+                    format: d.format.clone(),
+                    description: d.description.clone(),
+                },
+                i,
+            )
+        })
+        .unzip()
+}
+
 /// What one aggregated discovery request gave.
 enum Aggregated {
     Kinds(Vec<ResourceKindInfo>),
@@ -150,6 +279,58 @@ impl KubeClient {
         }
         kinds.sort_by(|a, b| (&a.group, &a.kind).cmp(&(&b.group, &b.kind)));
         Ok(kinds)
+    }
+
+    /// Every object of `resource` as the API server's Table: the
+    /// `priority: 0` columns (`kubectl get` without `-o wide`) and, per row,
+    /// name, namespace and creation time. Follows `continue` tokens.
+    ///
+    /// # Errors
+    ///
+    /// [`KubeconfigError::ClientError`] when the API server refuses (a 403
+    /// keeps its status in the message) or answers something not a Table.
+    pub async fn list_table(
+        &self,
+        resource: &ResourceRef,
+        namespace: Option<&str>,
+    ) -> Result<ResourceTable, KubeconfigError> {
+        let path = resource_path(resource, namespace);
+        let mut columns: Option<(Vec<TableColumn>, Vec<usize>)> = None;
+        let mut rows = Vec::new();
+        let mut cont: Option<String> = None;
+        loop {
+            let mut query = url::form_urlencoded::Serializer::new(String::new());
+            query.append_pair("includeObject", "Metadata");
+            query.append_pair("limit", PAGE_SIZE);
+            if let Some(token) = &cont {
+                query.append_pair("continue", token);
+            }
+            let request = http::Request::get(format!("{path}?{}", query.finish()))
+                .header(http::header::ACCEPT, TABLE_ACCEPT)
+                .body(Vec::new())
+                .map_err(client_error)?;
+            let page: TablePage = self.client().request(request).await.map_err(client_error)?;
+            let (_, keep) = columns.get_or_insert_with(|| shown_columns(&page.column_definitions));
+            let keep = keep.clone();
+            rows.extend(page.rows.into_iter().map(|row| {
+                let meta = row.object.map(|o| o.metadata).unwrap_or_default();
+                TableRow {
+                    name: meta.name,
+                    namespace: meta.namespace,
+                    creation_timestamp: meta.creation_timestamp,
+                    cells: keep
+                        .iter()
+                        .map(|&i| row.cells.get(i).cloned().unwrap_or(serde_json::Value::Null))
+                        .collect(),
+                }
+            }));
+            match page.metadata.cont.filter(|c| !c.is_empty()) {
+                Some(next) => cont = Some(next),
+                None => break,
+            }
+        }
+        let columns = columns.map(|(c, _)| c).unwrap_or_default();
+        Ok(ResourceTable { columns, rows })
     }
 
     async fn aggregated(&self, path: &str) -> Result<Aggregated, KubeconfigError> {
@@ -370,6 +551,158 @@ mod tests {
         });
         let err = client.discover_kinds().await.expect_err("403");
         let text = err.to_string();
+        assert!(text.contains("403") || text.contains("orbidden"), "{text}");
+    }
+
+    const TABLE: &str = "application/json;as=Table;v=v1;g=meta.k8s.io";
+
+    fn hpa_ref() -> ResourceRef {
+        ResourceRef {
+            group: "autoscaling".into(),
+            version: "v2".into(),
+            plural: "horizontalpodautoscalers".into(),
+            namespaced: true,
+        }
+    }
+
+    fn table(rows: serde_json::Value, cont: Option<&str>) -> serde_json::Value {
+        serde_json::json!({
+            "kind": "Table", "apiVersion": "meta.k8s.io/v1",
+            "metadata": {"resourceVersion": "1", "continue": cont},
+            "columnDefinitions": [
+                {"name": "Name", "type": "string", "format": "name", "description": "name", "priority": 0},
+                {"name": "Reference", "type": "string", "format": "", "description": "ref", "priority": 0},
+                {"name": "Targets", "type": "string", "format": "", "description": "targets", "priority": 0},
+                {"name": "Age", "type": "date", "format": "", "description": "age", "priority": 0},
+                {"name": "Selector", "type": "string", "format": "", "description": "sel", "priority": 1}
+            ],
+            "rows": rows
+        })
+    }
+
+    fn row(name: &str) -> serde_json::Value {
+        serde_json::json!({
+            "cells": [name, "Deployment/web", "5%/80%", "6d", "app=web"],
+            "object": {"kind": "PartialObjectMetadata", "apiVersion": "meta.k8s.io/v1",
+                "metadata": {"name": name, "namespace": "shop", "creationTimestamp": "2026-11-01T10:00:00Z"}}
+        })
+    }
+
+    #[test]
+    fn resource_path_covers_core_named_namespaced_and_cluster_scope() {
+        let pods = ResourceRef {
+            group: "".into(),
+            version: "v1".into(),
+            plural: "pods".into(),
+            namespaced: true,
+        };
+        let pv = ResourceRef {
+            group: "".into(),
+            version: "v1".into(),
+            plural: "persistentvolumes".into(),
+            namespaced: false,
+        };
+        assert_eq!(
+            resource_path(&pods, Some("shop")),
+            "/api/v1/namespaces/shop/pods"
+        );
+        assert_eq!(resource_path(&pods, None), "/api/v1/pods");
+        assert_eq!(
+            resource_path(&hpa_ref(), Some("shop")),
+            "/apis/autoscaling/v2/namespaces/shop/horizontalpodautoscalers"
+        );
+        assert_eq!(
+            resource_path(&pv, Some("shop")),
+            "/api/v1/persistentvolumes"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_table_keeps_priority_zero_columns_and_reads_row_metadata() {
+        let (client, server) =
+            mock_client(|_, _| (StatusCode::OK, table(serde_json::json!([row("web")]), None)));
+        let t = client
+            .list_table(&hpa_ref(), Some("shop"))
+            .await
+            .expect("table");
+        assert_eq!(
+            t.columns
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Name", "Reference", "Targets", "Age"]
+        );
+        assert_eq!(t.columns[3].column_type, "date");
+        assert_eq!(t.rows.len(), 1);
+        assert_eq!(t.rows[0].cells.len(), 4);
+        assert_eq!(t.rows[0].cells[2], serde_json::json!("5%/80%"));
+        assert_eq!(t.rows[0].name, "web");
+        assert_eq!(t.rows[0].namespace.as_deref(), Some("shop"));
+        assert_eq!(
+            t.rows[0].creation_timestamp.as_deref(),
+            Some("2026-11-01T10:00:00Z")
+        );
+        let seen = requests(client, server).await;
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].accept.as_deref(), Some(TABLE));
+        assert!(seen[0]
+            .uri
+            .starts_with("/apis/autoscaling/v2/namespaces/shop/horizontalpodautoscalers?"));
+        assert!(seen[0].uri.contains("includeObject=Metadata"));
+        assert!(seen[0].uri.contains("limit=500"));
+    }
+
+    #[tokio::test]
+    async fn list_table_follows_continue_tokens() {
+        let (client, server) = mock_client(|_, uri| {
+            if uri.contains("continue=abc%3D") {
+                (StatusCode::OK, table(serde_json::json!([row("b")]), None))
+            } else {
+                (
+                    StatusCode::OK,
+                    table(serde_json::json!([row("a")]), Some("abc=")),
+                )
+            }
+        });
+        let t = client.list_table(&hpa_ref(), None).await.expect("table");
+        assert_eq!(
+            t.rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        let seen = requests(client, server).await;
+        assert_eq!(seen.len(), 2);
+        assert!(seen[0]
+            .uri
+            .starts_with("/apis/autoscaling/v2/horizontalpodautoscalers?"));
+    }
+
+    #[tokio::test]
+    async fn list_table_with_no_rows_still_returns_columns() {
+        let (client, _server) =
+            mock_client(|_, _| (StatusCode::OK, table(serde_json::json!([]), None)));
+        let t = client
+            .list_table(&hpa_ref(), Some("shop"))
+            .await
+            .expect("table");
+        assert_eq!(t.columns.len(), 4);
+        assert!(t.rows.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_table_reports_403() {
+        let (client, _server) = mock_client(|_, _| {
+            (
+                StatusCode::FORBIDDEN,
+                serde_json::json!({
+                    "kind": "Status", "apiVersion": "v1", "status": "Failure", "code": 403, "reason": "Forbidden", "message": "forbidden"
+                }),
+            )
+        });
+        let text = client
+            .list_table(&hpa_ref(), Some("shop"))
+            .await
+            .expect_err("403")
+            .to_string();
         assert!(text.contains("403") || text.contains("orbidden"), "{text}");
     }
 
