@@ -9,7 +9,7 @@ use cubelite_core::{
         JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo,
         StatefulSetInfo, WorkloadRef,
     },
-    ResourceType, ResourceWatcher, WatchEvent,
+    ResourceKindInfo, ResourceRef, ResourceTable, ResourceType, ResourceWatcher, WatchEvent,
 };
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -787,6 +787,54 @@ pub async fn get_resource_yaml(
 
     client
         .get_resource_yaml(rt, &namespace, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Every listable resource kind the cluster serves (API discovery).
+#[tauri::command]
+pub async fn discover_resource_kinds(
+    kubeconfig_path: String,
+    context: Option<String>,
+) -> Result<Vec<ResourceKindInfo>, String> {
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    client.discover_kinds().await.map_err(|e| e.to_string())
+}
+
+/// Any resource kind as the API server's Table (the `kubectl get` columns),
+/// in `namespace` (all namespaces when `None`; cluster-scoped kinds ignore it).
+#[tauri::command]
+pub async fn list_resource_table(
+    kubeconfig_path: String,
+    resource: ResourceRef,
+    namespace: Option<String>,
+    context: Option<String>,
+) -> Result<ResourceTable, String> {
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    client
+        .list_table(&resource, namespace.as_deref())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// One object of any resource kind as clean YAML (read-only view).
+#[tauri::command]
+pub async fn get_dynamic_resource_yaml(
+    kubeconfig_path: String,
+    resource: ResourceRef,
+    namespace: Option<String>,
+    name: String,
+    context: Option<String>,
+) -> Result<String, String> {
+    let client = KubeClient::new(&kubeconfig_path, context.as_deref())
+        .await
+        .map_err(|e| e.to_string())?;
+    client
+        .get_dynamic_yaml(&resource, namespace.as_deref(), &name)
         .await
         .map_err(|e| e.to_string())
 }

@@ -55,6 +55,12 @@ impl KubeClient {
         self.inner.clone()
     }
 
+    /// Wrap an existing [`Client`] (a mock apiserver in tests).
+    #[cfg(test)]
+    pub(crate) fn from_client(client: Client) -> Self {
+        Self { inner: client }
+    }
+
     /// Build a [`KubeClient`] from `kubeconfig`: a single file path or a
     /// `KUBECONFIG`-style list (`:` on Unix, `;` on Windows).
     ///
@@ -869,7 +875,7 @@ fn apply_error(error: kube::Error) -> KubeconfigError {
 
 /// Serialize an API object to YAML with noisy server-side bookkeeping
 /// (`metadata.managedFields`) stripped, like `kubectl get -o yaml`.
-fn to_clean_yaml<T: serde::Serialize>(obj: &T) -> Result<String, KubeconfigError> {
+pub(crate) fn to_clean_yaml<T: serde::Serialize>(obj: &T) -> Result<String, KubeconfigError> {
     let mut value = serde_json::to_value(obj).map_err(|e| KubeconfigError::ClientError {
         reason: e.to_string(),
     })?;
@@ -1251,61 +1257,9 @@ users:
 
     // --- API calls against a mock apiserver (no network) ---
 
-    use http::{Method, Request, Response, StatusCode};
-    use kube::client::Body;
+    use http::{Method, StatusCode};
 
-    /// One request as the mock apiserver saw it.
-    struct Seen {
-        method: Method,
-        uri: String,
-        content_type: Option<String>,
-        body: serde_json::Value,
-    }
-
-    /// A [`KubeClient`] backed by a mock apiserver that answers every
-    /// request with `respond(method, uri)`. The returned handle resolves to
-    /// the requests seen once the client is dropped.
-    fn mock_client(
-        respond: impl Fn(&Method, &str) -> (StatusCode, serde_json::Value) + Send + 'static,
-    ) -> (KubeClient, tokio::task::JoinHandle<Vec<Seen>>) {
-        let (service, handle) = tower_test::mock::pair::<Request<Body>, Response<Body>>();
-        let server = tokio::spawn(async move {
-            let mut handle = std::pin::pin!(handle);
-            let mut seen = Vec::new();
-            while let Some((request, send)) = handle.next_request().await {
-                let (parts, body) = request.into_parts();
-                let bytes = body.collect_bytes().await.expect("request body");
-                let (status, reply) = respond(&parts.method, &parts.uri.to_string());
-                seen.push(Seen {
-                    method: parts.method,
-                    uri: parts.uri.to_string(),
-                    content_type: parts
-                        .headers
-                        .get(http::header::CONTENT_TYPE)
-                        .and_then(|v| v.to_str().ok())
-                        .map(str::to_string),
-                    body: serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
-                });
-                let response = Response::builder()
-                    .status(status)
-                    .body(Body::from(serde_json::to_vec(&reply).expect("reply json")))
-                    .expect("response");
-                send.send_response(response);
-            }
-            seen
-        });
-        (
-            KubeClient {
-                inner: Client::new(service, "default"),
-            },
-            server,
-        )
-    }
-
-    async fn requests(client: KubeClient, server: tokio::task::JoinHandle<Vec<Seen>>) -> Vec<Seen> {
-        drop(client);
-        server.await.expect("mock apiserver")
-    }
+    use crate::test_support::{mock_client, requests};
 
     fn list(kind: &str, items: serde_json::Value) -> serde_json::Value {
         serde_json::json!({

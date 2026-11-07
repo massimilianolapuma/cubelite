@@ -30,6 +30,7 @@
 
 pub mod client;
 pub mod context;
+pub mod dynamic;
 pub mod elastic;
 pub mod error;
 pub mod exec;
@@ -49,6 +50,7 @@ mod test_support;
 
 // Re-export the most commonly used items at the crate root.
 pub use client::KubeClient;
+pub use dynamic::{ResourceKindInfo, ResourceRef, ResourceTable, TableColumn, TableRow};
 pub use error::{ContextError, KubeconfigError};
 pub use helm::HelmReleaseInfo;
 pub use kubeconfig::{discover_kubeconfig_files, is_kubeconfig_file, KubeConfig};
