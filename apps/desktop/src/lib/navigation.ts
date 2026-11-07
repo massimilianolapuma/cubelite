@@ -1,26 +1,39 @@
 import type { View } from "#lib/stores/app.svelte.ts";
+import { GENERIC_KINDS, isGenericView } from "#lib/resource-kinds.ts";
 
-/** Navigation sections of the sidebar (#496, spec §3 and §6b-A). */
-export type SectionId = "cluster" | "workloads" | "network" | "config" | "observe";
+/** Navigation sections of the sidebar (#496, spec §3 and §6b-A; resource-kinds §4). */
+export type SectionId = "cluster" | "workloads" | "network" | "storage" | "config" | "access" | "observe";
 
 export type NavItem = { view: View; label: string };
 export type NavSection = { id: SectionId; label: string; dot: string; items: NavItem[] };
 
-// Group dot colors per spec: workloads blue, network violet, config amber, observe teal.
-// One row per section: id, label, dot colour, [view, label] items in default order.
-const SECTION_TABLE: [SectionId, string, string, [View, string][]][] = [
-  ["cluster", "Cluster", "var(--color-accent)", [["overview", "Overview"], ["nodes", "Nodes"]]],
-  ["workloads", "Workloads", "var(--color-cluster-blue)", [["pods", "Pods"], ["deployments", "Deployments"], ["statefulsets", "StatefulSets"], ["jobs", "Jobs"], ["cronjobs", "CronJobs"], ["helm", "Helm Releases"]]],
-  ["network", "Network", "var(--color-cluster-violet)", [["services", "Services"], ["ingresses", "Ingresses"]]],
-  ["config", "Config", "var(--color-status-warn)", [["configmaps", "ConfigMaps"], ["secrets", "Secrets"], ["pvcs", "PVCs"]]],
+/** Label of a hand-written view, or of a ★ kind from the registry. */
+type Item = View | [View, string];
+
+// Dot colours: workloads blue, network violet, storage teal, config amber,
+// access pink, observe teal (resource-kinds mockup). One row per section:
+// id, label, dot colour, items in default order.
+const SECTION_TABLE: [SectionId, string, string, Item[]][] = [
+  ["cluster", "Cluster", "var(--color-accent)", [["overview", "Overview"], ["nodes", "Nodes"], "namespaces"]],
+  ["workloads", "Workloads", "var(--color-cluster-blue)", [["pods", "Pods"], ["deployments", "Deployments"], ["statefulsets", "StatefulSets"], "daemonsets", "replicasets", ["jobs", "Jobs"], ["cronjobs", "CronJobs"], "hpas", ["helm", "Helm Releases"]]],
+  ["network", "Network", "var(--color-cluster-violet)", [["services", "Services"], ["ingresses", "Ingresses"], "ingressclasses", "endpointslices", "networkpolicies"]],
+  ["storage", "Storage", "var(--color-cluster-teal)", [["pvcs", "PVCs"], "pvs", "storageclasses"]],
+  ["config", "Config", "var(--color-status-warn)", [["configmaps", "ConfigMaps"], ["secrets", "Secrets"], "resourcequotas", "limitranges", "pdbs", "priorityclasses"]],
+  ["access", "Access Control", "var(--color-cluster-pink)", ["serviceaccounts", "roles", "rolebindings", "clusterroles", "clusterrolebindings"]],
   ["observe", "Observe", "var(--color-cluster-teal)", [["events", "Events"], ["logs", "Logs"]]],
 ];
+
+function navItem(item: Item): NavItem {
+  if (Array.isArray(item)) return { view: item[0], label: item[1] };
+  if (!isGenericView(item)) throw new Error(`no label for view ${item}`);
+  return { view: item, label: GENERIC_KINDS[item].label };
+}
 
 export const DEFAULT_SECTIONS: readonly NavSection[] = SECTION_TABLE.map(([id, label, dot, items]) => ({
   id,
   label,
   dot,
-  items: items.map(([view, itemLabel]) => ({ view, label: itemLabel })),
+  items: items.map(navItem),
 }));
 
 /** Overview is the landing page: first, never hidden or moved. */

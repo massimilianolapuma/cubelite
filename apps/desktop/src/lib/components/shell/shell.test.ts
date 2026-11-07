@@ -16,6 +16,8 @@ vi.mock("#lib/tauri.ts", () => ({
   clusterCapacity: vi.fn(async () => []),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
+  discoverResourceKinds: vi.fn(async () => []),
+  listResourceTable: vi.fn(async () => ({ columns: [], rows: [{ name: "a", namespace: "x", creation_timestamp: null, cells: [] }, { name: "b", namespace: "y", creation_timestamp: null, cells: [] }] })),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -28,6 +30,8 @@ import StatusBar from "./StatusBar.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
+import { dynamic } from "#lib/stores/dynamic.svelte.ts";
+import { discoverResourceKinds } from "#lib/tauri.ts";
 import type { PodInfo } from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
@@ -136,7 +140,7 @@ describe("ClusterRail", () => {
 describe("Sidebar", () => {
   it("renders every section and item", () => {
     render(Sidebar);
-    for (const section of ["Cluster", "Workloads", "Network", "Config", "Observe"]) {
+    for (const section of ["Cluster", "Workloads", "Network", "Storage", "Config", "Access Control", "Observe"]) {
       expect(screen.getByText(section)).toBeInTheDocument();
     }
     for (const item of [
@@ -153,6 +157,25 @@ describe("Sidebar", () => {
     ]) {
       expect(screen.getByText(item)).toBeInTheDocument();
     }
+  });
+
+  it("shows a loaded count for a new kind and greys kinds the cluster does not serve", async () => {
+    app.kubeconfigPath = "/k";
+    app.activeCluster = "sidebar-ctx";
+    app.namespace = null;
+    vi.mocked(discoverResourceKinds).mockResolvedValueOnce([
+      { group: "apps", version: "v1", kind: "DaemonSet", plural: "daemonsets", namespaced: true, short_names: ["ds"] },
+    ]);
+    await dynamic.discover("sidebar-ctx");
+    await dynamic.load("daemonsets");
+    render(Sidebar);
+    const daemonsets = screen.getByText("DaemonSets").closest("button")!;
+    expect(daemonsets.querySelector("[data-testid=nav-count]")).toHaveTextContent("2");
+    expect(daemonsets).not.toHaveAttribute("title");
+    const storageClasses = screen.getByText("Storage Classes").closest("button")!;
+    expect(storageClasses).toHaveAttribute("title", "Not available on this cluster");
+    expect(screen.getByText("Storage Classes")).toHaveClass("text-text-disabled");
+    dynamic.clear();
   });
 
   it("shows real counts for pods and deployments", () => {
