@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, within } from "@testing-library/svelte";
 import ProfilesPreferences from "./ProfilesPreferences.svelte";
@@ -74,6 +74,56 @@ describe("ProfilesPreferences", () => {
     await fireEvent.keyDown(screen.getByLabelText("New name for Mine"), { key: "Escape" });
     expect(screen.queryByLabelText("New name for Mine")).toBeNull();
     expect(names()).toContain("Mine");
+  });
+
+  it("the rename input takes focus and is capped at 24 characters", async () => {
+    expect(profiles.create("Mine", "empty")).toBeNull();
+    render(ProfilesPreferences);
+    await fireEvent.click(screen.getByRole("button", { name: "Rename Mine" }));
+    const input = screen.getByLabelText("New name for Mine");
+    await vi.waitFor(() => expect(input).toHaveFocus());
+    expect(input).toHaveAttribute("maxlength", "24");
+    expect(screen.getByLabelText("Profile name")).toHaveAttribute("maxlength", "24");
+  });
+
+  it("the rename error sits inside its profile's row", async () => {
+    expect(profiles.create("Mine", "empty")).toBeNull();
+    render(ProfilesPreferences);
+    await fireEvent.click(screen.getByRole("button", { name: "Rename Mine" }));
+    const input = screen.getByLabelText("New name for Mine");
+    await fireEvent.input(input, { target: { value: "" } });
+    await fireEvent.keyDown(input, { key: "Enter" });
+    const list = screen.getByRole("list", { name: "Profiles" });
+    expect([...list.children].every((c) => c.tagName === "LI")).toBe(true);
+    expect(within(rows()[4]).getByRole("alert")).toHaveTextContent("Use 1 to 24 characters");
+  });
+
+  it("after a rename focus returns to the Rename button", async () => {
+    expect(profiles.create("Mine", "empty")).toBeNull();
+    render(ProfilesPreferences);
+    await fireEvent.click(screen.getByRole("button", { name: "Rename Mine" }));
+    const input = screen.getByLabelText("New name for Mine");
+    await fireEvent.input(input, { target: { value: "Ours" } });
+    await fireEvent.keyDown(input, { key: "Enter" });
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Rename Ours" })).toHaveFocus());
+  });
+
+  it("after Delete focus moves to the neighbouring profile", async () => {
+    expect(profiles.create("Mine", "empty")).toBeNull();
+    render(ProfilesPreferences);
+    await fireEvent.click(screen.getByRole("button", { name: "Delete Mine" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Show pins of All" })).toHaveFocus());
+  });
+
+  it("after unpinning focus moves to the next pin", async () => {
+    render(ProfilesPreferences);
+    await fireEvent.click(screen.getByRole("button", { name: "Show pins of Security" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Unpin Secrets from Security" }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "Unpin Network Policies from Security" })).toHaveFocus()
+    );
+    await fireEvent.click(screen.getByRole("button", { name: "Unpin Network Policies from Security" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Unpin Cluster Roles from Security" })).toHaveFocus());
   });
 
   it("reorders profiles", async () => {
