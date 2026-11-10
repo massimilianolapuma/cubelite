@@ -149,12 +149,71 @@ describe("Sidebar C", () => {
     expect(pinned().getByText("Pods").closest("button")).toHaveAttribute("aria-current", "page");
   });
 
+  it("a section you closed stays closed when pins change", async () => {
+    render(Sidebar);
+    app.navigate("daemonsets");
+    await vi.waitFor(() => expect(section("Workloads")).toHaveAttribute("aria-expanded", "true"));
+    await fireEvent.click(section("Workloads"));
+    expect(section("Workloads")).toHaveAttribute("aria-expanded", "false");
+    profiles.togglePin("services");
+    await vi.waitFor(() => expect(pinnedLabels()).toContain("Services"));
+    expect(section("Workloads")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("a section you closed stays closed when the profile switches", async () => {
+    render(Sidebar);
+    app.navigate("daemonsets");
+    await vi.waitFor(() => expect(section("Workloads")).toHaveAttribute("aria-expanded", "true"));
+    await fireEvent.click(section("Workloads"));
+    profiles.activate("security");
+    await vi.waitFor(() => expect(screen.getByRole("list", { name: "Pinned · Security" })).toBeInTheDocument());
+    expect(section("Workloads")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("a section you closed stays closed when discovery finishes", async () => {
+    render(Sidebar);
+    app.navigate("daemonsets");
+    await vi.waitFor(() => expect(section("Workloads")).toHaveAttribute("aria-expanded", "true"));
+    await fireEvent.click(section("Workloads"));
+    vi.mocked(discoverResourceKinds).mockResolvedValueOnce([
+      { group: "cert-manager.io", version: "v1", kind: "Certificate", plural: "certificates", namespaced: true, short_names: [] },
+    ]);
+    await dynamic.discover(app.activeCluster!);
+    await vi.waitFor(() => expect(dynamic.customKindCount).toBe(1));
+    await Promise.resolve();
+    expect(section("Workloads")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("unpinning the active view opens its section", async () => {
+    render(Sidebar);
+    app.navigate("pods");
+    await Promise.resolve();
+    expect(section("Workloads")).toHaveAttribute("aria-expanded", "false");
+    profiles.unpin("pods");
+    await vi.waitFor(() => expect(section("Workloads")).toHaveAttribute("aria-expanded", "true"));
+  });
+
   it("Unpin from the context menu removes the pin", async () => {
     render(Sidebar);
     await fireEvent.contextMenu(pinned().getByText("Jobs"));
     await fireEvent.click(await screen.findByRole("menuitem", { name: "Unpin" }));
     expect(profiles.isPinned("jobs")).toBe(false);
     await vi.waitFor(() => expect(pinnedLabels()).not.toContain("Jobs"));
+  });
+
+  it("after Unpin from the context menu focus moves to the next pinned row", async () => {
+    render(Sidebar);
+    await fireEvent.contextMenu(pinned().getByText("Jobs"));
+    await fireEvent.click(await screen.findByRole("menuitem", { name: "Unpin" }));
+    await vi.waitFor(() => expect(pinned().getByText("Events").closest("button")).toHaveFocus());
+  });
+
+  it("a long profile name stays on one line in the Pinned header", async () => {
+    expect(profiles.create("Platform team on-call", "active")).toBeNull();
+    render(Sidebar);
+    const header = screen.getByText("Pinned · Platform team on-call");
+    expect(header).toHaveClass("truncate");
+    expect(header).toHaveAttribute("title", "Platform team on-call");
   });
 
   it("says how to pin when the profile has no pins", async () => {
