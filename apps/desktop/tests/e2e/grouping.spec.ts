@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { FIXTURES, tauriMockScript } from "./tauri-mock";
 
 // Group the resource lists by namespace (#547).

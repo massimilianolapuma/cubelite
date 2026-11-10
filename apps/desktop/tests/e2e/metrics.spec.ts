@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { tauriMockScript } from "./tauri-mock";
 
 const GRAFANA_SERVICE = { namespace: "monitoring", service: "kps-grafana", port: 80, https: false };
