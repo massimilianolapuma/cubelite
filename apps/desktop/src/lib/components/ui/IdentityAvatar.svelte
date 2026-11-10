@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { identityVar as colorVar, initials } from '#lib/cluster-identity.ts';
+	import StatusGlyph, { type GlyphState } from './StatusGlyph.svelte';
+	import { tintStyle } from '#lib/appearance.ts';
+	import { initials } from '#lib/cluster-identity.ts';
 	import type { IdentityColor } from '#lib/cluster-identity.ts';
 
 	export type Health = 'connected' | 'unreachable' | 'unknown';
@@ -9,32 +11,36 @@
 		color,
 		active = false,
 		health,
-		size = 38
+		size
 	}: {
 		name: string;
 		color: IdentityColor;
 		active?: boolean;
 		/** Omit to hide the health badge entirely. */
 		health?: Health;
+		/** Side in px; the control height of the current density when omitted. */
 		size?: number;
 	} = $props();
 
-	const identityVar = $derived(colorVar(color));
-	const healthColor: Record<Health, string> = {
-		connected: 'var(--color-status-ok)',
-		unreachable: 'var(--color-status-err)',
-		unknown: 'var(--color-text-tertiary)'
+	const side = $derived(size ? `${size}px` : 'var(--control-h)');
+	// Health is a shape and a colour: circle, square, dashed ring.
+	const healthGlyph: Record<Health, { state: GlyphState; tone: string }> = {
+		connected: { state: 'ok', tone: 'text-success' },
+		unreachable: { state: 'err', tone: 'text-error' },
+		unknown: { state: 'unknown', tone: 'text-text-subtle' }
 	};
 </script>
 
-<span class="relative inline-flex" style="width: {size}px; height: {size}px;">
+<span class="relative inline-flex shrink-0" style="width: {side}; height: {side};">
+	<!-- The disc carries its own cluster's tint; the active one is a filled square. -->
 	<span
-		class="flex h-full w-full items-center justify-center rounded-xl text-xs font-semibold"
-		style="
-			background: {active ? `color-mix(in srgb, ${identityVar} 20%, transparent)` : 'var(--color-surface-raised)'};
-			color: {active ? 'var(--color-text-primary)' : 'var(--color-text-secondary)'};
-			{active ? `box-shadow: 0 0 0 2px ${identityVar};` : ''}
-		"
+		data-tint
+		data-testid="identity-avatar"
+		data-active={active}
+		class="type-body flex h-full w-full items-center justify-center transition-[border-radius] duration-200 {active
+			? 'rounded-md bg-primary font-bold text-on-primary'
+			: 'rounded-full bg-surface-container-high font-semibold text-text-muted'}"
+		style={tintStyle(color)}
 	>
 		{initials(name)}
 	</span>
@@ -42,8 +48,11 @@
 		<span
 			data-testid="health-dot"
 			data-health={health}
-			class="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface-window"
-			style="background: {healthColor[health]};"
-		></span>
+			class="absolute -right-1 -bottom-1 flex h-4 w-4 items-center justify-center rounded-full bg-surface-window {healthGlyph[
+				health
+			].tone}"
+		>
+			<StatusGlyph state={healthGlyph[health].state} />
+		</span>
 	{/if}
 </span>

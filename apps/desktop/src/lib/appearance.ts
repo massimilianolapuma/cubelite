@@ -36,3 +36,12 @@ export function tintFor(
 ): IdentityColor | null {
   return neutral || !cluster ? null : identityFor(cluster);
 }
+
+/**
+ * Inline style that gives an element another cluster's tint. Put it on an
+ * element that also carries `data-tint`: every colour role is re-declared
+ * there, so the whole subtree follows this hue (see design/README.md).
+ */
+export function tintStyle(color: IdentityColor): string {
+  return `--cl-tint-h: ${identityHue(color)}`;
+}

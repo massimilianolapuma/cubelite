@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
@@ -108,6 +108,33 @@ describe("ClusterRail", () => {
     render(ClusterRail);
     const dots = screen.getAllByTestId("health-dot");
     expect(dots.map((d) => d.dataset.health)).toEqual(["connected", "unknown"]);
+  });
+
+  it("shows health as a shape, not as a colour alone", () => {
+    clusters.connectionState = "unreachable";
+    render(ClusterRail);
+    const glyphs = screen.getAllByTestId("health-dot").map((d) => d.querySelector("svg")?.dataset.glyph);
+    expect(glyphs).toEqual(["err", "unknown"]);
+    clusters.connectionState = "connected";
+  });
+
+  it("gives every avatar its own cluster's tint and marks the active one", () => {
+    render(ClusterRail);
+    const avatars = screen.getAllByTestId("identity-avatar");
+    expect(avatars.map((a) => a.getAttribute("style"))).toEqual([
+      expect.stringContaining("--cl-tint-h: var(--cl-hue-blue)"),
+      expect.stringContaining("--cl-tint-h: var(--cl-hue-magenta)"),
+    ]);
+    expect(avatars.every((a) => a.hasAttribute("data-tint"))).toBe(true);
+    expect(avatars.map((a) => a.dataset.active)).toEqual(["true", "false"]);
+  });
+
+  it("keeps All Clusters and Preferences outside the list that scrolls", () => {
+    render(ClusterRail);
+    const list = screen.getByRole("list", { name: "Contexts" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(list).queryByLabelText("All Clusters")).toBeNull();
+    expect(within(list).queryByLabelText("Preferences")).toBeNull();
   });
 
   it("names the defining kubeconfig file in the tooltip only with several files", () => {

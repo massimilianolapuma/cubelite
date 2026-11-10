@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyDensity, applyTint, tintFor } from "./appearance";
+import { applyDensity, applyTint, tintFor, tintStyle } from "./appearance";
 
 describe("applyDensity", () => {
   it("marks the root so the compact row padding token applies", () => {
@@ -36,5 +36,11 @@ describe("tintFor", () => {
 
   it("is the default while no cluster is active", () => {
     expect(tintFor(false, null, identityFor)).toBeNull();
+  });
+});
+
+describe("tintStyle", () => {
+  it("is the inline declaration that tints a data-tint subtree", () => {
+    expect(tintStyle("violet")).toBe("--cl-tint-h: var(--cl-hue-violet)");
   });
 });

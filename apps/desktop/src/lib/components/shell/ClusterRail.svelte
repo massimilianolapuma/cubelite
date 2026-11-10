@@ -1,5 +1,5 @@
 <script lang="ts">
-	import House from '@lucide/svelte/icons/house';
+	import LayoutGrid from '@lucide/svelte/icons/layout-grid';
 	import Settings from '@lucide/svelte/icons/settings';
 	import IdentityAvatar from '#lib/components/ui/IdentityAvatar.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -16,51 +16,56 @@
 		}
 		void clusters.switchCluster(name);
 	}
+
+	const disc =
+		'focus-ring flex h-(--control-h) w-(--control-h) shrink-0 items-center justify-center rounded-full';
 </script>
 
-<nav
-	class="flex w-[58px] shrink-0 flex-col items-center gap-2 border-r border-border-faint bg-surface-window py-2.5"
-	aria-label="Clusters"
->
+<!-- All Clusters and Preferences stay put; with many contexts only the avatars scroll. -->
+<nav class="flex w-[68px] shrink-0 flex-col items-center gap-2 pt-1 pb-3" aria-label="Clusters">
 	<button
 		type="button"
 		title="All Clusters"
 		aria-label="All Clusters"
-		class="focus-ring flex h-[38px] w-[38px] items-center justify-center rounded-xl text-text-secondary hover:brightness-125"
-		style={app.view === 'dashboard'
-			? 'background: var(--alpha-active-nav-bg); color: var(--color-text-primary);'
-			: 'background: var(--color-surface-raised);'}
+		aria-current={app.view === 'dashboard' ? 'page' : undefined}
+		class="{disc} {app.view === 'dashboard'
+			? 'bg-primary-container text-on-primary-container'
+			: 'text-text-muted hover:bg-surface-container'}"
 		onclick={() => app.navigate('dashboard')}
 	>
-		<House class="h-4 w-4" />
+		<LayoutGrid class="h-4 w-4" />
 	</button>
 
-	<div class="my-0.5 h-px w-7 bg-border-faint"></div>
-
-	{#each clusters.contexts as ctx (ctx.name)}
-		{@const isActive = ctx.name === app.activeCluster}
-		<button
-			type="button"
-			title={multiFile && ctx.source ? `${ctx.name} — ${ctx.source}` : ctx.name}
-			class="focus-ring rounded-xl hover:brightness-125"
-			onclick={() => clickCluster(ctx.name)}
-		>
-			<IdentityAvatar
-				name={ctx.name}
-				color={clusters.identityFor(ctx.name)}
-				active={isActive}
-				health={isActive ? clusters.connectionState : health.for(ctx.name).state}
-			/>
-		</button>
-	{/each}
-
-	<div class="mt-auto"></div>
+	<ul
+		aria-label="Contexts"
+		class="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto py-1 [scrollbar-width:none]"
+	>
+		{#each clusters.contexts as ctx (ctx.name)}
+			{@const isActive = ctx.name === app.activeCluster}
+			<li class="shrink-0">
+				<button
+					type="button"
+					title={multiFile && ctx.source ? `${ctx.name} — ${ctx.source}` : ctx.name}
+					aria-current={isActive ? 'true' : undefined}
+					class="focus-ring block rounded-md hover:brightness-110"
+					onclick={() => clickCluster(ctx.name)}
+				>
+					<IdentityAvatar
+						name={ctx.name}
+						color={clusters.identityFor(ctx.name)}
+						active={isActive}
+						health={isActive ? clusters.connectionState : health.for(ctx.name).state}
+					/>
+				</button>
+			</li>
+		{/each}
+	</ul>
 
 	<button
 		type="button"
 		title="Preferences"
 		aria-label="Preferences"
-		class="focus-ring flex h-[38px] w-[38px] items-center justify-center rounded-xl text-text-tertiary hover:text-text-secondary hover:brightness-125"
+		class="{disc} text-text-subtle hover:bg-surface-container hover:text-text-muted"
 		onclick={() => (app.preferencesOpen = true)}
 	>
 		<Settings class="h-4 w-4" />
