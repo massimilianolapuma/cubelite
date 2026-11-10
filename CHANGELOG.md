@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Tonal design system, foundations** (#604, #608): colours, fonts and corner
+  radii now come from the Tonal tokens. The window takes its colour from the
+  cluster you are on, so switching cluster changes the tint of the whole app;
+  the All Clusters dashboard keeps the default tint. Fonts are Inter, Space
+  Grotesk and JetBrains Mono. Components keep their current layout: they are
+  restyled in the following phases.
+- **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
+  saved as amber becomes indigo and one saved as pink becomes magenta: warm
+  colours are reserved for warnings and errors.
+
+### Removed
+
+- **Preferences → Accent**: the accent is the active cluster's colour.
+
 ## [0.10.1] - 2026-11-07
 
 ### Fixed
