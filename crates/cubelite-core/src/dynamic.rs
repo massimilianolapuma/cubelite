@@ -228,9 +228,26 @@ pub(crate) fn resource_path(resource: &ResourceRef, namespace: Option<&str>) -> 
         format!("/apis/{}/{}", resource.group, resource.version)
     };
     match namespace {
-        Some(ns) if resource.namespaced => format!("{base}/namespaces/{ns}/{}", resource.plural),
+        Some(ns) if resource.namespaced => {
+            format!("{base}/namespaces/{}/{}", path_segment(ns), resource.plural)
+        }
         _ => format!("{base}/{}", resource.plural),
     }
+}
+
+/// `value` as one URL path segment: every byte outside the RFC 3986
+/// unreserved set is percent-encoded. Object names of some kinds
+/// (ClusterRoles, e.g.) may hold `?`, `#` or `:`.
+fn path_segment(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
 }
 
 /// The query of one Table page. A plain function: the serializer is not
@@ -339,6 +356,7 @@ impl KubeClient {
         let mut columns: Option<(Vec<TableColumn>, Vec<usize>)> = None;
         let mut rows = Vec::new();
         let mut cont: Option<String> = None;
+        let mut seen_tokens = HashSet::new();
         loop {
             let query = table_query(cont.as_deref());
             let request = http::Request::get(format!("{path}?{query}"))
@@ -371,6 +389,11 @@ impl KubeClient {
                 }
             }));
             match page.metadata.cont.filter(|c| !c.is_empty()) {
+                Some(next) if !seen_tokens.insert(next.clone()) => {
+                    return Err(client_error(format!(
+                        "the API server repeated a continue token for {path}"
+                    )));
+                }
                 Some(next) => cont = Some(next),
                 None => break,
             }
@@ -384,15 +407,30 @@ impl KubeClient {
     ///
     /// # Errors
     ///
-    /// [`KubeconfigError::ClientError`] when the API server refuses (a 403
-    /// keeps its status in the message) or the object does not exist.
+    /// [`KubeconfigError::ClientError`] when `name` is empty, a namespaced
+    /// kind has no `namespace` (both without a request), the API server
+    /// refuses (a 403 keeps its status in the message) or the object does
+    /// not exist.
     pub async fn get_dynamic_yaml(
         &self,
         resource: &ResourceRef,
         namespace: Option<&str>,
         name: &str,
     ) -> Result<String, KubeconfigError> {
-        let path = format!("{}/{name}", resource_path(resource, namespace));
+        if name.is_empty() {
+            return Err(client_error("an object name is required"));
+        }
+        if resource.namespaced && namespace.is_none_or(str::is_empty) {
+            return Err(client_error(format!(
+                "{} is namespaced: a namespace is required",
+                resource.plural
+            )));
+        }
+        let path = format!(
+            "{}/{}",
+            resource_path(resource, namespace),
+            path_segment(name)
+        );
         let request = http::Request::get(path)
             .body(Vec::new())
             .map_err(client_error)?;
@@ -848,6 +886,83 @@ mod tests {
             .expect_err("403")
             .to_string();
         assert!(text.contains("403") || text.contains("orbidden"), "{text}");
+    }
+
+    #[test]
+    fn resource_path_encodes_the_namespace() {
+        assert_eq!(
+            resource_path(&hpa_ref(), Some("a b?c")),
+            "/apis/autoscaling/v2/namespaces/a%20b%3Fc/horizontalpodautoscalers"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_yaml_encodes_the_object_name() {
+        let cr = ResourceRef {
+            group: "rbac.authorization.k8s.io".into(),
+            version: "v1".into(),
+            plural: "clusterroles".into(),
+            namespaced: false,
+        };
+        let (client, server) = mock_client(|_, _| {
+            (
+                StatusCode::OK,
+                serde_json::json!({"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "a?b#c"}}),
+            )
+        });
+        client
+            .get_dynamic_yaml(&cr, None, "system:a?b#c")
+            .await
+            .expect("yaml");
+        let seen = requests(client, server).await;
+        assert_eq!(
+            seen[0].uri,
+            "/apis/rbac.authorization.k8s.io/v1/clusterroles/system%3Aa%3Fb%23c"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_yaml_rejects_an_empty_name_without_a_request() {
+        let (client, server) = mock_client(|_, _| (StatusCode::OK, serde_json::json!({})));
+        let text = client
+            .get_dynamic_yaml(&hpa_ref(), Some("shop"), "")
+            .await
+            .expect_err("empty name")
+            .to_string();
+        assert!(text.contains("name"), "{text}");
+        assert!(requests(client, server).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_dynamic_yaml_rejects_a_namespaced_kind_without_namespace() {
+        let (client, server) = mock_client(|_, _| (StatusCode::OK, serde_json::json!({})));
+        for ns in [None, Some("")] {
+            let text = client
+                .get_dynamic_yaml(&hpa_ref(), ns, "web")
+                .await
+                .expect_err("no namespace")
+                .to_string();
+            assert!(text.contains("namespace"), "{text}");
+        }
+        assert!(requests(client, server).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_table_fails_on_a_repeated_continue_token() {
+        let (client, _server) = mock_client(|_, _| {
+            (
+                StatusCode::OK,
+                table(serde_json::json!([row("a")]), Some("same")),
+            )
+        });
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            client.list_table(&hpa_ref(), None),
+        )
+        .await
+        .expect("list_table must not loop forever");
+        let text = result.expect_err("repeated token").to_string();
+        assert!(text.contains("continue"), "{text}");
     }
 
     /// Tauri commands spawn these futures on a multi-threaded runtime.
