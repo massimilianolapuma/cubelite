@@ -382,6 +382,39 @@ describe("Go to resource (resource-kinds §6)", () => {
     expect(shown()[0]?.dataset.resource).toBe("ingresses");
   });
 
+  it("clearing the query restores the list order", async () => {
+    render(CommandPalette);
+    await flush();
+    const initial = shown().map((el) => el.dataset.resource);
+    await search("ing");
+    expect(shown()[0]?.dataset.resource).toBe("ingresses");
+    await search("");
+    expect(shown().map((el) => el.dataset.resource)).toEqual(initial);
+  });
+
+  it("⌘↵ during IME composition does nothing", async () => {
+    render(CommandPalette);
+    await flush();
+    await search("secrets");
+    await fireEvent.keyDown(screen.getByPlaceholderText("Search clusters, resources, actions…"), {
+      key: "Enter",
+      isComposing: true,
+      ...mod,
+    });
+    await flush();
+    expect(app.paletteOpen).toBe(true);
+    expect(profiles.isPinned("secrets")).toBe(false);
+  });
+
+  it("the row count says what it counts and the key hint describes the input", async () => {
+    resources.pods = [pod(), pod({ name: "api-1" })];
+    render(CommandPalette);
+    await flush();
+    expect(row("pods")).toHaveTextContent("2 objects");
+    const input = screen.getByPlaceholderText("Search clusters, resources, actions…");
+    expect(input).toHaveAccessibleDescription(/↵ open.*open and pin to On-call/);
+  });
+
   it("shows the ↵ / ⌘↵ hint for the active profile", async () => {
     render(CommandPalette);
     await flush();

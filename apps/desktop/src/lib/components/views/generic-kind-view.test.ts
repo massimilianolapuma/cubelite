@@ -101,6 +101,25 @@ describe("GenericKindView", () => {
     );
   });
 
+  it("marks the open row as current, not by colour alone", async () => {
+    render(GenericKindView, { view: "daemonsets" });
+    const row = await screen.findByRole("button", { name: /fluent-bit/ });
+    expect(row).not.toHaveAttribute("aria-current");
+    await fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-current", "true");
+    expect(row.getAttribute("style")).toContain("inset 2px 0 0");
+    expect(screen.getByRole("button", { name: /kube-proxy/ })).not.toHaveAttribute("aria-current");
+  });
+
+  it("a namespace change shows Loading instead of the previous namespace's rows", async () => {
+    render(GenericKindView, { view: "daemonsets" });
+    await screen.findByRole("button", { name: /fluent-bit/ });
+    vi.mocked(listResourceTable).mockReturnValueOnce(new Promise(() => {}));
+    app.namespace = "logging";
+    await vi.waitFor(() => expect(screen.getByText("Loading…")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /fluent-bit/ })).toBeNull();
+  });
+
   it("filter and drawer reset when the kind changes", async () => {
     const view = render(GenericKindView, { view: "daemonsets" });
     await screen.findByText("fluent-bit");

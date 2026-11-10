@@ -75,6 +75,8 @@ class DynamicStore {
   #pending: Record<string, Promise<void>> = {};
   /** Namespace each kind was last loaded with (null = all); missing = not loaded. */
   #loadedFor = $state<Partial<Record<KindView, string | null>>>({});
+  /** View → namespace of its last answer, rows or error (not reactive). */
+  #triedFor: Partial<Record<KindView, string | null>> = {};
   #seq: Partial<Record<KindView, number>> = {};
   /** Bumped by clear(): answers from before it are dropped. */
   #epoch = 0;
@@ -216,7 +218,10 @@ class DynamicStore {
     const ns = app.namespace;
 
     // Views call load() from an effect: reading `loading` here must not subscribe it.
-    untrack(() => (this.loading = { ...this.loading, [view]: true }));
+    untrack(() => {
+      this.loading = { ...this.loading, [view]: true };
+      this.#dropOtherNamespace(view, ns);
+    });
     try {
       await this.#pending[cluster];
       if (!current() || this.isUnavailable(view)) return;
@@ -225,15 +230,39 @@ class DynamicStore {
       if (!current()) return;
       this.tables = { ...this.tables, [view]: result };
       this.#loadedFor = { ...this.#loadedFor, [view]: ns };
+      this.#triedFor[view] = ns;
       if (view in this.errors) {
         const errors = { ...this.errors };
         delete errors[view];
         this.errors = errors;
       }
     } catch (e) {
-      if (current()) this.errors = { ...this.errors, [view]: errorMessage(e) };
+      if (current()) {
+        this.errors = { ...this.errors, [view]: errorMessage(e) };
+        this.#triedFor[view] = ns;
+      }
     } finally {
       if (current()) this.loading = { ...this.loading, [view]: false };
+    }
+  }
+
+  /**
+   * A namespaced kind's rows or error belong to the namespace they were
+   * loaded for: on a namespace change drop them at once, so the list says
+   * Loading… instead of showing the previous namespace until the answer.
+   */
+  #dropOtherNamespace(view: KindView, ns: string | null): void {
+    if (!(view in this.#triedFor) || this.#triedFor[view] === ns) return;
+    if (!this.refFor(view).namespaced) return;
+    if (view in this.tables) {
+      const tables = { ...this.tables };
+      delete tables[view];
+      this.tables = tables;
+    }
+    if (view in this.errors) {
+      const errors = { ...this.errors };
+      delete errors[view];
+      this.errors = errors;
     }
   }
 
@@ -253,6 +282,7 @@ class DynamicStore {
     this.errors = {};
     this.loading = {};
     this.#loadedFor = {};
+    this.#triedFor = {};
   }
 }
 

@@ -202,4 +202,12 @@ describe("Sidebar C", () => {
     expect(pinned().getByText("Service Accounts").closest("button")).toHaveAttribute("title", "Not available on this cluster");
     expect(pinned().getByText("Secrets").closest("button")).not.toHaveAttribute("title");
   });
+
+  it("a greyed row says it is unavailable to screen readers too", async () => {
+    vi.mocked(discoverResourceKinds).mockResolvedValueOnce([]);
+    await dynamic.discover(app.activeCluster as string);
+    profiles.activate("security");
+    render(Sidebar);
+    expect(pinned().getByRole("button", { name: /^Service Accounts\W+not available on this cluster$/ })).toBeInTheDocument();
+  });
 });

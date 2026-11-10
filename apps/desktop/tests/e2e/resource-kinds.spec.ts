@@ -37,7 +37,7 @@ test("a kind the cluster does not serve says so", async ({ page }) => {
   const row = sidebar.getByText("Storage Classes");
   await expect(row.locator("..")).toHaveAttribute("title", "Not available on this cluster");
   await row.click();
-  await expect(page.getByText("Not available on this cluster")).toBeVisible();
+  await expect(page.getByText("Not available on this cluster", { exact: true })).toBeVisible();
 });
 
 test("a cluster-scoped kind says so and has no Namespace column", async ({ page }) => {
