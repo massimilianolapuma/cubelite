@@ -1,27 +1,37 @@
 /**
- * Runtime appearance preferences applied to <html>: row density and accent.
+ * Runtime appearance applied to <html>: row density and the cluster tint.
  * Theme (light/dark) stays with mode-watcher.
  */
 
-import type { Accent, Density } from "#lib/stores/settings.svelte.ts";
+import { identityHue, type IdentityColor } from "#lib/cluster-identity.ts";
+import type { Density } from "#lib/stores/settings.svelte.ts";
 
-const ACCENT_VAR: Record<Accent, string | null> = {
-  blue: null, // token default
-  violet: "var(--cl-color-accent-alt-violet)",
-  teal: "var(--cl-color-accent-alt-teal)",
-};
-
-/** Compact density swaps the row padding token (see app.css). */
+/** Compact density swaps the density tokens (see app.css). */
 export function applyDensity(density: Density, root: HTMLElement = document.documentElement): void {
   root.dataset.density = density;
 }
 
 /**
- * Override the accent token. An inline style on <html> beats both the :root
- * (light) and .dark definitions, so the choice holds in either theme.
+ * Tint the window with a cluster's identity. Every tinted colour token reads
+ * `--cl-tint-h`; an inline value on <html> beats the token default in either
+ * theme. `null` goes back to the default tint.
  */
-export function applyAccent(accent: Accent, root: HTMLElement = document.documentElement): void {
-  const value = ACCENT_VAR[accent];
-  if (value) root.style.setProperty("--cl-color-accent", value);
-  else root.style.removeProperty("--cl-color-accent");
+export function applyTint(
+  color: IdentityColor | null,
+  root: HTMLElement = document.documentElement,
+): void {
+  if (color) root.style.setProperty("--cl-tint-h", identityHue(color));
+  else root.style.removeProperty("--cl-tint-h");
+}
+
+/**
+ * The tint a window shows: the active cluster's identity, or the default when
+ * the window belongs to no cluster (the All Clusters dashboard, no context yet).
+ */
+export function tintFor(
+  dashboard: boolean,
+  cluster: string | null,
+  identityFor: (name: string) => IdentityColor,
+): IdentityColor | null {
+  return dashboard || !cluster ? null : identityFor(cluster);
 }

@@ -75,7 +75,7 @@ beforeEach(() => {
     { name: "prod", cluster_server: "https://prod:6443", namespace: "default", is_active: true },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
   ];
-  clusters.identityColors = { prod: "blue", staging: "amber" };
+  clusters.identityColors = { prod: "blue", staging: "magenta" };
 });
 
 describe("Toaster", () => {
@@ -292,21 +292,25 @@ describe("PreferencesModal", () => {
     await fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   });
 
-  it("switches the accent color", async () => {
+  it("has no accent setting: the accent is the active cluster's tint", () => {
     render(PreferencesModal);
-    await fireEvent.click(screen.getByRole("radio", { name: "Violet" }));
-    expect(settings.accent.value).toBe("violet");
-    expect(document.documentElement.style.getPropertyValue("--cl-color-accent")).toContain("violet");
-    await fireEvent.click(screen.getByRole("radio", { name: "Blue" }));
-    expect(document.documentElement.style.getPropertyValue("--cl-color-accent")).toBe("");
+    expect(screen.queryByRole("radiogroup", { name: "Accent color" })).toBeNull();
+    expect(screen.queryByText("Accent")).toBeNull();
   });
 
   it("overrides a cluster's identity color", async () => {
     render(PreferencesModal);
     const group = screen.getByRole("radiogroup", { name: "Color for staging" });
-    await fireEvent.click(within(group).getByRole("radio", { name: "pink" }));
-    expect(clusters.identityFor("staging")).toBe("pink");
-    expect(settings.identityColors.value.staging).toBe("pink");
+    expect(within(group).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual([
+      "blue",
+      "magenta",
+      "teal",
+      "violet",
+      "indigo",
+    ]);
+    await fireEvent.click(within(group).getByRole("radio", { name: "magenta" }));
+    expect(clusters.identityFor("staging")).toBe("magenta");
+    expect(settings.identityColors.value.staging).toBe("magenta");
   });
 
   it("falls back to the single kubeconfig path before sources load", () => {

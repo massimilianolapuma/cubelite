@@ -90,7 +90,7 @@ beforeEach(() => {
     { name: "prod", cluster_server: "https://prod:6443", namespace: "default", is_active: true },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
   ];
-  clusters.identityColors = { prod: "blue", staging: "amber" };
+  clusters.identityColors = { prod: "blue", staging: "magenta" };
   clusters.connectionState = "connected";
 });
 

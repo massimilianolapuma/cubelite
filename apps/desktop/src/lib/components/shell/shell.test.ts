@@ -67,7 +67,7 @@ beforeEach(() => {
     { name: "prod-aks", cluster_server: "https://prod.azmk8s.io:443", namespace: "default", is_active: true },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
   ];
-  clusters.identityColors = { "prod-aks": "blue", staging: "amber" };
+  clusters.identityColors = { "prod-aks": "blue", staging: "magenta" };
   clusters.connectionState = "connected";
   resources.pods = [];
   resources.namespaces = [];
