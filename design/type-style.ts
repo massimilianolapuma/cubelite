@@ -3,12 +3,12 @@
  *
  * Parses the compact typography token syntax used in design/tokens.json:
  *
- *   "<weight> <size>px <sans|mono>[ · uppercase][ · ls <em>em]"
+ *   "<weight> <size>px <sans|mono|display>[ · uppercase][ · ls <em>em]"
  *
  * Used by the CSS emitter in export-tokens.ts.
  */
 
-export type TypeFamily = "sans" | "mono";
+export type TypeFamily = "sans" | "mono" | "display";
 export type TypeWeight = 400 | 500 | 600 | 700;
 
 export interface TypeStyleSpec {
@@ -20,8 +20,8 @@ export interface TypeStyleSpec {
   tracking: number;
 }
 
-const CORE = /^([4-7]00)\s+([\d.]+)px\s+(sans|mono)$/;
-const LS = /^ls\s+([\d.]+)em$/;
+const CORE = /^([4-7]00)\s+([\d.]+)px\s+(sans|mono|display)$/;
+const LS = /^ls\s+(-?[\d.]+)em$/;
 
 export function parseTypeStyle(value: string): TypeStyleSpec {
   const [core = "", ...flags] = value.split("·").map((s) => s.trim());

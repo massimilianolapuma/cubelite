@@ -39,3 +39,11 @@ test("rejects unknown flags", () => {
 test("rejects malformed core", () => {
   assert.throws(() => parseTypeStyle("bold 10px sans"), /Bad typography token/);
 });
+
+test("parses the display family", () => {
+  assert.equal(parseTypeStyle("600 34px display").family, "display");
+});
+
+test("parses negative letter-spacing", () => {
+  assert.equal(parseTypeStyle("600 34px display · ls -.02em").tracking, -0.02);
+});
