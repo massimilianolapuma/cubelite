@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { tauriMockScript } from "./tauri-mock";
 
 // Go to any resource from ⌘K (resource-kinds phase 4, #583).

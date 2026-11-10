@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { tauriMockScript } from "./tauri-mock";
 
 const ES = { kind: "elasticsearch", namespace: "logging", name: "quickstart-es-http", port: 9200, https: true };

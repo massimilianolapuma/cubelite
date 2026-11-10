@@ -39,32 +39,50 @@
 			? new URLSearchParams(window.location.search).get('logWindow')
 			: null;
 
+	/**
+	 * Marks the end of startup on <html data-app-ready>. The e2e suite waits for it:
+	 * clicking while the titlebar and rail still change size made a mousedown and
+	 * its mouseup land on different elements, so the click was lost (#584).
+	 */
+	function markReady() {
+		document.documentElement.dataset.appReady = 'true';
+	}
+
 	onMount(() => {
 		// Pop-out log windows share the appearance preferences.
 		applyDensity(settings.density.value);
 		applyAccent(settings.accent.value);
-		if (logWindowKey) return;
+		if (logWindowKey) {
+			markReady();
+			return;
+		}
 		setMode(settings.theme.value);
 		let unCloseRequested: (() => void) | null = null;
 		let unKubeconfigChanged: (() => void) | null = null;
 		void (async () => {
-			await clusters.reloadKubeconfig('startup');
-			unKubeconfigChanged = await listen(KUBECONFIG_CHANGED, () => {
-				void clusters.reloadKubeconfig('file-change');
-			});
-			const active =
-				clusters.contexts.find((c) => c.is_active)?.name ?? clusters.contexts[0]?.name ?? null;
-			app.activeCluster = active;
-			if (active) {
-				app.view = 'overview';
-				await clusters.retry();
+			try {
+				await clusters.reloadKubeconfig('startup');
+				unKubeconfigChanged = await listen(KUBECONFIG_CHANGED, () => {
+					void clusters.reloadKubeconfig('file-change');
+				});
+				const active =
+					clusters.contexts.find((c) => c.is_active)?.name ?? clusters.contexts[0]?.name ?? null;
+				app.activeCluster = active;
+				if (active) {
+					app.view = 'overview';
+					await clusters.retry();
+				}
+				if (!settings.onboardingSeen.value) {
+					app.onboardingOpen = true;
+				}
+				health.start();
+				void updater.checkForUpdates(true);
+				void logWindows.init();
+			} finally {
+				// Startup has settled the layout (cluster name, connection state, rail
+				// avatars), or failed: either way the UI is final.
+				markReady();
 			}
-			if (!settings.onboardingSeen.value) {
-				app.onboardingOpen = true;
-			}
-			health.start();
-			void updater.checkForUpdates(true);
-			void logWindows.init();
 			unCloseRequested = await getCurrentWindow().onCloseRequested(async () => {
 				await logWindows.closeAll();
 			});
