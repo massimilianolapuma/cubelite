@@ -49,7 +49,7 @@
 
 	/**
 	 * Marks the end of startup on <html data-app-ready>. The e2e suite waits for it:
-	 * clicking while the titlebar and rail still change size made a mousedown and
+	 * clicking while the top bar and rail still change size made a mousedown and
 	 * its mouseup land on different elements, so the click was lost (#584).
 	 */
 	function markReady() {
@@ -154,22 +154,22 @@
 {:else}
 <div class="flex h-screen overflow-hidden bg-surface-window">
 	<!-- Rail and sidebar sit on the window ground (Tonal §5). On macOS a strip above
-	     them leaves room for the window controls and drags the window. -->
+	     the rail leaves room for the window controls; the sidebar starts beside them,
+	     so it has the same height on every platform. Both gaps drag the window. -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="flex shrink-0 flex-col">
-		{#if isMac}
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="h-9 shrink-0" data-tauri-drag-region onmousedown={beginWindowDrag}></div>
-		{:else}
-			<div class="h-2 shrink-0"></div>
-		{/if}
-		<div class="flex min-h-0 flex-1">
-			<ClusterRail />
-			{#if app.view !== 'dashboard'}
-				<Sidebar />
-			{/if}
-		</div>
+		<div class="{isMac ? 'h-9' : 'h-2'} shrink-0" data-tauri-drag-region onmousedown={beginWindowDrag}></div>
+		<ClusterRail />
 	</div>
-	<div class="flex min-w-0 flex-1 flex-col gap-3 py-3 pr-3 pl-1">
+	{#if app.view !== 'dashboard'}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="flex shrink-0 flex-col">
+			<div class="h-2 shrink-0" data-tauri-drag-region onmousedown={beginWindowDrag}></div>
+			<Sidebar />
+		</div>
+	{/if}
+	<!-- Without the sidebar the top bar would start under the macOS window controls. -->
+	<div class="flex min-w-0 flex-1 flex-col gap-3 py-3 pr-3 {isMac && app.view === 'dashboard' ? 'pl-3' : 'pl-1'}">
 		<TopBar />
 		{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
 			<div

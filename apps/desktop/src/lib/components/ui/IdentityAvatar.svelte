@@ -32,15 +32,16 @@
 </script>
 
 <span class="relative inline-flex shrink-0" style="width: {side}; height: {side};">
-	<!-- The disc carries its own cluster's tint; the active one is a filled square. -->
+	<!-- The disc carries its own cluster's tint; the active one is a filled square,
+	     its corner in proportion to the size so it never rounds back into a disc. -->
 	<span
 		data-tint
 		data-testid="identity-avatar"
 		data-active={active}
-		class="type-body flex h-full w-full items-center justify-center transition-[border-radius] duration-200 {active
-			? 'rounded-md bg-primary font-bold text-on-primary'
-			: 'rounded-full bg-surface-container-high font-semibold text-text-muted'}"
-		style={tintStyle(color)}
+		class="type-body flex h-full w-full items-center justify-center transition-[border-radius] duration-200 motion-reduce:transition-none {active
+			? 'bg-primary font-bold text-on-primary'
+			: 'bg-surface-container-high font-semibold text-text-muted'}"
+		style="{tintStyle(color)}; border-radius: {active ? `calc(${side} * 0.32)` : '9999px'};"
 	>
 		{initials(name)}
 	</span>

@@ -22,6 +22,8 @@ vi.mock("#lib/tauri.ts", () => ({
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
+const windowApi = vi.hoisted(() => ({ startDragging: vi.fn(), toggleMaximize: vi.fn() }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => windowApi }));
 
 import TopBar from "./TopBar.svelte";
 import ClusterRail from "./ClusterRail.svelte";
@@ -154,6 +156,18 @@ describe("TopBar", () => {
     expect(app.view).toBe("events");
   });
 
+  it("drags the window from its empty space, not from a chip", async () => {
+    windowApi.startDragging.mockClear();
+    const { container } = render(TopBar);
+    const header = container.querySelector("header")!;
+    expect(header).toHaveAttribute("data-tauri-drag-region");
+    await fireEvent.mouseDown(screen.getByRole("button", { name: /prod-aks/ }), { button: 0 });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(windowApi.startDragging).not.toHaveBeenCalled();
+    await fireEvent.mouseDown(header, { button: 0 });
+    await vi.waitFor(() => expect(windowApi.startDragging).toHaveBeenCalledTimes(1));
+  });
+
   it("has no warnings chip when there is nothing to warn about", () => {
     render(TopBar);
     expect(screen.queryByRole("button", { name: /warning/ })).toBeNull();
@@ -179,6 +193,12 @@ describe("ClusterRail", () => {
     const glyphs = screen.getAllByTestId("health-dot").map((d) => d.querySelector("svg")?.dataset.glyph);
     expect(glyphs).toEqual(["err", "unknown"]);
     clusters.connectionState = "connected";
+  });
+
+  it("names each cluster button with the context and its health, not just initials", () => {
+    render(ClusterRail);
+    expect(screen.getByRole("button", { name: "prod-aks, connected" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "staging, not connected" })).toBeInTheDocument();
   });
 
   it("gives every avatar its own cluster's tint and marks the active one", () => {
@@ -283,7 +303,9 @@ describe("Sidebar", () => {
     render(Sidebar);
     const row = screen.getByText("Pods").closest("button")!;
     expect(row).toHaveTextContent("3");
-    expect(row.querySelector("[data-testid=nav-count]")).not.toHaveAttribute("data-tone");
+    // The total is its own neutral number, outside the toned badge.
+    expect(row.querySelector("[data-testid=nav-count]")!.closest("[data-tone]")).toBeNull();
+    expect(row.querySelector("[data-testid=nav-count]")).toHaveTextContent(/^3$/);
     const badge = screen.getByRole("button", { name: "1 pod needs attention: show them" });
     expect(badge).toHaveTextContent("1");
     // Failure is a square as well as a colour.

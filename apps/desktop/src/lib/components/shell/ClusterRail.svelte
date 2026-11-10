@@ -17,12 +17,14 @@
 		void clusters.switchCluster(name);
 	}
 
+	const healthWord = { connected: 'connected', unreachable: 'unreachable', unknown: 'not connected' } as const;
+
 	const disc =
 		'focus-ring flex h-(--control-h) w-(--control-h) shrink-0 items-center justify-center rounded-full';
 </script>
 
 <!-- All Clusters and Preferences stay put; with many contexts only the avatars scroll. -->
-<nav class="flex w-[68px] shrink-0 flex-col items-center gap-2 pt-1 pb-3" aria-label="Clusters">
+<nav class="flex min-h-0 w-[68px] flex-1 flex-col items-center gap-2 pt-1 pb-3" aria-label="Clusters">
 	<button
 		type="button"
 		title="All Clusters"
@@ -38,13 +40,17 @@
 
 	<ul
 		aria-label="Contexts"
-		class="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto py-1 [scrollbar-width:none]"
+		class="flex min-h-0 w-full flex-1 flex-col items-center gap-2 overflow-y-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 	>
 		{#each clusters.contexts as ctx (ctx.name)}
 			{@const isActive = ctx.name === app.activeCluster}
+			{@const state = isActive ? clusters.connectionState : health.for(ctx.name).state}
 			<li class="shrink-0">
+				<!-- The name is the context and its health: initials alone are ambiguous
+				     and the health glyph is decorative. -->
 				<button
 					type="button"
+					aria-label="{ctx.name}, {healthWord[state]}"
 					title={multiFile && ctx.source ? `${ctx.name} — ${ctx.source}` : ctx.name}
 					aria-current={isActive ? 'true' : undefined}
 					class="focus-ring block rounded-md hover:brightness-110"
@@ -54,7 +60,7 @@
 						name={ctx.name}
 						color={clusters.identityFor(ctx.name)}
 						active={isActive}
-						health={isActive ? clusters.connectionState : health.for(ctx.name).state}
+						health={state}
 					/>
 				</button>
 			</li>

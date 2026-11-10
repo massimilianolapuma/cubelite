@@ -5,7 +5,7 @@
 	import AllResources from './AllResources.svelte';
 	import NavRow from './NavRow.svelte';
 	import ProfileMenu from './ProfileMenu.svelte';
-	import { modLabel } from '#lib/platform.ts';
+	import { isMac, modLabel } from '#lib/platform.ts';
 	import { app, type View } from '#lib/stores/app.svelte.ts';
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
@@ -76,8 +76,9 @@
 </script>
 
 <!-- Sits on the window ground, no card: tone separates it from the content (Tonal §5). -->
-<aside class="flex min-h-0 w-[232px] shrink-0 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-3">
-	<div class="flex shrink-0 items-center gap-2">
+<aside class="flex min-h-0 w-[232px] flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-3">
+	<!-- On macOS this row sits beside the window controls: keep clear of their 78 px. -->
+	<div class="flex shrink-0 items-center gap-2 {isMac ? 'pl-1' : ''}">
 		<div class="min-w-0 flex-1"><ProfileMenu /></div>
 		<button
 			type="button"

@@ -39,7 +39,7 @@
 >
 	<button
 		type="button"
-		class="focus-ring flex h-(--nav-h) min-w-0 flex-1 items-center gap-2 rounded-full pl-3.5 text-left {attention
+		class="focus-ring-inset flex h-(--nav-h) min-w-0 flex-1 items-center gap-2 rounded-full pl-3.5 text-left {attention
 			? 'pr-1.5'
 			: 'pr-3.5'}"
 		aria-current={active ? 'page' : undefined}
@@ -47,12 +47,12 @@
 		data-unavailable={unavailable ? 'true' : undefined}
 		onclick={() => app.navigate(view)}
 	>
-		<span class="type-body flex-1 truncate {active ? 'font-semibold' : ''} {unavailable ? 'text-text-subtle' : ''}">
+		<span class="type-body flex-1 truncate {active ? 'font-semibold' : unavailable ? 'text-text-subtle' : ''}">
 			{label}
 		</span>
 		{#if unavailable}
 			<span class="sr-only">, not available on this cluster</span>
-			<span class="type-data-sm text-text-subtle" aria-hidden="true">–</span>
+			<span class="type-data-sm {active ? '' : 'text-text-subtle'}" aria-hidden="true">–</span>
 		{:else if count}
 			<span class="type-data-sm {active ? '' : 'text-text-subtle'}" data-testid="nav-count">{count.value}</span>
 		{/if}

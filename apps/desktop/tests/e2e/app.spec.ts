@@ -17,7 +17,7 @@ async function boot(page: Page, opts: { onboardingSeen?: boolean } = {}) {
 
 test("shell renders top bar, rail and sidebar; the cluster chip holds what the status bar showed", async ({ page }) => {
   await boot(page);
-  const chip = page.getByRole("button", { name: /prod-aks/ }).first();
+  const chip = page.getByRole("button", { name: /^prod-aks AKS/ });
   await expect(chip).toBeVisible();
   await expect(page.getByText("AKS", { exact: true })).toBeVisible();
   await expect(chip).toContainText("v1.30.2");

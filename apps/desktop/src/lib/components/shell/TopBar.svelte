@@ -46,8 +46,10 @@
 		}
 	}
 
+	// Chips may shrink: a long context name truncates rather than pushing the bar
+	// out of the window. What follows the name never shrinks.
 	const chip =
-		'focus-ring flex h-(--chip-h) shrink-0 items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110';
+		'focus-ring flex h-(--chip-h) min-w-0 items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110';
 	const menuItem =
 		'flex cursor-default items-center gap-3 rounded-md px-3 py-2 type-body text-text-muted data-highlighted:bg-surface-container-high data-highlighted:text-text';
 </script>
@@ -55,22 +57,27 @@
 <!-- The mousedown handler only begins a window drag — not an
      interactive control, so no ARIA role applies. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<header data-tauri-drag-region onmousedown={beginWindowDrag} class="flex shrink-0 flex-wrap items-center gap-2">
+<!-- -mt-3 pt-3: the header owns the gutter above it, so the window drags from its top edge. -->
+<header
+	data-tauri-drag-region
+	onmousedown={beginWindowDrag}
+	class="-mt-3 flex min-w-0 shrink-0 flex-wrap items-center gap-2 pt-3"
+>
 	{#if activeContext}
 		<DropdownMenu.Root>
 			<!-- The chip keeps its cluster's tint even where the window does not (dashboard). -->
-			<DropdownMenu.Trigger class="{chip} min-w-0" data-tint style={tintStyle(identity)}>
+			<DropdownMenu.Trigger class={chip} data-tint style={tintStyle(identity)}>
 				<span class="h-2.5 w-2.5 shrink-0 rounded-[3px] bg-primary" data-testid="identity-dot"></span>
 				<span class="type-body truncate font-semibold text-text">{activeContext.name}</span>
 				{#if provider}
-					<span class="type-micro rounded-xs bg-primary-container px-1.5 py-px font-mono text-on-primary-container">
+					<span class="type-micro shrink-0 rounded-xs bg-primary-container px-1.5 py-px font-mono text-on-primary-container">
 						{provider}
 					</span>
 				{/if}
 				{#if version}
-					<span class="type-data-sm text-text-subtle">{version}</span>
+					<span class="type-data-sm shrink-0 text-text-subtle">{version}</span>
 				{/if}
-				<span class="flex items-center gap-1.5 {state.tone}" data-testid="connection-state">
+				<span class="flex shrink-0 items-center gap-1.5 {state.tone}" data-testid="connection-state">
 					<StatusGlyph state={state.glyph} size={8} />
 					<span class="type-body-sm text-text-muted">{state.word}</span>
 				</span>
@@ -116,7 +123,7 @@
 
 	<button type="button" class="{chip} w-60 text-left" onclick={() => (app.paletteOpen = true)}>
 		<Search class="h-4 w-4 shrink-0 text-text-subtle" aria-hidden="true" />
-		<span class="type-body-sm flex-1 text-text-subtle">Search &amp; switch…</span>
+		<span class="type-body-sm min-w-0 flex-1 truncate text-text-subtle">Search &amp; switch…</span>
 		<Kbd label="{modLabel}K" />
 	</button>
 </header>

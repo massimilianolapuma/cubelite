@@ -166,7 +166,6 @@
     --alpha-pill-err: color-mix(in srgb, var(--color-status-err) 10%, transparent);
     --alpha-log-error-row: color-mix(in srgb, var(--color-status-err) 7%, transparent);
     --alpha-log-warn-row: color-mix(in srgb, var(--color-status-warn) 4.5%, transparent);
-    --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-accent) 15%, transparent);
 
     --row-pad-default: 9px;
     --row-pad-compact: 5px;
@@ -268,7 +267,6 @@
     --alpha-pill-err: color-mix(in srgb, var(--color-status-err) 10%, transparent);
     --alpha-log-error-row: color-mix(in srgb, var(--color-status-err) 7%, transparent);
     --alpha-log-warn-row: color-mix(in srgb, var(--color-status-warn) 4.5%, transparent);
-    --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-accent) 15%, transparent);
   }
   .dark, .dark [data-tint] {
     --cl-color-surface-window: oklch(0.165 0.03 var(--cl-tint-h));
@@ -503,12 +501,16 @@
   animation: toast-in var(--motion-toast, 180ms ease);
 }
 
-/* Shared focus treatment: accent border + 3px accent-15% ring */
+/* Shared focus treatment: a solid 2px primary ring (Tonal §7) */
 @layer utilities {
   .focus-ring:focus-visible {
-    outline: none;
-    border-color: var(--color-accent);
-    box-shadow: var(--focus-ring);
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  /* Inside a scrolling list an outer ring would be clipped. */
+  .focus-ring-inset:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
   }
 }
 

@@ -38,7 +38,6 @@ test("a tinted subtree re-declares what utilities and recipes read", () => {
     "--color-text-primary: var(--cl-color-text);",
     "--color-accent: var(--cl-color-primary);",
     "--alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);",
-    "--focus-ring:",
   ]) {
     assert.ok(sub.includes(line), `missing "${line}"`);
   }

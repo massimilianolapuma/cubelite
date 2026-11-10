@@ -15,10 +15,10 @@
 
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
-		class="focus-ring flex h-(--chip-h) shrink-0 items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110"
+		class="focus-ring flex h-(--chip-h) min-w-0 items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110"
 	>
-		<span class="type-body-sm text-text-subtle">Namespace</span>
-		<span class="type-data text-text">{app.namespace ?? 'all'}</span>
+		<span class="type-body-sm shrink-0 text-text-subtle">Namespace</span>
+		<span class="type-data truncate text-text">{app.namespace ?? 'all'}</span>
 		<ChevronDown class="h-3.5 w-3.5 shrink-0 text-text-subtle" aria-hidden="true" />
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
