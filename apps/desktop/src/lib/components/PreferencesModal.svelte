@@ -9,7 +9,7 @@
 		removePath,
 		seedIfEmpty
 	} from '#lib/kubeconfig-list.ts';
-	import { applyAccent, applyDensity } from '#lib/appearance.ts';
+	import { applyDensity } from '#lib/appearance.ts';
 	import { IDENTITY_COLORS, identityVar } from '#lib/cluster-identity.ts';
 	import Modal from '#lib/components/ui/Modal.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
@@ -26,7 +26,6 @@
 	import { clusters } from '#lib/stores/clusters.svelte.ts';
 	import {
 		settings,
-		type Accent,
 		type Density,
 		type RefreshInterval,
 		type Theme
@@ -84,17 +83,6 @@
 		{ value: 'default', label: 'Default' },
 		{ value: 'compact', label: 'Compact' }
 	];
-
-	const accents: { value: Accent; label: string; color: string }[] = [
-		{ value: 'blue', label: 'Blue', color: 'var(--cl-color-cluster-blue)' },
-		{ value: 'violet', label: 'Violet', color: 'var(--cl-color-accent-alt-violet)' },
-		{ value: 'teal', label: 'Teal', color: 'var(--cl-color-accent-alt-teal)' }
-	];
-
-	function setAccent(value: Accent) {
-		settings.accent.value = value;
-		applyAccent(value);
-	}
 
 	const refreshSegments: { value: RefreshInterval; label: string }[] = [
 		{ value: 10, label: '10s' },
@@ -184,29 +172,6 @@
 
 		<section class="flex items-center justify-between gap-4">
 			<div>
-				<div class="type-body text-text-primary">Accent</div>
-				<p class="type-caption mt-0.5 text-text-tertiary">Selection, focus and primary buttons.</p>
-			</div>
-			<div class="flex items-center gap-2" role="radiogroup" aria-label="Accent color">
-				{#each accents as accent (accent.value)}
-					{@const active = settings.accent.value === accent.value}
-					<button
-						type="button"
-						role="radio"
-						aria-checked={active}
-						aria-label={accent.label}
-						class="focus-ring hit-target h-5 w-5 rounded-full"
-						style="background: {accent.color}; box-shadow: {active
-							? `0 0 0 2px var(--color-surface-overlay), 0 0 0 4px ${accent.color}`
-							: 'none'};"
-						onclick={() => setAccent(accent.value)}
-					></button>
-				{/each}
-			</div>
-		</section>
-
-		<section class="flex items-center justify-between gap-4">
-			<div>
 				<div class="type-body text-text-primary">Auto-refresh</div>
 				<p class="type-caption mt-0.5 text-text-tertiary">Re-list resources on an interval, on top of live watches.</p>
 			</div>
@@ -231,7 +196,10 @@
 
 		{#if clusters.contexts.length > 0}
 			<section>
-				<div class="type-body mb-1.5 text-text-primary">Cluster colors</div>
+				<div class="type-body text-text-primary">Cluster colors</div>
+				<p class="type-caption mt-0.5 mb-1.5 text-text-tertiary">
+					A cluster's color tints the whole window while you are on it.
+				</p>
 				<div class="flex flex-col gap-1.5 rounded-md border border-border-faint bg-surface-window px-2.5 py-2">
 					{#each clusters.contexts as ctx (ctx.name)}
 						{@const current = clusters.identityFor(ctx.name)}

@@ -8,8 +8,6 @@ export type Theme = "dark" | "light" | "system";
 /** Table row density (spec: 9px default, 5px compact). */
 export type Density = "default" | "compact";
 
-/** User-selectable accent (spec: blue default, violet and teal alternates). */
-export type Accent = "blue" | "violet" | "teal";
 
 /** Auto-refresh interval in seconds; 0 = off. */
 export type RefreshInterval = 10 | 30 | 60 | 0;
@@ -80,7 +78,6 @@ const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
 
 const isDensity = (v: unknown): v is Density => v === "default" || v === "compact";
 
-const isAccent = (v: unknown): v is Accent => v === "blue" || v === "violet" || v === "teal";
 
 const isStringArray = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every((x) => typeof x === "string");
@@ -94,7 +91,6 @@ export const settings = {
   theme: persisted<Theme>("theme", "dark", isTheme),
   refreshInterval: persisted<RefreshInterval>("refreshInterval", 30, isRefreshInterval),
   density: persisted<Density>("density", "default", isDensity),
-  accent: persisted<Accent>("accent", "blue", isAccent),
   skipTls: persisted<boolean>("skipTls", false, isBoolean),
   onboardingSeen: persisted<boolean>("onboardingSeen", false, isBoolean),
   /** Placeholders for integrations that are not configured yet (#526). */

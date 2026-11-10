@@ -17,7 +17,7 @@
 	import { viewEntry } from '#lib/components/views/index.ts';
 	import LogPanel from '#lib/components/logpanel/LogPanel.svelte';
 	import LogWindowShell from '#lib/components/logpanel/LogWindowShell.svelte';
-	import { applyAccent, applyDensity } from '#lib/appearance.ts';
+	import { applyDensity, applyTint, tintFor } from '#lib/appearance.ts';
 	import { KUBECONFIG_CHANGED } from '#lib/tauri.ts';
 	import { matchShortcut } from '#lib/keyboard.ts';
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
@@ -39,6 +39,13 @@
 			? new URLSearchParams(window.location.search).get('logWindow')
 			: null;
 
+	// The window takes the tint of the cluster it is on. A pop-out log window keeps
+	// its pod's cluster; the All Clusters dashboard and onboarding belong to none.
+	$effect(() => {
+		const neutral = !logWindowKey && (app.view === 'dashboard' || app.onboardingOpen);
+		applyTint(tintFor(neutral, app.activeCluster, (name) => clusters.identityFor(name)));
+	});
+
 	/**
 	 * Marks the end of startup on <html data-app-ready>. The e2e suite waits for it:
 	 * clicking while the titlebar and rail still change size made a mousedown and
@@ -51,7 +58,6 @@
 	onMount(() => {
 		// Pop-out log windows share the appearance preferences.
 		applyDensity(settings.density.value);
-		applyAccent(settings.accent.value);
 		if (logWindowKey) {
 			markReady();
 			return;

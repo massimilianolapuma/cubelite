@@ -1,125 +1,108 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { contrastRatio } from "./wcag";
+import { contrastRatioOklch, type Oklch } from "./wcag";
 
-type Token = { $value: string; $light?: string };
-type Tokens = Record<string, Record<string, Token>>;
+type ColorValue = [number, number, number | "tint"];
+type ColorToken = { $dark: ColorValue; $light: ColorValue };
 
-const tokens: Tokens = JSON.parse(
-  readFileSync(resolve(__dirname, "../../../../design/tokens.json"), "utf8"),
-);
+const tokens: {
+  color: Record<string, ColorToken>;
+  identity: { $dark: [number, number]; $light: [number, number]; hues: Record<string, number> };
+} = JSON.parse(readFileSync(resolve(__dirname, "../../../../design/tokens.json"), "utf8"));
 
-function hex(group: string, name: string, theme: "dark" | "light"): string {
-  const t = tokens[group]?.[name];
-  if (!t) throw new Error(`missing token ${group}.${name}`);
-  return theme === "dark" ? t.$value : (t.$light ?? t.$value);
+const THEMES = ["dark", "light"] as const;
+type Theme = (typeof THEMES)[number];
+
+/** A role's colour in one theme, with the tint resolved to a cluster hue. */
+function color(role: string, theme: Theme, tintHue: number): Oklch {
+  const token = tokens.color[role];
+  if (!token) throw new Error(`missing colour role ${role}`);
+  const [l, c, h] = theme === "dark" ? token.$dark : token.$light;
+  return [l, c, h === "tint" ? tintHue : h];
 }
 
-/** text token → surfaces it sits on (spec §Pairing matrix). */
-const MATRIX: { text: [string, string]; surfaces: [string, string][]; min: number }[] = [
-  { text: ["text", "primary"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","raised"],["surface","overlay"],["surface","sunken"],["surface","row-hover"]] },
-  { text: ["text", "secondary"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","overlay"]] },
-  { text: ["text", "tertiary"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"]] },
-  { text: ["text", "log"], min: 4.5, surfaces: [["surface","sunken"]] },
-  { text: ["text", "data-bright"], min: 4.5, surfaces: [["surface","panel"],["surface","surface"]] },
-  { text: ["status", "ok"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","sunken"]] },
-  { text: ["status", "warn"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","sunken"]] },
-  { text: ["status", "err"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","sunken"]] },
-  { text: ["status", "info"], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","sunken"]] },
-  // Accents are used as text (links, spinners) and as the fill behind a
-  // `text-surface-window` label (primary buttons). Contrast is symmetric, so
-  // the `window` pairing also covers the label-on-fill case. The alternates are
-  // user-selectable in Preferences → Accent (#363, #396).
-  ...(["default", "alt-violet", "alt-teal"] as const).map((name) => ({
-    text: ["accent", name] as [string, string], min: 4.5,
-    surfaces: [["surface","window"],["surface","panel"],["surface","surface"],["surface","overlay"]] as [string, string][],
+const SURFACES = [
+  "surface-window",
+  "surface-sunken",
+  "surface-container",
+  "surface-container-high",
+  "surface-container-top",
+  "surface-overlay",
+];
+const without = (...names: string[]) => SURFACES.filter((s) => !names.includes(s));
+
+/** Foreground role → the grounds it is used on (spec §4.6). */
+const MATRIX: { fg: string; on: string[]; min: number }[] = [
+  { fg: "text", on: SURFACES, min: 4.5 },
+  { fg: "text-muted", on: SURFACES, min: 4.5 },
+  { fg: "text-subtle", on: SURFACES, min: 4.5 },
+  { fg: "primary", on: SURFACES, min: 4.5 },
+  { fg: "success", on: SURFACES, min: 4.5 },
+  { fg: "warning", on: SURFACES, min: 4.5 },
+  { fg: "error", on: SURFACES, min: 4.5 },
+  // Text on its own fill.
+  { fg: "on-primary", on: ["primary"], min: 4.5 },
+  { fg: "on-primary-container", on: ["primary-container"], min: 4.5 },
+  { fg: "on-success-container", on: ["success-container"], min: 4.5 },
+  { fg: "on-warning-container", on: ["warning-container"], min: 4.5 },
+  { fg: "on-error-container", on: ["error-container"], min: 4.5 },
+  { fg: "on-error-solid", on: ["error-solid"], min: 4.5 },
+  // Chart series double as log-source labels, so they are held to text contrast.
+  ...["data-1", "data-2", "data-3", "data-4", "data-5"].map((fg) => ({
+    fg,
+    on: without("surface-window", "surface-overlay"),
+    min: 4.5,
   })),
-  { text: ["cluster-identity", "blue"], min: 4.5, surfaces: [["surface","sunken"]] },
-  { text: ["cluster-identity", "teal"], min: 4.5, surfaces: [["surface","sunken"]] },
-  { text: ["cluster-identity", "amber"], min: 4.5, surfaces: [["surface","sunken"]] },
-  { text: ["cluster-identity", "pink"], min: 4.5, surfaces: [["surface","sunken"]] },
-  { text: ["cluster-identity", "violet"], min: 4.5, surfaces: [["surface","sunken"]] },
-  // status.err-solid is a FILL token (destructive-button background), not a text
-  // color — but contrast is symmetric, so it's audited here against the text
-  // token actually overlaid on it. DeletePodDialog.svelte renders its confirm
-  // button as `style="background: var(--color-status-err-solid)"` with class
-  // `text-text-primary`, i.e. the real foreground is text.primary (not
-  // surface.window, which is the convention used by other solid-fill buttons
-  // elsewhere in the app but not this one) — paired against its own theme's
-  // text.primary value.
-  { text: ["status", "err-solid"], min: 4.5, surfaces: [["text","primary"]] },
+  // Graphics: control borders, and the healthy glyph on a selected row.
+  { fg: "outline-strong", on: SURFACES, min: 3 },
+  { fg: "success", on: ["primary-container"], min: 3 },
 ];
 
-/** "<textGroup>.<name>/<surface>/<theme>" → recorded ratio + reason. */
-const EXCEPTIONS: Record<string, { ratio: number; reason: string }> = {
-  // filled by the fix pass (Task 2) — goal: zero or near-zero entries
-};
-
-/**
- * "<group>.<name>" → reason, for color tokens in the coverage-guard groups
- * below that are intentionally not in MATRIX (i.e. not audited against AA).
- * Keep this empty wherever possible — prefer adding a MATRIX row instead.
- */
+/** Roles that are deliberately not held to a contrast floor. */
 const AUDIT_EXEMPT: Record<string, string> = {
-  "text.disabled": "AA-exempt, floor-asserted separately",
+  outline: "decorative hairline; never the only boundary of a control",
 };
 
-describe("token contrast (WCAG AA)", () => {
-  for (const row of MATRIX) {
-    for (const [sGroup, sName] of row.surfaces) {
-      for (const theme of ["dark", "light"] as const) {
-        const key = `${row.text[0]}.${row.text[1]}/${sName}/${theme}`;
-        it(key, () => {
-          const ratio = contrastRatio(
-            hex(row.text[0], row.text[1], theme), hex(sGroup, sName, theme));
-          const exception = EXCEPTIONS[key];
-          if (exception) {
-            expect(ratio, `documented exception drifted: ${exception.reason}`)
-              .toBeCloseTo(exception.ratio, 2);
-            expect(ratio).toBeGreaterThanOrEqual(3);
-          } else {
-            expect(ratio, `${key} below AA`).toBeGreaterThanOrEqual(row.min);
-          }
-        });
-      }
-    }
-  }
-
-  for (const sName of ["window", "panel", "surface"] as const) {
-    for (const theme of ["dark", "light"] as const) {
-      it(`text.disabled floor on ${sName} (${theme})`, () => {
-        const ratio = contrastRatio(
-          hex("text", "disabled", theme), hex("surface", sName, theme));
-        expect(ratio).toBeGreaterThanOrEqual(2.5); // AA-exempt, floor only
-      });
-    }
-  }
-
-  // Coverage guard: every color token in these groups must be either
-  // matrix-audited (a MATRIX row) or explicitly exempt (AUDIT_EXEMPT, with a
-  // reason). Prevents a newly added text/status/accent/cluster-identity token from
-  // silently skipping the contrast audit.
-  it("every text/status/accent/cluster-identity color token is audited or exempt", () => {
-    const auditedKeys = new Set(MATRIX.map((row) => `${row.text[0]}.${row.text[1]}`));
-    const missing: string[] = [];
-    for (const group of ["text", "status", "accent", "cluster-identity"] as const) {
-      for (const name of Object.keys(tokens[group] ?? {})) {
-        if (name.startsWith("$")) continue;
-        const key = `${group}.${name}`;
-        if (!auditedKeys.has(key) && !(key in AUDIT_EXEMPT)) {
-          missing.push(key);
+describe("token contrast (WCAG AA) on every cluster tint", () => {
+  for (const [identity, hue] of Object.entries(tokens.identity.hues)) {
+    for (const theme of THEMES) {
+      for (const { fg, on, min } of MATRIX) {
+        for (const bg of on) {
+          it(`${fg} on ${bg} · ${theme} · ${identity}`, () => {
+            const ratio = contrastRatioOklch(color(fg, theme, hue), color(bg, theme, hue));
+            expect(ratio, `${fg} on ${bg} is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(min);
+          });
         }
       }
     }
-    expect(missing, `token(s) missing a MATRIX row or AUDIT_EXEMPT entry: ${missing.join(", ")}`)
-      .toEqual([]);
+  }
+
+  it("identity colours read as text on the wells that show them", () => {
+    for (const hue of Object.values(tokens.identity.hues)) {
+      for (const theme of THEMES) {
+        const [l, c] = theme === "dark" ? tokens.identity.$dark : tokens.identity.$light;
+        for (const bg of ["surface-sunken", "surface-window", "surface-container"]) {
+          // An identity colour is always shown inside its own tint.
+          expect(contrastRatioOklch([l, c, hue], color(bg, theme, hue))).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
+  it("every colour role is audited or exempt with a reason", () => {
+    const audited = new Set(MATRIX.flatMap((row) => [row.fg, ...row.on]));
+    const missing = Object.keys(tokens.color).filter(
+      (role) => !audited.has(role) && !(role in AUDIT_EXEMPT),
+    );
+    expect(missing, `role(s) with no MATRIX row or AUDIT_EXEMPT entry`).toEqual([]);
+  });
+
+  it("identities stay out of the hues that mean a state", () => {
+    // Warm half of the wheel (red, amber, green) is reserved for status.
+    for (const [identity, hue] of Object.entries(tokens.identity.hues)) {
+      expect(hue, identity).toBeGreaterThanOrEqual(185);
+      expect(hue, identity).toBeLessThanOrEqual(345);
+    }
   });
 });

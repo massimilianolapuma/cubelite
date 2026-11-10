@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   IDENTITY_COLORS,
   assignIdentityColors,
+  identityHue,
   identityVar,
   initials,
   isIdentityColor,
@@ -10,7 +13,7 @@ import {
 describe("assignIdentityColors", () => {
   it("assigns palette colors by first-appearance order", () => {
     const result = assignIdentityColors(["a", "b", "c"]);
-    expect(result).toEqual({ a: "blue", b: "amber", c: "pink" });
+    expect(result).toEqual({ a: "blue", b: "magenta", c: "teal" });
   });
 
   it("cycles the palette when there are more contexts than colors", () => {
@@ -30,12 +33,18 @@ describe("assignIdentityColors", () => {
     const saved = { prod: "teal" };
     const result = assignIdentityColors(["staging", "prod"], saved);
     expect(result.prod).toBe("teal");
-    expect(result.staging).toBe("amber");
+    expect(result.staging).toBe("magenta");
   });
 
   it("ignores invalid saved values", () => {
-    const result = assignIdentityColors(["a"], { a: "magenta" });
+    const result = assignIdentityColors(["a"], { a: "chartreuse" });
     expect(result.a).toBe("blue");
+  });
+
+  it("moves the retired warm colours to their cool successors", () => {
+    // amber and pink tinted the window like a warning or an error (spec §3 #4).
+    const result = assignIdentityColors(["a", "b", "c"], { a: "amber", b: "pink", c: "teal" });
+    expect(result).toEqual({ a: "indigo", b: "magenta", c: "teal" });
   });
 });
 
@@ -57,7 +66,8 @@ describe("initials", () => {
 describe("isIdentityColor", () => {
   it("accepts palette keys and rejects others", () => {
     expect(isIdentityColor("blue")).toBe(true);
-    expect(isIdentityColor("magenta")).toBe(false);
+    expect(isIdentityColor("magenta")).toBe(true);
+    expect(isIdentityColor("amber")).toBe(false);
     expect(isIdentityColor(3)).toBe(false);
   });
 });
@@ -66,10 +76,23 @@ describe("identityVar", () => {
   it("uses the always-emitted base variables for every palette color (#391)", () => {
     expect(IDENTITY_COLORS.map(identityVar)).toEqual([
       "var(--cl-color-cluster-blue)",
-      "var(--cl-color-cluster-amber)",
-      "var(--cl-color-cluster-pink)",
-      "var(--cl-color-cluster-violet)",
+      "var(--cl-color-cluster-magenta)",
       "var(--cl-color-cluster-teal)",
+      "var(--cl-color-cluster-violet)",
+      "var(--cl-color-cluster-indigo)",
     ]);
+  });
+});
+
+describe("identityHue", () => {
+  it("points at the hue variable the generator emits", () => {
+    expect(identityHue("teal")).toBe("var(--cl-hue-teal)");
+  });
+
+  it("has a hue in the design tokens for every palette colour, in the same order", () => {
+    const tokens: { identity: { hues: Record<string, number> } } = JSON.parse(
+      readFileSync(resolve(__dirname, "../../../../design/tokens.json"), "utf8"),
+    );
+    expect(Object.keys(tokens.identity.hues)).toEqual([...IDENTITY_COLORS]);
   });
 });

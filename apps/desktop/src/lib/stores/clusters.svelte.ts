@@ -36,8 +36,15 @@ class ClustersStore {
   unreachableReason = $state<string | null>(null);
   identityColors = $state<Record<string, IdentityColor>>({});
 
+  /**
+   * A context's identity color. Before contexts are loaded (a pop-out log
+   * window never loads them) it comes from the saved choices.
+   */
   identityFor(contextName: string): IdentityColor {
-    return this.identityColors[contextName] ?? "blue";
+    return (
+      this.identityColors[contextName] ??
+      assignIdentityColors([contextName], settings.identityColors.value)[contextName]
+    );
   }
 
   /** User override of a context's identity color (persisted). */
