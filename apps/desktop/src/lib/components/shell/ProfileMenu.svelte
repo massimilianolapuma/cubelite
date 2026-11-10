@@ -16,7 +16,7 @@
 <DropdownMenu.Root>
 	<!-- The pill shows the name only; "Profile:" stays in the accessible name and tooltip. -->
 	<DropdownMenu.Trigger
-		class="focus-ring flex h-(--control-h) w-full items-center gap-2 rounded-full bg-surface-container-high px-4 text-left text-text hover:brightness-110"
+		class="focus-ring flex h-(--control-h-compact) w-full items-center gap-2 rounded-full bg-surface-container-high px-4 text-left text-text hover:brightness-110"
 		title="Profile: {profiles.active.name}"
 	>
 		<span class="sr-only">Profile:</span>

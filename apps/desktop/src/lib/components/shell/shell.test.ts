@@ -23,12 +23,12 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
 
-import Titlebar from "./Titlebar.svelte";
+import TopBar from "./TopBar.svelte";
 import ClusterRail from "./ClusterRail.svelte";
 import Sidebar from "./Sidebar.svelte";
-import StatusBar from "./StatusBar.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
+import { health } from "#lib/stores/health.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
 import { dynamic } from "#lib/stores/dynamic.svelte.ts";
 import { sidebar } from "#lib/stores/sidebar.svelte.ts";
@@ -73,27 +73,90 @@ beforeEach(() => {
   resources.namespaces = [];
   resources.deployments = [];
   resources.events = [];
+  health.byContext = {};
 });
 
-describe("Titlebar", () => {
-  it("shows the active cluster with provider chip and connection state", () => {
-    render(Titlebar);
+const warning = {
+  event_type: "Warning",
+  reason: "BackOff",
+  object: "Pod/api-0",
+  message: "Back-off restarting failed container",
+  namespace: "default",
+  count: 3,
+  last_timestamp: null,
+};
+
+describe("TopBar", () => {
+  it("shows the active cluster with provider tag and connection state", () => {
+    render(TopBar);
     expect(screen.getByText("prod-aks")).toBeInTheDocument();
     expect(screen.getByText("AKS")).toBeInTheDocument();
     expect(screen.getByText("Connected")).toBeInTheDocument();
   });
 
-  it("shows Unreachable when the active cluster is down", () => {
+  it("shows the connection state as a shape and a word", () => {
+    render(TopBar);
+    const state = () => screen.getByTestId("connection-state");
+    expect(state().querySelector("svg")).toHaveAttribute("data-glyph", "ok");
     clusters.connectionState = "unreachable";
-    render(Titlebar);
-    expect(screen.getByText("Unreachable")).toBeInTheDocument();
+    render(TopBar);
+    const last = screen.getAllByTestId("connection-state").at(-1)!;
+    expect(last).toHaveTextContent("Unreachable");
+    expect(last.querySelector("svg")).toHaveAttribute("data-glyph", "err");
+  });
+
+  it("carries the Kubernetes version the status bar used to show", () => {
+    health.byContext = {
+      "prod-aks": { ...health.for("prod-aks"), state: "connected", version: "v1.30.2" },
+    };
+    render(TopBar);
+    expect(screen.getByText("v1.30.2")).toBeInTheDocument();
+  });
+
+  it("tints the cluster chip with the cluster's own colour, whatever the window shows", () => {
+    clusters.identityColors = { "prod-aks": "teal", staging: "magenta" };
+    app.view = "dashboard";
+    render(TopBar);
+    const chip = screen.getByRole("button", { name: /prod-aks/ });
+    expect(chip).toHaveAttribute("data-tint");
+    expect(chip.getAttribute("style")).toContain("--cl-tint-h: var(--cl-hue-teal)");
+  });
+
+  it("opens a menu with the server address, copy and reconnect", async () => {
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    const retry = vi.spyOn(clusters, "retry").mockResolvedValue();
+    render(TopBar);
+    await fireEvent.click(screen.getByRole("button", { name: /prod-aks/ }));
+    expect(await screen.findByText("https://prod.azmk8s.io:443")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Copy server address" }));
+    expect(writeText).toHaveBeenCalledWith("https://prod.azmk8s.io:443");
+    await fireEvent.click(screen.getByRole("button", { name: /prod-aks/ }));
+    await fireEvent.click(await screen.findByRole("menuitem", { name: "Reconnect" }));
+    expect(retry).toHaveBeenCalled();
+    retry.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it("opens the command palette from the search button", async () => {
-    render(Titlebar);
+    render(TopBar);
     await fireEvent.click(screen.getByText("Search & switch…"));
     expect(app.paletteOpen).toBe(true);
     app.paletteOpen = false;
+  });
+
+  it("counts warnings in a chip that opens Events, with the warning shape", async () => {
+    resources.events = [warning];
+    render(TopBar);
+    const chip = screen.getByRole("button", { name: "1 warning" });
+    expect(chip.querySelector("svg")).toHaveAttribute("data-glyph", "warn");
+    await fireEvent.click(chip);
+    expect(app.view).toBe("events");
+  });
+
+  it("has no warnings chip when there is nothing to warn about", () => {
+    render(TopBar);
+    expect(screen.queryByRole("button", { name: /warning/ })).toBeNull();
   });
 });
 
@@ -302,27 +365,5 @@ describe("Sidebar", () => {
     render(Sidebar);
     await fireEvent.click(screen.getByText("Pods"));
     expect(app.view).toBe("pods");
-  });
-});
-
-describe("StatusBar", () => {
-  it("shows server, refresh interval and clickable warning count", async () => {
-    resources.events = [
-      {
-        event_type: "Warning",
-        reason: "BackOff",
-        object: "Pod/api-0",
-        message: "Back-off restarting failed container",
-        namespace: "default",
-        count: 3,
-        last_timestamp: null,
-      },
-    ];
-    render(StatusBar);
-    expect(screen.getByText("https://prod.azmk8s.io:443")).toBeInTheDocument();
-    expect(screen.getByText(/refresh/)).toBeInTheDocument();
-    const warnings = screen.getByText("1 warning");
-    await fireEvent.click(warnings);
-    expect(app.view).toBe("events");
   });
 });

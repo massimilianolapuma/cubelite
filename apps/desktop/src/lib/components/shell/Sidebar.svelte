@@ -76,12 +76,12 @@
 </script>
 
 <!-- Sits on the window ground, no card: tone separates it from the content (Tonal §5). -->
-<aside class="flex min-h-0 w-[232px] shrink-0 flex-col gap-3 overflow-y-auto px-2 pt-1 pb-3">
+<aside class="flex min-h-0 w-[232px] shrink-0 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-3">
 	<div class="flex shrink-0 items-center gap-2">
 		<div class="min-w-0 flex-1"><ProfileMenu /></div>
 		<button
 			type="button"
-			class="focus-ring flex h-(--control-h) w-(--control-h) shrink-0 items-center justify-center rounded-full bg-surface-container-high text-text-muted hover:brightness-110"
+			class="focus-ring flex h-(--control-h-compact) w-(--control-h-compact) shrink-0 items-center justify-center rounded-full bg-surface-container-high text-text-muted hover:brightness-110"
 			aria-label="Go to resource"
 			title="Go to resource ({modLabel}K)"
 			onclick={() => (app.paletteOpen = true)}

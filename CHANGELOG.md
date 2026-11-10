@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the All Clusters dashboard keeps the default tint. Fonts are Inter, Space
   Grotesk and JetBrains Mono. Components keep their current layout: they are
   restyled in the following phases.
+- **New shell** (#611): the title bar and the status bar are gone. A top bar
+  holds the cluster chip (name, provider, Kubernetes version, connection state;
+  its menu has the server address, Copy and Reconnect), the namespace chip, a
+  warnings chip that opens Events, and search. The cluster rail shows health as
+  a shape as well as a colour, each avatar carries its own cluster's colour and
+  the active one is a filled square. Sidebar rows are pills, sections no longer
+  have coloured dots, and counts that need attention carry a triangle or a
+  square. The content sits on one rounded card. Default window is 1360 × 860.
 - **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
   saved as amber becomes indigo and one saved as pink becomes magenta: warm
   colours are reserved for warnings and errors.
