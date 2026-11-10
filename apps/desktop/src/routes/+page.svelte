@@ -40,13 +40,10 @@
 			: null;
 
 	// The window takes the tint of the cluster it is on. A pop-out log window keeps
-	// its pod's cluster; the All Clusters dashboard belongs to none.
+	// its pod's cluster; the All Clusters dashboard and onboarding belong to none.
 	$effect(() => {
-		applyTint(
-			tintFor(!logWindowKey && app.view === 'dashboard', app.activeCluster, (name) =>
-				clusters.identityFor(name)
-			)
-		);
+		const neutral = !logWindowKey && (app.view === 'dashboard' || app.onboardingOpen);
+		applyTint(tintFor(neutral, app.activeCluster, (name) => clusters.identityFor(name)));
 	});
 
 	/**

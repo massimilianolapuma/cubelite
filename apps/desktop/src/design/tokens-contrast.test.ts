@@ -36,9 +36,8 @@ const without = (...names: string[]) => SURFACES.filter((s) => !names.includes(s
 const MATRIX: { fg: string; on: string[]; min: number }[] = [
   { fg: "text", on: SURFACES, min: 4.5 },
   { fg: "text-muted", on: SURFACES, min: 4.5 },
-  // Labels and counts never sit on the sunken wells.
-  { fg: "text-subtle", on: without("surface-sunken"), min: 4.5 },
-  { fg: "primary", on: without("surface-sunken", "surface-container-top"), min: 4.5 },
+  { fg: "text-subtle", on: SURFACES, min: 4.5 },
+  { fg: "primary", on: SURFACES, min: 4.5 },
   { fg: "success", on: SURFACES, min: 4.5 },
   { fg: "warning", on: SURFACES, min: 4.5 },
   { fg: "error", on: SURFACES, min: 4.5 },

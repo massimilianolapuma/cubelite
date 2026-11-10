@@ -198,6 +198,78 @@
     --motion-toast: 180ms ease;
     --motion-tint: 240ms cubic-bezier(0.2, 0, 0, 1);
   }
+  [data-tint] {
+    --color-surface-window: var(--cl-color-surface-window);
+    --color-surface-sunken: var(--cl-color-surface-sunken);
+    --color-surface-container: var(--cl-color-surface-container);
+    --color-surface-container-high: var(--cl-color-surface-container-high);
+    --color-surface-container-top: var(--cl-color-surface-container-top);
+    --color-surface-overlay: var(--cl-color-surface-overlay);
+    --color-outline: var(--cl-color-outline);
+    --color-outline-strong: var(--cl-color-outline-strong);
+    --color-text: var(--cl-color-text);
+    --color-text-muted: var(--cl-color-text-muted);
+    --color-text-subtle: var(--cl-color-text-subtle);
+    --color-primary: var(--cl-color-primary);
+    --color-on-primary: var(--cl-color-on-primary);
+    --color-primary-container: var(--cl-color-primary-container);
+    --color-on-primary-container: var(--cl-color-on-primary-container);
+    --color-success: var(--cl-color-success);
+    --color-success-container: var(--cl-color-success-container);
+    --color-on-success-container: var(--cl-color-on-success-container);
+    --color-warning: var(--cl-color-warning);
+    --color-warning-container: var(--cl-color-warning-container);
+    --color-on-warning-container: var(--cl-color-on-warning-container);
+    --color-error: var(--cl-color-error);
+    --color-error-container: var(--cl-color-error-container);
+    --color-on-error-container: var(--cl-color-on-error-container);
+    --color-error-solid: var(--cl-color-error-solid);
+    --color-on-error-solid: var(--cl-color-on-error-solid);
+    --color-data-1: var(--cl-color-data-1);
+    --color-data-2: var(--cl-color-data-2);
+    --color-data-3: var(--cl-color-data-3);
+    --color-data-4: var(--cl-color-data-4);
+    --color-data-5: var(--cl-color-data-5);
+
+    --color-surface-panel: var(--cl-color-surface-container);
+    --color-surface-surface: var(--cl-color-surface-container);
+    --color-surface-raised: var(--cl-color-surface-container-high);
+    --color-surface-row-hover: var(--cl-color-surface-container-high);
+    --color-border-default: var(--cl-color-outline);
+    --color-border-strong: var(--cl-color-outline-strong);
+    --color-border-faint: var(--cl-color-outline);
+    --color-text-primary: var(--cl-color-text);
+    --color-text-secondary: var(--cl-color-text-muted);
+    --color-text-tertiary: var(--cl-color-text-subtle);
+    --color-text-disabled: var(--cl-color-text-subtle);
+    --color-text-data-bright: var(--cl-color-text);
+    --color-text-log: var(--cl-color-text-muted);
+    --color-accent: var(--cl-color-primary);
+    --color-accent-alt-violet: var(--cl-color-data-3);
+    --color-accent-alt-teal: var(--cl-color-data-2);
+    --color-status-ok: var(--cl-color-success);
+    --color-status-warn: var(--cl-color-warning);
+    --color-status-err: var(--cl-color-error);
+    --color-status-err-solid: var(--cl-color-error-solid);
+    --color-status-info: var(--cl-color-text-muted);
+    --color-cluster-amber: var(--cl-color-data-4);
+    --color-cluster-pink: var(--cl-color-data-5);
+
+    --color-cluster-blue: var(--cl-color-cluster-blue);
+    --color-cluster-magenta: var(--cl-color-cluster-magenta);
+    --color-cluster-teal: var(--cl-color-cluster-teal);
+    --color-cluster-violet: var(--cl-color-cluster-violet);
+    --color-cluster-indigo: var(--cl-color-cluster-indigo);
+
+    --alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);
+    --alpha-active-nav-bg: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    --alpha-pill-ok: color-mix(in srgb, var(--color-status-ok) 10%, transparent);
+    --alpha-pill-warn: color-mix(in srgb, var(--color-status-warn) 10%, transparent);
+    --alpha-pill-err: color-mix(in srgb, var(--color-status-err) 10%, transparent);
+    --alpha-log-error-row: color-mix(in srgb, var(--color-status-err) 7%, transparent);
+    --alpha-log-warn-row: color-mix(in srgb, var(--color-status-warn) 4.5%, transparent);
+    --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-accent) 15%, transparent);
+  }
   .dark, .dark [data-tint] {
     --cl-color-surface-window: oklch(0.165 0.03 var(--cl-tint-h));
     --cl-color-surface-sunken: oklch(0.135 0.022 var(--cl-tint-h));

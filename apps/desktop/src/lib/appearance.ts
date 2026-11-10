@@ -26,12 +26,13 @@ export function applyTint(
 
 /**
  * The tint a window shows: the active cluster's identity, or the default when
- * the window belongs to no cluster (the All Clusters dashboard, no context yet).
+ * the window is `neutral`, i.e. showing something that belongs to no cluster
+ * (the All Clusters dashboard, onboarding), or has no context yet.
  */
 export function tintFor(
-  dashboard: boolean,
+  neutral: boolean,
   cluster: string | null,
   identityFor: (name: string) => IdentityColor,
 ): IdentityColor | null {
-  return dashboard || !cluster ? null : identityFor(cluster);
+  return neutral || !cluster ? null : identityFor(cluster);
 }

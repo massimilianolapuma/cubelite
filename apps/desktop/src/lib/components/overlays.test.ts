@@ -96,6 +96,15 @@ describe("DeletePodDialog", () => {
     expect(screen.getByText("Delete Pod", { selector: "button" })).toBeDisabled();
   });
 
+  it("labels the destructive fill with the role made for it", () => {
+    // `text` on `error-solid` is 2.8:1 in the light theme; `on-error-solid` is the
+    // pair the contrast matrix holds at 4.5:1.
+    render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
+    const confirm = screen.getByText("Delete Pod", { selector: "button" });
+    expect(confirm).toHaveClass("text-on-error-solid");
+    expect(confirm).not.toHaveClass("text-text-primary");
+  });
+
   it("registers with the overlay stack so Esc closes it before the drawer", () => {
     const onCancel = vi.fn();
     app.selectedPod = pod;

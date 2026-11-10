@@ -29,6 +29,37 @@ test("tinted roles follow --cl-tint-h in both themes", () => {
   );
 });
 
+test("a tinted subtree re-declares what utilities and recipes read", () => {
+  // @theme puts --color-* on :root, where var(--cl-color-*) is already resolved;
+  // without these, bg-*/text-* inside [data-tint] would keep the window's tint.
+  const sub = rule(buildLayer(tokens), "[data-tint]");
+  for (const line of [
+    "--color-surface-window: var(--cl-color-surface-window);",
+    "--color-text-primary: var(--cl-color-text);",
+    "--color-accent: var(--cl-color-primary);",
+    "--alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);",
+    "--focus-ring:",
+  ]) {
+    assert.ok(sub.includes(line), `missing "${line}"`);
+  }
+});
+
+test("malformed colour values are rejected instead of emitted", () => {
+  const withText = (value: unknown) =>
+    ({ ...tokens, color: { ...tokens.color, text: { ...tokens.color.text, $dark: value } } }) as Tokens;
+  assert.throws(() => buildLayer(withText([0.9, 0.01, "Tint"])), /colour "text" \(\$dark\)/);
+  assert.throws(() => buildLayer(withText([0.9, 0.01])), /colour "text" \(\$dark\)/);
+  assert.throws(() => buildLayer(withText(null)), /colour "text" \(\$dark\)/);
+  assert.throws(
+    () =>
+      buildLayer({
+        ...tokens,
+        identity: { ...tokens.identity, hues: { ...tokens.identity.hues, teal: "190" as never } },
+      }),
+    /identity "teal"/,
+  );
+});
+
 test("fixed-hue roles keep their own hue", () => {
   const layer = buildLayer(tokens);
   assert.ok(rule(layer, ".dark, .dark [data-tint]").includes("--cl-color-error: oklch(0.78 0.13 24);"));

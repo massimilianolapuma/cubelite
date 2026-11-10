@@ -38,8 +38,8 @@
 			type="button"
 			disabled={confirmDisabled}
 			title={confirmDisabled ? 'Requires backend support' : undefined}
-			class="focus-ring type-body flex h-7 items-center rounded-md px-3 text-text-primary hover:brightness-110 disabled:opacity-45"
-			style="background: var(--color-status-err-solid);"
+			class="focus-ring type-body flex h-7 items-center rounded-md px-3 text-on-error-solid hover:brightness-110 disabled:opacity-45"
+			style="background: var(--color-error-solid);"
 			onclick={onConfirm}
 		>
 			Delete Pod

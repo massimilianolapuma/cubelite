@@ -182,11 +182,11 @@ carries no contrast requirement.
   derives it from the tint-240 colours.
 - `apps/desktop/src/design/wcag.ts`: gains OKLCH → sRGB (clipped) so contrast is computed from the
   tokens. `tokens-contrast.test.ts` runs the pairing matrix for **both themes × five tints**:
-  `text` and `text-muted` on every surface; `text-subtle` on every surface except sunken; each
-  `on-*` on its fill; `primary`, `success`, `warning`, `error` as text on every surface; `data-*` on
-  sunken, container, container-high and container-top (4.5:1); `outline-strong` on every surface and
-  `success` on `primary-container` (3:1). All of these pass with the values above (checked while
-  writing this spec; lowest text pair 4.72:1, lowest 3:1 pair 3.56:1).
+  `text`, `text-muted`, `text-subtle` and `primary` on every surface; each `on-*` on its fill;
+  `success`, `warning`, `error` as text on every surface; `data-*` on sunken, container,
+  container-high and container-top (4.5:1); `outline-strong` on every surface and `success` on
+  `primary-container` (3:1). All of these pass with the values above (lowest text pair 4.72:1,
+  lowest 3:1 pair 3.09:1, `outline-strong` on `surface-container-top`).
 - `scripts/design-lint.sh`: phase 9 adds the retired names (`type-caption`, `type-colhead`,
   `type-section`, `type-subtitle`, old colour names, `rounded-2xl`) to the rejected patterns.
 - Fonts via `@fontsource` packages (bundled, offline); Geist packages removed in phase 9.

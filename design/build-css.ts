@@ -79,6 +79,31 @@ function oklch([l, c, h]: ColorValue): string {
   return `oklch(${l} ${c} ${h === "tint" ? "var(--cl-tint-h)" : h})`;
 }
 
+const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/** A colour value must be `[number, number, number | "tint"]`; anything else is a typo. */
+function checkColor(name: string, key: string, value: unknown): ColorValue {
+  const ok =
+    Array.isArray(value) &&
+    value.length === 3 &&
+    isNumber(value[0]) &&
+    isNumber(value[1]) &&
+    (isNumber(value[2]) || value[2] === "tint");
+  if (!ok) {
+    throw new Error(
+      `Bad colour "${name}" (${key}): expected [lightness, chroma, hue | "tint"], got ${JSON.stringify(value)}`,
+    );
+  }
+  return value as ColorValue;
+}
+
+function identityHues(tk: Tokens): [string, number][] {
+  return Object.entries(tk.identity.hues).map(([id, hue]) => {
+    if (!isNumber(hue)) throw new Error(`Bad hue for identity "${id}": ${JSON.stringify(hue)}`);
+    return [id, hue];
+  });
+}
+
 /** Motion values may carry a transform note after "·" — keep only duration/ease. */
 const motionValue = (v: string): string => v.split("·")[0].trim();
 
@@ -102,19 +127,31 @@ function aliases(tk: Tokens): [string, string][] {
 
 // ── @theme ────────────────────────────────────────────────────────────────────
 
+/**
+ * `--color-*` → `--cl-color-*` for every role, v2 alias and identity colour.
+ * Emitted in `@theme` (so Tailwind builds the utilities) and again on
+ * `[data-tint]`: `@theme` lands on `:root`, where `var(--cl-color-*)` is
+ * already resolved to the window's tint, so a tinted subtree must re-declare
+ * them to get its own.
+ */
+function colorAliasLines(tk: Tokens, indent: string): string[] {
+  return [
+    ...Object.keys(tk.color).map((r) => `${indent}--color-${r}: var(--cl-color-${r});`),
+    "",
+    ...aliases(tk).map(([name, role]) => `${indent}--color-${name}: var(--cl-color-${role});`),
+    "",
+    ...identityHues(tk).map(
+      ([id]) => `${indent}--color-cluster-${id}: var(--cl-color-cluster-${id});`,
+    ),
+  ];
+}
+
 export function buildTheme(tk: Tokens): string {
-  const roles = Object.keys(tk.color);
   return [
     "@theme {",
     ...entries<Token>(tk.font.family).map(([k, t]) => `  --font-${k}: ${t.$value};`),
     "",
-    ...roles.map((r) => `  --color-${r}: var(--cl-color-${r});`),
-    "",
-    ...aliases(tk).map(([name, role]) => `  --color-${name}: var(--cl-color-${role});`),
-    "",
-    ...Object.keys(tk.identity.hues).map(
-      (id) => `  --color-cluster-${id}: var(--cl-color-cluster-${id});`,
-    ),
+    ...colorAliasLines(tk, "  "),
     "",
     ...entries<Token>(tk.shadow).map(([k]) => `  --shadow-${k}: var(--cl-shadow-${k});`),
     "",
@@ -131,10 +168,10 @@ function colorBlock(tk: Tokens, theme: Theme): string {
   const key = theme === "dark" ? "$dark" : "$light";
   const [l, c] = tk.identity[key];
   return [
-    ...Object.entries(tk.color).map(([name, t]) => `    --cl-color-${name}: ${oklch(t[key])};`),
-    ...Object.entries(tk.identity.hues).map(
-      ([id, hue]) => `    --cl-color-cluster-${id}: ${oklch([l, c, hue])};`,
+    ...Object.entries(tk.color).map(
+      ([name, t]) => `    --cl-color-${name}: ${oklch(checkColor(name, key, t?.[key]))};`,
     ),
+    ...identityHues(tk).map(([id, hue]) => `    --cl-color-cluster-${id}: ${oklch([l, c, hue])};`),
   ].join("\n");
 }
 
@@ -167,7 +204,7 @@ export function buildLayer(tk: Tokens): string {
     "  }",
     "  :root {",
     `    --cl-tint-h: ${defaultHue};`,
-    ...Object.entries(tk.identity.hues).map(([id, hue]) => `    --cl-hue-${id}: ${hue};`),
+    ...identityHues(tk).map(([id, hue]) => `    --cl-hue-${id}: ${hue};`),
     "",
     shadowBlock(tk, "light"),
     "",
@@ -178,6 +215,11 @@ export function buildLayer(tk: Tokens): string {
     plainLines(tk.icon, "icon-", "    "),
     "",
     plainLines(tk.motion, "motion-", "    ", motionValue),
+    "  }",
+    "  [data-tint] {",
+    ...colorAliasLines(tk, "    "),
+    "",
+    alpha,
     "  }",
     "  .dark, .dark [data-tint] {",
     colorBlock(tk, "dark"),

@@ -31,9 +31,9 @@ describe("OKLCH contrast", () => {
   });
 
   it("clips a colour outside sRGB instead of exceeding the range", () => {
-    const y = oklchLuminance(0.9, 0.4, 145);
-    expect(y).toBeGreaterThan(0);
-    expect(y).toBeLessThanOrEqual(1);
+    // Far outside the gamut towards green: red and blue clip to 0, green to 1,
+    // so the result is exactly the green coefficient. Unclipped it would be 0.83.
+    expect(oklchLuminance(0.9, 0.4, 145)).toBeCloseTo(0.7152, 3);
   });
 
   it("gives 21:1 for white on black, in either order", () => {
