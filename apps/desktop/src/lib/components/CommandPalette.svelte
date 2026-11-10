@@ -120,7 +120,8 @@
 	/** ⌘↵ (Ctrl+↵ elsewhere) on a type: open it and pin it to the active profile. */
 	function onKeydownCapture(event: KeyboardEvent) {
 		const mod = isMac ? event.metaKey : event.ctrlKey;
-		if (event.key !== 'Enter' || !mod) return;
+		// ↵ that confirms an IME composition is not a command.
+		if (event.key !== 'Enter' || !mod || event.isComposing) return;
 		const view = viewByValue.get(highlighted);
 		if (!view) return;
 		event.preventDefault();
@@ -171,6 +172,7 @@
 			<div class="flex items-center gap-2 border-b border-border-faint px-3">
 				<Command.Input
 					autofocus
+					aria-describedby="palette-keys"
 					placeholder="Search clusters, resources, actions…"
 					class="h-11 flex-1 bg-transparent type-subtitle font-normal text-text-primary outline-none placeholder:text-text-disabled"
 				/>
@@ -265,7 +267,9 @@
 									{/if}
 									<span class="type-caption text-text-tertiary">{item.section}</span>
 									{#if count}
-										<span class="type-micro w-8 text-right font-mono text-text-tertiary">{count.value}</span>
+										<span class="type-micro w-8 text-right font-mono text-text-tertiary"
+											>{count.value}<span class="sr-only">&#32;objects</span></span
+										>
 									{/if}
 								</Command.Item>
 							{/each}
@@ -273,7 +277,10 @@
 					</Command.Group>
 				</Command.Viewport>
 			</Command.List>
-			<div class="type-caption flex justify-end gap-3 border-t border-border-faint px-3 py-1.5 text-text-tertiary">
+			<div
+				id="palette-keys"
+				class="type-caption flex justify-end gap-3 border-t border-border-faint px-3 py-1.5 text-text-tertiary"
+			>
 				<span>↵ open</span>
 				<span>{pinHint} open and pin to {profiles.active.name}</span>
 			</div>

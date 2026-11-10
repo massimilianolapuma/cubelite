@@ -144,6 +144,40 @@ describe("tables", () => {
     expect(dynamic.count("roles")).toBe(0);
   });
 
+  it("a namespace change drops the previous namespace's rows and error at once", async () => {
+    table.mockResolvedValueOnce(tableOf(row("a")));
+    await dynamic.load("roles");
+    app.namespace = "b";
+    table.mockReturnValueOnce(new Promise(() => {}));
+    void dynamic.load("roles");
+    expect(dynamic.tables.roles).toBeUndefined();
+    await vi.waitFor(() => expect(table).toHaveBeenCalledTimes(2));
+
+    table.mockRejectedValueOnce("403 Forbidden");
+    app.namespace = "c";
+    await dynamic.load("roles");
+    expect(dynamic.errors.roles).toContain("Forbidden");
+    app.namespace = "d";
+    table.mockReturnValueOnce(new Promise(() => {}));
+    void dynamic.load("roles");
+    expect(dynamic.errors.roles).toBeUndefined();
+  });
+
+  it("a reload in the same namespace, or of a cluster-scoped kind, keeps the rows", async () => {
+    table.mockResolvedValueOnce(tableOf(row("a")));
+    await dynamic.load("roles");
+    table.mockReturnValueOnce(new Promise(() => {}));
+    void dynamic.load("roles");
+    expect(dynamic.tables.roles?.rows).toHaveLength(1);
+
+    table.mockResolvedValueOnce(tableOf(row("fast", null)));
+    await dynamic.load("storageclasses");
+    app.namespace = "b";
+    table.mockReturnValueOnce(new Promise(() => {}));
+    void dynamic.load("storageclasses");
+    expect(dynamic.tables.storageclasses?.rows).toHaveLength(1);
+  });
+
   it("drops a late answer after clear (cluster switch)", async () => {
     let resolve!: (t: ResourceTable) => void;
     table.mockReturnValueOnce(new Promise((r) => (resolve = r)));

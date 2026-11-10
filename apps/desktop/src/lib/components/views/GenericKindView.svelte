@@ -97,8 +97,9 @@
 								type="button"
 								class="focus-ring grid w-full items-center gap-x-3 border-b border-border-faint px-3 text-left last:border-b-0 hover:bg-surface-row-hover"
 								style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);{active
-									? ' background: var(--alpha-selection-bg);'
+									? ' background: var(--alpha-selection-bg); box-shadow: inset 2px 0 0 var(--color-accent);'
 									: ''}"
+								aria-current={active ? 'true' : undefined}
 								onclick={() => (app.selectedObject = { name: r.name, namespace: r.namespace })}
 							>
 								{#each plan as column, i (i)}

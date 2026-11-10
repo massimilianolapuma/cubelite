@@ -58,6 +58,9 @@
 		>
 			{label}
 		</span>
+		{#if unavailable}
+			<span class="sr-only">, not available on this cluster</span>
+		{/if}
 		{#if count}
 			<span class="type-micro font-mono text-text-tertiary" data-testid="nav-count">{count.value}</span>
 		{/if}
