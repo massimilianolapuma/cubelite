@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { ContextMenu } from 'bits-ui';
 	import Search from '@lucide/svelte/icons/search';
 	import Kbd from '#lib/components/ui/Kbd.svelte';
@@ -41,10 +41,13 @@
 	);
 
 	// A view reached from elsewhere (palette, badges, links) that is not
-	// pinned: open its section so the active row is visible.
+	// pinned: open its section so the active row is visible. Only a new view,
+	// or its row leaving Pinned, reopens a section: other pin changes, a
+	// profile switch or a rediscovery leave a section you closed closed.
+	const activePinned = $derived(pins.some((p) => p.view === app.view));
 	$effect(() => {
 		const view: View = app.view;
-		if (pins.some((p) => p.view === view)) return;
+		if (activePinned) return;
 		const custom = isCustomView(view) ? parseCustomView(view) : null;
 		if (custom) {
 			untrack(() => {
@@ -54,9 +57,23 @@
 			});
 			return;
 		}
-		const home = sections.find((s) => s.items.some((i) => i.view === view));
-		if (home) untrack(() => sidebar.open(home.id));
+		untrack(() => {
+			const home = sections.find((s) => s.items.some((i) => i.view === view));
+			if (home) sidebar.open(home.id);
+		});
 	});
+
+	// Unpinning removes the focused row's menu trigger: focus the next pin
+	// (the previous one at the end) instead of leaving it on <body>.
+	let pinList = $state<HTMLElement | null>(null);
+	function unpin(view: View) {
+		const at = pins.findIndex((p) => p.view === view);
+		profiles.unpin(view);
+		void tick().then(() => {
+			const rows = pinList?.querySelectorAll<HTMLElement>('li button') ?? [];
+			rows[Math.min(at, rows.length - 1)]?.focus();
+		});
+	}
 
 	const label = 'type-section px-2.5 text-text-tertiary';
 	const menuItem =
@@ -79,8 +96,10 @@
 	</div>
 
 	<div class="shrink-0">
-		<div class="{label} mb-0.5" id="sidebar-pinned-label">Pinned · {profiles.active.name}</div>
-		<ul aria-label="Pinned · {profiles.active.name}">
+		<div class="{label} mb-0.5 truncate" id="sidebar-pinned-label" title={profiles.active.name}>
+			Pinned · {profiles.active.name}
+		</div>
+		<ul aria-label="Pinned · {profiles.active.name}" bind:this={pinList}>
 			{#each pins as pin (pin.view)}
 				<li>
 					<ContextMenu.Root>
@@ -91,7 +110,7 @@
 							<ContextMenu.Content
 								class="animate-popin z-50 min-w-40 rounded-xl border border-border-strong bg-surface-overlay p-1 shadow-overlay"
 							>
-								<ContextMenu.Item class={menuItem} onSelect={() => profiles.unpin(pin.view)}>Unpin</ContextMenu.Item>
+								<ContextMenu.Item class={menuItem} onSelect={() => unpin(pin.view)}>Unpin</ContextMenu.Item>
 							</ContextMenu.Content>
 						</ContextMenu.Portal>
 					</ContextMenu.Root>

@@ -14,10 +14,12 @@
 </script>
 
 <DropdownMenu.Root>
+	<!-- Off macOS the "Ctrl+K" hint beside it is wider: the prefix gives the name its room. -->
 	<DropdownMenu.Trigger
 		class="focus-ring flex h-7 w-full items-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-left text-text-secondary hover:brightness-110"
+		title="Profile: {profiles.active.name}"
 	>
-		<span class="type-caption">Profile:</span>
+		<span class="type-caption {isMac ? '' : 'sr-only'}">Profile:</span>
 		<span class="type-body flex-1 truncate text-text-primary">{profiles.active.name}</span>
 		<ChevronDown class="h-3 w-3 shrink-0 text-text-tertiary" />
 	</DropdownMenu.Trigger>

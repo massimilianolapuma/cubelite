@@ -129,13 +129,14 @@ export function customView(group: string, plural: string): CustomView {
   return `crd:${group}/${plural}`;
 }
 
+/** `crd:<group>/<plural>` outside the built-in groups (those kinds have their own views). */
 export function parseCustomView(v: string): { group: string; plural: string } | null {
   const m = CUSTOM_ID.exec(v);
-  return m ? { group: m[1], plural: m[2] } : null;
+  return m && !BUILTIN_GROUPS.has(m[1]) ? { group: m[1], plural: m[2] } : null;
 }
 
 export function isCustomView(v: unknown): v is CustomView {
-  return typeof v === "string" && CUSTOM_ID.test(v);
+  return typeof v === "string" && parseCustomView(v) !== null;
 }
 
 /** Views listed through the API server's Table: the ★ kinds and custom kinds. */

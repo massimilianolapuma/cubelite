@@ -123,6 +123,13 @@ describe("real-world CRD names", () => {
     expect(isCustomView("crd:x.io/-bad")).toBe(false);
     expect(isCustomView("crd:x.io/bad-")).toBe(false);
   });
+
+  it("rejects ids in built-in groups (those kinds have their own views)", () => {
+    for (const v of ["crd:apps/deployments", "crd:rbac.authorization.k8s.io/roles", "crd:metrics.k8s.io/pods"]) {
+      expect(isCustomView(v), v).toBe(false);
+      expect(parseCustomView(v), v).toBeNull();
+    }
+  });
 });
 
 describe("vendorOf", () => {
