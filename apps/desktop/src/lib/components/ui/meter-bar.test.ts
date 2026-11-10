@@ -5,7 +5,7 @@ import MeterBar from "./MeterBar.svelte";
 
 function fillAt(percent: number | null): string {
   const { unmount } = render(MeterBar, { props: { label: "CPU", percent } });
-  const background = screen.getByTestId("meter-fill").style.background;
+  const background = screen.getByTestId("meter-fill").style.backgroundColor;
   unmount();
   return background;
 }

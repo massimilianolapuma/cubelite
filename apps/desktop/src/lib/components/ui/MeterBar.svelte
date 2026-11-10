@@ -26,7 +26,7 @@
 			<div
 				class="h-full rounded-full transition-[width]"
 				data-testid="meter-fill"
-				style="width: {percent ?? 0}%; background: {fill};"
+				style="width: {percent ?? 0}%; background-color: {fill};"
 			></div>
 		</div>
 		<span class="w-9 shrink-0 text-right type-micro font-mono text-text-tertiary">
