@@ -121,6 +121,7 @@ describe("Sidebar C", () => {
     resources.pods = [pod({ ready: false, phase: "Pending" })];
     render(Sidebar);
     expect(within(section("Workloads")).getByText("pods need attention")).toBeInTheDocument();
+    expect(section("Workloads").querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "err");
     await fireEvent.click(section("Workloads"));
     expect(within(section("Workloads")).queryByText("pods need attention")).toBeNull();
   });

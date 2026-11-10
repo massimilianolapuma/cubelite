@@ -94,7 +94,7 @@ describe("Custom Resources section", () => {
     await fireEvent.click(row);
     expect(app.view).toBe("crd:kibana.k8s.elastic.co/kibanas");
     expect(row.className).toBe(
-      within(screen.getByRole("list", { name: "Pinned · On-call" })).getByText("Pods").closest("button")!.className.replace("h-[26px]", "h-6"),
+      within(screen.getByRole("list", { name: "Pinned · On-call" })).getByText("Pods").closest("button")!.className,
     );
   });
 
@@ -151,7 +151,6 @@ describe("Custom Resources section", () => {
     const pinned = within(screen.getByRole("list", { name: "Pinned · On-call" }));
     const row = pinned.getByText("ServiceMonitor").closest("button")!;
     expect(row).toHaveAttribute("title", "monitoring.coreos.com");
-    expect(row.querySelector("span")!.getAttribute("style")).toContain("--color-text-tertiary");
   });
 
   it("a pinned custom kind on a cluster that lacks it", async () => {

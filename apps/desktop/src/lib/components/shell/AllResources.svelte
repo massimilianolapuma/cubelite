@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import NavRow from './NavRow.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import CustomResources from './CustomResources.svelte';
 	import type { NavSection } from '#lib/navigation.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
@@ -46,31 +47,29 @@
 		<button
 			type="button"
 			data-section-toggle
-			class="focus-ring flex h-[26px] shrink-0 items-center gap-2 rounded-md pr-2 pl-2.5 text-left hover:bg-surface-row-hover"
+			class="focus-ring flex h-(--nav-h) shrink-0 items-center gap-2 rounded-full pr-3.5 pl-2.5 text-left hover:bg-surface-container {open
+				? 'text-text'
+				: 'text-text-muted'}"
 			aria-expanded={open}
 			aria-controls="sidebar-section-{section.id}"
 			onclick={() => sidebar.toggle(section.id)}
 			onkeydown={(e) => onKeydown(e, section.id)}
 		>
-			<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {section.dot};"></span>
-			<span class="type-body flex-1 truncate {open ? 'text-text-primary' : 'text-text-secondary'}">
-				{section.label}
-			</span>
-			{#if alert}
-				<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: var(--color-status-err);" aria-hidden="true"
-				></span>
-				<span class="sr-only">pods need attention</span>
-			{/if}
-			<span class="type-micro font-mono text-text-tertiary">{section.items.length}</span>
 			<ChevronRight
-				class="h-3 w-3 shrink-0 text-text-tertiary transition-transform {open ? 'rotate-90' : ''}"
+				class="h-3.5 w-3.5 shrink-0 text-text-subtle transition-transform {open ? 'rotate-90' : ''}"
 				aria-hidden="true"
 			/>
+			<span class="type-body flex-1 truncate {open ? 'font-semibold' : ''}">{section.label}</span>
+			{#if alert}
+				<span class="shrink-0 text-error"><StatusGlyph state="err" size={8} /></span>
+				<span class="sr-only">pods need attention</span>
+			{/if}
+			<span class="type-data-sm text-text-subtle">{section.items.length}</span>
 		</button>
 		{#if open}
-			<ul id="sidebar-section-{section.id}" aria-label="{section.label} types" class="mb-0.5 min-h-0 overflow-y-auto pl-2">
+			<ul id="sidebar-section-{section.id}" aria-label="{section.label} types" class="mb-0.5 min-h-0 overflow-y-auto pl-5">
 				{#each section.items as item (item.view)}
-					<li><NavRow view={item.view} label={item.label} dot={section.dot} compact /></li>
+					<li><NavRow view={item.view} label={item.label} /></li>
 				{/each}
 			</ul>
 		{/if}

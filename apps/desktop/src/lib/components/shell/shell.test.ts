@@ -196,7 +196,10 @@ describe("Sidebar", () => {
     sidebar.open("storage");
     const storageClasses = (await screen.findByText("Storage Classes")).closest("button")!;
     expect(storageClasses).toHaveAttribute("title", "Not available on this cluster");
-    expect(screen.getByText("Storage Classes")).toHaveClass("text-text-disabled");
+    // Stays in place, marked, with an en dash where the count would be.
+    expect(storageClasses).toHaveAttribute("data-unavailable", "true");
+    expect(storageClasses).toHaveTextContent("–");
+    expect(storageClasses.querySelector("[data-testid=nav-count]")).toBeNull();
     dynamic.clear();
   });
 
@@ -217,10 +220,12 @@ describe("Sidebar", () => {
     render(Sidebar);
     const row = screen.getByText("Pods").closest("button")!;
     expect(row).toHaveTextContent("3");
-    expect(row.querySelector("[data-testid=nav-count]")).toHaveClass("text-text-tertiary");
+    expect(row.querySelector("[data-testid=nav-count]")).not.toHaveAttribute("data-tone");
     const badge = screen.getByRole("button", { name: "1 pod needs attention: show them" });
     expect(badge).toHaveTextContent("1");
-    expect(badge.getAttribute("style")).toContain("--color-status-err");
+    // Failure is a square as well as a colour.
+    expect(badge).toHaveAttribute("data-tone", "err");
+    expect(badge.querySelector("svg")).toHaveAttribute("data-glyph", "err");
 
     await fireEvent.click(badge);
     expect(app.view).toBe("pods");
@@ -241,10 +246,25 @@ describe("Sidebar", () => {
     resources.events = [event("Warning"), event("Warning"), event("Normal")];
     render(Sidebar);
     const badge = screen.getByRole("button", { name: "2 warnings: show them" });
-    expect(badge.getAttribute("style")).toContain("--color-status-warn");
+    expect(badge).toHaveAttribute("data-tone", "warn");
+    expect(badge.querySelector("svg")).toHaveAttribute("data-glyph", "warn");
     await fireEvent.click(badge);
     expect(app.view).toBe("events");
     expect(app.eventWarningsOnly).toBe(true);
+  });
+
+  it("rows carry no section dot: colour is for the tint and for state", () => {
+    render(Sidebar);
+    const row = screen.getByText("Pods").closest("button")!;
+    expect(row.firstElementChild).toHaveTextContent("Pods");
+    expect(row.querySelector("[style*='background']")).toBeNull();
+  });
+
+  it("marks the current view on its row", async () => {
+    render(Sidebar);
+    await fireEvent.click(screen.getByText("Deployments"));
+    expect(screen.getByText("Deployments").closest("[data-active]")).toHaveAttribute("data-active", "true");
+    expect(screen.getByText("Pods").closest("[data-active]")).toHaveAttribute("data-active", "false");
   });
 
   it("has no badge when nothing needs attention (#574)", () => {
