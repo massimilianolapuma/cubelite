@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  gridColumns,
+  shownColumns,
   groupByNamespace,
   groupLabel,
   isCollapsed,
@@ -122,7 +122,7 @@ describe("collapse state (#547)", () => {
   });
 });
 
-describe("groupLabel / gridColumns (#547)", () => {
+describe("groupLabel / shownColumns (#547)", () => {
   const [, teamA, teamB] = groupByNamespace(rows, { field: "api", dir: "asc" }, withStatus);
 
   it("names the group, its rows, its problems and its state", () => {
@@ -131,7 +131,7 @@ describe("groupLabel / gridColumns (#547)", () => {
   });
 
   it("drops the Namespace column while grouped", () => {
-    expect(gridColumns(["2fr", "1fr", "0.5fr"], false)).toBe("grid-template-columns: 2fr 1fr 0.5fr;");
-    expect(gridColumns(["2fr", "1fr", "0.5fr"], true)).toBe("grid-template-columns: 2fr 0.5fr;");
+    expect(shownColumns(["2fr", "1fr", "0.5fr"], false)).toEqual(["2fr", "1fr", "0.5fr"]);
+    expect(shownColumns(["2fr", "1fr", "0.5fr"], true)).toEqual(["2fr", "0.5fr"]);
   });
 });

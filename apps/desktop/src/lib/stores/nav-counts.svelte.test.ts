@@ -13,6 +13,7 @@ import { countFor } from "./nav-counts.svelte";
 import { app } from "./app.svelte";
 import { resources } from "./resources.svelte";
 import { dynamic } from "./dynamic.svelte";
+import { lists } from "./lists.svelte";
 import type { PodInfo } from "#lib/tauri.ts";
 
 const pod = (ready: boolean): PodInfo => ({
@@ -46,7 +47,7 @@ describe("countFor", () => {
     expect(count.attention).toMatchObject({ value: 1, label: "1 pod needs attention", tone: "err" });
     count.attention!.open();
     expect(app.view).toBe("pods");
-    expect(app.podIssuesOnly).toBe(true);
+    expect(lists.pressed("pods")).toEqual(["err", "warn"]);
   });
 
   it("shows a ★ kind only once loaded for the current namespace", async () => {

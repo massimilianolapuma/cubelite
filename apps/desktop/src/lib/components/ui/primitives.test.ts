@@ -10,7 +10,6 @@ import Switch from "./Switch.svelte";
 import SegmentedControl from "./SegmentedControl.svelte";
 import StatCard from "./StatCard.svelte";
 import Toaster from "./Toaster.svelte";
-import FilterToggle from "./FilterToggle.svelte";
 import { toasts } from "#lib/stores/toasts.svelte.ts";
 
 const text = (value: string) => createRawSnippet(() => ({ render: () => `<span>${value}</span>` }));
@@ -140,14 +139,6 @@ describe("Chip", () => {
     expect(screen.getByRole("button", { name: /Failing/ })).toHaveAttribute("data-fill", "error");
     expect(screen.getByRole("button", { name: "Mine" })).toHaveAttribute("data-fill", "primary");
     expect(screen.getByRole("button", { name: "Off" })).toHaveAttribute("data-fill", "none");
-  });
-
-  it("FilterToggle keeps its API on the chip", () => {
-    render(FilterToggle, { props: { label: "Needs attention", count: 3, pressed: true, tone: "warn", onToggle: () => {} } });
-    const chip = screen.getByRole("button", { name: /Needs attention/ });
-    expect(chip).toHaveAttribute("aria-pressed", "true");
-    expect(glyphOf(chip)).toBe("warn");
-    expect(chip).toHaveTextContent("3");
   });
 });
 

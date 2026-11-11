@@ -1,5 +1,5 @@
 <script lang="ts">
-	import StatusGlyph from './StatusGlyph.svelte';
+	import StatusGlyph, { type GlyphState } from './StatusGlyph.svelte';
 
 	// A pill that filters a list (Tonal §7), with an optional status shape and a
 	// count. Resting it is a quiet surface; pressed it takes its state's fill,
@@ -13,7 +13,7 @@
 	}: {
 		label: string;
 		count?: number;
-		state?: 'ok' | 'warn' | 'err' | 'done';
+		state?: GlyphState;
 		pressed: boolean;
 		onToggle: () => void;
 	} = $props();

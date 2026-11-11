@@ -52,6 +52,7 @@ const WIDTH: Record<ColumnPlan["kind"], string> = {
   age: "0.55fr",
 };
 
-export function gridTemplate(plan: readonly ColumnPlan[]): string {
-  return `grid-template-columns: ${plan.map((c) => WIDTH[c.kind]).join(" ")};`;
+/** Grid tracks of a plan, one per column (see `ListCard`). */
+export function planTracks(plan: readonly ColumnPlan[]): string[] {
+  return plan.map((c) => WIDTH[c.kind]);
 }

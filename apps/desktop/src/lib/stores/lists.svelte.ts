@@ -5,12 +5,16 @@
  *
  * Grouping by namespace (#547): one global persisted switch, and the
  * collapsed groups per namespace name, shared by all lists, for the session.
+ *
+ * Status chips (Tonal §3 #7): the pressed chips of each list, for the session.
  */
 import { DEFAULT_SORT, firstDir, isSortSpec, type SortDir, type SortField, type SortSpec } from "#lib/list-sort.ts";
 import type { CollapseState } from "#lib/list-group.ts";
+import { toggleChip } from "#lib/status-chips.ts";
 import { persisted } from "./settings.svelte";
 
 const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
+const NONE: readonly string[] = [];
 
 class ListsStore {
   #default = persisted<SortSpec>("lists.sort", DEFAULT_SORT, isSortSpec);
@@ -19,6 +23,21 @@ class ListsStore {
   overrides = $state<Record<string, SortSpec>>({});
   /** Collapsed namespace groups for this session (see `list-group.ts`). */
   collapsed = $state<CollapseState>({});
+  /** List id → keys of its pressed status chips (see `status-chips.ts`). */
+  #status = $state<Record<string, readonly string[]>>({});
+
+  /** Pressed status chips of `list`; empty = every row shows. */
+  pressed(list: string): readonly string[] {
+    return Object.hasOwn(this.#status, list) ? (this.#status[list] ?? NONE) : NONE;
+  }
+
+  setStatus(list: string, keys: readonly string[]): void {
+    this.#status = { ...this.#status, [list]: keys };
+  }
+
+  toggleStatus(list: string, key: string): void {
+    this.setStatus(list, toggleChip(this.pressed(list), key));
+  }
 
   /** Preference "Group by namespace"; applies only with all namespaces shown. */
   get groupByNamespace(): boolean {
@@ -63,6 +82,7 @@ class ListsStore {
   resetSession(): void {
     this.overrides = {};
     this.collapsed = {};
+    this.#status = {};
   }
 }
 

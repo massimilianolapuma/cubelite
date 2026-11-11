@@ -29,6 +29,55 @@ test("a long context name truncates instead of pushing the top bar out of the wi
   await expect(header.getByTestId("connection-state")).toBeInViewport();
 });
 
+test("the top bar stays on one row at the minimum window size", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await boot(page);
+  const header = page.locator("header").first();
+  await expect(header.getByTestId("connection-state")).toBeVisible();
+  // One row: every control starts at the same height.
+  const tops = await header.locator(":scope > button, :scope > div").evaluateAll((els) =>
+    els.map((el) => Math.round(el.getBoundingClientRect().top)),
+  );
+  expect(new Set(tops).size).toBe(1);
+  // Search collapses to its icon but keeps its name and still opens the palette.
+  const search = header.getByRole("button", { name: /Search & switch/ });
+  await expect(search).toBeVisible();
+  expect((await search.boundingBox())!.width).toBeLessThan(60);
+  await search.click();
+  await expect(page.getByPlaceholder("Search clusters, resources, actions…")).toBeVisible();
+});
+
+// A long name in one chip must not squeeze the other chip's value away.
+const LONG_CONTEXT = "arn:aws:eks:eu-west-1:123456789012:cluster/production-platform-main";
+const LONG_NAMESPACE = "payments-gateway-canary-eu-central-1-blue-green-a";
+for (const width of [800, 1000, 1280]) {
+  test(`a long context name leaves the namespace readable at ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 700 });
+    await boot(page, { contexts: [{ ...FIXTURES.contexts[0], name: LONG_CONTEXT }, ...FIXTURES.contexts.slice(1)] });
+    const header = page.locator("header").first();
+    await header.getByRole("button", { name: /Namespace/ }).click();
+    await page.getByRole("menuitemradio", { name: /kube-system/ }).click();
+    const value = header.getByText("kube-system", { exact: true });
+    await expect(value).toBeVisible();
+    // Whole, not cut to an ellipsis.
+    expect(await value.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect((await header.getByText(LONG_CONTEXT).boundingBox())!.width).toBeGreaterThan(40);
+    expect(await header.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  });
+
+  test(`a long namespace leaves the context name readable at ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 700 });
+    await boot(page, { namespaces: [...FIXTURES.namespaces, { name: LONG_NAMESPACE, phase: "Active" }] });
+    const header = page.locator("header").first();
+    await header.getByRole("button", { name: /Namespace/ }).click();
+    await page.getByRole("menuitemradio", { name: new RegExp(LONG_NAMESPACE) }).click();
+    const name = header.getByText(FIXTURES.contexts[0].name, { exact: true });
+    expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect((await header.getByText(LONG_NAMESPACE).boundingBox())!.width).toBeGreaterThan(40);
+    expect(await header.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  });
+}
+
 test("the gutter above the top bar drags the window, as the title bar did", async ({ page }) => {
   await boot(page);
   await expect(page.locator("header").first()).toBeVisible();

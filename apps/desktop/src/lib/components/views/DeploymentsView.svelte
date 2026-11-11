@@ -1,35 +1,40 @@
 <script lang="ts">
-	import ListTitle from '#lib/components/ui/ListTitle.svelte';
 	import DeploymentTable from '#lib/components/DeploymentTable.svelte';
 	import DeploymentDrawer from '#lib/components/deployments/DeploymentDrawer.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { SEARCH_FIELD } from '#lib/ui-classes.ts';
 
-	const filtered = $derived(
-		app.deploymentFilter
-			? resources.deployments.filter((d) =>
-					`${d.namespace}/${d.name}`.toLowerCase().includes(app.deploymentFilter.toLowerCase())
-				)
-			: resources.deployments
-	);
+	const filtered = $derived.by(() => {
+		const text = app.deploymentFilter.trim().toLowerCase();
+		return text
+			? resources.deployments.filter((d) => `${d.namespace}/${d.name}`.toLowerCase().includes(text))
+			: resources.deployments;
+	});
 </script>
 
-<div class="flex flex-col gap-3 p-4">
-	<ListTitle title="Deployments">
+<DeploymentTable
+	deployments={filtered}
+	total={resources.deployments.length}
+	filter={app.deploymentFilter}
+	selected={app.selectedDeployment}
+	onRowClick={(dep) => (app.selectedDeployment = dep)}
+	loaded={resources.mainLoaded}
+	error={resources.listError('deployments')}
+	busy={resources.loading}
+	onRetry={() => void resources.load()}
+	onClearFilter={() => (app.deploymentFilter = '')}
+>
+	{#snippet tools()}
 		<input
 			type="text"
 			placeholder="Filter deployments…"
+			aria-label="Filter deployments"
 			bind:value={app.deploymentFilter}
-			class="focus-ring h-7 w-52 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
+			class={SEARCH_FIELD}
 		/>
-	</ListTitle>
-	<DeploymentTable
-		filter={app.deploymentFilter}
-		deployments={filtered}
-		selected={app.selectedDeployment}
-		onRowClick={(dep) => (app.selectedDeployment = dep)}
-	/>
-</div>
+	{/snippet}
+</DeploymentTable>
 
 {#if app.selectedDeployment}
 	<DeploymentDrawer
