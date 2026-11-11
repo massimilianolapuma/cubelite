@@ -3,10 +3,9 @@
 	import { setMode } from 'mode-watcher';
 	import { listen } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
-	import Titlebar from '#lib/components/shell/Titlebar.svelte';
+	import TopBar from '#lib/components/shell/TopBar.svelte';
 	import ClusterRail from '#lib/components/shell/ClusterRail.svelte';
 	import Sidebar from '#lib/components/shell/Sidebar.svelte';
-	import StatusBar from '#lib/components/shell/StatusBar.svelte';
 	import CommandPalette from '#lib/components/CommandPalette.svelte';
 	import OnboardingModal from '#lib/components/OnboardingModal.svelte';
 	import PreferencesModal from '#lib/components/PreferencesModal.svelte';
@@ -18,6 +17,8 @@
 	import LogPanel from '#lib/components/logpanel/LogPanel.svelte';
 	import LogWindowShell from '#lib/components/logpanel/LogWindowShell.svelte';
 	import { applyDensity, applyTint, tintFor } from '#lib/appearance.ts';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
+	import { beginWindowDrag } from '#lib/window-drag.ts';
 	import { KUBECONFIG_CHANGED } from '#lib/tauri.ts';
 	import { matchShortcut } from '#lib/keyboard.ts';
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
@@ -48,7 +49,7 @@
 
 	/**
 	 * Marks the end of startup on <html data-app-ready>. The e2e suite waits for it:
-	 * clicking while the titlebar and rail still change size made a mousedown and
+	 * clicking while the top bar and rail still change size made a mousedown and
 	 * its mouseup land on different elements, so the click was lost (#584).
 	 */
 	function markReady() {
@@ -151,59 +152,68 @@
 {#if logWindowKey}
 	<LogWindowShell windowKey={logWindowKey} />
 {:else}
-<div class="flex h-screen flex-col overflow-hidden bg-surface-window">
-	<Titlebar />
-	{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
-		<div
-			class="relative z-10 flex items-center justify-center gap-2 border-b border-border-default px-2.5 py-1"
-			style="background: var(--alpha-pill-ok);"
-		>
-			<span class="type-caption" style="color: var(--color-status-ok);">
-				Update {updater.version} available
-			</span>
-			<button
-				type="button"
-				class="type-caption underline"
-				style="color: var(--color-status-ok);"
-				disabled={updater.status === 'downloading'}
-				onclick={() => updater.installAndRestart()}
-			>
-				{updater.status === 'downloading' ? 'Downloading…' : 'Restart to update'}
-			</button>
-			<button
-				type="button"
-				class="type-caption underline"
-				style="color: var(--color-status-ok);"
-				onclick={() => updater.dismiss()}
-			>
-				Later
-			</button>
+<div class="flex h-screen overflow-hidden bg-surface-window">
+	<!-- Rail and sidebar sit on the window ground (Tonal §5). On macOS a strip above
+	     the rail leaves room for the window controls; the sidebar starts beside them,
+	     so it has the same height on every platform. Both gaps drag the window. -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="flex shrink-0 flex-col">
+		<div class="{isMac ? 'h-9' : 'h-2'} shrink-0" data-tauri-drag-region onmousedown={beginWindowDrag}></div>
+		<ClusterRail />
+	</div>
+	{#if app.view !== 'dashboard'}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="flex shrink-0 flex-col">
+			<div class="h-2 shrink-0" data-tauri-drag-region onmousedown={beginWindowDrag}></div>
+			<Sidebar />
 		</div>
 	{/if}
-	<div class="flex min-h-0 flex-1">
-		<ClusterRail />
-		{#if app.view !== 'dashboard'}
-			<Sidebar />
+	<!-- Without the sidebar the top bar would start under the macOS window controls. -->
+	<div class="flex min-w-0 flex-1 flex-col gap-3 py-3 pr-3 {isMac && app.view === 'dashboard' ? 'pl-3' : 'pl-1'}">
+		<TopBar />
+		{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
+			<div
+				class="flex min-h-(--chip-h) shrink-0 items-center gap-3 rounded-full bg-success-container px-4 text-on-success-container"
+				role="status"
+			>
+				<StatusGlyph state="ok" />
+				<span class="type-body-sm min-w-0 flex-1 truncate">Update {updater.version} available</span>
+				<button
+					type="button"
+					class="focus-ring type-body rounded-full px-2 font-semibold underline-offset-2 hover:underline disabled:opacity-45"
+					disabled={updater.status === 'downloading'}
+					onclick={() => updater.installAndRestart()}
+				>
+					{updater.status === 'downloading' ? 'Downloading…' : 'Restart to update'}
+				</button>
+				<button
+					type="button"
+					class="focus-ring type-body rounded-full px-2 underline-offset-2 hover:underline"
+					onclick={() => updater.dismiss()}
+				>
+					Later
+				</button>
+			</div>
 		{/if}
-		<div class="flex min-w-0 flex-1 flex-col">
-			{#if app.view !== 'dashboard' && clusters.connectionState === 'connected'}
-				<IntegrationsBanner />
-			{/if}
-			<!-- Drawers portal into <main> (data-drawer-host), outside the scroller,
-			     so they stay pinned to the right edge while the view scrolls. -->
-			<main class="relative flex min-h-0 min-w-0 flex-1 flex-col" data-drawer-host>
-				<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
-					{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
-						<UnreachableView />
-					{:else}
-						<Current {...entry.props ?? {}} />
-					{/if}
-				</div>
-			</main>
-			<LogPanel />
-		</div>
+		{#if app.view !== 'dashboard' && clusters.connectionState === 'connected'}
+			<IntegrationsBanner />
+		{/if}
+		<!-- The content card. Drawers portal into <main> (data-drawer-host), outside the
+		     scroller, so they stay pinned to its right edge while the view scrolls. -->
+		<main
+			class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-container"
+			data-drawer-host
+		>
+			<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+				{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
+					<UnreachableView />
+				{:else}
+					<Current {...entry.props ?? {}} />
+				{/if}
+			</div>
+		</main>
+		<LogPanel />
 	</div>
-	<StatusBar />
 </div>
 
 <CommandPalette />

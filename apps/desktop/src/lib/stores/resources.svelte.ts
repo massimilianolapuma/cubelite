@@ -153,7 +153,7 @@ class ResourcesStore {
     return this.pods.filter(needsAttention);
   }
 
-  /** Warning-type events (drives sidebar/status-bar counts and Overview). */
+  /** Warning-type events (drives the sidebar and top-bar counts and Overview). */
   get warningEvents(): EventInfo[] {
     return this.events.filter((e) => e.event_type === "Warning");
   }

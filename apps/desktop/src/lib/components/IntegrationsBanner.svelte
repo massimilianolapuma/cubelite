@@ -1,5 +1,6 @@
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { ACCENT_LINK_CLASS, UI_LINK_CLASS } from '#lib/integration.ts';
 	import { REVIEW_ONLY_HINT, bannerTitle } from '#lib/integration-suggest.ts';
 	import { integrations } from '#lib/stores/integrations.svelte.ts';
@@ -12,13 +13,19 @@
 </script>
 
 {#if banner}
+	<!-- A pill above the content card; a failure takes the error container and its square. -->
 	<div
-		class="flex items-center gap-3 border-b border-border-default px-3 py-1"
-		style="background: {banner.failure ? 'var(--alpha-pill-err)' : 'var(--alpha-selection-bg)'};"
+		class="flex min-h-(--chip-h) shrink-0 items-center gap-3 rounded-full px-4 {banner.failure
+			? 'bg-error-container text-on-error-container'
+			: 'bg-surface-container-high text-text-muted'}"
 		role="status"
 		data-testid="integrations-banner"
+		data-tone={banner.failure ? 'err' : undefined}
 	>
-		<span class="type-caption min-w-0 flex-1 truncate {banner.failure ? 'text-status-err' : 'text-text-secondary'}">
+		{#if banner.failure}
+			<StatusGlyph state="err" />
+		{/if}
+		<span class="type-body-sm min-w-0 flex-1 truncate">
 			{banner.failure ?? bannerTitle(banner.found, banner.kinds)}
 		</span>
 		{#if !banner.failure && banner.canEnable}
@@ -44,7 +51,7 @@
 			type="button"
 			aria-label="Dismiss"
 			title="Hide for this cluster (Preferences → Integrations brings it back)"
-			class="focus-ring rounded-sm text-text-tertiary hover:text-text-secondary"
+			class="focus-ring rounded-full p-1 opacity-80 hover:opacity-100"
 			disabled={busy}
 			onclick={() => integrations.dismiss(banner.context)}
 		>

@@ -194,7 +194,6 @@ export function buildLayer(tk: Tokens): string {
     `    --alpha-pill-err: ${mix("--color-status-err", "10%")};`,
     `    --alpha-log-error-row: ${mix("--color-status-err", "7%")};`,
     `    --alpha-log-warn-row: ${mix("--color-status-warn", "4.5%")};`,
-    `    --focus-ring: 0 0 0 3px ${mix("--color-accent", "15%")};`,
   ].join("\n");
 
   return [

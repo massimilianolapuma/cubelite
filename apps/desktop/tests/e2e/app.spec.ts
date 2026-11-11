@@ -15,13 +15,17 @@ async function boot(page: Page, opts: { onboardingSeen?: boolean } = {}) {
   await page.goto("/");
 }
 
-test("shell renders titlebar, rail, sidebar and status bar", async ({ page }) => {
+test("shell renders top bar, rail and sidebar; the cluster chip holds what the status bar showed", async ({ page }) => {
   await boot(page);
-  await expect(page.getByText("prod-aks").first()).toBeVisible();
+  const chip = page.getByRole("button", { name: /^prod-aks AKS/ });
+  await expect(chip).toBeVisible();
   await expect(page.getByText("AKS", { exact: true })).toBeVisible();
+  await expect(chip).toContainText("v1.30.2");
   await expect(page.getByLabel("All Clusters")).toBeVisible();
   await expect(page.getByText("Workloads")).toBeVisible();
+  await chip.click();
   await expect(page.getByText("https://prod.azmk8s.io:443")).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Copy server address" })).toBeVisible();
 });
 
 test("first launch shows onboarding and completes", async ({ page }) => {
@@ -115,7 +119,8 @@ test("preferences persist the refresh interval across reloads", async ({ page })
   await page.getByRole("radio", { name: "1m" }).click();
   await page.keyboard.press("Escape");
   await page.reload();
-  await expect(page.getByText("refresh 1m")).toBeVisible();
+  await page.getByLabel("Preferences").click();
+  await expect(page.getByRole("radio", { name: "1m" })).toBeChecked();
 });
 
 test("preferences list every kubeconfig file with its context count", async ({ page }) => {

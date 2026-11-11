@@ -3,7 +3,7 @@ import { test as base, expect, type Page } from "@playwright/test";
 /**
  * Every spec imports `test` from here: `page.goto` and `page.reload` return
  * only once the app has finished starting up (<html data-app-ready>, set by
- * +page.svelte). Before that the titlebar and the cluster rail still change
+ * +page.svelte). Before that the top bar and the cluster rail still change
  * size, and a click can lose its target mid-way (#584).
  */
 async function waitForApp(page: Page): Promise<void> {

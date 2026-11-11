@@ -23,7 +23,8 @@
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
 	import { countFor } from '#lib/stores/nav-counts.svelte.ts';
 	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
-	import { CUSTOM_DOT } from '#lib/components/shell/CustomResources.svelte';
+	// Custom kinds have no section colour; the palette is restyled in a later phase.
+	const CUSTOM_DOT = 'var(--color-text-tertiary)';
 	import { searchKeywords } from '#lib/resource-kinds.ts';
 	import { RESOURCE_PREFIX, paletteFilter } from '#lib/palette-filter.ts';
 	import { identityVar } from '#lib/cluster-identity.ts';

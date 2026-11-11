@@ -1,8 +1,3 @@
-<script lang="ts" module>
-	/** Section dot of Custom Resources and of custom kinds (mockup grey). */
-	export const CUSTOM_DOT = 'var(--color-text-tertiary)';
-</script>
-
 <script lang="ts">
 	import { tick } from 'svelte';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -46,54 +41,55 @@
 <button
 	type="button"
 	data-section-toggle
-	class="focus-ring flex h-[26px] shrink-0 items-center gap-2 rounded-md pr-2 pl-2.5 text-left hover:bg-surface-row-hover"
+	class="focus-ring flex h-(--nav-h) shrink-0 items-center gap-2 rounded-full pr-3.5 pl-2.5 text-left hover:bg-surface-container {open
+		? 'text-text'
+		: 'text-text-muted'}"
 	aria-expanded={open}
 	aria-controls="sidebar-section-custom"
 	onclick={() => sidebar.toggle('custom')}
 	{onkeydown}
 >
-	<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {CUSTOM_DOT};"></span>
-	<span class="type-body flex-1 truncate {open ? 'text-text-primary' : 'text-text-secondary'}">Custom Resources</span>
-	{#if dynamic.customKnown}
-		<span class="type-micro font-mono text-text-tertiary">{dynamic.customKindCount}</span>
-	{/if}
 	<ChevronRight
-		class="h-3 w-3 shrink-0 text-text-tertiary transition-transform {open ? 'rotate-90' : ''}"
+		class="h-3.5 w-3.5 shrink-0 text-text-subtle transition-transform {open ? 'rotate-90' : ''}"
 		aria-hidden="true"
 	/>
+	<span class="type-body flex-1 truncate {open ? 'font-semibold' : ''}">Custom Resources</span>
+	{#if dynamic.customKnown}
+		<span class="type-data-sm text-text-subtle">{dynamic.customKindCount}</span>
+	{/if}
 </button>
 {#if open}
 	{#if dynamic.discoveryFailed}
-		<p class="type-caption mb-0.5 pl-4.5 text-text-tertiary">Couldn't discover custom resources</p>
+		<p class="type-body-sm mb-0.5 pl-8.5 text-text-subtle">Couldn't discover custom resources</p>
 	{:else if !dynamic.customKnown}
-		<p class="type-caption mb-0.5 pl-4.5 text-text-tertiary">Loading…</p>
+		<p class="type-body-sm mb-0.5 pl-8.5 text-text-subtle">Loading…</p>
 	{:else if dynamic.customKindCount === 0}
-		<p class="type-caption mb-0.5 pl-4.5 text-text-tertiary">No custom resources on this cluster</p>
+		<p class="type-body-sm mb-0.5 pl-8.5 text-text-subtle">No custom resources on this cluster</p>
 	{:else}
-		<div class="shrink-0 py-0.5 pl-2">
+		<div class="shrink-0 py-0.5 pl-5">
 			<input
 				type="text"
 				bind:value={sidebar.customFilter}
 				aria-label="Filter custom resources"
 				placeholder="Filter…"
-				class="focus-ring type-caption h-6 w-full rounded-md border border-border-default bg-surface-window px-2 text-text-primary placeholder:text-text-disabled"
+				class="focus-ring type-body-sm h-(--control-inline-h) w-full rounded-full bg-surface-container-high px-3.5 text-text placeholder:text-text-subtle"
 			/>
 		</div>
 		<ul
 			id="sidebar-section-custom"
 			bind:this={area}
 			aria-label="Custom Resources types"
-			class="mb-0.5 min-h-0 overflow-y-auto pl-2"
+			class="mb-0.5 min-h-0 overflow-y-auto pl-5"
 		>
 			{#each shown as v (v.vendor)}
-				<li class="type-section truncate px-2.5 pt-1.5 pb-0.5 text-text-tertiary">{v.vendor}</li>
+				<li class="type-label truncate px-3.5 pt-1.5 pb-0.5">{v.vendor}</li>
 				{#each v.kinds as kind (kind.view)}
 					<li>
-						<NavRow view={kind.view} label={labelOf(kind, v.kinds)} dot={CUSTOM_DOT} compact hint={kind.group} />
+						<NavRow view={kind.view} label={labelOf(kind, v.kinds)} hint={kind.group} />
 					</li>
 				{/each}
 			{:else}
-				<li class="type-caption px-2.5 py-1 text-text-tertiary">No match</li>
+				<li class="type-body-sm px-3.5 py-1 text-text-subtle">No match</li>
 			{/each}
 		</ul>
 	{/if}

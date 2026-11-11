@@ -143,12 +143,16 @@ its component is restyled. Uppercase labels disappear.
 | Variable | Default | Compact |
 |---|---|---|
 | `--row-h` (list rows; a fixed height replaces padding-based rows) | 46 | 38 |
-| `--nav-h` (sidebar rows) | 38 | 32 |
+| `--nav-h` (sidebar rows; see the note below) | 28 | 26 |
 | `--control-h` (buttons, fields, avatars) | 44 | 36 |
 | `--control-inline-h` (controls inside a row) | 32 | 28 |
 | `--chip-h` | 40 | 36 |
 | `--control-primary-h` | 48 | 48 |
 
+- Sidebar rows are 28 px, not the 38 px of the mockup. With the default profile (7 pins, 8
+  sections) an open section must show all its types in a 1280 × 800 window without scrolling (the
+  contract of the sidebar spec of 2026-11-07, checked by `profiles.spec.ts`); 24 rows only fit at
+  28 px. For the same reason the profile pill and the Go-to button in the sidebar are 36 px.
 - Elevation: only `shadow-overlay`, only under `surface-overlay`. Cards have no shadow and no border.
 - Motion: 160 ms colour, 240 ms panel and tint, 200 ms avatar shape; `cubic-bezier(0.2, 0, 0, 1)`;
   all instant under reduced motion.
@@ -205,11 +209,13 @@ carries no contrast requirement.
 
 - 12 px gutter around the content column and between cards. Rail and sidebar sit on
   `surface-window` with no card.
-- **Top bar**: cluster chip (identity square, name, Kubernetes version; menu with server address,
-  copy, reconnect), namespace chip, spacer, warnings chip (hidden at zero). It is the window drag
-  region; chips are not.
+- **Top bar**: cluster chip (identity square, name, provider, Kubernetes version, connection state;
+  menu with server address, copy, reconnect), namespace chip, spacer, warnings chip (hidden at
+  zero), the "Search & switch" field. It is the window drag region; chips are not. The cluster chip
+  carries its own cluster's tint, so it keeps its colour on the All Clusters dashboard.
 - **Rail**: All Clusters, one 44 px disc per context with a health glyph, Preferences at the bottom.
-  The active cluster becomes a `radius-md` square in `primary`. More contexts than fit: the avatar
+  Every avatar carries its own cluster's tint; the active cluster becomes a `radius-md` square in
+  `primary`. More contexts than fit: the avatar
   list scrolls, All Clusters and Preferences stay pinned.
 - **Sidebar**: profile pill and Go-to button (⌘K), Pinned, All resources. Same structure and rules
   as the sidebar spec of 2026-11-07 (one section open at a time, only the open section's list
