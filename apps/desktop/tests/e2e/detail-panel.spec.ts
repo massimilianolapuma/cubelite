@@ -87,3 +87,30 @@ test("a docked deployment panel takes over scale and restart from the row", asyn
   await expect(panel.getByRole("button", { name: "Rollout Restart" })).toBeVisible();
   await expect(page.locator("main").getByRole("button", { name: "Scale up" })).toHaveCount(0);
 });
+
+test("in a short panel the actions scroll with the content instead of squeezing it", async ({ page }) => {
+  await boot(page, 800, 600);
+  await open(page, "Pods");
+  await page.getByText("api-0").click();
+  const panel = page.getByRole("dialog", { name: "api-0" });
+  await expect(panel.locator("footer")).toHaveAttribute("data-pinned", "true");
+  await panel.getByRole("button", { name: "Open logs" }).click();
+  await expect(page.getByLabel("Pod logs panel")).toBeVisible();
+  // The log panel took most of the height: the footer joins the scrolling body.
+  await expect(panel.locator("footer")).toHaveAttribute("data-pinned", "false");
+  const body = (await panel.locator("[data-panel-body]").boundingBox())!;
+  const whole = (await panel.boundingBox())!;
+  expect(body.height).toBeGreaterThan(whole.height * 0.6);
+  await expect(panel.getByRole("button", { name: "Delete" })).toBeAttached();
+});
+
+test("clicking another row and closing gives focus back to that row", async ({ page }) => {
+  await boot(page, 1440, 900);
+  await open(page, "Pods");
+  await page.getByText("api-0").click();
+  await page.getByText("worker-0").click();
+  const panel = page.getByRole("dialog", { name: "worker-0" });
+  await panel.getByRole("button", { name: "Close" }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^worker-0/ })).toBeFocused();
+});

@@ -321,10 +321,15 @@ is fixed.
   nothing is lost when the list is narrowed.
 - Columns kept when docked: name, status, up to three more; namespace is one of them when listing
   all namespaces ungrouped. Pods: name, namespace or age, status, ready, restarts. Deployments:
-  name, namespace, ready, status, age. Nodes: all five. Generic kinds: the first five.
+  name, namespace, ready, status, age. Nodes: all five. Generic kinds: the first five. A list
+  sorted by a column that would go keeps it in view, in place of another.
 - Focus: opening moves focus to the panel heading; Esc or the close button returns it to the row.
   Enter on the heading runs the panel's primary action, so Enter on a pod row and Enter again
-  still opens its logs (§3 #10). Changing the selection with the panel open does not move focus.
+  still opens its logs (§3 #10). Changing the selection with the panel open does not move focus;
+  the panel then starts at its top, and closing it returns focus to the row it shows now.
+- The panel shows the object as it is now, not as it was when clicked, and closes when a list that
+  answered no longer has the object. In a panel under 400 px tall (a small window with the log
+  panel open) the footer scrolls with the content.
   The panel is non-modal in both modes (the list stays operable) and keeps `role="dialog"` with its
   name, so the existing e2e locators hold.
 - Overlay mode (content < 1000 px): the same panel on `surface-overlay` with `shadow-overlay`,

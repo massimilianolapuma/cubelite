@@ -4,9 +4,11 @@
 	let { facts }: { facts: readonly (readonly [label: string, value: string | null])[] } = $props();
 </script>
 
-<dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
-	{#each facts as [label, value] (label)}
-		<dt class="type-label text-text-muted">{label}</dt>
+<!-- A long label takes at most a little over half the row: the value keeps its room. -->
+<dl class="grid grid-cols-[fit-content(55%)_minmax(0,1fr)] gap-x-4 gap-y-2">
+	<!-- Keyed by position: a kind's columns may repeat a label. -->
+	{#each facts as [label, value], i (i)}
+		<dt class="type-label break-words text-text-muted">{label}</dt>
 		<dd
 			class="type-data-sm text-right break-words {value === null ? 'text-text-subtle' : 'text-text'}"
 			data-missing={value === null}

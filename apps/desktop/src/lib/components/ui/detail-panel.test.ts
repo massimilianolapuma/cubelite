@@ -113,6 +113,64 @@ describe("Drawer (detail panel)", () => {
     expect(onPrimary).toHaveBeenCalledOnce();
   });
 
+  it("a held Enter that opened the panel does not also run the primary action", async () => {
+    const onPrimary = vi.fn();
+    panel({ onPrimary });
+    await fireEvent.keyDown(screen.getByRole("heading", { level: 2 }), { key: "Enter", repeat: true });
+    expect(onPrimary).not.toHaveBeenCalled();
+  });
+
+  it("Enter on the heading does nothing while a modal is open above the panel", async () => {
+    const onPrimary = vi.fn();
+    panel({ onPrimary });
+    const modal = document.createElement("div");
+    modal.setAttribute("aria-modal", "true");
+    document.body.appendChild(modal);
+    await fireEvent.keyDown(screen.getByRole("heading", { level: 2 }), { key: "Enter" });
+    modal.remove();
+    expect(onPrimary).not.toHaveBeenCalled();
+  });
+
+  it("starts at the top again when it shows another object", async () => {
+    const view = panel();
+    const body = document.querySelector<HTMLElement>("[data-panel-body]")!;
+    body.scrollTop = 160;
+    await view.rerender({ title: "worker-0" });
+    await vi.waitFor(() => expect(body.scrollTop).toBe(0));
+  });
+
+  it("gives focus back to the row of the object it shows now, not the one it opened for", async () => {
+    const main = document.createElement("main");
+    main.innerHTML =
+      '<div role="button" tabindex="0" id="first" aria-current="true"></div><div role="button" tabindex="0" id="second"></div>';
+    document.body.appendChild(main);
+    const [first, second] = [main.querySelector<HTMLElement>("#first")!, main.querySelector<HTMLElement>("#second")!];
+    first.focus();
+    const view = panel();
+    await vi.waitFor(() => expect(screen.getByRole("heading", { level: 2 })).toHaveFocus());
+    // The user clicks another row: the panel now shows it.
+    first.removeAttribute("aria-current");
+    second.setAttribute("aria-current", "true");
+    await view.rerender({ title: "worker-0" });
+    screen.getByRole("heading", { level: 2 }).focus();
+    view.unmount();
+    expect(second).toHaveFocus();
+    main.remove();
+  });
+
+  it("gives focus to the list when the row it came from is gone", async () => {
+    const main = document.createElement("main");
+    main.innerHTML = '<div class="list-row" role="button" tabindex="0" id="gone"></div><div class="list-row" role="button" tabindex="0" id="left"></div>';
+    document.body.appendChild(main);
+    main.querySelector<HTMLElement>("#gone")!.focus();
+    const view = panel();
+    await vi.waitFor(() => expect(screen.getByRole("heading", { level: 2 })).toHaveFocus());
+    main.querySelector("#gone")!.remove();
+    view.unmount();
+    expect(main.querySelector("#left")).toHaveFocus();
+    main.remove();
+  });
+
   it("pins its footer under the scrolling body", () => {
     panel({ footer: html('<button type="button">Open logs</button>') });
     const footer = screen.getByRole("button", { name: "Open logs" }).closest("footer")!;
@@ -155,6 +213,12 @@ describe("FactRows", () => {
     const terms = screen.getAllByRole("term").map((el) => el.textContent);
     expect(terms).toEqual(["Namespace", "Node"]);
     expect(screen.getAllByRole("definition").map((el) => el.textContent?.trim())).toEqual(["payments", "–"]);
+  });
+
+  it("shows two facts with the same label: a kind may have a column called like one of ours", () => {
+    render(FactRows, { props: { facts: [["Namespace", "payments"], ["Namespace", "from-the-server"], ["Status", "a"], ["Status", "b"]] } });
+    expect(screen.getAllByRole("term").map((el) => el.textContent)).toEqual(["Namespace", "Namespace", "Status", "Status"]);
+    expect(screen.getByText("from-the-server")).toBeInTheDocument();
   });
 
   it("marks a missing value as such, not only by its colour", () => {

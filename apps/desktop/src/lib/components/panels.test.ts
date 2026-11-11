@@ -3,6 +3,11 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
+  listPods: vi.fn(async () => []),
+  listNamespaces: vi.fn(async () => []),
+  listDeployments: vi.fn(async () => []),
+  listEvents: vi.fn(async () => []),
+  clusterCapacity: vi.fn(async () => []),
   deletePod: vi.fn(async () => undefined),
   restartDeployment: vi.fn(async () => undefined),
   scaleDeployment: vi.fn(async () => undefined),
@@ -18,7 +23,7 @@ import NodeDrawer from "./nodes/NodeDrawer.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { logPanel } from "#lib/stores/logPanel.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
-import type { DeploymentInfo, PodInfo } from "#lib/tauri.ts";
+import { clusterCapacity, listPods, type DeploymentInfo, type PodInfo } from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
   return {
@@ -52,6 +57,15 @@ function dep(overrides: Partial<DeploymentInfo> = {}): DeploymentInfo {
     creation_timestamp: null,
     ...overrides,
   };
+}
+
+/** Loads pods through the store, as the app does: a count means something only once they answered. */
+async function loadPods(pods: PodInfo[]) {
+  app.kubeconfigPath = "/k";
+  app.activeCluster = "prod";
+  vi.mocked(listPods).mockResolvedValue(pods);
+  await resources.load();
+  app.kubeconfigPath = "";
 }
 
 const hero = () => document.querySelector("[data-hero]")!;
@@ -94,6 +108,21 @@ describe("PodDrawer", () => {
     // No metrics-server answer: an en dash, not a zero.
     expect(tile("Memory")).toHaveTextContent("–");
     expect(tile("Memory")).toHaveAttribute("data-tone", "none");
+  });
+
+  it("a completed pod's restarts are history: its tile is not a warning", () => {
+    render(PodDrawer, { props: { pod: pod({ phase: "Succeeded", ready: false, restarts: 5 }), onClose: vi.fn() } });
+    expect(tile("Restarts")).toHaveAttribute("data-tone", "none");
+  });
+
+  it("keeps a long container name and its image inside the row, each with its full text as a tooltip", () => {
+    const name = "opentelemetry-collector-contrib-with-a-very-long-suffix";
+    render(PodDrawer, {
+      props: { pod: pod({ containers: [{ name, image: "registry.example/otel:1", ready: false }] as PodInfo["containers"] }), onClose: vi.fn() },
+    });
+    expect(screen.getByText(name)).toHaveAttribute("title", name);
+    expect(screen.getByText(name)).toHaveClass("truncate");
+    expect(screen.getByText("registry.example/otel:1")).toHaveAttribute("title", "registry.example/otel:1");
   });
 
   it("lists the facts as label and value rows", () => {
@@ -168,12 +197,17 @@ describe("DeploymentDrawer", () => {
     expect(hero()).toHaveTextContent("1 of 3 replicas ready");
   });
 
-  it("shows ready replicas and matched pods as the two tiles", () => {
-    resources.pods = [pod({ labels: { app: "api" } }), pod({ name: "api-1", labels: { app: "api" } }), pod({ name: "other" })];
+  it("shows ready replicas and matched pods as the two tiles", async () => {
+    await loadPods([pod({ labels: { app: "api" } }), pod({ name: "api-1", labels: { app: "api" } }), pod({ name: "other" })]);
     render(DeploymentDrawer, { props: { deployment: dep({ ready_replicas: 2 }), onClose: vi.fn() } });
     expect(tile("Ready")).toHaveTextContent("2/3");
     expect(tile("Ready")).toHaveAttribute("data-tone", "warn");
     expect(tile("Pods")).toHaveTextContent("2");
+  });
+
+  it("shows an en dash, not a zero, while the pods are not known", () => {
+    render(DeploymentDrawer, { props: { deployment: dep(), onClose: vi.fn() } });
+    expect(tile("Pods")).toHaveTextContent("–");
   });
 
   it("scales from the panel", () => {
@@ -202,8 +236,8 @@ describe("DeploymentDrawer", () => {
     expect(row("Progressing").getAttribute("style") ?? "").not.toContain("color");
   });
 
-  it("lists its pods with their state as a shape", () => {
-    resources.pods = [pod({ labels: { app: "api" }, phase: "CrashLoopBackOff", ready: false })];
+  it("lists its pods with their state as a shape", async () => {
+    await loadPods([pod({ labels: { app: "api" }, phase: "CrashLoopBackOff", ready: false })]);
     render(DeploymentDrawer, { props: { deployment: dep(), onClose: vi.fn() } });
     const row = screen.getByRole("button", { name: /api-0/ });
     expect(row.querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "err");
@@ -231,21 +265,27 @@ describe("NodeDrawer", () => {
     expect(hero()).toHaveAttribute("data-hero", "error");
   });
 
-  it("shows the pods on the node and its CPU use as the two tiles", () => {
-    resources.pods = [pod(), pod({ name: "api-1" }), pod({ name: "elsewhere", node: "node-2" })];
-    resources.nodes = [
+  it("shows the pods on the node and its CPU use as the two tiles", async () => {
+    vi.mocked(clusterCapacity).mockResolvedValueOnce([
       { name: "node-1", cpu_used_millis: 500, cpu_allocatable_millis: 2000, memory_used_bytes: 1, memory_allocatable_bytes: 2 },
-    ];
+    ]);
+    await loadPods([pod(), pod({ name: "api-1" }), pod({ name: "elsewhere", node: "node-2" })]);
     render(NodeDrawer, { props: { name: "node-1", info, onClose: vi.fn() } });
     expect(tile("Pods")).toHaveTextContent("2");
-    expect(tile("CPU")).toHaveTextContent("25%");
+    await vi.waitFor(() => expect(tile("CPU")).toHaveTextContent("25%"));
   });
 
-  it("says which namespace the pod count is for when one is selected, and an en dash without metrics", () => {
+  it("says which namespace the pod count is for when one is selected, and an en dash without metrics", async () => {
     app.namespace = "default";
+    await loadPods([]);
     render(NodeDrawer, { props: { name: "node-1", info, onClose: vi.fn() } });
     expect(tile("Pods in default")).toHaveTextContent("0");
     expect(tile("CPU")).toHaveTextContent("–");
+  });
+
+  it("shows an en dash for the pod count while the pods are not known", () => {
+    render(NodeDrawer, { props: { name: "node-1", info, onClose: vi.fn() } });
+    expect(tile("Pods")).toHaveTextContent("–");
   });
 
   it("still opens for a node the inventory does not have yet", () => {

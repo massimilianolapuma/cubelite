@@ -24,6 +24,7 @@
 
 	// Pods are loaded for the selected namespace: the tile says so, rather than
 	// passing a part for the whole.
+	const podsKnown = $derived(resources.mainLoaded && resources.listError('pods') === null);
 	const podCount = $derived(resources.pods.filter((p) => p.node === name).length);
 	const podLabel = $derived(app.namespace === null ? 'Pods' : `Pods in ${app.namespace}`);
 
@@ -39,7 +40,8 @@
 			<StatusHero state={toneGlyph(nodeTone(info.status))} label={info.status} />
 		{/if}
 		<div class="grid grid-cols-2 gap-2">
-			<StatCard surface="top" label={podLabel} value={podCount} />
+			<!-- A count only once the pods answered: a zero would read as "no pods". -->
+			<StatCard surface="top" label={podLabel} value={podsKnown ? podCount : '–'} />
 			<StatCard surface="top" label="CPU" value={cpu === null ? '–' : `${Math.round(cpu)}%`} tone={cpuTone} />
 		</div>
 		<FactRows {facts} />

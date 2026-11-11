@@ -47,6 +47,8 @@
 		)
 	);
 
+	const podsKnown = $derived(resources.mainLoaded && resources.listError('pods') === null);
+
 	const glyphTone = { ok: 'text-success', warn: 'text-warning', err: 'text-error', done: '', unknown: '' } as const;
 
 	function openPod(podName: string) {
@@ -91,7 +93,8 @@
 				value="{deployment.ready_replicas}/{deployment.replicas}"
 				tone={status.tone === 'ok' ? undefined : 'warn'}
 			/>
-			<StatCard surface="top" label="Pods" value={childPods.length} />
+			<!-- A count only once the pods answered: a zero would read as "no pods". -->
+			<StatCard surface="top" label="Pods" value={podsKnown ? childPods.length : '–'} />
 		</div>
 
 		<div>
@@ -150,7 +153,7 @@
 	</div>
 
 	{#snippet footer()}
-		<Button variant="primary" onclick={openLogs}>
+		<Button variant="primary" size="primary" onclick={openLogs}>
 			{#snippet icon()}<FileText class="h-4 w-4" aria-hidden="true" />{/snippet}
 			Logs
 		</Button>

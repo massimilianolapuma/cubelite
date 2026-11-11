@@ -6,11 +6,12 @@
 	import { formatAge } from '#lib/age.ts';
 	import { listState } from '#lib/list-state.ts';
 	import { isCustomView, type KindView } from '#lib/resource-kinds.ts';
-	import { cellText, planColumns, planTracks } from '#lib/table-columns.ts';
+	import { cellText, narrowPlan, planColumns, planTracks } from '#lib/table-columns.ts';
 	import type { TableRow } from '#lib/tauri.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
 	import { layout } from '#lib/stores/layout.svelte.ts';
+	import { lists } from '#lib/stores/lists.svelte.ts';
 	import { LIST_ROW_ACTION, LIST_STICKY, SEARCH_FIELD } from '#lib/ui-classes.ts';
 
 	// Any ★ kind of the resource-kinds design (§5.1): the columns `kubectl get`
@@ -41,7 +42,7 @@
 	const table = $derived(dynamic.tables[view]);
 	const withNamespace = $derived(namespaced && !grouped && (!narrow || app.namespace === null));
 	const fullPlan = $derived(planColumns(table?.columns ?? [], withNamespace));
-	const plan = $derived(narrow ? fullPlan.slice(0, 5) : fullPlan);
+	const plan = $derived(narrow ? narrowPlan(fullPlan, lists.specFor(view).field) : fullPlan);
 	const all = $derived(table?.rows ?? []);
 	const rows = $derived.by(() => {
 		const text = filter.trim().toLowerCase();
@@ -75,13 +76,23 @@
 	const summary = $derived.by((): [string, string | null][] => {
 		const row = selected && all.find((r) => r.name === selected.name && r.namespace === selected.namespace);
 		if (!row || !table) return [];
-		const nameIndex = table.columns.findIndex((c) => c.format === 'name');
 		const facts: [string, string | null][] = namespaced ? [['Namespace', row.namespace]] : [];
-		table.columns.forEach((column, i) => {
-			if (i === nameIndex || (nameIndex < 0 && column.name === 'Name')) return;
-			facts.push([column.name, cellText(row.cells[i], column.column_type === 'date') || null]);
-		});
+		for (const column of planColumns(table.columns, false)) {
+			if (column.kind === 'age') {
+				// The object's own age, as in the list; the cell only when it has no timestamp.
+				const age = row.creation_timestamp ? formatAge(row.creation_timestamp) : cellText(row.cells[ageIndex], true);
+				facts.push([column.label, age || null]);
+			} else if (column.kind === 'cell') {
+				facts.push([column.label, cellText(row.cells[column.index], column.date) || null]);
+			}
+		}
 		return facts;
+	});
+	// Where the server's Age (or Created At) cell is, for an object without a timestamp.
+	const ageIndex = $derived.by(() => {
+		const columns = table?.columns ?? [];
+		const isDate = (label: string) => columns.findIndex((c) => c.name === label && c.column_type === 'date');
+		return isDate('Age') >= 0 ? isDate('Age') : isDate('Created At');
 	});
 
 	// The first column stays in view while the others scroll sideways.

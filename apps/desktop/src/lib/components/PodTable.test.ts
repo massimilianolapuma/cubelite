@@ -247,6 +247,14 @@ describe("PodTable beside a docked detail panel (Tonal §3 #2)", () => {
     expect(headers()).toEqual(["Name", "Status", "Ready", "Age", "Restarts"]);
   });
 
+  it("keeps the column the list is sorted by: Age takes Ready's place", async () => {
+    layout.contentWidth = 1200;
+    const p = pod();
+    lists.clickHeader("pods", "age");
+    render(PodTable, { props: { pods: [p], selected: p } });
+    expect(headers()).toEqual(["Name", "Namespace", "Status", "Age", "Restarts"]);
+  });
+
   it("keeps every column when the panel overlays the list", () => {
     layout.contentWidth = 964;
     const p = pod();

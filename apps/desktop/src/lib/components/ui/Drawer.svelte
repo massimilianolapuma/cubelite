@@ -41,26 +41,46 @@
 	let root = $state<HTMLElement | null>(null);
 	let heading = $state<HTMLElement | null>(null);
 
-	// Opening moves focus to the heading; closing gives it back to the row it
-	// came from, unless the user has meanwhile moved on to something else. The
-	// heading exists only once the portal has rendered, which is after mount:
-	// hence an effect that runs when it appears, once.
+	let body = $state<HTMLElement | null>(null);
+	// Too short for a pinned footer (a small window with the log panel open):
+	// the actions then scroll with the content instead of leaving it a sliver.
+	let height = $state(0);
+	const pinned = $derived(height === 0 || height >= 400);
+
+	// Opening moves focus to the heading; closing gives it back to the row of
+	// the object shown, unless the user has meanwhile moved on to something
+	// else. The heading exists only once the portal has rendered, which is
+	// after mount: hence an effect that runs when it appears, once.
 	let opener: HTMLElement | null = null;
 	let opened = false;
+
+	// Another object in the same panel: start at its top, and its row is now
+	// the one focus goes back to.
+	$effect(() => {
+		void title;
+		if (body) body.scrollTop = 0;
+		opener = document.querySelector<HTMLElement>('main [aria-current="true"]') ?? opener;
+	});
 	$effect(() => {
 		if (!heading || opened) return;
 		opened = true;
-		opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+		opener ??= document.activeElement instanceof HTMLElement ? document.activeElement : null;
 		heading.focus({ preventScroll: true });
 	});
 	onDestroy(() => {
 		const active = document.activeElement;
 		const stillHere = active === null || active === document.body || (root?.contains(active) ?? false);
-		if (stillHere && opener?.isConnected) opener.focus({ preventScroll: true });
+		if (!stillHere) return;
+		// The row may be gone with its object: the list is the next best place.
+		const target = opener?.isConnected ? opener : document.querySelector<HTMLElement>('main .list-row');
+		target?.focus({ preventScroll: true });
 	});
 
 	function headingKey(event: KeyboardEvent) {
-		if (event.key !== 'Enter' || !onPrimary) return;
+		// Not a held key (the Enter that opened the panel repeats onto the
+		// heading), and not under a modal, which does not take focus away.
+		if (event.key !== 'Enter' || event.repeat || !onPrimary) return;
+		if (document.querySelector('[aria-modal="true"]')) return;
 		event.preventDefault();
 		onPrimary();
 	}
@@ -69,6 +89,7 @@
 <Portal to={host ?? undefined} disabled={!host}>
 	<div
 		bind:this={root}
+		bind:clientHeight={height}
 		class="flex w-[360px] max-w-full shrink-0 flex-col rounded-xl {mode === 'docked'
 			? 'ml-3 bg-surface-container'
 			: 'animate-drawer-in absolute inset-y-0 right-0 z-30 bg-surface-overlay shadow-overlay'}"
@@ -98,12 +119,17 @@
 			</Button>
 		</header>
 
-		<div class="min-h-0 flex-1 overflow-y-auto px-4 pb-4" data-panel-body>
+		<div bind:this={body} class="min-h-0 flex-1 overflow-y-auto px-4 pb-4" data-panel-body>
 			{@render children()}
+			{#if footer && !pinned}
+				<footer class="mt-4 flex flex-wrap items-center gap-2" data-pinned="false">
+					{@render footer()}
+				</footer>
+			{/if}
 		</div>
 
-		{#if footer}
-			<footer class="flex flex-wrap items-center gap-2 px-4 py-3">
+		{#if footer && pinned}
+			<footer class="flex flex-wrap items-center gap-2 px-4 py-3" data-pinned="true">
 				{@render footer()}
 			</footer>
 		{/if}

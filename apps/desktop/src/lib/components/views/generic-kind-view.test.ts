@@ -153,6 +153,32 @@ describe("GenericKindView", () => {
     expect(within(drawer).getByText("daemon set")).toBeInTheDocument();
   });
 
+  it("the Summary's age is the object's age, whatever the server put in the cell", async () => {
+    vi.mocked(listResourceTable).mockResolvedValue({
+      columns: [col("Name", "string", "name"), col("Age", "date"), col("Last Seen", "date")],
+      rows: [{ name: "x", namespace: "default", creation_timestamp: "2020-01-01T00:00:00Z", cells: ["x", "10d", "3h"] }],
+    });
+    render(GenericKindView, { view: "daemonsets" });
+    await fireEvent.click(await screen.findByRole("button", { name: /^x/ }));
+    const summary = within(await screen.findByRole("dialog", { name: "x" })).getByRole("group", { name: "Summary" });
+    const values = within(summary).getAllByRole("definition").map((el) => el.textContent?.trim());
+    // Namespace, Age (from the creation timestamp, years ago), Last Seen (the server's own text).
+    expect(values[0]).toBe("default");
+    expect(values[1]).toMatch(/^\d+d$/);
+    expect(values[2]).toBe("3h");
+  });
+
+  it("opens the panel of a kind whose columns repeat a label", async () => {
+    vi.mocked(listResourceTable).mockResolvedValue({
+      columns: [col("Name", "string", "name"), col("Namespace"), col("Status"), col("Status")],
+      rows: [{ name: "x", namespace: "default", creation_timestamp: null, cells: ["x", "default", "a", "b"] }],
+    });
+    render(GenericKindView, { view: "daemonsets" });
+    await fireEvent.click(await screen.findByRole("button", { name: /^x/ }));
+    const summary = within(await screen.findByRole("dialog", { name: "x" })).getByRole("group", { name: "Summary" });
+    expect(within(summary).getAllByRole("term").map((el) => el.textContent)).toEqual(["Namespace", "Namespace", "Status", "Status"]);
+  });
+
   it("beside a docked panel the list keeps at most five columns; the rest is in the panel", async () => {
     const wide = ["A", "B", "C", "D", "E", "F"];
     vi.mocked(listResourceTable).mockResolvedValue({

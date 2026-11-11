@@ -10,6 +10,7 @@
 	import { podChip, podGlyph, podStatusLabel, podTone, STATUS_CHIPS } from '#lib/status.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { layout } from '#lib/stores/layout.svelte.ts';
+	import { lists } from '#lib/stores/lists.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
@@ -55,9 +56,15 @@
 	// The namespace is one of them only when it tells rows apart.
 	const narrow = $derived(layout.docked && selected !== null);
 	const namespaceColumn = $derived(!narrow || app.namespace === null);
-	const withAge = $derived(!narrow || !namespaceColumn || app.groupedLists);
+	const namespaceShown = $derived(namespaceColumn && !app.groupedLists);
+	// A list sorted by Age keeps Age in view, in Ready's place: the panel has Ready.
+	const sortedByAge = $derived(lists.specFor('pods').field === 'age');
+	const withAge = $derived(!narrow || !namespaceShown || sortedByAge);
+	const withReady = $derived(!narrow || !(namespaceShown && sortedByAge));
 	const tracks = $derived(
-		narrow ? ['2.4fr', '1fr', '1.5fr', '0.6fr', ...(withAge ? ['0.6fr'] : []), '0.7fr'] : TRACKS
+		narrow
+			? ['2.4fr', '1fr', '1.5fr', ...(withReady ? ['0.6fr'] : []), ...(withAge ? ['0.6fr'] : []), '0.7fr']
+			: TRACKS
 	);
 
 	// Last hour of CPU and memory from Prometheus, after the rows (#510).
@@ -110,7 +117,7 @@
 
 	{#snippet head()}
 		<SortHeader list="pods" field="status" label="Status" />
-		<span class="truncate">Ready</span>
+		{#if withReady}<span class="truncate">Ready</span>{/if}
 		{#if withAge}<SortHeader list="pods" field="age" label="Age" />{/if}
 		{#if !narrow}
 			<span class="truncate" title={prometheus.active ? sparkTitle : undefined}>CPU</span>
@@ -129,7 +136,7 @@
 				<StatusBadge state={podGlyph(pod)} label={podStatusLabel(pod)} />
 			{/if}
 		</span>
-		<span class="type-data-sm text-text-muted">{pod.ready_containers}/{pod.total_containers}</span>
+		{#if withReady}<span class="type-data-sm text-text-muted">{pod.ready_containers}/{pod.total_containers}</span>{/if}
 		{#if withAge}<span class="type-data-sm text-text-muted">{formatAge(pod.creation_timestamp)}</span>{/if}
 		{#if !narrow}
 			<span class="flex min-w-0 items-center gap-1.5">

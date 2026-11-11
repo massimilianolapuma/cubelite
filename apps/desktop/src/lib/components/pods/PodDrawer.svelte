@@ -101,7 +101,13 @@
 		<WorkloadLinks namespace={pod.namespace} workload={{ kind: 'pod', name: pod.name }} />
 
 		<div class="grid grid-cols-2 gap-2">
-			<StatCard surface="top" label="Restarts" value={pod.restarts} tone={pod.restarts > 3 ? 'warn' : undefined} />
+			<!-- A completed pod's restarts are history (Tonal §3 #7): no warning. -->
+			<StatCard
+				surface="top"
+				label="Restarts"
+				value={pod.restarts}
+				tone={pod.phase !== 'Succeeded' && pod.restarts > 3 ? 'warn' : undefined}
+			/>
 			<StatCard surface="top" label="Memory" value={usage ? formatBytes(usage.memory_bytes) : '–'} />
 		</div>
 
@@ -112,15 +118,18 @@
 				<div class={PANEL_SECTION}>Containers</div>
 				<div class="flex flex-col gap-0.5">
 					{#each pod.containers as container (container.name)}
-						<div class="{PANEL_CARD} flex items-center gap-2 px-3 py-2" data-container={container.name}>
-							<StatusGlyph state={container.ready ? 'ok' : 'warn'} class={container.ready ? 'text-success' : 'text-warning'} />
-							<span class="type-data-sm shrink-0 text-text">{container.name}</span>
-							<span class="type-body-sm min-w-0 flex-1 truncate text-right text-text-muted" title={container.image ?? undefined}>
-								{container.image ?? ''}
-							</span>
-							<span class="type-body-sm shrink-0 {container.ready ? 'text-text-muted' : 'font-semibold text-text'}">
-								{container.ready ? 'ready' : 'not ready'}
-							</span>
+						<!-- Two lines: a long name and a long image each get the row's width. -->
+						<div class="{PANEL_CARD} flex flex-col gap-0.5 px-3 py-2" data-container={container.name}>
+							<div class="flex min-w-0 items-center gap-2">
+								<StatusGlyph state={container.ready ? 'ok' : 'warn'} class={container.ready ? 'text-success' : 'text-warning'} />
+								<span class="type-data-sm min-w-0 flex-1 truncate text-text" title={container.name}>{container.name}</span>
+								<span class="type-body-sm shrink-0 {container.ready ? 'text-text-muted' : 'font-semibold text-text'}">
+									{container.ready ? 'ready' : 'not ready'}
+								</span>
+							</div>
+							{#if container.image}
+								<span class="type-body-sm truncate text-text-muted" title={container.image}>{container.image}</span>
+							{/if}
 						</div>
 					{/each}
 				</div>
@@ -159,7 +168,7 @@
 				<div class="flex flex-wrap gap-1.5">
 					{#each labelEntries as [key, value] (key)}
 						<span
-							class="type-data-sm max-w-full truncate rounded-full bg-surface-container-top px-2.5 py-0.5 text-text-muted"
+							class="type-data-sm max-w-full rounded-md bg-surface-container-top px-2.5 py-0.5 break-all text-text-muted"
 							title="{key}={value}"
 						>
 							{key}={value}
@@ -210,7 +219,7 @@
 	</div>
 
 	{#snippet footer()}
-		<Button variant="primary" title="Open pod logs panel" onclick={openLogs}>
+		<Button variant="primary" size="primary" title="Open pod logs panel" onclick={openLogs}>
 			{#snippet icon()}<FileText class="h-4 w-4" aria-hidden="true" />{/snippet}
 			Open logs
 		</Button>
