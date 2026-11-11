@@ -57,7 +57,8 @@
 	const sparkTitle = $derived(
 		prometheus.sparklineError ? `sparklines unavailable: ${prometheus.sparklineError}` : 'sparkline: last hour, from Prometheus'
 	);
-	const noMetrics = $derived(loaded && resources.metricsKnown && !resources.metricsAvailable);
+	// Only over rows: an empty or failed list has no CPU column to explain.
+	const noMetrics = $derived(loaded && pods.length > 0 && resources.metricsKnown && !resources.metricsAvailable);
 </script>
 
 <ResourceList
@@ -90,7 +91,7 @@
 	{#snippet notice()}
 		{#if noMetrics}
 			<p class="type-body-sm text-text-muted" data-testid="metrics-notice">
-				CPU and memory are unavailable: this cluster has no metrics-server.
+				CPU and memory are unavailable: the cluster's metrics-server did not answer.
 			</p>
 		{/if}
 	{/snippet}

@@ -4,6 +4,7 @@
 	import StatusGlyph from './StatusGlyph.svelte';
 	import { groupLabel, type NamespaceGroup } from '#lib/list-group.ts';
 	import { toneGlyph, type StatusTone } from '#lib/status.ts';
+	import { LIST_PINNED } from '#lib/ui-classes.ts';
 
 	// Header of one namespace group (#547, Tonal §8.1): a label row lower than
 	// the rows, with the chevron, the name, the row count and, on lists with a
@@ -31,7 +32,7 @@
 
 <button
 	type="button"
-	class="focus-ring-inset sticky left-0 flex h-(--control-inline-h) w-full shrink-0 items-center gap-2 rounded-md px-3 text-left hover:bg-surface-container-high"
+	class="focus-ring-inset {LIST_PINNED} flex h-(--control-inline-h) shrink-0 items-center gap-2 rounded-md px-3 text-left hover:bg-surface-container-high"
 	aria-label={groupLabel(group, nouns, expanded)}
 	data-group={group.namespace}
 	data-expanded={expanded}

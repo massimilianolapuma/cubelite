@@ -111,6 +111,11 @@ describe("podChip", () => {
     expect(podChip({ ...pod("Running"), restarts: 4 })).toBe("err");
   });
 
+  it("a completed pod needs no attention, however often it restarted", () => {
+    expect(needsAttention({ ...pod("Succeeded", false), restarts: 9 })).toBe(false);
+    expect(podChip({ ...pod("Succeeded", false), restarts: 9 })).toBe("done");
+  });
+
   it("Failing plus Pending is exactly the pods needing attention", () => {
     const pods = [
       pod("Failed", false),
@@ -121,6 +126,7 @@ describe("podChip", () => {
       pod(null, false),
       { ...pod("Running"), restarts: 9 },
       { ...pod("Pending", false), restarts: 9 },
+      { ...pod("Succeeded", false), restarts: 9 },
     ];
     for (const p of pods) {
       expect(["err", "warn"].includes(podChip(p))).toBe(needsAttention(p));

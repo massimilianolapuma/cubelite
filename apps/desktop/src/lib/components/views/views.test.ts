@@ -282,6 +282,33 @@ describe("PodsView load states (#606)", () => {
   });
 });
 
+describe("each main list shows its own failure (#606)", () => {
+  it("Events says it could not load, instead of looking empty", async () => {
+    app.kubeconfigPath = "/home/u/.kube/config";
+    vi.mocked(listPods).mockResolvedValueOnce([pod()]);
+    vi.mocked(listNamespaces).mockResolvedValueOnce([]);
+    vi.mocked(listEvents).mockRejectedValueOnce(new Error("etcd timeout"));
+    await resources.load();
+    app.kubeconfigPath = "";
+    render(EventsView);
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load events");
+    expect(screen.getByRole("alert")).toHaveTextContent("etcd timeout");
+    expect(screen.queryByText(/^No events/)).toBeNull();
+  });
+
+  it("Pods still lists when only events failed", async () => {
+    app.kubeconfigPath = "/home/u/.kube/config";
+    vi.mocked(listPods).mockResolvedValueOnce([pod()]);
+    vi.mocked(listNamespaces).mockResolvedValueOnce([]);
+    vi.mocked(listEvents).mockRejectedValueOnce(new Error('events is forbidden: User "dev" cannot list'));
+    await resources.load();
+    app.kubeconfigPath = "";
+    render(PodsView);
+    expect(screen.getByText("api-0")).toBeInTheDocument();
+    expect(screen.queryByText(/not allowed/)).toBeNull();
+  });
+});
+
 describe("PodsView status chips (#574, Tonal §3 #7)", () => {
   it("Failing and Pending show the pods needing attention, combined with the text filter", async () => {
     await loadMain({

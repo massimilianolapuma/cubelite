@@ -23,7 +23,7 @@
 			nouns: NOUNS,
 			namespace: app.namespace,
 			loaded: resources.mainLoaded,
-			error: resources.error,
+			error: resources.listError('events'),
 			total: resources.events.length,
 			shown: shown.length,
 			chips: pressed.length > 0
@@ -36,7 +36,7 @@
 	title="Events"
 	list="events"
 	nouns={NOUNS}
-	columns={['0.8fr', '1fr', '1.4fr', '2.6fr', '0.5fr']}
+	columns={['6.5rem', '1fr', '1.4fr', '2.6fr', '0.5fr']}
 	state={shows}
 	shown={shown.length}
 	total={resources.events.length}

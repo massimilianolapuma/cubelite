@@ -20,7 +20,7 @@
 	selected={app.selectedDeployment}
 	onRowClick={(dep) => (app.selectedDeployment = dep)}
 	loaded={resources.mainLoaded}
-	error={resources.error}
+	error={resources.listError('deployments')}
 	busy={resources.loading}
 	onRetry={() => void resources.load()}
 	onClearFilter={() => (app.deploymentFilter = '')}

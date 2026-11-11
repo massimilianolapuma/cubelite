@@ -40,7 +40,7 @@ export function iconToggle(pressed: boolean): string {
  * beside it.
  */
 export const SEARCH_FIELD =
-  "focus-ring h-(--chip-h) w-56 min-w-0 rounded-full bg-surface-container-high px-4 type-body-sm text-text placeholder:text-text-subtle";
+  "focus-ring h-(--chip-h) w-56 max-w-full min-w-0 rounded-full bg-surface-container-high px-4 type-body-sm text-text placeholder:text-text-subtle";
 
 /**
  * Column header of a list: stays at the top of the card's scroller. Its cells
@@ -56,8 +56,14 @@ export const LIST_HEAD =
 export const LIST_ROW =
   "list-row grid h-(--row-h) w-full shrink-0 grid-cols-(--list-cols) items-center gap-x-3 rounded-md px-3 text-left";
 
-/** A row that opens something: also the keyboard focus ring, inside the scroller. */
-export const LIST_ROW_ACTION = `${LIST_ROW} focus-ring-inset cursor-default`;
+/**
+ * A row that opens something. Its focus ring is drawn by `.list-row` above the
+ * cells, where the sticky name cell cannot cover it.
+ */
+export const LIST_ROW_ACTION = `${LIST_ROW} cursor-default`;
+
+/** Stays in view, as wide as the scroller, while the columns scroll sideways. */
+export const LIST_PINNED = "sticky left-0 w-[100cqw]";
 
 /**
  * First cell of a row and of the column header: stays in view while the

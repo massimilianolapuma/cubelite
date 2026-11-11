@@ -24,9 +24,12 @@ export function podTone(pod: PodInfo): StatusTone {
   }
 }
 
-/** A pod that is not ready (and not completed) or restarting hard. */
+/**
+ * A pod that is not ready or restarting hard. A completed pod never is: the
+ * restarts of a Job that retried and then succeeded are history.
+ */
 export function needsAttention(p: PodInfo): boolean {
-  return (!p.ready && p.phase !== "Succeeded") || p.restarts > 3;
+  return p.phase !== "Succeeded" && (!p.ready || p.restarts > 3);
 }
 
 /** The shape of a tone (Tonal §6); a tone-less state is the unknown ring. */

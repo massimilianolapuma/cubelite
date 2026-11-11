@@ -51,8 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   either its rows, "No pods in payments", "No pods match "abc"" with Clear
   filter, the error with the server's message and Retry, or "You are not
   allowed to list pods in payments". Changing namespace shows the placeholders
-  instead of the previous namespace's rows. The Pods list says when CPU and
-  memory are missing because the cluster has no metrics-server.
+  instead of the previous namespace's rows. Pods, deployments and events each
+  report their own failure, so being refused one of them no longer hides the
+  others. The Pods list says when CPU and memory are missing because
+  metrics-server did not answer.
 
 ### Removed
 

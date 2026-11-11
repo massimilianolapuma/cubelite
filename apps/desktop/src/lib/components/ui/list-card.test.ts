@@ -37,8 +37,10 @@ describe("ListCard", () => {
   it("shows the title, the count, the column header and the rows when ready", () => {
     card({ kind: "ready" });
     expect(screen.getByRole("heading", { level: 1, name: "Pods" })).toBeInTheDocument();
-    expect(screen.getByTestId("list-count")).toHaveTextContent("3");
-    expect(screen.getByTestId("list-count")).toHaveAccessibleName("3 pods");
+    expect(screen.getByTestId("list-count")).toHaveTextContent(/^3$/);
+    // The number alone means nothing to a screen reader: the phrase is real text beside it.
+    expect(screen.getByTestId("list-count")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("list-count-label")).toHaveTextContent("3 pods");
     expect(screen.getByText("Name")).toBeInTheDocument();
     expect(screen.getByTestId("row")).toBeInTheDocument();
   });
@@ -51,12 +53,12 @@ describe("ListCard", () => {
   it("counts shown of total while a filter hides rows", () => {
     card({ kind: "ready" }, { shown: 2, total: 5 });
     expect(screen.getByTestId("list-count")).toHaveTextContent("2 of 5");
-    expect(screen.getByTestId("list-count")).toHaveAccessibleName("2 of 5 pods");
+    expect(screen.getByTestId("list-count-label")).toHaveTextContent("2 of 5 pods");
   });
 
   it("says one pod, not one pods", () => {
     card({ kind: "ready" }, { shown: 1, total: 1 });
-    expect(screen.getByTestId("list-count")).toHaveAccessibleName("1 pod");
+    expect(screen.getByTestId("list-count-label")).toHaveTextContent(/^1 pod$/);
   });
 
   it("shows placeholder rows while loading: no rows, no count, no empty message", () => {
@@ -132,6 +134,23 @@ describe("ListCard", () => {
     expect(failing).toHaveTextContent("1");
     await fireEvent.click(failing);
     expect(lists.pressed("pods")).toEqual(["err"]);
+  });
+
+  it("shows chips only with the rows they count: not while loading, not over an error", () => {
+    const chips = [{ key: "err", label: "Failing", state: "err", count: 1, pressed: false }];
+    const loading = card({ kind: "loading" }, { chips });
+    expect(screen.queryByRole("group", { name: "Filter by status" })).not.toBeInTheDocument();
+    loading.unmount();
+    card({ kind: "error", title: "Could not load pods", message: "x" }, { chips });
+    expect(screen.queryByRole("group", { name: "Filter by status" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the chips over a filter that matches nothing, so a pressed one can be released", () => {
+    card(
+      { kind: "filtered", title: "No pods with the selected status" },
+      { shown: 0, chips: [{ key: "err", label: "Failing", state: "err", count: 0, pressed: true }] },
+    );
+    expect(screen.getByRole("group", { name: "Filter by status" })).toBeInTheDocument();
   });
 
   it("has no chip group when there are no chips", () => {

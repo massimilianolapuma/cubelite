@@ -7,6 +7,7 @@
 	import { formatAge } from '#lib/age.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { LIST_PINNED } from '#lib/ui-classes.ts';
 
 	$effect(() => {
 		void [app.namespace, app.activeCluster];
@@ -73,7 +74,7 @@
 	{#snippet below(secret)}
 		{@const isRevealed = revealed[keyOf(secret.namespace, secret.name)] ?? false}
 		{#if Object.keys(secret.data).length > 0}
-			<div class="sticky left-0 mb-1 flex flex-col gap-1 rounded-md bg-surface-sunken px-3 py-2" data-testid="secret-data">
+			<div class="{LIST_PINNED} mb-1 flex flex-col gap-1 rounded-md bg-surface-sunken px-3 py-2" data-testid="secret-data">
 				{#each Object.entries(secret.data) as [key, value] (key)}
 					<div class="flex items-baseline gap-3">
 						<span class="type-data-sm w-44 shrink-0 truncate text-text-muted">{key}</span>

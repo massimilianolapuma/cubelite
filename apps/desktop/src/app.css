@@ -520,7 +520,23 @@
      container. A selected row re-declares the text roles, so every cell reads
      on the container whatever role it was written in. */
   .list-row {
+    position: relative;
     background-color: var(--color-surface-container);
+  }
+  /* The ring sits above the cells: as an outline of the row itself it would
+     be painted over by the sticky name cell. */
+  .list-row:focus-visible {
+    outline: none;
+  }
+  .list-row:focus-visible::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: inherit;
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+    pointer-events: none;
   }
   .list-row:hover {
     background-color: var(--color-surface-container-high);

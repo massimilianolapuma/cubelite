@@ -153,8 +153,11 @@ describe("TopBar", () => {
     render(TopBar);
     const chip = screen.getByRole("button", { name: "1 warning" });
     expect(chip.querySelector("svg")).toHaveAttribute("data-glyph", "warn");
+    // Whatever was pressed in Events before, the chip shows the warnings it counts.
+    lists.setStatus("events", ["normal"]);
     await fireEvent.click(chip);
     expect(app.view).toBe("events");
+    expect(lists.pressed("events")).toEqual(["warning"]);
   });
 
   it("drags the window from its empty space, not from a chip", async () => {

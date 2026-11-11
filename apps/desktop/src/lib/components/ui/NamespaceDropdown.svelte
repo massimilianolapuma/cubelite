@@ -20,7 +20,7 @@
 
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
-		class="focus-ring flex h-(--chip-h) min-w-0 items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110"
+		class="focus-ring flex h-(--chip-h) max-w-[26%] min-w-0 shrink-0 @max-[44rem]:max-w-[34%] items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110"
 	>
 		<span class="type-body-sm shrink-0 text-text-subtle @max-[44rem]:sr-only">Namespace</span>
 		<span class="type-data truncate text-text">{app.namespace ?? 'all'}</span>

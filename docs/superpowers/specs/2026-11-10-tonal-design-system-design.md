@@ -61,7 +61,7 @@ These are visible changes in how the app works. Each is my call unless marked co
 | 4 | Cluster colours become **teal, blue, indigo, violet, magenta**. Saved `amber` becomes `indigo`, saved `pink` becomes `magenta`. | Amber and pink collide with warning and error once they tint the whole window |
 | 5 | The **status bar is removed**. Kubernetes version moves into the cluster chip, the server address into its menu, the warnings count into a top-bar chip that opens Events; the refresh interval stays in Preferences. | C has no bottom strip; 27 px back to content |
 | 6 | Sidebar **section dots are removed**, and Overview cards lose their per-resource tints. | Colour is reserved for tint and state |
-| 7 | "Needs attention" (Pods) and "Warnings only" (Events) become **status chips** above the list: Failing, Pending, Running, Completed with counts; pressing one filters. "Needs attention" equals Failing + Pending: a running pod that is not ready or restarts hard counts as Failing, whatever its phase, so the two chips always add up to the sidebar's attention count. The row keeps the exact status the API returned. | C's header; the counts double as a summary |
+| 7 | "Needs attention" (Pods) and "Warnings only" (Events) become **status chips** above the list: Failing, Pending, Running, Completed with counts; pressing one filters. "Needs attention" equals Failing + Pending: a running pod that is not ready or restarts hard counts as Failing, whatever its phase, so the two chips always add up to the sidebar's attention count. A completed pod never needs attention, whatever its restart count. The row keeps the exact status the API returned. | C's header; the counts double as a summary |
 | 8 | Default window 1200 × 800 → **1360 × 860**; minimum stays 800 × 600. | At 1200 the panel could never dock |
 | 9 | Fonts: **Space Grotesk** (titles), **Inter** (interface), **JetBrains Mono** (data) replace Geist and Geist Mono. | Part of the chosen look |
 | 10 | The "logs ↵" chip on the selected pod row is removed; Enter on a selected row still opens logs, and Logs is the panel's primary button. | The chip sat under the drawer |
@@ -213,9 +213,10 @@ carries no contrast requirement.
   menu with server address, copy, reconnect), namespace chip, spacer, warnings chip (hidden at
   zero), the "Search & switch" field. It is the window drag region; chips are not. The cluster chip
   carries its own cluster's tint, so it keeps its colour on the All Clusters dashboard.
-  It stays on one row at any width: below 56 rem of content the search field becomes its icon and
+  It stays on one row at any width: below 60 rem of content the search field becomes its icon and
   the version goes; below 44 rem the provider tag and the words beside a glyph go too (they stay
-  in the accessible names).
+  in the accessible names). The namespace chip takes at most a quarter of the row; a long context
+  name truncates in the cluster chip.
 - **Rail**: All Clusters, one 44 px disc per context with a health glyph, Preferences at the bottom.
   Every avatar carries its own cluster's tint; the active cluster becomes a `radius-md` square in
   `primary`. More contexts than fit: the avatar
@@ -293,7 +294,7 @@ One shared list card replaces the per-view table markup:
 | Loading | Six placeholder rows in `surface-container-high` (pulse; static under reduced motion). Never the empty message. Also after a namespace change, until that namespace answers: never the previous namespace's rows. |
 | Empty | `headline` "No pods in payments" + one `body-sm` line; no illustration. |
 | Filtered to nothing | "No pods match "abc"" + Clear filter (text button). |
-| Error | `error-container` block: what failed, the server's message in `data`, Retry. The block stays while a reload runs (Retry shows the spinner), so a list that keeps failing does not flicker between error and loading on every refresh. |
+| Error | `error-container` block: what failed, the server's message in `data`, Retry. The block stays while a reload runs (Retry shows the spinner), so a list that keeps failing does not flicker between error and loading on every refresh. Pods, deployments and events each report their own failure: one of them refused by RBAC does not blank the other two. An error belongs to the namespace it was loaded for. |
 | Forbidden (RBAC) | "You are not allowed to list pods in payments." with the dashed ring. |
 | Not available on this cluster | Existing copy, dashed ring. |
 | Partial data (no metrics) | En dash in the cell; one `body-sm` line under the header says metrics are unavailable. |

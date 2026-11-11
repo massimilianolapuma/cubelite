@@ -99,6 +99,9 @@ function countByNamespace(pods: PodInfo[]): Record<string, number> {
 }
 
 
+/** The lists `load()` fills. */
+export type MainList = "pods" | "deployments" | "events";
+
 class ResourcesStore {
   pods = $state<PodInfo[]>([]);
   namespaces = $state<NamespaceInfo[]>([]);
@@ -126,8 +129,20 @@ class ResourcesStore {
   error = $state<string | null>(null);
   extraLoading = $state(false);
   extraError = $state<string | null>(null);
-  /** The kind `extraError` belongs to. */
+  /** The kind `extraError` belongs to, and the namespace filter it was loaded with. */
   #extraErrorKind = $state<ExtraKind | null>(null);
+  #extraErrorFor = $state<string | null>(null);
+  /**
+   * What failed in the last `load()`, per list, and the namespace filter it
+   * ran with. One list failing is not the others' failure: RBAC can allow
+   * pods and refuse deployments.
+   */
+  #listErrors = $state<{ ns: string | null } & Record<MainList, string | null>>({
+    ns: null,
+    pods: null,
+    deployments: null,
+    events: null,
+  });
   /**
    * Namespace filter pods, deployments and events were last loaded with
    * (null = all); undefined until the first load of the active cluster.
@@ -180,43 +195,67 @@ class ResourcesStore {
 
     this.loading = true;
     try {
-      const [podList, nsList, eventList] = await Promise.all([
+      const failure = (r: PromiseSettledResult<unknown>) =>
+        r.status === "rejected" ? errorMessage(r.reason) : null;
+      // Each list answers for itself: a refusal of one is not the others' failure.
+      const [podsR, nsR, eventsR] = await Promise.allSettled([
         listPods(kc, ns ?? undefined, cluster),
         listNamespaces(kc, cluster),
-        // Events are non-fatal: the warnings count degrades to empty.
-        listEvents(kc, ns ?? undefined, cluster).catch(() => [] as EventInfo[]),
+        listEvents(kc, ns ?? undefined, cluster),
       ]);
-      // list_deployments requires a namespace: fan out when filtering "all".
-      const depList = ns
-        ? await listDeployments(kc, ns, cluster)
-        : (
-            await Promise.all(
-              nsList.map((n) =>
-                listDeployments(kc, n.name, cluster).catch(() => [] as DeploymentInfo[]),
-              ),
-            )
-          ).flat();
+      const deps = await this.#loadDeployments(kc, ns, cluster, nsR);
 
       if (seq !== this.#loadSeq) return true;
-      this.pods = podList;
-      if (ns === null) this.#allNsPodCounts = countByNamespace(podList);
-      this.namespaces = nsList;
-      this.deployments = depList;
-      this.events = eventList;
+      if (podsR.status === "fulfilled") {
+        this.pods = podsR.value;
+        if (ns === null) this.#allNsPodCounts = countByNamespace(podsR.value);
+      }
+      if (nsR.status === "fulfilled") this.namespaces = nsR.value;
+      if (deps.rows) this.deployments = deps.rows;
+      if (eventsR.status === "fulfilled") this.events = eventsR.value;
+      this.#listErrors = { ns, pods: failure(podsR), deployments: deps.error, events: failure(eventsR) };
+      // Every list now has an answer for `ns`: its rows or its error.
       this.#mainLoadedFor = ns;
-      this.error = null;
+      // Pods and namespaces are what "the cluster answered" means.
+      this.error = failure(podsR) ?? failure(nsR);
+      if (this.error !== null) return false;
       void this.#loadMetrics(kc, ns ?? undefined, cluster, seq);
       // Keep the currently open extra view in sync with refresh/watch cycles.
       if (isExtraKind(app.view)) void this.loadKind(app.view);
       else if (isKindView(app.view)) void dynamic.load(app.view);
       else if (app.view === "overview") void this.loadOverviewExtras();
       return true;
-    } catch (e) {
-      if (seq === this.#loadSeq) this.error = errorMessage(e);
-      return false;
     } finally {
       if (seq === this.#loadSeq) this.loading = false;
     }
+  }
+
+  /**
+   * list_deployments requires a namespace: with "all namespaces" it fans out
+   * over them. Some namespaces refusing leaves the rows of the others; every
+   * namespace refusing (or no namespace list to fan out over) is a failed
+   * list, not an empty one.
+   */
+  async #loadDeployments(
+    kc: string,
+    ns: string | null,
+    cluster: string,
+    namespaces: PromiseSettledResult<NamespaceInfo[]>,
+  ): Promise<{ rows: DeploymentInfo[] | null; error: string | null }> {
+    if (ns !== null) {
+      try {
+        return { rows: await listDeployments(kc, ns, cluster), error: null };
+      } catch (e) {
+        return { rows: null, error: errorMessage(e) };
+      }
+    }
+    if (namespaces.status === "rejected") return { rows: null, error: errorMessage(namespaces.reason) };
+    const settled = await Promise.allSettled(namespaces.value.map((n) => listDeployments(kc, n.name, cluster)));
+    const refused = settled.find((r) => r.status === "rejected");
+    if (refused && settled.every((r) => r.status === "rejected")) {
+      return { rows: null, error: errorMessage(refused.reason) };
+    }
+    return { rows: settled.flatMap((r) => (r.status === "fulfilled" ? r.value : [])), error: null };
   }
 
   /** Metrics are best-effort: absence of metrics-server must not fail load(). */
@@ -293,6 +332,15 @@ class ResourcesStore {
     return this.#mainLoadedFor !== undefined && this.#mainLoadedFor === app.namespace;
   }
 
+  /**
+   * Message of a main list's last failed load, if it failed for the current
+   * namespace. An error of another namespace is not shown under this one's
+   * name: the list is then loading.
+   */
+  listError(list: MainList): string | null {
+    return this.#listErrors.ns === app.namespace ? this.#listErrors[list] : null;
+  }
+
   /** An on-demand kind is loaded for the current cluster and namespace. */
   kindLoaded(kind: ExtraKind): boolean {
     return this.kindCount(kind) !== null;
@@ -300,7 +348,10 @@ class ResourcesStore {
 
   /** Message of `kind`'s last failed load, if its last load failed. */
   kindError(kind: ExtraKind): string | null {
-    return this.#extraErrorKind === kind ? this.extraError : null;
+    if (this.#extraErrorKind !== kind) return null;
+    // Nodes are cluster-scoped; any other kind's error belongs to its namespace.
+    if (kind !== "nodes" && this.#extraErrorFor !== app.namespace) return null;
+    return this.extraError;
   }
 
   /**
@@ -414,6 +465,7 @@ class ResourcesStore {
       if (seq === this.#extraSeq) {
         this.extraError = errorMessage(e);
         this.#extraErrorKind = kind;
+        this.#extraErrorFor = ns ?? null;
         this.#markForbidden(kind, isForbiddenError(this.extraError));
       }
     } finally {
@@ -436,7 +488,9 @@ class ResourcesStore {
     const results = await Promise.allSettled(
       OVERVIEW_KINDS.map((kind) => this.#fetchKind(kind, kc, ns, cluster)),
     );
-    if (seq !== this.#overviewSeq) return;
+    // A batch for a namespace the user has left must not replace what a later
+    // load of the new one committed (it would mark those kinds not loaded).
+    if (seq !== this.#overviewSeq || (app.namespace ?? undefined) !== ns) return;
     const loaded = { ...this.loadedKinds };
     const denied: ExtraKind[] = [];
     const succeeded: ExtraKind[] = [];
@@ -488,6 +542,8 @@ class ResourcesStore {
     this.loading = false;
     this.extraError = null;
     this.#extraErrorKind = null;
+    this.#extraErrorFor = null;
+    this.#listErrors = { ns: null, pods: null, deployments: null, events: null };
     this.#mainLoadedFor = undefined;
     this.extraLoading = false;
   }

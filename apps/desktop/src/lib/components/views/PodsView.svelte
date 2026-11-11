@@ -34,7 +34,7 @@
 	onRowClick={(pod) => (app.selectedPod = pod)}
 	onLogs={(pod) => void logPanel.openFor({ namespace: pod.namespace, name: pod.name })}
 	loaded={resources.mainLoaded}
-	error={resources.error}
+	error={resources.listError('pods')}
 	busy={resources.loading}
 	onRetry={() => void resources.load()}
 	onClearFilter={() => (app.podFilter = '')}

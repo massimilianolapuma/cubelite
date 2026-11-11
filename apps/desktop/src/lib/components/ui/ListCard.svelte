@@ -69,20 +69,20 @@
 	const width = $derived(minWidth ?? 220 + 92 * (columns.length - 1));
 </script>
 
-<section class="flex min-h-0 flex-1 flex-col gap-3 p-4" aria-label={title}>
+<!-- No min-h-0: when the window is too short for the header and a few rows, the
+     content card scrolls the whole list rather than squeezing the rows away. -->
+<section class="flex flex-1 flex-col gap-3 p-4" aria-label={title}>
+	<!-- The title never gives way to the tools: when both do not fit, the tools wrap under it. -->
 	<header class="flex min-h-(--chip-h) flex-wrap items-center gap-x-3 gap-y-2">
-		<div class="flex min-w-0 flex-1 items-baseline gap-3">
-			<h1 class="type-display min-w-0 break-words">{title}</h1>
+		<div class="flex max-w-full min-w-0 items-baseline gap-3">
+			<h1 class="type-display truncate" {title}>{title}</h1>
 			{#if counted}
-				<span
-					class="type-title shrink-0 text-text-subtle"
-					data-testid="list-count"
-					aria-label="{count} {total === 1 ? nouns[0] : nouns[1]}"
-				>
-					{count}
-				</span>
+				<!-- The phrase is real text: a label on a plain span is not announced. -->
+				<span class="type-title shrink-0 text-text-subtle" data-testid="list-count" aria-hidden="true">{count}</span>
+				<span class="sr-only" data-testid="list-count-label">{count} {total === 1 ? nouns[0] : nouns[1]}</span>
 			{/if}
 		</div>
+		<div class="min-w-0 flex-1"></div>
 		<PinToggle />
 		{#if groupable && app.namespace === null}
 			<button
@@ -99,7 +99,9 @@
 		{@render tools?.()}
 	</header>
 
-	{#if chips.length > 0}
+	<!-- Chips count the rows on screen: over placeholders or an error they would
+	     be the previous answer's. -->
+	{#if chips.length > 0 && counted}
 		<div class="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
 			{#each chips as chip (chip.key)}
 				<Chip
@@ -116,7 +118,13 @@
 	{@render notice?.()}
 
 	{#if state.kind === 'ready'}
-		<div class="min-h-0 flex-1 overflow-auto" data-testid="list-scroller" style="--list-cols: {columns.join(' ')};">
+		<!-- @container: what must stay in view while the columns scroll sideways (group
+		     headers, a secret's keys) is sized to the scroller, 100cqw. At least three rows tall. -->
+		<div
+			class="@container min-h-[calc(var(--row-h)*3+2rem)] flex-1 overflow-auto"
+			data-testid="list-scroller"
+			style="--list-cols: {columns.join(' ')};"
+		>
 			<div class="flex flex-col gap-0.5" style="min-width: {width}px;">
 				<div class={LIST_HEAD}>
 					{@render head()}
