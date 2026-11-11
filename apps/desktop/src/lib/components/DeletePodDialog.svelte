@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Button from '#lib/components/ui/Button.svelte';
 	import Modal from '#lib/components/ui/Modal.svelte';
 	import type { PodInfo } from '#lib/tauri.ts';
 
@@ -18,31 +19,23 @@
 </script>
 
 <Modal title="Delete Pod" width={420} onClose={onCancel}>
-	<p class="type-body text-text-secondary">
+	<p class="type-body text-text-muted">
 		This will delete the pod
-		<span class="type-data text-text-data-bright">{pod.name}</span>
+		<span class="type-data text-text">{pod.name}</span>
 		in namespace
-		<span class="type-data text-text-data-bright">{pod.namespace}</span>.
+		<span class="type-data text-text">{pod.namespace}</span>.
 		The workload controller may recreate it.
 	</p>
 
 	{#snippet footer()}
-		<button
-			type="button"
-			class="focus-ring type-body flex h-7 items-center rounded-md border border-border-default bg-surface-raised px-3 text-text-secondary hover:brightness-110"
-			onclick={onCancel}
-		>
-			Cancel
-		</button>
-		<button
-			type="button"
+		<Button variant="text" onclick={onCancel}>Cancel</Button>
+		<Button
+			variant="danger-solid"
 			disabled={confirmDisabled}
 			title={confirmDisabled ? 'Requires backend support' : undefined}
-			class="focus-ring type-body flex h-7 items-center rounded-md px-3 text-on-error-solid hover:brightness-110 disabled:opacity-45"
-			style="background: var(--color-error-solid);"
 			onclick={onConfirm}
 		>
 			Delete Pod
-		</button>
+		</Button>
 	{/snippet}
 </Modal>
