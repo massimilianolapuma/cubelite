@@ -20,6 +20,21 @@
 		}
 	}
 
+	// The panel and the selected row show the pod as it is now, not as it was
+	// when it was clicked: its state, its restarts and its containers move on.
+	const current = $derived.by(() => {
+		const sel = app.selectedPod;
+		if (!sel) return null;
+		return resources.pods.find((p) => p.namespace === sel.namespace && p.name === sel.name) ?? sel;
+	});
+	// A pod that is gone has no panel. Only a list that answered can tell: while
+	// it loads or fails, the pod may still be there.
+	$effect(() => {
+		const sel = app.selectedPod;
+		if (!sel || !resources.mainLoaded || resources.listError('pods') !== null) return;
+		if (!resources.pods.some((p) => p.namespace === sel.namespace && p.name === sel.name)) app.selectedPod = null;
+	});
+
 	const filtered = $derived.by(() => {
 		const text = app.podFilter.trim().toLowerCase();
 		return text ? resources.pods.filter((p) => `${p.namespace}/${p.name}`.toLowerCase().includes(text)) : resources.pods;
@@ -30,7 +45,7 @@
 	pods={filtered}
 	total={resources.pods.length}
 	filter={app.podFilter}
-	selected={app.selectedPod}
+	selected={current}
 	onRowClick={(pod) => (app.selectedPod = pod)}
 	onLogs={(pod) => void logPanel.openFor({ namespace: pod.namespace, name: pod.name })}
 	loaded={resources.mainLoaded}
@@ -50,9 +65,9 @@
 	{/snippet}
 </PodTable>
 
-{#if app.selectedPod}
+{#if current}
 	<PodDrawer
-		pod={app.selectedPod}
+		pod={current}
 		onClose={() => (app.selectedPod = null)}
 		onDelete={(pod) => (deleteTarget = pod)}
 	/>

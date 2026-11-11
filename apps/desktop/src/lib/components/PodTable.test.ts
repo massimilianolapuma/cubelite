@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, within } from "@testing-library/svelte";
 import PodTable from "./PodTable.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
+import { layout } from "#lib/stores/layout.svelte.ts";
 import { lists } from "#lib/stores/lists.svelte.ts";
 import { mutations } from "#lib/stores/mutations.svelte.ts";
 import type { PodInfo } from "#lib/tauri.ts";
@@ -32,6 +33,7 @@ beforeEach(() => {
   lists.resetSession();
   lists.groupByNamespace = false;
   app.namespace = null;
+  layout.contentWidth = 0;
 });
 
 describe("PodTable", () => {
@@ -218,5 +220,45 @@ describe("PodTable status chips (Tonal §3 #7)", () => {
     expect(lists.pressed("pods")).toEqual([]);
     expect(onClearFilter).toHaveBeenCalledOnce();
     expect(screen.getByText("api-0")).toBeInTheDocument();
+  });
+});
+
+describe("PodTable beside a docked detail panel (Tonal §3 #2)", () => {
+  const headers = () => [...document.querySelectorAll(".list-head > *")].map((el) => el.textContent?.replace(/[▲▼].*/, "").trim());
+
+  it("shows every column while nothing is selected, however wide the window", () => {
+    layout.contentWidth = 1200;
+    render(PodTable, { props: { pods: [pod()] } });
+    expect(headers()).toEqual(["Name", "Namespace", "Status", "Ready", "Age", "CPU", "Memory", "Restarts"]);
+  });
+
+  it("keeps five identifying columns once the panel is docked", () => {
+    layout.contentWidth = 1200;
+    const p = pod();
+    render(PodTable, { props: { pods: [p], selected: p } });
+    expect(headers()).toEqual(["Name", "Namespace", "Status", "Ready", "Restarts"]);
+  });
+
+  it("drops the namespace column for Age when one namespace is selected", () => {
+    layout.contentWidth = 1200;
+    app.namespace = "default";
+    const p = pod();
+    render(PodTable, { props: { pods: [p], selected: p } });
+    expect(headers()).toEqual(["Name", "Status", "Ready", "Age", "Restarts"]);
+  });
+
+  it("keeps the column the list is sorted by: Age takes Ready's place", async () => {
+    layout.contentWidth = 1200;
+    const p = pod();
+    lists.clickHeader("pods", "age");
+    render(PodTable, { props: { pods: [p], selected: p } });
+    expect(headers()).toEqual(["Name", "Namespace", "Status", "Age", "Restarts"]);
+  });
+
+  it("keeps every column when the panel overlays the list", () => {
+    layout.contentWidth = 964;
+    const p = pod();
+    render(PodTable, { props: { pods: [p], selected: p } });
+    expect(headers()).toHaveLength(8);
   });
 });

@@ -40,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   more columns than fit, it scrolls sideways and the name stays visible. The
   "logs" chip on the selected pod is gone: Enter on the selected row still
   opens its logs. The top bar stays on one row in a narrow window.
+- **Detail panel beside the list** (#617): selecting a pod, a deployment, a node
+  or any other object opens its panel as a card beside the list when the window
+  is wide enough (about 1320 px), and over the list when it is not. Beside the
+  panel the list keeps its five identifying columns; the rest is in the panel.
+  The panel leads with the state (a filled block when something is wrong, with
+  what explains it), two numbers, then the facts. A deployment is scaled and
+  restarted from its panel; other objects get a Summary of every column above
+  their YAML. Opening the panel moves keyboard focus to it and Esc gives it
+  back to the row; Enter on a pod row and Enter again still opens its logs.
 - **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
   saved as amber becomes indigo and one saved as pink becomes magenta: warm
   colours are reserved for warnings and errors.

@@ -71,3 +71,9 @@ export const LIST_PINNED = "sticky left-0 w-[100cqw]";
  * pass under it do not show through.
  */
 export const LIST_STICKY = "sticky left-0 z-[1] bg-inherit";
+
+/** A block inside the detail panel: one surface above the panel's own, in both its modes. */
+export const PANEL_CARD = "rounded-lg bg-surface-container-top";
+
+/** Heading of a section of the detail panel. */
+export const PANEL_SECTION = "type-label mb-2 text-text-muted";

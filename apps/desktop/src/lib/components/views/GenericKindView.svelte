@@ -6,10 +6,12 @@
 	import { formatAge } from '#lib/age.ts';
 	import { listState } from '#lib/list-state.ts';
 	import { isCustomView, type KindView } from '#lib/resource-kinds.ts';
-	import { cellText, planColumns, planTracks } from '#lib/table-columns.ts';
+	import { cellText, narrowPlan, planColumns, planTracks } from '#lib/table-columns.ts';
 	import type { TableRow } from '#lib/tauri.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
+	import { layout } from '#lib/stores/layout.svelte.ts';
+	import { lists } from '#lib/stores/lists.svelte.ts';
 	import { LIST_ROW_ACTION, LIST_STICKY, SEARCH_FIELD } from '#lib/ui-classes.ts';
 
 	// Any ★ kind of the resource-kinds design (§5.1): the columns `kubectl get`
@@ -32,8 +34,15 @@
 		void dynamic.load(view);
 	});
 
+	const selected = $derived(app.selectedObject);
+	// Beside the docked panel the list keeps its first five columns; the panel's
+	// Summary has them all (Tonal §3 #2, §8.3).
+	const narrow = $derived(layout.docked && selected !== null);
+
 	const table = $derived(dynamic.tables[view]);
-	const plan = $derived(planColumns(table?.columns ?? [], namespaced && !grouped));
+	const withNamespace = $derived(namespaced && !grouped && (!narrow || app.namespace === null));
+	const fullPlan = $derived(planColumns(table?.columns ?? [], withNamespace));
+	const plan = $derived(narrow ? narrowPlan(fullPlan, lists.specFor(view).field) : fullPlan);
 	const all = $derived(table?.rows ?? []);
 	const rows = $derived.by(() => {
 		const text = filter.trim().toLowerCase();
@@ -61,7 +70,30 @@
 		created: (r: TableRow) => r.creation_timestamp
 	};
 
-	const selected = $derived(app.selectedObject);
+	// Every column the server returned for the open object, as the panel's
+	// Summary: nothing is lost when the list is narrowed. The name is the
+	// panel's title.
+	const summary = $derived.by((): [string, string | null][] => {
+		const row = selected && all.find((r) => r.name === selected.name && r.namespace === selected.namespace);
+		if (!row || !table) return [];
+		const facts: [string, string | null][] = namespaced ? [['Namespace', row.namespace]] : [];
+		for (const column of planColumns(table.columns, false)) {
+			if (column.kind === 'age') {
+				// The object's own age, as in the list; the cell only when it has no timestamp.
+				const age = row.creation_timestamp ? formatAge(row.creation_timestamp) : cellText(row.cells[ageIndex], true);
+				facts.push([column.label, age || null]);
+			} else if (column.kind === 'cell') {
+				facts.push([column.label, cellText(row.cells[column.index], column.date) || null]);
+			}
+		}
+		return facts;
+	});
+	// Where the server's Age (or Created At) cell is, for an object without a timestamp.
+	const ageIndex = $derived.by(() => {
+		const columns = table?.columns ?? [];
+		const isDate = (label: string) => columns.findIndex((c) => c.name === label && c.column_type === 'date');
+		return isDate('Age') >= 0 ? isDate('Age') : isDate('Created At');
+	});
 
 	// The first column stays in view while the others scroll sideways.
 	const sticky = (i: number) => (i === 0 ? LIST_STICKY : '');
@@ -142,5 +174,12 @@
 </ListCard>
 
 {#if selected}
-	<ObjectYamlDrawer {view} name={selected.name} namespace={selected.namespace} onClose={() => (app.selectedObject = null)} />
+	<ObjectYamlDrawer
+		{view}
+		kind={meta.nouns[0]}
+		name={selected.name}
+		namespace={selected.namespace}
+		{summary}
+		onClose={() => (app.selectedObject = null)}
+	/>
 {/if}

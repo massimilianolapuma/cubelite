@@ -24,6 +24,7 @@
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
 	import { isMac } from '#lib/platform.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { layout } from '#lib/stores/layout.svelte.ts';
 	import { clusters } from '#lib/stores/clusters.svelte.ts';
 	import { health } from '#lib/stores/health.svelte.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
@@ -198,20 +199,22 @@
 		{#if app.view !== 'dashboard' && clusters.connectionState === 'connected'}
 			<IntegrationsBanner />
 		{/if}
-		<!-- The content card. Drawers portal into <main> (data-drawer-host), outside the
-		     scroller, so they stay pinned to its right edge while the view scrolls. -->
-		<main
-			class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-container"
-			data-drawer-host
-		>
-			<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
-				{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
-					<UnreachableView />
-				{:else}
-					<Current {...entry.props ?? {}} />
-				{/if}
-			</div>
-		</main>
+		<!-- The content card and the detail panel (Tonal §5). The panel renders into
+		     the host beside the card: docked it is a card of its own there, and when this
+		     row is narrower than 1000 px it lies over the card instead. The row's width is
+		     what decides, so the rule follows the sidebar and the rail, not the window. -->
+		<div class="relative flex min-h-0 min-w-0 flex-1" bind:clientWidth={layout.contentWidth}>
+			<main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-container">
+				<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+					{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
+						<UnreachableView />
+					{:else}
+						<Current {...entry.props ?? {}} />
+					{/if}
+				</div>
+			</main>
+			<div class="flex shrink-0" data-drawer-host></div>
+		</div>
 		<LogPanel />
 	</div>
 </div>

@@ -16,7 +16,7 @@ async function openLogPanel(page: Page, pod: string) {
   await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
   await page.getByText(pod, { exact: true }).click();
   await expect(page.getByRole("dialog", { name: pod })).toBeVisible();
-  await page.getByRole("button", { name: "Log panel" }).click();
+  await page.getByRole("button", { name: "Open logs" }).click();
   await expect(page.getByLabel("Pod logs panel")).toBeVisible();
 }
 

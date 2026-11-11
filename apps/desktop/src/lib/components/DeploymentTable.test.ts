@@ -28,6 +28,7 @@ import DeploymentTable from "./DeploymentTable.svelte";
 import { restartDeployment, scaleDeployment, type DeploymentInfo } from "#lib/tauri.ts";
 import { SCALE_DEBOUNCE_MS } from "#lib/stores/mutations.svelte.ts";
 import { app } from "#lib/stores/app.svelte.ts";
+import { layout } from "#lib/stores/layout.svelte.ts";
 import { lists } from "#lib/stores/lists.svelte.ts";
 
 beforeEach(() => {
@@ -37,6 +38,7 @@ beforeEach(() => {
   app.namespace = null;
   lists.resetSession();
   lists.groupByNamespace = false;
+  layout.contentWidth = 0;
 });
 
 function dep(overrides: Partial<DeploymentInfo> = {}): DeploymentInfo {
@@ -173,5 +175,31 @@ describe("DeploymentTable", () => {
     render(DeploymentTable, { props: { deployments: [dep()], onRowClick } });
     await fireEvent.click(screen.getByText("api"));
     expect(onRowClick).toHaveBeenCalledWith(dep());
+  });
+});
+
+describe("DeploymentTable beside a docked detail panel (Tonal §3 #2 #11)", () => {
+  it("keeps the identifying columns and leaves scale and restart to the panel", () => {
+    layout.contentWidth = 1200;
+    const d = dep();
+    render(DeploymentTable, { props: { deployments: [d], selected: d } });
+    expect(screen.queryByText("Replicas · Actions")).toBeNull();
+    expect(screen.queryByLabelText("Scale up")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Restart" })).toBeNull();
+    for (const h of ["Name", "Namespace", "Ready", "Status", "Age"]) {
+      expect(screen.getByText(h)).toBeInTheDocument();
+    }
+  });
+
+  it("keeps the controls in the row while the panel overlays the list or nothing is selected", () => {
+    layout.contentWidth = 964;
+    const d = dep();
+    const overlay = render(DeploymentTable, { props: { deployments: [d], selected: d } });
+    expect(screen.getByLabelText("Scale up")).toBeInTheDocument();
+    overlay.unmount();
+
+    layout.contentWidth = 1200;
+    render(DeploymentTable, { props: { deployments: [d] } });
+    expect(screen.getByLabelText("Scale up")).toBeInTheDocument();
   });
 });
