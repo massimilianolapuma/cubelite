@@ -12,22 +12,26 @@ export const METRICS_RANGES: { value: MetricsRange; label: string }[] = [
   { value: "7d", label: "7d" },
 ];
 
-/** Line colours, in order of first appearance (same tokens as cluster identity). */
-export const SERIES_COLORS = [
-  "var(--color-accent)",
-  "var(--color-cluster-teal)",
-  "var(--color-cluster-violet)",
-  "var(--color-cluster-amber)",
-  "var(--color-cluster-pink)",
-  "var(--color-cluster-blue)",
-];
+/** How many data colours there are (`data-1` … `data-5`, Tonal §4.2). */
+const DATA_COLORS = 5;
+/** Reference lines (requests, limits, allocatable): dashed, in the quietest text colour. */
+export const REFERENCE_COLOR = "var(--color-text-subtle)";
 
-export function seriesColor(index: number): string {
-  return SERIES_COLORS[index % SERIES_COLORS.length];
+/**
+ * Colour and stroke of the series at `index`, in order of first appearance:
+ * the five data colours, then the same five dashed, so that a sixth line is
+ * never mistaken for the first.
+ */
+export function seriesStyle(index: number): { color: string; dash?: string } {
+  const color = `var(--color-data-${(index % DATA_COLORS) + 1})`;
+  return index < DATA_COLORS ? { color } : { color, dash: "6 3" };
 }
 
-/** One line of a chart; dashed for reference lines (requests, limits). */
-export type ChartLine = { label: string; color: string; points: Point[]; dashed?: boolean };
+/**
+ * One line of a chart. `dashed` marks a reference line (requests, limits);
+ * `dash` is the stroke pattern of a series that repeats a colour.
+ */
+export type ChartLine = { label: string; color: string; points: Point[]; dashed?: boolean; dash?: string };
 
 export type Unit = "cores" | "bytes" | "bytes-per-second" | "count";
 

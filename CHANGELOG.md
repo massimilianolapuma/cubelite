@@ -49,6 +49,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restarted from its panel; other objects get a Summary of every column above
   their YAML. Opening the panel moves keyboard focus to it and Esc gives it
   back to the row; Enter on a pod row and Enter again still opens its logs.
+- **Dashboards in the new look** (#619): on All Clusters every cluster card is
+  in its own cluster's colour, with its health as a shape and a word; an
+  unreachable cluster says when it was last seen, and with no context at all
+  the page says where clusters come from. The window takes a cluster's colour
+  as soon as you start connecting to it. On Overview the resource cards lose
+  their own colours: a count that needs attention (pending, failed, degraded)
+  is bold with a triangle or a square, and alert severity is a shape and a
+  word. Charts draw their lines in five data colours and repeat them dashed
+  past five; request and limit lines are dashed and grey. "Cluster
+  unreachable" leads with the failure and its reason, with Retry as the main
+  action.
 - **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
   saved as amber becomes indigo and one saved as pink becomes magenta: warm
   colours are reserved for warnings and errors.

@@ -11,7 +11,9 @@
 		type AlertTarget
 	} from '#lib/host-metrics.ts';
 	import { canOpenGrafana, openGrafanaQueries, showsIntegrationHint } from '#lib/integration-links.ts';
-	import { toneColor } from '#lib/status.ts';
+	import Button from '#lib/components/ui/Button.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
+	import { toneGlyph, type StatusTone } from '#lib/status.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import { promOverview } from '#lib/stores/promOverview.svelte.ts';
@@ -55,6 +57,8 @@
 			: alert.expr;
 		await openGrafanaQueries(ep, [expr], '1h');
 	}
+
+	const GLYPH_TONE: Record<StatusTone, string> = { ok: 'text-success', warn: 'text-warning', err: 'text-error', neutral: 'text-text-subtle' };
 </script>
 
 {#if endpoint}
@@ -62,91 +66,92 @@
 		id="overview-alerts"
 		tabindex="-1"
 		aria-labelledby="overview-alerts-title"
-		class="focus-ring scroll-mt-4 rounded-xl border border-border-default bg-surface-surface p-4"
+		class="focus-ring scroll-mt-4 rounded-lg bg-surface-container-high p-4"
 		data-testid="alerts-card"
 	>
 		<div class="mb-2 flex items-center gap-2">
-			<h2 id="overview-alerts-title" class="type-colhead">Alerts</h2>
+			<h2 id="overview-alerts-title" class="type-label text-text-muted">Alerts</h2>
 			{#if alerts}
-				<span
-					class="type-micro rounded-full border border-border-default px-1.5 font-mono text-text-secondary"
-					data-testid="alerts-count"
-					aria-label="{actionable.length} firing alerts"
-				>
-					{actionable.length}
+				<span class="type-data-sm rounded-full bg-surface-container-top px-2 font-semibold text-text" data-testid="alerts-count">
+					{actionable.length}<span class="sr-only"> firing alerts</span>
 				</span>
 				{#if informational.length > 0}
-					<span class="type-caption text-text-disabled" data-testid="alerts-informational">
+					<span class="type-body-sm text-text-muted" data-testid="alerts-informational">
 						{informational.length} informational
 					</span>
 				{/if}
 			{/if}
 		</div>
 		{#if promOverview.alertsError}
-			<p class="type-caption text-status-err" role="alert">{promOverview.alertsError}</p>
+			<p class="type-body-sm flex items-start gap-1.5 text-text" role="alert">
+				<StatusGlyph state="err" class="mt-1 text-error" />
+				{promOverview.alertsError}
+			</p>
 		{:else if alerts === null}
-			<p class="type-caption text-text-disabled">loading alerts…</p>
+			<p class="type-body-sm text-text-muted" role="status">loading alerts…</p>
 		{:else if alerts.length === 0}
-			<p class="type-caption text-text-disabled">No firing alerts.</p>
+			<p class="type-body-sm text-text-muted">No firing alerts.</p>
 		{:else}
-			<div class="flex flex-col" id="overview-alerts-list">
+			<div class="flex flex-col gap-0.5" id="overview-alerts-list">
 				{#each shown as alert, i (i)}
 					{@const target = alertTarget(alert, resources.pods, nodes)}
 					{@const subject = alertSubject(alert)}
 					{@const muted = isInformational(alert)}
-					{@const color = muted ? 'var(--color-text-disabled)' : toneColor[alertTone(alert.severity)]}
-					<div class="flex flex-col rounded-md px-1.5 py-1 hover:bg-surface-row-hover" data-testid="alert-row">
+					{@const tone = muted ? 'neutral' : alertTone(alert.severity)}
+					<!-- Severity is a shape and a word: square critical, triangle warning, dashed ring otherwise. -->
+					<div class="flex flex-col rounded-md px-2 py-1.5 hover:bg-surface-container-top" data-testid="alert-row" data-tone={tone}>
 						<div class="flex items-center gap-2">
-							<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {color};"></span>
-							<span class="type-data-sm shrink-0 {muted ? 'text-text-tertiary' : 'text-text-data-bright'}">
+							<StatusGlyph state={toneGlyph(tone)} class={GLYPH_TONE[tone]} />
+							<span class="type-data-sm shrink-0 {muted ? 'text-text-muted' : 'font-semibold text-text'}">
 								{alert.name}
 							</span>
-							<span class="type-caption shrink-0" style="color: {color};">{alert.severity ?? '—'}</span>
+							<span class="type-body-sm shrink-0 text-text-muted">{alert.severity ?? '–'}</span>
 							{#if subject && target}
 								<button
 									type="button"
-									class="focus-ring type-data-sm min-w-0 truncate rounded-sm text-accent hover:underline"
+									class="focus-ring type-data-sm min-w-0 truncate rounded-xs text-primary underline-offset-2 hover:underline"
 									title="Open {subject}"
 									onclick={() => open(target)}
 								>
 									{subject}
 								</button>
 							{:else if subject}
-								<span class="type-data-sm min-w-0 truncate text-text-secondary">{subject}</span>
+								<span class="type-data-sm min-w-0 truncate text-text-muted">{subject}</span>
 							{/if}
 							<span class="ml-auto"></span>
-							<span class="type-caption shrink-0 text-text-tertiary">{firingSince(alert.activeAt)}</span>
+							<span class="type-body-sm shrink-0 text-text-muted">{firingSince(alert.activeAt)}</span>
 							{#if canOpenGrafana(endpoint)}
 								{@const ep = endpoint}
 								<button
 									type="button"
-									class="focus-ring rounded-sm text-text-tertiary hover:text-text-secondary"
+									class="focus-ring rounded-xs text-text-muted hover:text-text"
 									aria-label="Open {alert.name} in Grafana"
 									title="Open in Grafana"
 									onclick={() => void grafana(ep, alert)}
 								>
-									<ExternalLink class="h-3 w-3" />
+									<ExternalLink class="h-3 w-3" aria-hidden="true" />
 								</button>
 							{/if}
 						</div>
 						{#if alert.summary}
-							<p class="type-caption truncate pl-3.5 {muted ? 'text-text-disabled' : 'text-text-tertiary'}" title={alert.summary}>
+							<p class="type-body-sm truncate pl-4 text-text-muted" title={alert.summary}>
 								{alert.summary}
 							</p>
 						{/if}
 					</div>
 				{/each}
 				{#if ordered.length > SHOWN}
-					<button
-						type="button"
-						class="focus-ring type-caption self-start rounded-sm px-1.5 pt-1 text-text-tertiary hover:text-text-secondary"
+					<Button
+						variant="text"
+						size="inline"
+						class="mt-1 self-start"
 						aria-expanded={expanded}
 						aria-controls="overview-alerts-list"
 						data-testid="alerts-toggle"
 						onclick={() => (expandedFor = expanded ? null : app.activeCluster)}
 					>
 						{expanded ? 'Show fewer' : `Show ${ordered.length - SHOWN} more`}
-					</button>
+					</Button>
 				{/if}
 			</div>
 		{/if}

@@ -25,6 +25,6 @@
 		role="img"
 		aria-label={label}
 	>
-		<path d={path} fill="none" stroke="var(--color-accent)" stroke-width="1" vector-effect="non-scaling-stroke" />
+		<path d={path} fill="none" stroke="var(--color-primary)" stroke-width="1.25" vector-effect="non-scaling-stroke" />
 	</svg>
 {/if}

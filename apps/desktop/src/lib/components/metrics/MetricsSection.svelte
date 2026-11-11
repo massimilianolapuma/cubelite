@@ -3,6 +3,7 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import LineChart from '#lib/components/metrics/LineChart.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
 	import { UI_LINK_CLASS } from '#lib/integration.ts';
 	import { observeOnce } from '#lib/in-view.ts';
@@ -20,7 +21,8 @@
 		formatValue,
 		latest,
 		latestTotal,
-		seriesColor,
+		REFERENCE_COLOR,
+		seriesStyle,
 		sumPoints,
 		type ChartLine,
 		type Unit
@@ -74,7 +76,7 @@
 	function usageLines(usage: Chart, request: Chart, limit: Chart): ChartLine[] {
 		const lines: ChartLine[] = series(usage).map((s, i) => ({
 			label: s.label,
-			color: seriesColor(i),
+			...seriesStyle(i),
 			points: s.points
 		}));
 		for (const [chart, label] of [
@@ -85,7 +87,7 @@
 			if (ref.length > 0) {
 				lines.push({
 					label,
-					color: 'var(--color-text-tertiary)',
+					color: REFERENCE_COLOR,
 					points: sumPoints(ref.map((s) => s.points)),
 					dashed: true
 				});
@@ -108,11 +110,11 @@
 	const cpuLines = $derived(result ? usageLines('cpu', 'cpu-request', 'cpu-limit') : []);
 	const memoryLines = $derived(result ? usageLines('memory', 'memory-request', 'memory-limit') : []);
 	const restartLines = $derived(
-		series('restarts').map((s, i) => ({ label: s.label, color: seriesColor(i), points: s.points }))
+		series('restarts').map((s, i) => ({ label: s.label, ...seriesStyle(i), points: s.points }))
 	);
 	const networkLines = $derived<ChartLine[]>([
-		...series('network-rx').map((s) => ({ label: 'rx', color: seriesColor(0), points: s.points })),
-		...series('network-tx').map((s) => ({ label: 'tx', color: seriesColor(1), points: s.points }))
+		...series('network-rx').map((s) => ({ label: 'rx', ...seriesStyle(0), points: s.points })),
+		...series('network-tx').map((s) => ({ label: 'tx', ...seriesStyle(1), points: s.points }))
 	]);
 	const networkSummary = $derived.by(() => {
 		const rx = series('network-rx')[0];
@@ -161,10 +163,10 @@
 
 {#if endpoint}
 	<div bind:this={root} data-testid="metrics-section">
-		<div class="mb-1.5 flex flex-wrap items-center gap-2">
-			<span class="type-section text-text-tertiary">Metrics</span>
+		<div class="mb-2 flex flex-wrap items-center gap-2">
+			<span class="type-label text-text-muted">Metrics</span>
 			{#if loading}
-				<LoaderCircle class="h-3 w-3 animate-spin text-text-tertiary" aria-label="Loading metrics" />
+				<LoaderCircle class="h-3 w-3 animate-spin text-text-muted" aria-label="Loading metrics" />
 			{/if}
 			<span class="ml-auto"></span>
 			<SegmentedControl segments={METRICS_RANGES} bind:value={range} label="Metrics range" />
@@ -183,7 +185,10 @@
 			{/if}
 		</div>
 		{#if error}
-			<p class="type-caption text-status-err" role="alert">{error}</p>
+			<p class="type-body-sm flex items-start gap-1.5 text-text" role="alert">
+				<StatusGlyph state="err" class="mt-1 text-error" />
+				{error}
+			</p>
 		{:else if result}
 			<div class="flex flex-col gap-2">
 				<LineChart
@@ -236,7 +241,7 @@
 				/>
 			</div>
 		{:else}
-			<p class="type-caption text-text-disabled">loading metrics…</p>
+			<p class="type-body-sm text-text-muted" role="status">loading metrics…</p>
 		{/if}
 	</div>
 {:else if hint}

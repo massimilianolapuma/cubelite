@@ -2,6 +2,7 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import HostCharts from '#lib/components/metrics/HostCharts.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { CLUSTER_PANELS } from '#lib/host-metrics.ts';
 	import { canOpenGrafana, openGrafanaQueries } from '#lib/integration-links.ts';
 	import { METRICS_RANGES } from '#lib/metrics.ts';
@@ -19,17 +20,20 @@
 </script>
 
 {#if endpoint}
-	<div class="flex flex-col gap-2 border-t border-border-faint pt-2.5" data-testid="cluster-history">
+	<div class="mt-1 flex flex-col gap-2" data-testid="cluster-history">
 		<div class="flex items-center gap-2">
-			<span class="type-section text-text-tertiary">History</span>
+			<span class="type-label text-text-muted">History</span>
 			{#if promOverview.usageLoading}
-				<LoaderCircle class="h-3 w-3 animate-spin text-text-tertiary" aria-label="Loading cluster history" />
+				<LoaderCircle class="h-3 w-3 animate-spin text-text-muted" aria-label="Loading cluster history" />
 			{/if}
 			<span class="ml-auto"></span>
 			<SegmentedControl segments={METRICS_RANGES} bind:value={promOverview.range} label="History range" />
 		</div>
 		{#if promOverview.usageError}
-			<p class="type-caption text-status-err" role="alert">{promOverview.usageError}</p>
+			<p class="type-body-sm flex items-start gap-1.5 text-text" role="alert">
+				<StatusGlyph state="err" class="mt-1 text-error" />
+				{promOverview.usageError}
+			</p>
 		{:else if promOverview.usage}
 			<div class="grid gap-2 2xl:grid-cols-2">
 				<HostCharts
@@ -40,7 +44,7 @@
 				/>
 			</div>
 		{:else}
-			<p class="type-caption text-text-disabled">loading history…</p>
+			<p class="type-body-sm text-text-muted" role="status">loading history…</p>
 		{/if}
 	</div>
 {/if}

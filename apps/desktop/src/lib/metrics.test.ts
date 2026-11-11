@@ -7,6 +7,7 @@ import {
   maxValue,
   nearestIndex,
   niceMax,
+  seriesStyle,
   sumPoints,
 } from "./metrics";
 import { bindingOf, saveCredentials, urlProblem } from "./integration";
@@ -91,5 +92,18 @@ describe("integration helpers", () => {
       ["https://a", "key"],
       ["https://a", "none"],
     ]);
+  });
+});
+
+describe("seriesStyle (Tonal §8.4)", () => {
+  it("draws the first five series in the five data colours, solid", () => {
+    expect([0, 1, 2, 3, 4].map((i) => seriesStyle(i))).toEqual(
+      [1, 2, 3, 4, 5].map((n) => ({ color: `var(--color-data-${n})` })),
+    );
+  });
+
+  it("past five, repeats the colours dashed, so two lines never look the same", () => {
+    expect(seriesStyle(5)).toEqual({ color: "var(--color-data-1)", dash: "6 3" });
+    expect(seriesStyle(9)).toEqual({ color: "var(--color-data-5)", dash: "6 3" });
   });
 });

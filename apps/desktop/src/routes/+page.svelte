@@ -16,7 +16,7 @@
 	import { viewEntry } from '#lib/components/views/index.ts';
 	import LogPanel from '#lib/components/logpanel/LogPanel.svelte';
 	import LogWindowShell from '#lib/components/logpanel/LogWindowShell.svelte';
-	import { applyDensity, applyTint, tintFor } from '#lib/appearance.ts';
+	import { applyDensity, applyTint, windowTint } from '#lib/appearance.ts';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { beginWindowDrag } from '#lib/window-drag.ts';
 	import { KUBECONFIG_CHANGED } from '#lib/tauri.ts';
@@ -43,9 +43,19 @@
 
 	// The window takes the tint of the cluster it is on. A pop-out log window keeps
 	// its pod's cluster; the All Clusters dashboard and onboarding belong to none.
+	// While a cluster is being connected to, the tint is already its own.
 	$effect(() => {
-		const neutral = !logWindowKey && (app.view === 'dashboard' || app.onboardingOpen);
-		applyTint(tintFor(neutral, app.activeCluster, (name) => clusters.identityFor(name)));
+		applyTint(
+			windowTint(
+				{
+					popout: logWindowKey !== null,
+					neutralView: app.view === 'dashboard' || app.onboardingOpen,
+					connecting: app.connecting,
+					active: app.activeCluster
+				},
+				(name) => clusters.identityFor(name)
+			)
+		);
 	});
 
 	/**

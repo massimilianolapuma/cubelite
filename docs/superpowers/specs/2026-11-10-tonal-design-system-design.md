@@ -347,6 +347,11 @@ is fixed.
   card, resource summary cards (neutral, no per-resource tint; "forbidden" uses the dashed ring).
 - **Charts**: series in `data-1` … `data-5`; past five, series repeat dashed. Request and limit
   lines dashed in `text-subtle`; axes in `outline`. Hand-rolled SVG stays.
+  Legend and hover values are in the text colour next to a key drawn like the line (same colour,
+  same dash), so a dashed repeat is told apart in the legend too. Charts sit on
+  `surface-container-top`, cards on a dashboard on `surface-container-high`.
+- Alert severity and summary counts: a shape and a word, never a colour alone. A summary count that
+  needs attention shows its shape only above zero.
 - **Unreachable**: failure hero with server and reason, Retry (primary), All Clusters (text).
 - **Connecting**: `surface-overlay` card with spinner, cluster name and Cancel; the tint switches to
   the target cluster as soon as connecting starts.
