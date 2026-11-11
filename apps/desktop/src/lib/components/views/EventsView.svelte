@@ -12,7 +12,7 @@
 </script>
 
 <div class="flex flex-col gap-3 p-4">
-	<div class="flex min-h-7 items-center gap-3">
+	<div class="flex min-h-(--chip-h) items-center gap-3">
 		<h1 class="type-title flex-1">Events</h1>
 		<PinToggle />
 		{#if warnings > 0 || app.eventWarningsOnly}

@@ -134,7 +134,7 @@ its component is restyled. Uppercase labels disappear.
 
 ### 4.4 Shape, space, density
 
-- Radius: `xs` 6 (key hints), `sm` 10 (failure badge), `md` 16 (rows, menu items, active avatar),
+- Radius: `xs` 6 (key hints, failure badge), `sm` 10 (small boxes), `md` 16 (rows, menu items, active avatar),
   `lg` 20 (tiles, inner cards, menus), `xl` 28 (cards, panel, dialogs, palette), `full` (buttons,
   chips, nav rows, fields, meters). `2xl` is retired.
 - Spacing scale unchanged (4 · 8 · 12 · 16 · 20 · 24 · 32). Window gutter and gap between cards: 12.
@@ -233,7 +233,7 @@ carries no contrast requirement.
 |---|---|---|---|---|
 | Healthy (Running, Available, Bound, deployed, Ready) | circle, `success` | glyph + word in `text` | plain line | plain number |
 | Attention (Pending, Progressing, degraded, pending-upgrade) | triangle | `warning-container` pill | `warning-container` hero | pill with triangle |
-| Failure (CrashLoopBackOff, Failed, Error, unreachable, NotReady) | square | `error-container` badge, `radius-sm` | `error-container` hero, `headline` | badge with square |
+| Failure (CrashLoopBackOff, Failed, Error, unreachable, NotReady) | square | `error-container` badge, `radius-xs` (a rectangle next to the attention pill) | `error-container` hero, `headline` | badge with square |
 | Finished (Completed, Succeeded) | ring | glyph + word in `text-subtle` | plain line | plain number |
 | Unknown (no data, forbidden, not served) | dashed ring | word in `text-subtle`, value en dash | says why | en dash |
 
@@ -244,12 +244,12 @@ Glyphs are 9 px inline SVG filled with `currentColor`, so they survive Windows f
 
 | Component | Rule |
 |---|---|
-| Button | Pill. Primary (`primary`, 48 px, one per panel or dialog), tonal (`primary-container`), text, destructive text (`error`), destructive solid (`error-solid`, confirm dialogs only). Pending keeps width and swaps the icon for a spinner. Icon-only buttons are discs with an accessible name. |
+| Button | Pill. Primary (`primary`, 48 px, one per panel or dialog), tonal (`primary-container`), text, destructive text (`error`), destructive solid (`error-solid`, confirm dialogs only). Pending keeps width and keyboard focus (`aria-disabled`, not disabled) and swaps the icon for a spinner. Unfilled buttons and menu items highlight with a 14 % layer of their own text colour, which shows on every surface. Icon-only buttons are discs with an accessible name. |
 | Chip | Pill on `surface-container-high`. Status filter chips take their state's container when pressed; scope chips (cluster, namespace) open a menu. Zero-count status chips are hidden. |
 | StatusBadge | §6. |
 | NavRow | Pill, `--nav-h`. Current: `primary-container`. Sections in `text` with a chevron; types indent 40 px. Unavailable types stay in place in `text-subtle` with an en dash. |
 | List row | `--row-h`, `radius-md`, 2 px apart, no separators. Hover `surface-container-high`; selected `primary-container`. Name in `data`, numbers right-aligned. A number needing attention is bold, not coloured. |
-| Field (input, search, native select trigger) | `--control-h`, `radius-full` for search and selects, `radius-md` inside forms; `outline-strong` border in forms, filled `surface-container-high` in toolbars. Native select popups stay native. |
+| Field (input, search, native select trigger) | `--control-h` in toolbars, 36 px in both densities inside forms (dialogs would double in length at 44); `radius-full` for search and selects, `radius-md` inside forms; `outline-strong` border in forms, filled `surface-container-high` in toolbars. Native select popups stay native. |
 | Switch | 44 × 26 pill; on = `primary`. |
 | SegmentedControl | One pill group; selected segment `primary-container`; disabled segment `text-subtle`. |
 | Meter | 8 px pill track on the next surface up, fill `primary`. From 60 % a triangle and from 75 % a square precede the percentage, which turns bold; the fill takes `warning` / `error`. Null shows an empty track and an en dash. |

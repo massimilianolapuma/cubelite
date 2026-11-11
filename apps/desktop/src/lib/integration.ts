@@ -3,6 +3,7 @@
  * Prometheus #510): URL checks, credential binding, saving rules.
  */
 import type { IntegrationTarget, ServiceRef } from "#lib/tauri.ts";
+import { FIELD } from "#lib/ui-classes.ts";
 
 export type TargetMode = "off" | "in-cluster" | "external";
 
@@ -48,15 +49,15 @@ export function describeTarget(target: IntegrationTarget): string {
 
 export type FormResult = { ok: boolean; text: string };
 
-export const INPUT_CLASS =
-  "focus-ring h-7 w-full rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled";
+// Form controls of the integration settings, in the Tonal look (spec §7).
+export const INPUT_CLASS = FIELD;
 export const BUTTON_CLASS =
-  "focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110 disabled:opacity-50";
-/** Borderless caption link that opens a web UI (Kibana, Grafana). */
+  "focus-ring type-body-sm h-(--control-inline-h) shrink-0 rounded-full bg-primary-container px-3.5 font-semibold text-on-primary-container hover:brightness-110 disabled:opacity-45";
+/** Borderless link that opens a web UI (Kibana, Grafana). */
 export const UI_LINK_CLASS =
-  "focus-ring type-caption flex items-center gap-1 rounded-sm text-text-tertiary hover:text-text-secondary";
-/** Borderless caption link in the accent color ("Set up"). */
-export const ACCENT_LINK_CLASS = "focus-ring type-caption rounded-sm text-accent hover:brightness-110";
+  "focus-ring type-body-sm flex items-center gap-1 rounded-full text-text-subtle hover:text-text-muted";
+/** Borderless link in the primary colour ("Set up"). */
+export const ACCENT_LINK_CLASS = "focus-ring type-body-sm rounded-full font-semibold text-primary hover:brightness-110";
 
 /**
  * Stores the credentials typed for `endpoint` (or removes them when the

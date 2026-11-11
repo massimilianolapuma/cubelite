@@ -4,6 +4,7 @@
 	import Rows3 from '@lucide/svelte/icons/rows-3';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { lists } from '#lib/stores/lists.svelte.ts';
+	import { iconToggle } from '#lib/ui-classes.ts';
 
 	// Title bar of a resource list: the title, the "Group by namespace" toggle
 	// (#547; only with all namespaces shown) and the list's own controls.
@@ -17,16 +18,14 @@
 	const pressed = $derived(lists.groupByNamespace);
 </script>
 
-<div class="flex min-h-7 items-center gap-3">
+<!-- As tall as a filter chip, so the list does not jump when one appears. -->
+<div class="flex min-h-(--chip-h) items-center gap-3">
 	<h1 class="type-title flex-1">{title}</h1>
 	<PinToggle />
 	{#if groupable && app.namespace === null}
 		<button
 			type="button"
-			class="focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {pressed
-				? 'border-accent text-accent'
-				: 'border-border-default bg-surface-window text-text-tertiary hover:text-text-secondary'}"
-			style={pressed ? 'background: var(--alpha-selection-bg);' : undefined}
+			class={iconToggle(pressed)}
 			aria-label="Group by namespace"
 			aria-pressed={pressed}
 			title="Group by namespace"

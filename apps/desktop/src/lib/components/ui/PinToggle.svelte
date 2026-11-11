@@ -4,6 +4,7 @@
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
+	import { iconToggle } from '#lib/ui-classes.ts';
 
 	// Title-bar toggle (resource-kinds §3): pins the current view to the
 	// active profile. Hidden types (Preferences) cannot be pinned.
@@ -16,10 +17,7 @@
 {#if view !== 'dashboard'}
 	<button
 		type="button"
-		class="focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-md border disabled:opacity-45 {pinned
-			? 'border-accent text-accent'
-			: 'border-border-default bg-surface-window text-text-tertiary hover:text-text-secondary'}"
-		style={pinned ? 'background: var(--alpha-selection-bg);' : undefined}
+		class={iconToggle(pinned)}
 		aria-label="Pin to {name}"
 		aria-pressed={pinned}
 		title={hidden && !pinned ? 'Hidden in Preferences' : pinned ? `Unpin from ${name}` : `Pin to ${name}`}

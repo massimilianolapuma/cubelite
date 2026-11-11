@@ -14,6 +14,7 @@
 	import { modLabel } from '#lib/platform.ts';
 	import { providerOf } from '#lib/provider.ts';
 	import { beginWindowDrag } from '#lib/window-drag.ts';
+	import { MENU_CONTENT, MENU_ITEM } from '#lib/ui-classes.ts';
 
 	// Top bar (Tonal §5): the cluster chip, the namespace chip, warnings and
 	// search. It is also the window's drag region; the chips are not. What the
@@ -50,8 +51,6 @@
 	// out of the window. What follows the name never shrinks.
 	const chip =
 		'focus-ring flex h-(--chip-h) min-w-0 items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110';
-	const menuItem =
-		'flex cursor-default items-center gap-3 rounded-md px-3 py-2 type-body text-text-muted data-highlighted:bg-surface-container-high data-highlighted:text-text';
 </script>
 
 <!-- The mousedown handler only begins a window drag — not an
@@ -87,18 +86,18 @@
 				<DropdownMenu.Content
 					align="start"
 					sideOffset={6}
-					class="animate-popin z-50 max-w-[90vw] min-w-64 rounded-lg bg-surface-overlay p-1.5 shadow-overlay"
+					class="{MENU_CONTENT} max-w-[90vw] min-w-64"
 				>
 					{#if server}
 						<div class="px-3 pt-1.5 pb-2">
 							<div class="type-label">Server</div>
 							<div class="type-data-sm break-all text-text select-all">{server}</div>
 						</div>
-						<DropdownMenu.Item class={menuItem} onSelect={() => void copyServer(server)}>
+						<DropdownMenu.Item class={MENU_ITEM} onSelect={() => void copyServer(server)}>
 							Copy server address
 						</DropdownMenu.Item>
 					{/if}
-					<DropdownMenu.Item class={menuItem} onSelect={() => void clusters.retry()}>
+					<DropdownMenu.Item class={MENU_ITEM} onSelect={() => void clusters.retry()}>
 						Reconnect
 					</DropdownMenu.Item>
 				</DropdownMenu.Content>

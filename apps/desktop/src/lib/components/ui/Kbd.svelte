@@ -3,7 +3,7 @@
 </script>
 
 <kbd
-	class="inline-flex items-center rounded-sm border border-border-default bg-surface-raised px-1 type-micro font-mono text-text-disabled"
+	class="type-micro inline-flex shrink-0 items-center rounded-xs bg-surface-container-top px-1.5 py-px font-mono text-text-subtle"
 >
 	{label}
 </kbd>

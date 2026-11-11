@@ -20,9 +20,8 @@
 	} = $props();
 </script>
 
-<div
-	class="inline-flex overflow-hidden rounded-md border border-border-default bg-surface-window"
-	role="radiogroup"
+<!-- One pill group; the selected segment is the tonal fill (Tonal §7). -->
+<div class="inline-flex shrink-0 gap-0.5 rounded-full bg-surface-container-high p-0.5" role="radiogroup"
 	aria-label={label}
 >
 	{#each segments as segment (segment.value)}
@@ -33,12 +32,12 @@
 			aria-checked={active}
 			disabled={segment.disabled}
 			title={segment.title}
-			class="type-caption h-7 border-r border-border-default px-3 last:border-r-0 {segment.disabled
-				? 'text-text-disabled opacity-45'
+			data-selected={active}
+			class="focus-ring type-body-sm h-(--control-inline-h) rounded-full px-3.5 {segment.disabled
+				? 'text-text-subtle opacity-45'
 				: active
-					? 'text-text-primary'
-					: 'text-text-secondary hover:bg-surface-row-hover'}"
-			style={active ? 'background: var(--alpha-active-nav-bg);' : ''}
+					? 'bg-primary-container font-semibold text-on-primary-container'
+					: 'text-text-muted hover:bg-surface-container-top'}"
 			onclick={() => {
 				value = segment.value;
 				onChange?.(segment.value);

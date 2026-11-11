@@ -46,10 +46,10 @@
 		void clusters.switchCluster(name);
 	}
 
-	function pillFor(state: string): { label: string; tone: 'ok' | 'err' | 'neutral' } {
+	function pillFor(state: string): { label: string; tone: 'ok' | 'err' | 'unknown' } {
 		if (state === 'connected') return { label: 'Healthy', tone: 'ok' };
 		if (state === 'unreachable') return { label: 'Unreachable', tone: 'err' };
-		return { label: 'Unknown', tone: 'neutral' };
+		return { label: 'Unknown', tone: 'unknown' };
 	}
 
 	function show(value: number | string | null): string {
