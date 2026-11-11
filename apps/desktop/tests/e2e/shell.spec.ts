@@ -29,6 +29,24 @@ test("a long context name truncates instead of pushing the top bar out of the wi
   await expect(header.getByTestId("connection-state")).toBeInViewport();
 });
 
+test("the top bar stays on one row at the minimum window size", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await boot(page);
+  const header = page.locator("header").first();
+  await expect(header.getByTestId("connection-state")).toBeVisible();
+  // One row: every control starts at the same height.
+  const tops = await header.locator(":scope > button, :scope > div").evaluateAll((els) =>
+    els.map((el) => Math.round(el.getBoundingClientRect().top)),
+  );
+  expect(new Set(tops).size).toBe(1);
+  // Search collapses to its icon but keeps its name and still opens the palette.
+  const search = header.getByRole("button", { name: /Search & switch/ });
+  await expect(search).toBeVisible();
+  expect((await search.boundingBox())!.width).toBeLessThan(60);
+  await search.click();
+  await expect(page.getByPlaceholder("Search clusters, resources, actions…")).toBeVisible();
+});
+
 test("the gutter above the top bar drags the window, as the title bar did", async ({ page }) => {
   await boot(page);
   await expect(page.locator("header").first()).toBeVisible();

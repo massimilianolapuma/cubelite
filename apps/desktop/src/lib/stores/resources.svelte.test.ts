@@ -226,3 +226,71 @@ describe("generic kinds (resource-kinds phase 2)", () => {
     expect(dynamic.count("roles")).toBeNull();
   });
 });
+
+describe("list load state (#606)", () => {
+  it("mainLoaded is false until pods, deployments and events have loaded once", async () => {
+    vi.mocked(listPods).mockResolvedValue([pod("a", "default")]);
+    expect(resources.mainLoaded).toBe(false);
+    const pending = resources.load();
+    expect(resources.mainLoaded).toBe(false);
+    await pending;
+    expect(resources.mainLoaded).toBe(true);
+  });
+
+  it("mainLoaded stays true during a refresh of the same namespace", async () => {
+    vi.mocked(listPods).mockResolvedValue([pod("a", "default")]);
+    await resources.load();
+    const pending = resources.load();
+    expect(resources.mainLoaded).toBe(true);
+    await pending;
+  });
+
+  it("mainLoaded drops when the namespace changes, until that namespace has loaded", async () => {
+    vi.mocked(listPods).mockResolvedValue([pod("a", "default")]);
+    await resources.load();
+    app.namespace = "default";
+    expect(resources.mainLoaded).toBe(false);
+    await resources.load();
+    expect(resources.mainLoaded).toBe(true);
+    resources.clear();
+    expect(resources.mainLoaded).toBe(false);
+  });
+
+  it("keeps the error of a failed load while the retry is in flight, and clears it on success", async () => {
+    vi.mocked(listPods).mockRejectedValueOnce(new Error("connection reset"));
+    expect(await resources.load()).toBe(false);
+    expect(resources.error).toBe("connection reset");
+
+    vi.mocked(listPods).mockResolvedValue([]);
+    const retry = resources.load();
+    expect(resources.error).toBe("connection reset");
+    await retry;
+    expect(resources.error).toBeNull();
+  });
+
+  it("kindLoaded follows the namespace a kind was loaded for", async () => {
+    vi.mocked(listServices).mockResolvedValue([]);
+    expect(resources.kindLoaded("services")).toBe(false);
+    await resources.loadKind("services");
+    expect(resources.kindLoaded("services")).toBe(true);
+    app.namespace = "default";
+    expect(resources.kindLoaded("services")).toBe(false);
+  });
+
+  it("kindError belongs to the kind that failed", async () => {
+    vi.mocked(listServices).mockRejectedValueOnce(new Error("boom"));
+    await resources.loadKind("services");
+    expect(resources.kindError("services")).toBe("boom");
+    expect(resources.kindError("secrets")).toBeNull();
+  });
+
+  it("keeps a kind's error while it reloads, and drops it when the reload succeeds", async () => {
+    vi.mocked(listServices).mockRejectedValueOnce(new Error("boom"));
+    await resources.loadKind("services");
+    vi.mocked(listServices).mockResolvedValue([]);
+    const retry = resources.loadKind("services");
+    expect(resources.kindError("services")).toBe("boom");
+    await retry;
+    expect(resources.kindError("services")).toBeNull();
+  });
+});

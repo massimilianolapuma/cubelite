@@ -1,14 +1,13 @@
 <script lang="ts">
-	import ListTitle from '#lib/components/ui/ListTitle.svelte';
 	import PodTable from '#lib/components/PodTable.svelte';
 	import DeletePodDialog from '#lib/components/DeletePodDialog.svelte';
-	import FilterToggle from '#lib/components/ui/FilterToggle.svelte';
 	import PodDrawer from '#lib/components/pods/PodDrawer.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
-	import { needsAttention, resources } from '#lib/stores/resources.svelte.ts';
+	import { resources } from '#lib/stores/resources.svelte.ts';
 	import type { PodInfo } from '#lib/tauri.ts';
+	import { SEARCH_FIELD } from '#lib/ui-classes.ts';
 
 	let deleteTarget = $state<PodInfo | null>(null);
 
@@ -21,43 +20,35 @@
 		}
 	}
 
-	const issues = $derived(resources.issuePods.length);
 	const filtered = $derived.by(() => {
-		const text = app.podFilter.toLowerCase();
-		return resources.pods.filter(
-			(p) =>
-				(!app.podIssuesOnly || needsAttention(p)) &&
-				(!text || `${p.namespace}/${p.name}`.toLowerCase().includes(text))
-		);
+		const text = app.podFilter.trim().toLowerCase();
+		return text ? resources.pods.filter((p) => `${p.namespace}/${p.name}`.toLowerCase().includes(text)) : resources.pods;
 	});
 </script>
 
-<div class="flex flex-col gap-3 p-4">
-	<ListTitle title="Pods">
-		{#if issues > 0 || app.podIssuesOnly}
-			<FilterToggle
-				label="Needs attention"
-				count={issues}
-				tone="err"
-				pressed={app.podIssuesOnly}
-				onToggle={() => (app.podIssuesOnly = !app.podIssuesOnly)}
-			/>
-		{/if}
+<PodTable
+	pods={filtered}
+	total={resources.pods.length}
+	filter={app.podFilter}
+	selected={app.selectedPod}
+	onRowClick={(pod) => (app.selectedPod = pod)}
+	onLogs={(pod) => void logPanel.openFor({ namespace: pod.namespace, name: pod.name })}
+	loaded={resources.mainLoaded}
+	error={resources.error}
+	busy={resources.loading}
+	onRetry={() => void resources.load()}
+	onClearFilter={() => (app.podFilter = '')}
+>
+	{#snippet tools()}
 		<input
 			type="text"
 			placeholder="Filter pods…"
+			aria-label="Filter pods"
 			bind:value={app.podFilter}
-			class="focus-ring h-7 w-52 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
+			class={SEARCH_FIELD}
 		/>
-	</ListTitle>
-	<PodTable
-		filter={app.podFilter}
-		pods={filtered}
-		selected={app.selectedPod}
-		onRowClick={(pod) => (app.selectedPod = pod)}
-		onLogs={(pod) => void logPanel.openFor({ namespace: pod.namespace, name: pod.name })}
-	/>
-</div>
+	{/snippet}
+</PodTable>
 
 {#if app.selectedPod}
 	<PodDrawer

@@ -26,7 +26,7 @@ test("↵ on a short name opens the type", async ({ page }) => {
   await expect(page.getByRole("list", { name: "Pinned · On-call" })).toBeVisible();
   await palette(page, "hpa");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: "Autoscalers" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Autoscalers" })).toBeVisible();
 });
 
 test("⌘↵ opens the type and pins it to the active profile", async ({ page }) => {
@@ -34,7 +34,7 @@ test("⌘↵ opens the type and pins it to the active profile", async ({ page })
   await expect(page.getByRole("list", { name: "Pinned · On-call" })).toBeVisible();
   const mac = await palette(page, "sa");
   await page.keyboard.press(`${mac ? "Meta" : "Control"}+Enter`);
-  await expect(page.getByRole("heading", { name: "Service Accounts" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Service Accounts" })).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Pinned · On-call" }).getByText("Service Accounts", { exact: true }),
   ).toBeVisible();
@@ -45,5 +45,5 @@ test("a custom kind is reachable by short name (phase 5)", async ({ page }) => {
   await expect(page.getByRole("list", { name: "Pinned · On-call" })).toBeVisible();
   await palette(page, "smon");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: "ServiceMonitor" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "ServiceMonitor" })).toBeVisible();
 });

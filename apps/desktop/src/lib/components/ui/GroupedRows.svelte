@@ -29,7 +29,7 @@
 		/** Sort id of the list (see `lists.specFor`). */
 		list: string;
 		/** Rows after the list's filter. */
-		rows: T[];
+		rows: readonly T[];
 		accessors: GroupAccessors<T>;
 		/** Row noun for the header's accessible name, e.g. ['pod', 'pods']. */
 		nouns: readonly [string, string];

@@ -57,10 +57,13 @@
      interactive control, so no ARIA role applies. -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <!-- -mt-3 pt-3: the header owns the gutter above it, so the window drags from its top edge. -->
+<!-- One row at any width (@container): below 56rem the search field is its icon and the
+     version goes; below 44rem the provider tag and the words beside a glyph go too. What
+     is hidden stays in the accessible name. -->
 <header
 	data-tauri-drag-region
 	onmousedown={beginWindowDrag}
-	class="-mt-3 flex min-w-0 shrink-0 flex-wrap items-center gap-2 pt-3"
+	class="@container -mt-3 flex min-w-0 shrink-0 items-center gap-2 pt-3"
 >
 	{#if activeContext}
 		<DropdownMenu.Root>
@@ -69,16 +72,16 @@
 				<span class="h-2.5 w-2.5 shrink-0 rounded-[3px] bg-primary" data-testid="identity-dot"></span>
 				<span class="type-body truncate font-semibold text-text">{activeContext.name}</span>
 				{#if provider}
-					<span class="type-micro shrink-0 rounded-xs bg-primary-container px-1.5 py-px font-mono text-on-primary-container">
+					<span class="type-micro shrink-0 rounded-xs bg-primary-container px-1.5 py-px font-mono text-on-primary-container @max-[44rem]:hidden">
 						{provider}
 					</span>
 				{/if}
 				{#if version}
-					<span class="type-data-sm shrink-0 text-text-subtle">{version}</span>
+					<span class="type-data-sm shrink-0 text-text-subtle @max-[56rem]:hidden">{version}</span>
 				{/if}
 				<span class="flex shrink-0 items-center gap-1.5 {state.tone}" data-testid="connection-state">
 					<StatusGlyph state={state.glyph} size={8} />
-					<span class="type-body-sm text-text-muted">{state.word}</span>
+					<span class="type-body-sm text-text-muted @max-[44rem]:sr-only">{state.word}</span>
 				</span>
 				<ChevronDown class="h-3.5 w-3.5 shrink-0 text-text-subtle" aria-hidden="true" />
 			</DropdownMenu.Trigger>
@@ -116,13 +119,17 @@
 			onclick={() => app.navigate('events')}
 		>
 			<StatusGlyph state="warn" />
-			{warningCount} warning{warningCount === 1 ? '' : 's'}
+			<span>{warningCount} <span class="@max-[56rem]:sr-only">warning{warningCount === 1 ? '' : 's'}</span></span>
 		</button>
 	{/if}
 
-	<button type="button" class="{chip} w-60 text-left" onclick={() => (app.paletteOpen = true)}>
+	<button
+		type="button"
+		class="{chip} w-60 shrink-0 text-left @max-[56rem]:w-(--chip-h) @max-[56rem]:justify-center @max-[56rem]:px-0"
+		onclick={() => (app.paletteOpen = true)}
+	>
 		<Search class="h-4 w-4 shrink-0 text-text-subtle" aria-hidden="true" />
-		<span class="type-body-sm min-w-0 flex-1 truncate text-text-subtle">Search &amp; switch…</span>
-		<Kbd label="{modLabel}K" />
+		<span class="type-body-sm min-w-0 flex-1 truncate text-text-subtle @max-[56rem]:sr-only">Search &amp; switch…</span>
+		<span class="flex shrink-0 @max-[56rem]:hidden"><Kbd label="{modLabel}K" /></span>
 	</button>
 </header>

@@ -5,6 +5,7 @@
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { untrack } from "svelte";
 import {
   clusterCapacity,
   listConfigMaps,
@@ -44,6 +45,7 @@ import {
 import { errorMessage } from "#lib/errors.ts";
 import { isForbiddenError } from "#lib/overview-summary.ts";
 import { isKindView } from "#lib/resource-kinds.ts";
+import { needsAttention } from "#lib/status.ts";
 import { app } from "./app.svelte";
 import { dynamic } from "./dynamic.svelte";
 import { settings } from "./settings.svelte";
@@ -96,10 +98,6 @@ function countByNamespace(pods: PodInfo[]): Record<string, number> {
   return counts;
 }
 
-/** A pod that is not ready (and not completed) or restarting hard. */
-export function needsAttention(p: PodInfo): boolean {
-  return (!p.ready && p.phase !== "Succeeded") || p.restarts > 3;
-}
 
 class ResourcesStore {
   pods = $state<PodInfo[]>([]);
@@ -121,10 +119,20 @@ class ResourcesStore {
   nodes = $state<NodeCapacityInfo[]>([]);
   /** false when metrics-server is unavailable in the active cluster. */
   metricsAvailable = $state(false);
+  /** metrics-server has answered or failed once for the active cluster. */
+  metricsKnown = $state(false);
   loading = $state(false);
+  /** Message of the last failed `load()`; kept until a load succeeds. */
   error = $state<string | null>(null);
   extraLoading = $state(false);
   extraError = $state<string | null>(null);
+  /** The kind `extraError` belongs to. */
+  #extraErrorKind = $state<ExtraKind | null>(null);
+  /**
+   * Namespace filter pods, deployments and events were last loaded with
+   * (null = all); undefined until the first load of the active cluster.
+   */
+  #mainLoadedFor = $state<string | null | undefined>(undefined);
 
   /**
    * Namespace filter each on-demand kind was last loaded with (null = all).
@@ -171,7 +179,6 @@ class ResourcesStore {
     if (!kc || !cluster) return false;
 
     this.loading = true;
-    this.error = null;
     try {
       const [podList, nsList, eventList] = await Promise.all([
         listPods(kc, ns ?? undefined, cluster),
@@ -196,6 +203,8 @@ class ResourcesStore {
       this.namespaces = nsList;
       this.deployments = depList;
       this.events = eventList;
+      this.#mainLoadedFor = ns;
+      this.error = null;
       void this.#loadMetrics(kc, ns ?? undefined, cluster, seq);
       // Keep the currently open extra view in sync with refresh/watch cycles.
       if (isExtraKind(app.view)) void this.loadKind(app.view);
@@ -228,11 +237,13 @@ class ResourcesStore {
       this.podMetrics = map;
       this.nodes = nodeList;
       this.metricsAvailable = true;
+      this.metricsKnown = true;
     } catch {
       if (seq !== this.#loadSeq) return;
       this.podMetrics = {};
       this.nodes = [];
       this.metricsAvailable = false;
+      this.metricsKnown = true;
     }
   }
 
@@ -271,6 +282,25 @@ class ResourcesStore {
     if (base) for (const ns of this.namespaces) counts[ns.name] = base[ns.name] ?? 0;
     if (app.namespace !== null) counts[app.namespace] = live[app.namespace] ?? 0;
     return counts;
+  }
+
+  /**
+   * Pods, deployments and events are loaded for the current cluster and
+   * namespace. False during the first load and after a namespace change, so a
+   * list shows its loading state instead of nothing or another namespace's rows.
+   */
+  get mainLoaded(): boolean {
+    return this.#mainLoadedFor !== undefined && this.#mainLoadedFor === app.namespace;
+  }
+
+  /** An on-demand kind is loaded for the current cluster and namespace. */
+  kindLoaded(kind: ExtraKind): boolean {
+    return this.kindCount(kind) !== null;
+  }
+
+  /** Message of `kind`'s last failed load, if its last load failed. */
+  kindError(kind: ExtraKind): string | null {
+    return this.#extraErrorKind === kind ? this.extraError : null;
   }
 
   /**
@@ -367,17 +397,23 @@ class ResourcesStore {
     if (!kc || !cluster) return;
 
     this.extraLoading = true;
-    this.extraError = null;
+    // Another kind's error is not this one's; this kind's stays until it loads.
+    // Views call loadKind() from an effect: this read must not subscribe it.
+    untrack(() => {
+      if (this.#extraErrorKind !== kind) this.extraError = null;
+    });
     try {
       const commit = await this.#fetchKind(kind, kc, ns, cluster);
       if (seq === this.#extraSeq) {
         commit();
+        this.extraError = null;
         this.loadedKinds = { ...this.loadedKinds, [kind]: ns ?? null };
         this.#markForbidden(kind, false);
       }
     } catch (e) {
       if (seq === this.#extraSeq) {
         this.extraError = errorMessage(e);
+        this.#extraErrorKind = kind;
         this.#markForbidden(kind, isForbiddenError(this.extraError));
       }
     } finally {
@@ -447,9 +483,12 @@ class ResourcesStore {
     this.podMetrics = {};
     this.nodes = [];
     this.metricsAvailable = false;
+    this.metricsKnown = false;
     this.error = null;
     this.loading = false;
     this.extraError = null;
+    this.#extraErrorKind = null;
+    this.#mainLoadedFor = undefined;
     this.extraLoading = false;
   }
 

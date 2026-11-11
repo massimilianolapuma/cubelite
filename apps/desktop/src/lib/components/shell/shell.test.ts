@@ -31,6 +31,7 @@ import Sidebar from "./Sidebar.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
 import { health } from "#lib/stores/health.svelte.ts";
+import { lists } from "#lib/stores/lists.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
 import { dynamic } from "#lib/stores/dynamic.svelte.ts";
 import { sidebar } from "#lib/stores/sidebar.svelte.ts";
@@ -298,7 +299,7 @@ describe("Sidebar", () => {
   });
 
   it("keeps the pods total neutral and badges only the pods needing attention (#574)", async () => {
-    app.podIssuesOnly = false;
+    lists.resetSession();
     resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" }), pod({ name: "api-2" })];
     render(Sidebar);
     const row = screen.getByText("Pods").closest("button")!;
@@ -314,11 +315,12 @@ describe("Sidebar", () => {
 
     await fireEvent.click(badge);
     expect(app.view).toBe("pods");
-    expect(app.podIssuesOnly).toBe(true);
+    // Failing and Pending together are the pods needing attention.
+    expect(lists.pressed("pods")).toEqual(["err", "warn"]);
   });
 
   it("badges warning events in amber and opens Events filtered (#574)", async () => {
-    app.eventWarningsOnly = false;
+    lists.resetSession();
     const event = (event_type: string) => ({
       event_type,
       reason: "x",
@@ -335,7 +337,7 @@ describe("Sidebar", () => {
     expect(badge.querySelector("svg")).toHaveAttribute("data-glyph", "warn");
     await fireEvent.click(badge);
     expect(app.view).toBe("events");
-    expect(app.eventWarningsOnly).toBe(true);
+    expect(lists.pressed("events")).toEqual(["warning"]);
   });
 
   it("rows carry no section dot: colour is for the tint and for state", () => {

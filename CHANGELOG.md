@@ -29,9 +29,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   toasts, tiles, key hints and the pin and group toggles are restyled. A meter
   past 60 % or 75 % shows a triangle or a square and a bold value, and "no
   data" is an en dash. Menus mark the current item with a check.
+- **Lists in the new look** (#615): every resource list shares one card: a large
+  title with its count, the pin and group toggles, the filter, and rows without
+  separators under a column header that stays in place while the rows scroll.
+  Status is a shape and a word in every list. Lists with a status get **status
+  chips** with counts (Pods: Failing, Pending, Running, Completed); pressing
+  chips filters the list. They replace "Needs attention" and "Warnings only":
+  Failing plus Pending are the pods that need attention. A number that needs
+  attention (restarts, failed jobs) is bold instead of red. When a list has
+  more columns than fit, it scrolls sideways and the name stays visible. The
+  "logs" chip on the selected pod is gone: Enter on the selected row still
+  opens its logs. The top bar stays on one row in a narrow window.
 - **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
   saved as amber becomes indigo and one saved as pink becomes magenta: warm
   colours are reserved for warnings and errors.
+
+### Fixed
+
+- **Lists no longer say "No pods found" while they load, or when the load
+  failed** (#606): a list shows placeholder rows until its first answer, then
+  either its rows, "No pods in payments", "No pods match "abc"" with Clear
+  filter, the error with the server's message and Retry, or "You are not
+  allowed to list pods in payments". Changing namespace shows the placeholders
+  instead of the previous namespace's rows. The Pods list says when CPU and
+  memory are missing because the cluster has no metrics-server.
 
 ### Removed
 

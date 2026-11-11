@@ -118,10 +118,9 @@ export function groupLabel<T>(
 }
 
 /**
- * Inline grid template for a list whose second column is Namespace: the
- * column is dropped while grouped (the group header already names it).
+ * Grid tracks of a list whose second column is Namespace: the column is
+ * dropped while grouped (the group header already names it).
  */
-export function gridColumns(columns: readonly string[], grouped: boolean): string {
-  const shown = grouped ? columns.filter((_, i) => i !== 1) : columns;
-  return `grid-template-columns: ${shown.join(" ")};`;
+export function shownColumns(columns: readonly string[], grouped: boolean): string[] {
+  return grouped ? columns.filter((_, i) => i !== 1) : [...columns];
 }

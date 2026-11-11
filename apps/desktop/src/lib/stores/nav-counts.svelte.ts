@@ -5,6 +5,7 @@
  */
 import { app, type View } from "./app.svelte";
 import { dynamic } from "./dynamic.svelte";
+import { lists } from "./lists.svelte";
 import { isExtraKind, resources } from "./resources.svelte";
 import { isKindView } from "#lib/resource-kinds.ts";
 
@@ -43,7 +44,8 @@ export function countFor(v: View): Count | null {
                 tone: "err",
                 open: () => {
                   app.navigate("pods");
-                  app.podIssuesOnly = true;
+                  // Failing and Pending together are the pods needing attention.
+                  lists.setStatus("pods", ["err", "warn"]);
                 }
               }
             : null
@@ -63,7 +65,7 @@ export function countFor(v: View): Count | null {
                 tone: "warn",
                 open: () => {
                   app.navigate("events");
-                  app.eventWarningsOnly = true;
+                  lists.setStatus("events", ["warning"]);
                 }
               }
             : null

@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { deploymentStatus, helmTone, podStatusLabel, podTone } from "./status";
+import {
+  deploymentStatus,
+  helmTone,
+  needsAttention,
+  podChip,
+  podGlyph,
+  podStatusLabel,
+  podTone,
+  toneGlyph,
+} from "./status";
 import type { DeploymentInfo, PodInfo } from "#lib/tauri.ts";
 
 function pod(phase: string | null, ready = true): PodInfo {
@@ -67,5 +76,54 @@ describe("helmTone", () => {
     expect(helmTone("Failed")).toBe("err");
     expect(helmTone("uninstalling")).toBe("neutral");
     expect(helmTone(null)).toBe("neutral");
+  });
+});
+
+describe("toneGlyph", () => {
+  it("gives every tone a shape; neutral is the unknown ring", () => {
+    expect(["ok", "warn", "err", "neutral"].map((t) => toneGlyph(t as never))).toEqual(["ok", "warn", "err", "unknown"]);
+  });
+});
+
+describe("podGlyph", () => {
+  it("shows a completed pod as finished, not as healthy", () => {
+    expect(podGlyph(pod("Succeeded", false))).toBe("done");
+  });
+
+  it("follows the tone otherwise", () => {
+    expect(podGlyph(pod("Running"))).toBe("ok");
+    expect(podGlyph(pod("Running", false))).toBe("warn");
+    expect(podGlyph(pod("CrashLoopBackOff", false))).toBe("err");
+    expect(podGlyph(pod(null, false))).toBe("unknown");
+  });
+});
+
+describe("podChip", () => {
+  it("sorts pods into Failing, Pending, Running and Completed", () => {
+    expect(podChip(pod("Failed", false))).toBe("err");
+    expect(podChip(pod("Pending", false))).toBe("warn");
+    expect(podChip(pod("Running"))).toBe("ok");
+    expect(podChip(pod("Succeeded", false))).toBe("done");
+  });
+
+  it("counts a running pod that is not ready or restarts hard as failing", () => {
+    expect(podChip(pod("Running", false))).toBe("err");
+    expect(podChip({ ...pod("Running"), restarts: 4 })).toBe("err");
+  });
+
+  it("Failing plus Pending is exactly the pods needing attention", () => {
+    const pods = [
+      pod("Failed", false),
+      pod("Pending", false),
+      pod("Running"),
+      pod("Running", false),
+      pod("Succeeded", false),
+      pod(null, false),
+      { ...pod("Running"), restarts: 9 },
+      { ...pod("Pending", false), restarts: 9 },
+    ];
+    for (const p of pods) {
+      expect(["err", "warn"].includes(podChip(p))).toBe(needsAttention(p));
+    }
   });
 });

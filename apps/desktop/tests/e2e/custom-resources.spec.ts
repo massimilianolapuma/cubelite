@@ -21,7 +21,7 @@ test("open a custom kind from its group, pin it, see it in Pinned", async ({ pag
   // Kinds show right away under their vendor (#589).
   await expect(aside(page).getByText("coreos.com", { exact: true })).toBeVisible();
   await aside(page).getByText("ServiceMonitor", { exact: true }).click();
-  await expect(page.getByRole("heading", { name: "ServiceMonitor" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "ServiceMonitor" })).toBeVisible();
   await expect(page.getByText("monitoring.coreos.com").first()).toBeVisible();
   await page.getByRole("button", { name: "Pin to On-call" }).click();
   await expect(
@@ -66,7 +66,7 @@ test("opening a kind far down a long group list scrolls its row into view", asyn
   await page.keyboard.press(`${mac ? "Meta" : "Control"}+KeyK`);
   await page.getByPlaceholder("Search clusters, resources, actions…").fill("widget55");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("heading", { name: "Widget55" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Widget55" })).toBeVisible();
   const row = aside(page).getByRole("list", { name: "Custom Resources types" }).locator('[aria-current="page"]');
   await expect(row).toHaveText(/Widget55/);
   await expect(row).toBeInViewport();

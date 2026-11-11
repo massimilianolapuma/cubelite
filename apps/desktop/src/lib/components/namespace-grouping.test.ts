@@ -18,7 +18,7 @@ import ServicesView from "./views/ServicesView.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { lists } from "#lib/stores/lists.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
-import type { PodInfo, ServiceInfo } from "#lib/tauri.ts";
+import { listServices, type PodInfo, type ServiceInfo } from "#lib/tauri.ts";
 
 function pod(name: string, namespace: string, overrides: Partial<PodInfo> = {}): PodInfo {
   return {
@@ -159,11 +159,20 @@ describe("PodTable grouped by namespace (#547)", () => {
 
 describe("ServicesView grouped by namespace (#547)", () => {
   beforeEach(() => {
-    resources.services = [service("web-0", "team-a"), service("db-0", "team-b"), service("api-0", "team-a")];
+    app.kubeconfigPath = "/home/u/.kube/config";
+    app.activeCluster = "prod";
+    resources.clear();
+    vi.mocked(listServices).mockResolvedValue([service("web-0", "team-a"), service("db-0", "team-b"), service("api-0", "team-a")]);
   });
 
-  it("the title-bar toggle switches grouping, headers have no problem marker", async () => {
+  /** Renders the view and waits for its rows: the list loads through the store. */
+  async function renderServices() {
     render(ServicesView);
+    await screen.findByTestId("list-scroller");
+  }
+
+  it("the title-bar toggle switches grouping, headers have no problem marker", async () => {
+    await renderServices();
     const toggle = screen.getByRole("button", { name: "Group by namespace" });
     expect(toggle).toHaveAttribute("aria-pressed", "false");
     await fireEvent.click(toggle);
@@ -174,10 +183,10 @@ describe("ServicesView grouped by namespace (#547)", () => {
     for (const ns of [/^team-a,/, /^team-b,/]) expect(marker(header(ns))).toBeNull();
   });
 
-  it("shares collapsed namespaces with the other lists", () => {
+  it("shares collapsed namespaces with the other lists", async () => {
     lists.groupByNamespace = true;
     lists.collapsed = { "team-a": true };
-    render(ServicesView);
+    await renderServices();
     expect(header(/^team-a,/)).toHaveAccessibleName("team-a, 2 services, collapsed");
     expect(screen.queryByText("web-0")).toBeNull();
     expect(screen.getByText("db-0")).toBeInTheDocument();

@@ -34,3 +34,34 @@ export function iconToggle(pressed: boolean): string {
       : "bg-surface-container-high text-text-muted hover:brightness-110"
   }`;
 }
+
+/**
+ * Filter field in a list's title row: a filled pill, as tall as the chips
+ * beside it.
+ */
+export const SEARCH_FIELD =
+  "focus-ring h-(--chip-h) w-56 min-w-0 rounded-full bg-surface-container-high px-4 type-body-sm text-text placeholder:text-text-subtle";
+
+/**
+ * Column header of a list: stays at the top of the card's scroller. Its cells
+ * and the rows share the card's `--list-cols` tracks.
+ */
+export const LIST_HEAD =
+  "list-head sticky top-0 z-10 grid grid-cols-(--list-cols) items-center gap-x-3 bg-surface-container px-3 py-2 type-label text-text-muted";
+
+/**
+ * One row of a list (Tonal §7): fixed height, rounded, no separators. `.list-row`
+ * (app.css) paints hover and, with `data-selected="true"`, the selection.
+ */
+export const LIST_ROW =
+  "list-row grid h-(--row-h) w-full shrink-0 grid-cols-(--list-cols) items-center gap-x-3 rounded-md px-3 text-left";
+
+/** A row that opens something: also the keyboard focus ring, inside the scroller. */
+export const LIST_ROW_ACTION = `${LIST_ROW} focus-ring-inset cursor-default`;
+
+/**
+ * First cell of a row and of the column header: stays in view while the
+ * columns scroll sideways. It takes its row's background, so the cells that
+ * pass under it do not show through.
+ */
+export const LIST_STICKY = "sticky left-0 z-[1] bg-inherit";

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cellText, gridTemplate, planColumns } from "#lib/table-columns.ts";
+import { cellText, planColumns, planTracks } from "#lib/table-columns.ts";
 import { formatAge } from "#lib/age.ts";
 
 const col = (name: string, column_type = "string", format = "") => ({ name, column_type, format, description: "" });
@@ -73,10 +73,13 @@ describe("cellText", () => {
   });
 });
 
-describe("gridTemplate", () => {
+describe("planTracks", () => {
   it("gives the name the room and Age a narrow column", () => {
-    expect(gridTemplate([{ kind: "name" }, { kind: "namespace" }, { kind: "cell", index: 1, label: "X", date: false }, { kind: "age", label: "Age" }])).toBe(
-      "grid-template-columns: minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) 0.55fr;",
-    );
+    expect(planTracks([{ kind: "name" }, { kind: "namespace" }, { kind: "cell", index: 1, label: "X", date: false }, { kind: "age", label: "Age" }])).toEqual([
+      "minmax(0,3fr)",
+      "minmax(0,1fr)",
+      "minmax(0,1fr)",
+      "0.55fr",
+    ]);
   });
 });

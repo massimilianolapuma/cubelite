@@ -515,6 +515,23 @@
     outline: 2px solid var(--color-primary);
     outline-offset: -2px;
   }
+  /* List rows (Tonal §7). A row has a background of its own, so its sticky
+     name cell can take it; hover is one surface up, the selection the tonal
+     container. A selected row re-declares the text roles, so every cell reads
+     on the container whatever role it was written in. */
+  .list-row {
+    background-color: var(--color-surface-container);
+  }
+  .list-row:hover {
+    background-color: var(--color-surface-container-high);
+  }
+  .list-row[data-selected="true"] {
+    background-color: var(--color-primary-container);
+    color: var(--color-on-primary-container);
+    --color-text: var(--color-on-primary-container);
+    --color-text-muted: var(--color-on-primary-container);
+    --color-text-subtle: var(--color-on-primary-container);
+  }
 }
 
 /* Minimum 28×28 hit target (spec) for compact controls: an invisible
