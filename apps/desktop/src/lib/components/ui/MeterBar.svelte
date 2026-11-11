@@ -11,9 +11,10 @@
 
 	// Unified thresholds (parity v2 §4): high from 60%, critical from 75%. A
 	// threshold is a shape and a bold value as well as a colour (Tonal §7).
-	const level = $derived(
-		percent === null ? 'none' : percent >= 75 ? 'critical' : percent >= 60 ? 'high' : 'normal'
-	);
+	// The level is decided on the rounded value, the one shown: 74.6 reads "75%" and
+	// must not carry the triangle of the 60–74 band.
+	const shown = $derived(percent === null ? null : Math.round(percent));
+	const level = $derived(shown === null ? 'none' : shown >= 75 ? 'critical' : shown >= 60 ? 'high' : 'normal');
 	const look = {
 		none: { fill: '', tone: 'text-text-subtle', glyph: null },
 		normal: { fill: 'bg-primary', tone: 'text-text-muted', glyph: null },
@@ -38,7 +39,7 @@
 				<StatusGlyph state={style.glyph} size={7} />
 			{/if}
 			<span class="type-data-sm {style.glyph ? 'font-bold' : ''}" data-testid="meter-value">
-				{percent === null ? '–' : `${Math.round(percent)}%`}
+				{shown === null ? '–' : `${shown}%`}
 			</span>
 		</span>
 	</div>

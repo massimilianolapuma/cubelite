@@ -102,7 +102,7 @@ describe("DeletePodDialog", () => {
     render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
     const confirm = screen.getByRole("button", { name: "Delete Pod" });
     expect(confirm).toHaveClass("text-on-error-solid");
-    expect(confirm).not.toHaveClass("text-text-primary");
+    expect(confirm).toHaveAttribute("data-variant", "danger-solid");
   });
 
   it("registers with the overlay stack so Esc closes it before the drawer", () => {

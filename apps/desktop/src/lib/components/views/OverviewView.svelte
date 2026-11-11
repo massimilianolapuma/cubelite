@@ -100,7 +100,6 @@
 			label="Nodes"
 			value={summary.nodes ?? '—'}
 			icon={Server}
-			tint="var(--color-accent-alt-teal)"
 			target="Nodes"
 			onclick={() => app.navigate('nodes')}
 		/>
@@ -108,7 +107,6 @@
 			label="Pods running"
 			value="{summary.pods.running}/{summary.pods.total}"
 			icon={Box}
-			tint="var(--color-cluster-blue)"
 			target="Pods"
 			onclick={() => app.navigate('pods')}
 		/>
@@ -116,7 +114,6 @@
 			label="Deploys healthy"
 			value="{summary.deployments.healthy}/{summary.deployments.total}"
 			icon={Layers}
-			tint="var(--color-cluster-violet)"
 			target="Deployments"
 			onclick={() => app.navigate('deployments')}
 		/>
@@ -125,7 +122,6 @@
 			value={warnings.length}
 			tone={warnings.length > 0 ? 'warn' : 'ok'}
 			icon={TriangleAlert}
-			tint={warnings.length > 0 ? 'var(--color-status-warn)' : 'var(--color-text-tertiary)'}
 			target="Events"
 			onclick={() => app.navigate('events')}
 		/>

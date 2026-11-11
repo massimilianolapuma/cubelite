@@ -37,17 +37,18 @@
 	aria-label={title}
 >
 	<header class="flex items-center justify-between gap-3 px-6 pt-5 pb-3">
-		<h2 class="type-headline min-w-0 truncate">{title}</h2>
+		<h2 class="type-headline min-w-0 truncate" {title}>{title}</h2>
 		<button
 			type="button"
 			aria-label="Close"
-			class="focus-ring -mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-subtle hover:bg-surface-container-high hover:text-text-muted"
+			class="focus-ring hover-layer -mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-muted"
 			onclick={onClose}
 		>
 			<X class="h-4 w-4" aria-hidden="true" />
 		</button>
 	</header>
-	<div class="flex-1 overflow-y-auto px-6 py-2">
+	<!-- Without a footer the body owns the bottom gutter. -->
+	<div class="flex-1 overflow-y-auto px-6 pt-2 {footer ? 'pb-2' : 'pb-6'}">
 		{@render children()}
 	</div>
 	{#if footer}

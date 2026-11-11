@@ -25,7 +25,10 @@
 	}: {
 		variant?: ButtonVariant;
 		size?: ButtonSize;
-		/** An operation is running: the button keeps its width, shows a spinner and ignores clicks. */
+		/**
+		 * An operation is running: the button keeps its width and its keyboard focus
+		 * (it is `aria-disabled`, not natively disabled), shows a spinner and ignores clicks.
+		 */
 		pending?: boolean;
 		/** A disc with only an icon; `label` is then its accessible name. */
 		iconOnly?: boolean;
@@ -47,9 +50,18 @@
 	const look: Record<ButtonVariant, string> = {
 		primary: 'bg-primary text-on-primary',
 		tonal: 'bg-primary-container text-on-primary-container',
-		text: 'text-text hover:bg-surface-container-high',
-		danger: 'text-error hover:bg-surface-container-high',
+		text: 'text-text',
+		danger: 'text-error',
 		'danger-solid': 'bg-error-solid text-on-error-solid'
+	};
+	// Filled buttons brighten; unfilled ones get a layer of their own colour, which
+	// shows on any surface (a fixed surface tone vanishes on the overlay).
+	const hover: Record<ButtonVariant, string> = {
+		primary: 'enabled:hover:brightness-110',
+		tonal: 'enabled:hover:brightness-110',
+		text: 'hover-layer',
+		danger: 'hover-layer',
+		'danger-solid': 'enabled:hover:brightness-110'
 	};
 	const height: Record<ButtonSize, string> = {
 		default: 'h-(--control-h)',
@@ -71,13 +83,14 @@
 	{...rest}
 	data-variant={variant}
 	data-icon-only={iconOnly ? 'true' : undefined}
-	aria-label={iconOnly ? label : rest['aria-label']}
-	aria-busy={pending ? 'true' : undefined}
-	disabled={disabled || pending}
+	aria-label={iconOnly ? (label ?? rest['aria-label']) : rest['aria-label']}
+	aria-busy={pending ? 'true' : rest['aria-busy']}
+	aria-disabled={pending ? 'true' : rest['aria-disabled']}
+	{disabled}
 	onclick={click}
-	class="focus-ring relative inline-flex shrink-0 items-center justify-center gap-2 rounded-full font-semibold hover:brightness-110 disabled:pointer-events-none {pending
-		? ''
-		: 'disabled:opacity-45'} {size === 'primary' ? 'type-title' : 'type-body'} {height[size]} {iconOnly
+	class="focus-ring relative inline-flex shrink-0 items-center justify-center gap-2 rounded-full font-semibold disabled:cursor-default disabled:opacity-45 {pending
+		? 'cursor-progress'
+		: hover[variant]} {size === 'primary' ? 'type-title' : 'type-body'} {height[size]} {iconOnly
 		? width[size]
 		: padding[size]} {look[variant]} {klass}"
 >

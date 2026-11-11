@@ -18,8 +18,6 @@
 		tone?: StatusTone;
 		/** Lucide icon shown before the label (parity v2 §4). */
 		icon?: typeof LucideIcon;
-		/** Ignored: tiles no longer take a per-resource tint (Tonal §3 #6). */
-		tint?: string;
 		/** Name of the view `onclick` opens; part of the accessible name (#463). */
 		target?: string;
 		/** When set, the card is a button that navigates to `target`. */

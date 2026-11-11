@@ -6,6 +6,9 @@
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import { MENU_CONTENT, MENU_ITEM } from '#lib/ui-classes.ts';
 
+	/** Radio value for "all namespaces"; `*` can never be a namespace name. */
+	const ALL = '*';
+
 	const podCounts = $derived(resources.podCountsByNamespace);
 
 	async function select(ns: string | null) {
@@ -24,27 +27,34 @@
 		<ChevronDown class="h-3.5 w-3.5 shrink-0 text-text-subtle" aria-hidden="true" />
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
-		<!-- The current namespace carries a check; the highlight is only where the keyboard is. -->
+		<!-- A radio group, like the profile menu: the current namespace is checked and
+		     carries a check mark; the highlight is only where the pointer or keyboard is. -->
 		<DropdownMenu.Content align="start" sideOffset={6} class="{MENU_CONTENT} max-h-80 min-w-60 overflow-y-auto">
-			<DropdownMenu.Item class={MENU_ITEM} onSelect={() => void select(null)}>
-				<span class="flex-1 {app.namespace === null ? 'font-semibold text-text' : ''}">all namespaces</span>
-				{#if app.namespace === null}
-					<span class="type-data-sm text-text-subtle">{resources.pods.length}</span>
-					<Check class="h-4 w-4 shrink-0 text-primary" aria-label="current" />
-				{/if}
-			</DropdownMenu.Item>
-			{#each resources.namespaces as ns (ns.name)}
-				{@const current = app.namespace === ns.name}
-				<DropdownMenu.Item class={MENU_ITEM} onSelect={() => void select(ns.name)}>
-					<span class="type-data min-w-0 flex-1 truncate {current ? 'font-semibold text-text' : ''}">{ns.name}</span>
-					{#if podCounts[ns.name] !== undefined}
-						<span class="type-data-sm text-text-subtle">{podCounts[ns.name]}</span>
-					{/if}
-					{#if current}
-						<Check class="h-4 w-4 shrink-0 text-primary" aria-label="current" />
-					{/if}
-				</DropdownMenu.Item>
-			{/each}
+			<DropdownMenu.RadioGroup
+				value={app.namespace ?? ALL}
+				onValueChange={(value) => void select(value === ALL ? null : value)}
+			>
+				<DropdownMenu.RadioItem value={ALL} class={MENU_ITEM}>
+					{#snippet children({ checked })}
+						<span class="flex-1 {checked ? 'font-semibold text-text' : ''}">all namespaces</span>
+						{#if checked}
+							<span class="type-data-sm text-text-subtle">{resources.pods.length}</span>
+						{/if}
+						<Check class="h-4 w-4 shrink-0 text-primary {checked ? '' : 'invisible'}" aria-hidden="true" />
+					{/snippet}
+				</DropdownMenu.RadioItem>
+				{#each resources.namespaces as ns (ns.name)}
+					<DropdownMenu.RadioItem value={ns.name} class={MENU_ITEM}>
+						{#snippet children({ checked })}
+							<span class="type-data min-w-0 flex-1 truncate {checked ? 'font-semibold text-text' : ''}">{ns.name}</span>
+							{#if podCounts[ns.name] !== undefined}
+								<span class="type-data-sm text-text-subtle">{podCounts[ns.name]}</span>
+							{/if}
+							<Check class="h-4 w-4 shrink-0 text-primary {checked ? '' : 'invisible'}" aria-hidden="true" />
+						{/snippet}
+					</DropdownMenu.RadioItem>
+				{/each}
+			</DropdownMenu.RadioGroup>
 		</DropdownMenu.Content>
 	</DropdownMenu.Portal>
 </DropdownMenu.Root>

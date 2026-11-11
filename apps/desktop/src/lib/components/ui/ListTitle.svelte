@@ -18,7 +18,8 @@
 	const pressed = $derived(lists.groupByNamespace);
 </script>
 
-<div class="flex min-h-7 items-center gap-3">
+<!-- As tall as a filter chip, so the list does not jump when one appears. -->
+<div class="flex min-h-(--chip-h) items-center gap-3">
 	<h1 class="type-title flex-1">{title}</h1>
 	<PinToggle />
 	{#if groupable && app.namespace === null}

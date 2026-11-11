@@ -87,7 +87,6 @@
 
   --shadow-overlay: var(--cl-shadow-overlay);
   --shadow-drawer: var(--cl-shadow-drawer);
-  --shadow-toast: var(--cl-shadow-toast);
 
   --spacing-1: 4px;
   --spacing-2: 8px;
@@ -157,7 +156,6 @@
 
     --cl-shadow-overlay: 0 24px 64px rgba(20,24,48,.18);
     --cl-shadow-drawer: -16px 0 40px rgba(20,20,30,.12);
-    --cl-shadow-toast: 0 10px 34px rgba(20,20,30,.14);
 
     --alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);
     --alpha-active-nav-bg: color-mix(in srgb, var(--color-accent) 14%, transparent);
@@ -309,7 +307,6 @@
   .dark {
     --cl-shadow-overlay: 0 24px 64px rgba(0,0,0,.5);
     --cl-shadow-drawer: -16px 0 40px rgba(0,0,0,.45);
-    --cl-shadow-toast: 0 10px 34px rgba(0,0,0,.5);
   }
 }
 /* @generated:layer-end */
@@ -506,6 +503,12 @@
   .focus-ring:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
+  }
+  /* Hover and keyboard highlight of unfilled controls: a layer of their own text
+     colour, visible on every surface (Tonal §7). */
+  .hover-layer:hover:not(:disabled):not([aria-disabled="true"]),
+  .menu-item[data-highlighted] {
+    background-color: color-mix(in srgb, currentColor 14%, transparent);
   }
   /* Inside a scrolling list an outer ring would be clipped. */
   .focus-ring-inset:focus-visible {

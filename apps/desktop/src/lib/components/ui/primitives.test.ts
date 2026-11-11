@@ -43,12 +43,20 @@ describe("StatusBadge", () => {
   it("gives failure a squarer outline than attention, so the two differ in shape", () => {
     render(StatusBadge, { props: { state: "err", label: "Failed" } });
     render(StatusBadge, { props: { state: "warn", label: "Pending" } });
-    expect(screen.getByText("Failed").closest("[data-state]")).toHaveClass("rounded-sm");
+    // 6 px corners on a 22 px badge read as a rectangle; 10 px would still look like a pill.
+    expect(screen.getByText("Failed").closest("[data-state]")).toHaveClass("rounded-xs");
     expect(screen.getByText("Pending").closest("[data-state]")).toHaveClass("rounded-full");
   });
 });
 
 describe("StatusPill (v2 API on the new badge)", () => {
+  it("has an unknown tone: a dashed ring, lighter than a healthy badge, never a filled chip", () => {
+    render(StatusPill, { props: { label: "Unknown", tone: "unknown" } });
+    const badge = screen.getByText("Unknown").closest("[data-state]")!;
+    expect(glyphOf(badge)).toBe("unknown");
+    expect(badge).toHaveAttribute("data-fill", "none");
+  });
+
   it("maps tones to states and leaves neutral without a glyph", () => {
     render(StatusPill, { props: { label: "deployed", tone: "ok" } });
     render(StatusPill, { props: { label: "failed", tone: "err" } });
@@ -71,12 +79,16 @@ describe("Button", () => {
     expect(onclick).toHaveBeenCalledOnce();
   });
 
-  it("while pending keeps its label, shows a spinner and ignores clicks", async () => {
+  it("while pending keeps its label and its focus, shows a spinner and ignores clicks", async () => {
     const onclick = vi.fn();
     render(Button, { props: { pending: true, onclick, children: text("Restart") } });
     const button = screen.getByRole("button", { name: "Restart" });
     expect(button).toHaveAttribute("aria-busy", "true");
-    expect(button).toBeDisabled();
+    // Busy, not natively disabled: a disabled button would drop keyboard focus.
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toBeDisabled();
+    button.focus();
+    expect(button).toHaveFocus();
     expect(button.querySelector(".animate-spin")).not.toBeNull();
     await fireEvent.click(button);
     expect(onclick).not.toHaveBeenCalled();
@@ -85,6 +97,20 @@ describe("Button", () => {
   it("an icon-only button takes its name from the label prop", () => {
     render(Button, { props: { iconOnly: true, label: "Close details", children: text("") } });
     expect(screen.getByRole("button", { name: "Close details" })).toHaveAttribute("data-icon-only", "true");
+  });
+
+  it("keeps a caller's aria-label, with or without iconOnly", () => {
+    render(Button, { props: { iconOnly: true, "aria-label": "Close", children: text("") } });
+    render(Button, { props: { "aria-label": "Retry now", children: text("Retry") } });
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry now" })).toBeInTheDocument();
+  });
+
+  it("a disabled button can still show why in its tooltip", () => {
+    render(Button, { props: { disabled: true, title: "Requires backend support", children: text("Delete") } });
+    const button = screen.getByRole("button", { name: "Delete" });
+    expect(button).toHaveAttribute("title", "Requires backend support");
+    expect(button.className).not.toContain("pointer-events-none");
   });
 
   it("is disabled without being busy", () => {
@@ -194,5 +220,14 @@ describe("Toaster", () => {
     expect(glyphOf(screen.getByText("Pod deleted").closest("[data-tone]")!)).toBe("ok");
     expect(glyphOf(screen.getByText("Could not delete").closest("[data-tone]")!)).toBe("err");
     toasts.items = [];
+  });
+});
+
+describe("icon toggles", () => {
+  it("a pressed toggle is filled with the primary colour: a fill a step away would not show", async () => {
+    const { iconToggle } = await import("#lib/ui-classes.ts");
+    expect(iconToggle(true)).toContain("bg-primary ");
+    expect(iconToggle(true)).toContain("text-on-primary ");
+    expect(iconToggle(false)).not.toContain("bg-primary");
   });
 });

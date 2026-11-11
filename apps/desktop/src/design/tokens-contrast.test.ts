@@ -57,7 +57,8 @@ const MATRIX: { fg: string; on: string[]; min: number }[] = [
   // Graphics: control borders, and the healthy glyph on a selected row.
   { fg: "outline-strong", on: SURFACES, min: 3 },
   { fg: "success", on: ["primary-container"], min: 3 },
-  // Meter fills on their track.
+  // Meter fills on their track. `outline` is audited only as that track: as a
+  // hairline it is decorative and never the only boundary of a control.
   { fg: "primary", on: ["outline"], min: 3 },
   { fg: "warning", on: ["outline"], min: 3 },
   { fg: "error", on: ["outline"], min: 3 },

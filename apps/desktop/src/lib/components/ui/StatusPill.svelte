@@ -1,11 +1,11 @@
 <script lang="ts">
 	import StatusBadge from './StatusBadge.svelte';
 
-	export type PillTone = 'ok' | 'warn' | 'err' | 'neutral';
+	export type PillTone = 'ok' | 'warn' | 'err' | 'unknown' | 'neutral';
 
 	// The v2 pill API on the Tonal badge: a tone is a state with its shape.
-	// `neutral` is not a state (an event of type Normal, a plain tag): a quiet
-	// chip with no glyph.
+	// `unknown` is a state too (no data: a dashed ring). `neutral` is not a state
+	// (an event of type Normal, a plain tag): a quiet chip with no glyph.
 	let { label, tone = 'neutral' }: { label: string; tone?: PillTone } = $props();
 </script>
 

@@ -3,12 +3,12 @@
 
 	// A resource's state as a shape and its word (Tonal §6). Healthy and
 	// finished are a glyph beside plain text; only attention and failure are
-	// filled, and failure is squarer than attention so the two also differ in
-	// outline. The label is the exact word the API returned.
+	// filled, and failure is a rectangle (6 px corners) where attention is a pill, so
+	// the two also differ in outline. The label is the exact word the API returned.
 	let { state, label }: { state: GlyphState; label: string } = $props();
 
 	const look: Record<GlyphState, { fill: 'none' | 'warning' | 'error'; shell: string; glyph: string }> = {
-		ok: { fill: 'none', shell: '', glyph: 'text-success' },
+		ok: { fill: 'none', shell: 'text-text', glyph: 'text-success' },
 		done: { fill: 'none', shell: 'text-text-subtle', glyph: '' },
 		unknown: { fill: 'none', shell: 'text-text-subtle', glyph: '' },
 		warn: {
@@ -18,7 +18,7 @@
 		},
 		err: {
 			fill: 'error',
-			shell: 'rounded-sm bg-error-container px-2.5 py-0.5 text-on-error-container',
+			shell: 'rounded-xs bg-error-container px-2.5 py-0.5 text-on-error-container',
 			glyph: ''
 		}
 	};
