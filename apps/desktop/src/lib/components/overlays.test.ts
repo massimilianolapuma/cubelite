@@ -93,14 +93,14 @@ describe("DeletePodDialog", () => {
     render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
     expect(screen.getByText("api-0")).toBeInTheDocument();
     expect(screen.getByText("default")).toBeInTheDocument();
-    expect(screen.getByText("Delete Pod", { selector: "button" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete Pod" })).toBeDisabled();
   });
 
   it("labels the destructive fill with the role made for it", () => {
     // `text` on `error-solid` is 2.8:1 in the light theme; `on-error-solid` is the
     // pair the contrast matrix holds at 4.5:1.
     render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
-    const confirm = screen.getByText("Delete Pod", { selector: "button" });
+    const confirm = screen.getByRole("button", { name: "Delete Pod" });
     expect(confirm).toHaveClass("text-on-error-solid");
     expect(confirm).not.toHaveClass("text-text-primary");
   });
