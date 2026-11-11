@@ -9,6 +9,7 @@
 	import type { PodInfo } from '#lib/tauri.ts';
 	import { podChip, podGlyph, podStatusLabel, podTone, STATUS_CHIPS } from '#lib/status.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { layout } from '#lib/stores/layout.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
@@ -49,6 +50,16 @@
 	// NAME / NAMESPACE / STATUS / READY / AGE / CPU / MEMORY / RESTARTS
 	const TRACKS = ['2.4fr', '1fr', '1.5fr', '0.6fr', '0.6fr', '0.8fr', '0.8fr', '0.6fr'];
 
+	// Beside the docked panel the list is 628 px wide: it keeps the name, the
+	// status and three more columns, and the rest is in the panel (Tonal §3 #2).
+	// The namespace is one of them only when it tells rows apart.
+	const narrow = $derived(layout.docked && selected !== null);
+	const namespaceColumn = $derived(!narrow || app.namespace === null);
+	const withAge = $derived(!narrow || !namespaceColumn || app.groupedLists);
+	const tracks = $derived(
+		narrow ? ['2.4fr', '1fr', '1.5fr', '0.6fr', ...(withAge ? ['0.6fr'] : []), '0.7fr'] : TRACKS
+	);
+
 	// Last hour of CPU and memory from Prometheus, after the rows (#510).
 	$effect(() => {
 		void pods;
@@ -68,7 +79,8 @@
 	rows={pods}
 	{total}
 	{filter}
-	tracks={TRACKS}
+	{tracks}
+	{namespaceColumn}
 	accessors={{
 		name: (x) => x.name,
 		namespace: (x) => x.namespace,
@@ -99,9 +111,11 @@
 	{#snippet head()}
 		<SortHeader list="pods" field="status" label="Status" />
 		<span class="truncate">Ready</span>
-		<SortHeader list="pods" field="age" label="Age" />
-		<span class="truncate" title={prometheus.active ? sparkTitle : undefined}>CPU</span>
-		<span class="truncate" title={prometheus.active ? sparkTitle : undefined}>Memory</span>
+		{#if withAge}<SortHeader list="pods" field="age" label="Age" />{/if}
+		{#if !narrow}
+			<span class="truncate" title={prometheus.active ? sparkTitle : undefined}>CPU</span>
+			<span class="truncate" title={prometheus.active ? sparkTitle : undefined}>Memory</span>
+		{/if}
 		<SortHeader list="pods" field="restarts" label="Restarts" align="end" />
 	{/snippet}
 
@@ -116,23 +130,25 @@
 			{/if}
 		</span>
 		<span class="type-data-sm text-text-muted">{pod.ready_containers}/{pod.total_containers}</span>
-		<span class="type-data-sm text-text-muted">{formatAge(pod.creation_timestamp)}</span>
-		<span class="flex min-w-0 items-center gap-1.5">
-			<span class="type-data-sm {usage ? 'text-text-muted' : 'text-text-subtle'}">
-				{usage ? formatCpu(usage.cpu_millis) : '–'}
+		{#if withAge}<span class="type-data-sm text-text-muted">{formatAge(pod.creation_timestamp)}</span>{/if}
+		{#if !narrow}
+			<span class="flex min-w-0 items-center gap-1.5">
+				<span class="type-data-sm {usage ? 'text-text-muted' : 'text-text-subtle'}">
+					{usage ? formatCpu(usage.cpu_millis) : '–'}
+				</span>
+				{#if prometheus.active}
+					<Sparkline points={prometheus.cpuFor(pod.namespace, pod.name)} label="CPU, last hour" />
+				{/if}
 			</span>
-			{#if prometheus.active}
-				<Sparkline points={prometheus.cpuFor(pod.namespace, pod.name)} label="CPU, last hour" />
-			{/if}
-		</span>
-		<span class="flex min-w-0 items-center gap-1.5">
-			<span class="type-data-sm {usage ? 'text-text-muted' : 'text-text-subtle'}">
-				{usage ? formatBytes(usage.memory_bytes) : '–'}
+			<span class="flex min-w-0 items-center gap-1.5">
+				<span class="type-data-sm {usage ? 'text-text-muted' : 'text-text-subtle'}">
+					{usage ? formatBytes(usage.memory_bytes) : '–'}
+				</span>
+				{#if prometheus.active}
+					<Sparkline points={prometheus.memoryFor(pod.namespace, pod.name)} label="Memory, last hour" />
+				{/if}
 			</span>
-			{#if prometheus.active}
-				<Sparkline points={prometheus.memoryFor(pod.namespace, pod.name)} label="Memory, last hour" />
-			{/if}
-		</span>
+		{/if}
 		<!-- A restart count that needs attention is bold, not coloured (Tonal §7). -->
 		<span
 			class="type-data-sm text-right {pod.restarts > 3 ? 'font-semibold text-text' : 'text-text-muted'}"

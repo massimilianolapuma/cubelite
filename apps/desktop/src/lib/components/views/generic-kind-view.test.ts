@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   discoverResourceKinds: vi.fn(async () => []),
@@ -13,6 +13,7 @@ import GenericKindView from "./GenericKindView.svelte";
 import { viewEntry } from "./index.ts";
 import { app } from "#lib/stores/app.svelte.ts";
 import { dynamic } from "#lib/stores/dynamic.svelte.ts";
+import { layout } from "#lib/stores/layout.svelte.ts";
 
 const col = (name: string, column_type = "string", format = "") => ({ name, column_type, format, description: "" });
 
@@ -33,6 +34,7 @@ beforeEach(() => {
   app.activeCluster = `ctx-${++n}`;
   app.namespace = null;
   app.selectedObject = null;
+  layout.contentWidth = 0;
   dynamic.clear();
 });
 
@@ -139,6 +141,32 @@ describe("GenericKindView", () => {
     app.namespace = "logging";
     await vi.waitFor(() => expect(screen.getByRole("status", { name: "Loading daemon sets" })).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /fluent-bit/ })).toBeNull();
+  });
+
+  it("the panel lists every column the server returned, above the YAML", async () => {
+    render(GenericKindView, { view: "daemonsets" });
+    await fireEvent.click(await screen.findByRole("button", { name: /fluent-bit/ }));
+    const drawer = await screen.findByRole("dialog", { name: "fluent-bit" });
+    const summary = within(drawer).getByRole("group", { name: "Summary" });
+    expect(within(summary).getAllByRole("term").map((el) => el.textContent)).toEqual(["Namespace", "Desired", "Node Selector", "Age"]);
+    expect(within(summary).getByText("<none>")).toBeInTheDocument();
+    expect(within(drawer).getByText("daemon set")).toBeInTheDocument();
+  });
+
+  it("beside a docked panel the list keeps at most five columns; the rest is in the panel", async () => {
+    const wide = ["A", "B", "C", "D", "E", "F"];
+    vi.mocked(listResourceTable).mockResolvedValue({
+      columns: [col("Name", "string", "name"), ...wide.map((n) => col(n))],
+      rows: [{ name: "x", namespace: "default", creation_timestamp: null, cells: ["x", ...wide.map((n) => n.toLowerCase())] }],
+    });
+    layout.contentWidth = 1200;
+    render(GenericKindView, { view: "daemonsets" });
+    const row = await screen.findByRole("button", { name: /^x/ });
+    expect(document.querySelectorAll(".list-head > *")).toHaveLength(8);
+    await fireEvent.click(row);
+    expect([...document.querySelectorAll(".list-head > *")].map((el) => el.textContent?.trim())).toEqual(["Name", "Namespace", "A", "B", "C"]);
+    const summary = within(await screen.findByRole("dialog", { name: "x" })).getByRole("group", { name: "Summary" });
+    expect(within(summary).getAllByRole("term").map((el) => el.textContent)).toEqual(["Namespace", ...wide]);
   });
 
   it("filter and drawer reset when the kind changes", async () => {

@@ -345,31 +345,10 @@ describe("PodsView status chips (#574, Tonal §3 #7)", () => {
   });
 });
 
-describe("PodDrawer", () => {
-  it("shows meta grid with real fields and live footer actions", async () => {
-    const onClose = vi.fn();
-    const onDelete = vi.fn();
-    render(PodDrawer, { props: { pod: pod({ restarts: 2 }), onClose, onDelete } });
-    expect(screen.getByText("api-0")).toBeInTheDocument();
-    expect(screen.getByText("Namespace")).toBeInTheDocument();
-    expect(screen.getByText("QoS")).toBeInTheDocument();
-    expect(screen.getByText("Logs").closest("button")).not.toBeDisabled();
-    expect(screen.getByText("Restart").closest("button")).not.toBeDisabled();
-    await fireEvent.click(screen.getByText("Delete"));
-    expect(onDelete).toHaveBeenCalled();
-  });
-
-  it("shows label chips sorted by key", () => {
-    render(PodDrawer, {
-      props: { pod: pod({ labels: { tier: "api", app: "shop" } }), onClose: vi.fn() },
-    });
-    expect(screen.getByText("Labels")).toBeInTheDocument();
-    const chips = screen.getAllByTitle(/=/).map((el) => el.textContent?.trim());
-    expect(chips).toEqual(["app=shop", "tier=api"]);
-  });
-
-  it("portals into the app's drawer host so it stays pinned while the view scrolls", () => {
-    const host = document.createElement("main");
+// The pod panel's content is covered in components/panels.test.ts.
+describe("PodDrawer in the app shell", () => {
+  it("renders into the app's panel host, beside the list card", () => {
+    const host = document.createElement("div");
     host.setAttribute("data-drawer-host", "");
     document.body.appendChild(host);
     try {

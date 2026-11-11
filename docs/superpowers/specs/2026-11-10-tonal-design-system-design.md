@@ -224,8 +224,9 @@ carries no contrast requirement.
 - **Sidebar**: profile pill and Go-to button (⌘K), Pinned, All resources. Same structure and rules
   as the sidebar spec of 2026-11-07 (one section open at a time, only the open section's list
   scrolls). Hidden on the All Clusters dashboard, as today.
-- **Detail panel**: docked or overlay is decided by a container query on the content column
-  (≥ 1000 px docked), not by the window width, so it follows sidebar and rail changes.
+- **Detail panel**: docked or overlay is decided by the width of the content column (≥ 1000 px
+  docked), not by the window width, so it follows sidebar and rail changes. The shell measures the
+  column (a container query cannot tell the list which columns to keep).
 - **Log panel**: a `surface-sunken` card under the list and the detail panel, resizable 160–560 as
   today. The `z-[35]` rule that lifts it above the drawer is kept only for overlay mode.
 - Banners (update available, integrations) become one pill-shaped row above the cards, on
@@ -308,15 +309,22 @@ is fixed.
 - Status: a hero in the state's container with the state in `headline` and the reason in `body-sm`
   for attention and failure; a plain status line for healthy and finished.
 - Two tiles with the numbers that explain the state (Pod: restarts, memory; Deployment: ready,
-  updated; Node: pods, CPU).
+  matched pods, since the core does not report updated replicas; Node: pods, CPU). The Node's pod
+  count is of the pods loaded, so with a namespace selected its tile says "Pods in payments".
 - Facts as label / value rows; then the kind's sections (containers, label chips, conditions, child
   pods, metrics charts, YAML).
 - Footer pinned to the bottom: one primary (Pod: Open logs), tonal actions, destructive as text.
+- Deployment: the replica stepper is always in the panel; the row keeps its own only while the
+  list has its full width (§3 #11). A condition shows its status as a word, and one that is not
+  True stands out by weight: True is not always good news (ReplicaFailure).
 - Generic objects: a Summary block lists every column the server returned, above the YAML, so
   nothing is lost when the list is narrowed.
 - Columns kept when docked: name, status, up to three more; namespace is one of them when listing
-  all namespaces ungrouped. The exact set per list is decided in the phase plan.
+  all namespaces ungrouped. Pods: name, namespace or age, status, ready, restarts. Deployments:
+  name, namespace, ready, status, age. Nodes: all five. Generic kinds: the first five.
 - Focus: opening moves focus to the panel heading; Esc or the close button returns it to the row.
+  Enter on the heading runs the panel's primary action, so Enter on a pod row and Enter again
+  still opens its logs (§3 #10). Changing the selection with the panel open does not move focus.
   The panel is non-modal in both modes (the list stays operable) and keeps `role="dialog"` with its
   name, so the existing e2e locators hold.
 - Overlay mode (content < 1000 px): the same panel on `surface-overlay` with `shadow-overlay`,

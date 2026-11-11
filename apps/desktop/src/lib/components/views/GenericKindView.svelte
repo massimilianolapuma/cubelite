@@ -10,6 +10,7 @@
 	import type { TableRow } from '#lib/tauri.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
+	import { layout } from '#lib/stores/layout.svelte.ts';
 	import { LIST_ROW_ACTION, LIST_STICKY, SEARCH_FIELD } from '#lib/ui-classes.ts';
 
 	// Any ★ kind of the resource-kinds design (§5.1): the columns `kubectl get`
@@ -32,8 +33,15 @@
 		void dynamic.load(view);
 	});
 
+	const selected = $derived(app.selectedObject);
+	// Beside the docked panel the list keeps its first five columns; the panel's
+	// Summary has them all (Tonal §3 #2, §8.3).
+	const narrow = $derived(layout.docked && selected !== null);
+
 	const table = $derived(dynamic.tables[view]);
-	const plan = $derived(planColumns(table?.columns ?? [], namespaced && !grouped));
+	const withNamespace = $derived(namespaced && !grouped && (!narrow || app.namespace === null));
+	const fullPlan = $derived(planColumns(table?.columns ?? [], withNamespace));
+	const plan = $derived(narrow ? fullPlan.slice(0, 5) : fullPlan);
 	const all = $derived(table?.rows ?? []);
 	const rows = $derived.by(() => {
 		const text = filter.trim().toLowerCase();
@@ -61,7 +69,20 @@
 		created: (r: TableRow) => r.creation_timestamp
 	};
 
-	const selected = $derived(app.selectedObject);
+	// Every column the server returned for the open object, as the panel's
+	// Summary: nothing is lost when the list is narrowed. The name is the
+	// panel's title.
+	const summary = $derived.by((): [string, string | null][] => {
+		const row = selected && all.find((r) => r.name === selected.name && r.namespace === selected.namespace);
+		if (!row || !table) return [];
+		const nameIndex = table.columns.findIndex((c) => c.format === 'name');
+		const facts: [string, string | null][] = namespaced ? [['Namespace', row.namespace]] : [];
+		table.columns.forEach((column, i) => {
+			if (i === nameIndex || (nameIndex < 0 && column.name === 'Name')) return;
+			facts.push([column.name, cellText(row.cells[i], column.column_type === 'date') || null]);
+		});
+		return facts;
+	});
 
 	// The first column stays in view while the others scroll sideways.
 	const sticky = (i: number) => (i === 0 ? LIST_STICKY : '');
@@ -142,5 +163,12 @@
 </ListCard>
 
 {#if selected}
-	<ObjectYamlDrawer {view} name={selected.name} namespace={selected.namespace} onClose={() => (app.selectedObject = null)} />
+	<ObjectYamlDrawer
+		{view}
+		kind={meta.nouns[0]}
+		name={selected.name}
+		namespace={selected.namespace}
+		{summary}
+		onClose={() => (app.selectedObject = null)}
+	/>
 {/if}

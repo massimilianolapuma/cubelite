@@ -24,6 +24,7 @@
 		tracks,
 		accessors,
 		namespaced = true,
+		namespaceColumn = true,
 		chipDefs,
 		chipOf,
 		loaded = true,
@@ -56,6 +57,12 @@
 		accessors: GroupAccessors<T>;
 		/** false for cluster-scoped kinds: no Namespace column, no groups. */
 		namespaced?: boolean;
+		/**
+		 * false drops the Namespace column of a namespaced kind (its track, the
+		 * second, goes with it): a list narrowed by the docked panel has no room
+		 * for a column that repeats the selected namespace.
+		 */
+		namespaceColumn?: boolean;
 		/** Status chips of the list, worst first, and the chip a row counts under. */
 		chipDefs?: readonly ChipDef[];
 		chipOf?: (row: T) => string;
@@ -85,7 +92,8 @@
 	} = $props();
 
 	const grouped = $derived(namespaced && app.groupedLists);
-	const columns = $derived(namespaced ? shownColumns(tracks, grouped) : tracks);
+	const withNamespace = $derived(namespaced && !grouped && namespaceColumn);
+	const columns = $derived(namespaced ? shownColumns(tracks, !withNamespace) : tracks);
 
 	const pressed = $derived(chipOf ? lists.pressed(list) : []);
 	const chips = $derived(chipDefs && chipOf ? chipViews(chipDefs, rows, chipOf, pressed) : []);
@@ -132,7 +140,7 @@
 	<span class="{LIST_STICKY} flex min-w-0 items-center self-stretch {inGroup ? 'pl-4.5' : ''}">
 		<span class="type-data truncate text-text" title={name}>{name}</span>
 	</span>
-	{#if namespaced && !inGroup}
+	{#if withNamespace}
 		<span class="type-data-sm truncate text-text-muted">{accessors.namespace(item)}</span>
 	{/if}
 {/snippet}
@@ -156,7 +164,7 @@
 >
 	{#snippet head()}
 		<span class="{LIST_STICKY} flex min-w-0"><SortHeader {list} field="name" label="Name" /></span>
-		{#if namespaced && !grouped}<SortHeader {list} field="namespace" label="Namespace" />{/if}
+		{#if withNamespace}<SortHeader {list} field="namespace" label="Namespace" />{/if}
 		{@render kindHead()}
 	{/snippet}
 

@@ -9,6 +9,7 @@
 		value,
 		tone,
 		icon: Icon,
+		surface = 'high',
 		target,
 		onclick
 	}: {
@@ -18,6 +19,8 @@
 		tone?: StatusTone;
 		/** Lucide icon shown before the label (parity v2 §4). */
 		icon?: typeof LucideIcon;
+		/** The tile's resting surface: `top` inside a detail panel, one step above its card. */
+		surface?: 'high' | 'top';
 		/** Name of the view `onclick` opens; part of the accessible name (#463). */
 		target?: string;
 		/** When set, the card is a button that navigates to `target`. */
@@ -27,11 +30,11 @@
 	// A tile (Tonal §7): the label, then the one number that explains a state.
 	// Only warning and failure are filled, each with its shape.
 	const fill = $derived(tone === 'warn' || tone === 'err' ? tone : 'none');
-	const look = {
-		none: 'bg-surface-container-high text-text',
+	const look = $derived({
+		none: `${surface === 'top' ? 'bg-surface-container-top' : 'bg-surface-container-high'} text-text`,
 		warn: 'bg-warning-container text-on-warning-container',
 		err: 'bg-error-container text-on-error-container'
-	} as const;
+	} as const);
 	const chrome = $derived(`rounded-lg px-4 py-3 ${look[fill]}`);
 </script>
 
