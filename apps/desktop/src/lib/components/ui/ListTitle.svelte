@@ -4,6 +4,7 @@
 	import Rows3 from '@lucide/svelte/icons/rows-3';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { lists } from '#lib/stores/lists.svelte.ts';
+	import { iconToggle } from '#lib/ui-classes.ts';
 
 	// Title bar of a resource list: the title, the "Group by namespace" toggle
 	// (#547; only with all namespaces shown) and the list's own controls.
@@ -23,10 +24,7 @@
 	{#if groupable && app.namespace === null}
 		<button
 			type="button"
-			class="focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-md border {pressed
-				? 'border-accent text-accent'
-				: 'border-border-default bg-surface-window text-text-tertiary hover:text-text-secondary'}"
-			style={pressed ? 'background: var(--alpha-selection-bg);' : undefined}
+			class={iconToggle(pressed)}
 			aria-label="Group by namespace"
 			aria-pressed={pressed}
 			title="Group by namespace"

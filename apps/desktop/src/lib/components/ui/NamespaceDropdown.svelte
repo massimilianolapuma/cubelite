@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
+	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { MENU_CONTENT, MENU_ITEM } from '#lib/ui-classes.ts';
 
 	const podCounts = $derived(resources.podCountsByNamespace);
 
@@ -22,30 +24,24 @@
 		<ChevronDown class="h-3.5 w-3.5 shrink-0 text-text-subtle" aria-hidden="true" />
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>
-		<DropdownMenu.Content
-			align="end"
-			sideOffset={6}
-			class="animate-popin z-50 max-h-80 min-w-56 overflow-y-auto rounded-xl border border-border-strong bg-surface-overlay p-1 shadow-overlay"
-		>
-			<DropdownMenu.Item
-				class="flex cursor-default items-center gap-3 rounded-md px-2.5 py-1.5 type-body text-text-secondary data-highlighted:text-text-primary"
-				style={app.namespace === null ? 'background: var(--alpha-active-nav-bg); color: var(--color-text-primary);' : ''}
-				onSelect={() => void select(null)}
-			>
-				<span class="flex-1">all namespaces</span>
+		<!-- The current namespace carries a check; the highlight is only where the keyboard is. -->
+		<DropdownMenu.Content align="start" sideOffset={6} class="{MENU_CONTENT} max-h-80 min-w-60 overflow-y-auto">
+			<DropdownMenu.Item class={MENU_ITEM} onSelect={() => void select(null)}>
+				<span class="flex-1 {app.namespace === null ? 'font-semibold text-text' : ''}">all namespaces</span>
 				{#if app.namespace === null}
-					<span class="type-micro font-mono text-text-tertiary">{resources.pods.length}</span>
+					<span class="type-data-sm text-text-subtle">{resources.pods.length}</span>
+					<Check class="h-4 w-4 shrink-0 text-primary" aria-label="current" />
 				{/if}
 			</DropdownMenu.Item>
 			{#each resources.namespaces as ns (ns.name)}
-				<DropdownMenu.Item
-					class="flex cursor-default items-center gap-3 rounded-md px-2.5 py-1.5 type-body text-text-secondary data-highlighted:text-text-primary"
-					style={app.namespace === ns.name ? 'background: var(--alpha-active-nav-bg); color: var(--color-text-primary);' : ''}
-					onSelect={() => void select(ns.name)}
-				>
-					<span class="type-data-sm flex-1">{ns.name}</span>
+				{@const current = app.namespace === ns.name}
+				<DropdownMenu.Item class={MENU_ITEM} onSelect={() => void select(ns.name)}>
+					<span class="type-data min-w-0 flex-1 truncate {current ? 'font-semibold text-text' : ''}">{ns.name}</span>
 					{#if podCounts[ns.name] !== undefined}
-						<span class="type-micro font-mono text-text-tertiary">{podCounts[ns.name]}</span>
+						<span class="type-data-sm text-text-subtle">{podCounts[ns.name]}</span>
+					{/if}
+					{#if current}
+						<Check class="h-4 w-4 shrink-0 text-primary" aria-label="current" />
 					{/if}
 				</DropdownMenu.Item>
 			{/each}

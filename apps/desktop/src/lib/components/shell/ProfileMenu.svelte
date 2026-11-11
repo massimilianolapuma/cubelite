@@ -1,16 +1,16 @@
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
+	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import { isMac } from '#lib/platform.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
+	import { MENU_CONTENT, MENU_ITEM } from '#lib/ui-classes.ts';
 
 	// Profile switch (resource-kinds §3): every profile, ⌥⌘1…9 for the first
 	// nine, and the way to Preferences.
 	const hint = (i: number) => (isMac ? `⌥⌘${i + 1}` : `Ctrl+Alt+${i + 1}`);
 
-	const item =
-		'flex cursor-default items-center gap-3 rounded-md px-2.5 py-1.5 type-body text-text-secondary data-highlighted:text-text-primary';
 </script>
 
 <DropdownMenu.Root>
@@ -27,22 +27,23 @@
 		<DropdownMenu.Content
 			align="start"
 			sideOffset={6}
-			class="animate-popin z-50 min-w-52 rounded-xl border border-border-strong bg-surface-overlay p-1 shadow-overlay"
+			class="{MENU_CONTENT} min-w-56"
 		>
 			<DropdownMenu.RadioGroup value={profiles.active.id} onValueChange={(id) => profiles.activate(id)}>
 				{#each profiles.list as profile, i (profile.id)}
-					<DropdownMenu.RadioItem value={profile.id} class={item}>
+					<DropdownMenu.RadioItem value={profile.id} class={MENU_ITEM}>
 						{#snippet children({ checked })}
-							<span class="flex-1 truncate {checked ? 'text-text-primary' : ''}">{profile.name}</span>
+							<span class="flex-1 truncate {checked ? 'font-semibold text-text' : ''}">{profile.name}</span>
 							{#if i < 9}
-								<span class="type-micro font-mono text-text-disabled">{hint(i)}</span>
+								<span class="type-micro font-mono text-text-subtle">{hint(i)}</span>
 							{/if}
+							<Check class="h-4 w-4 shrink-0 text-primary {checked ? '' : 'invisible'}" aria-hidden="true" />
 						{/snippet}
 					</DropdownMenu.RadioItem>
 				{/each}
 			</DropdownMenu.RadioGroup>
-			<DropdownMenu.Separator class="my-1 h-px bg-border-faint" />
-			<DropdownMenu.Item class={item} onSelect={() => app.openPreferences('navigation')}>
+			<DropdownMenu.Separator class="mx-3 my-1.5 h-px bg-outline" />
+			<DropdownMenu.Item class={MENU_ITEM} onSelect={() => app.openPreferences('navigation')}>
 				Manage profiles…
 			</DropdownMenu.Item>
 		</DropdownMenu.Content>

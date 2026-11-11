@@ -6,6 +6,7 @@
 	import NavRow from './NavRow.svelte';
 	import ProfileMenu from './ProfileMenu.svelte';
 	import { isMac, modLabel } from '#lib/platform.ts';
+	import { MENU_CONTENT, MENU_ITEM } from '#lib/ui-classes.ts';
 	import { app, type View } from '#lib/stores/app.svelte.ts';
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
@@ -71,8 +72,6 @@
 	}
 
 	const label = 'type-label px-3.5';
-	const menuItem =
-		'flex cursor-default items-center gap-3 rounded-md px-2.5 py-1.5 type-body text-text-secondary data-highlighted:text-text-primary';
 </script>
 
 <!-- Sits on the window ground, no card: tone separates it from the content (Tonal §5). -->
@@ -104,9 +103,9 @@
 						</ContextMenu.Trigger>
 						<ContextMenu.Portal>
 							<ContextMenu.Content
-								class="animate-popin z-50 min-w-40 rounded-xl border border-border-strong bg-surface-overlay p-1 shadow-overlay"
+								class="{MENU_CONTENT} min-w-40"
 							>
-								<ContextMenu.Item class={menuItem} onSelect={() => unpin(pin.view)}>Unpin</ContextMenu.Item>
+								<ContextMenu.Item class={MENU_ITEM} onSelect={() => unpin(pin.view)}>Unpin</ContextMenu.Item>
 							</ContextMenu.Content>
 						</ContextMenu.Portal>
 					</ContextMenu.Root>

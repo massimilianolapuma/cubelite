@@ -57,12 +57,14 @@ const MATRIX: { fg: string; on: string[]; min: number }[] = [
   // Graphics: control borders, and the healthy glyph on a selected row.
   { fg: "outline-strong", on: SURFACES, min: 3 },
   { fg: "success", on: ["primary-container"], min: 3 },
+  // Meter fills on their track.
+  { fg: "primary", on: ["outline"], min: 3 },
+  { fg: "warning", on: ["outline"], min: 3 },
+  { fg: "error", on: ["outline"], min: 3 },
 ];
 
 /** Roles that are deliberately not held to a contrast floor. */
-const AUDIT_EXEMPT: Record<string, string> = {
-  outline: "decorative hairline; never the only boundary of a control",
-};
+const AUDIT_EXEMPT: Record<string, string> = {};
 
 describe("token contrast (WCAG AA) on every cluster tint", () => {
   for (const [identity, hue] of Object.entries(tokens.identity.hues)) {

@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the active one is a filled square. Sidebar rows are pills, sections no longer
   have coloured dots, and counts that need attention carry a triangle or a
   square. The content sits on one rounded card. Default window is 1360 × 860.
+- **Controls in the new look** (#613): status is a shape and a word everywhere
+  a status pill was used (circle healthy, triangle attention, square failure);
+  switches are primary when on, not green; segmented controls, menus, dialogs,
+  toasts, tiles, key hints and the pin and group toggles are restyled. A meter
+  past 60 % or 75 % shows a triangle or a square and a bold value, and "no
+  data" is an en dash. Menus mark the current item with a check.
 - **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
   saved as amber becomes indigo and one saved as pink becomes magenta: warm
   colours are reserved for warnings and errors.

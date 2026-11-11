@@ -1,19 +1,20 @@
 <script lang="ts">
+	import StatusBadge from './StatusBadge.svelte';
+
 	export type PillTone = 'ok' | 'warn' | 'err' | 'neutral';
 
+	// The v2 pill API on the Tonal badge: a tone is a state with its shape.
+	// `neutral` is not a state (an event of type Normal, a plain tag): a quiet
+	// chip with no glyph.
 	let { label, tone = 'neutral' }: { label: string; tone?: PillTone } = $props();
-
-	const toneStyle: Record<PillTone, string> = {
-		ok: 'background: var(--alpha-pill-ok); color: var(--color-status-ok);',
-		warn: 'background: var(--alpha-pill-warn); color: var(--color-status-warn);',
-		err: 'background: var(--alpha-pill-err); color: var(--color-status-err);',
-		neutral: 'background: var(--color-surface-raised); color: var(--color-text-secondary);'
-	};
 </script>
 
-<span
-	class="inline-flex items-center rounded-full px-2 py-0.5 type-micro"
-	style={toneStyle[tone]}
->
-	{label}
-</span>
+{#if tone === 'neutral'}
+	<span
+		class="type-body-sm inline-flex items-center rounded-full bg-surface-container-high px-2.5 py-0.5 text-text-muted"
+	>
+		<span>{label}</span>
+	</span>
+{:else}
+	<StatusBadge state={tone} {label} />
+{/if}
