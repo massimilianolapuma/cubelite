@@ -30,6 +30,8 @@ export type ConnectionState = "unknown" | "connected" | "unreachable";
 class ClustersStore {
   contexts = $state<ContextInfo[]>([]);
   loading = $state(false);
+  /** The kubeconfig has been read once, whether it worked or not. */
+  loaded = $state(false);
   error = $state<string | null>(null);
   /** Connection state of the ACTIVE cluster (others are always unknown). */
   connectionState = $state<ConnectionState>("unknown");
@@ -67,6 +69,7 @@ class ClustersStore {
       this.error = errorMessage(e);
     } finally {
       this.loading = false;
+      this.loaded = true;
     }
   }
 

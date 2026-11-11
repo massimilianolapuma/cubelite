@@ -2,7 +2,7 @@
 	import type { StatusTone } from '#lib/status.ts';
 
 	/** One metric row; a null value renders an en dash (kind not loaded yet). */
-	export type SummaryRow = { label: string; value: number | null; tone?: StatusTone | 'accent' };
+	export type SummaryRow = { label: string; value: number | null; tone?: StatusTone };
 </script>
 
 <script lang="ts">

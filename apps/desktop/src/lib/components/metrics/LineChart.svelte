@@ -131,25 +131,19 @@
 				<line x1={hover.x} y1="0" x2={hover.x} y2={HEIGHT} stroke="var(--color-outline-strong)" vector-effect="non-scaling-stroke" />
 			{/if}
 		</svg>
-		<!-- Legend and hover values are in the text colour: the key carries the line's colour. -->
+		<!-- Legend and hover values are in the text colour: the key carries the line's colour.
+		     Hovering adds each line's value to its legend entry, so the chart keeps its height. -->
 		<div class="mt-1 flex min-h-4 flex-wrap items-center gap-x-3 gap-y-0.5">
-			{#if hover}
-				<span class="type-micro font-mono text-text-muted">{formatTime(hover.t, range)}</span>
-				{#each hover.values as { line, value } (line.label + (line.dashed ? '-ref' : ''))}
-					<span class="type-micro flex items-center gap-1 font-mono text-text">
-						{@render swatch(line)}
-						{line.label || title} {value === null ? '–' : formatValue(value, unit)}
-					</span>
-				{/each}
-			{:else}
-				{#each lines as line (line.label + (line.dashed ? '-ref' : ''))}
-					<span class="type-micro flex items-center gap-1 text-text-muted">
-						{@render swatch(line)}
-						{line.label || title}
-					</span>
-				{/each}
-				<span class="type-micro ml-auto font-mono text-text-subtle">max {formatValue(yMax, unit)}</span>
-			{/if}
+			{#each lines as line (line.label + (line.dashed ? '-ref' : ''))}
+				{@const at = hover?.values.find((v) => v.line === line)}
+				<span class="type-micro flex items-center gap-1 {at ? 'font-mono text-text' : 'text-text-muted'}">
+					{@render swatch(line)}
+					{line.label || title}{#if at}&nbsp;{at.value === null ? '–' : formatValue(at.value, unit)}{/if}
+				</span>
+			{/each}
+			<span class="type-micro ml-auto font-mono text-text-subtle">
+				{hover ? formatTime(hover.t, range) : `max ${formatValue(yMax, unit)}`}
+			</span>
 		</div>
 	{/if}
 </div>

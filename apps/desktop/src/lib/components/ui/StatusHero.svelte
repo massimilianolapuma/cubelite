@@ -39,7 +39,8 @@
 			<span class="min-w-0 break-words" role={heading ? 'heading' : undefined} aria-level={heading}>{label}</span>
 		</div>
 		{#if reason}
-			<p class="type-body-sm">{reason}</p>
+			<!-- A reason is often one long token (a URL): it breaks anywhere rather than run out. -->
+			<p class="type-body-sm [overflow-wrap:anywhere]">{reason}</p>
 		{/if}
 	</div>
 {/if}

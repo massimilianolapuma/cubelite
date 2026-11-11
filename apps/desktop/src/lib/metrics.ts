@@ -12,19 +12,32 @@ export const METRICS_RANGES: { value: MetricsRange; label: string }[] = [
   { value: "7d", label: "7d" },
 ];
 
-/** How many data colours there are (`data-1` … `data-5`, Tonal §4.2). */
-const DATA_COLORS = 5;
+/**
+ * The data colours (Tonal §4.2), each named in full: Tailwind only emits the
+ * theme variables it finds written out in the sources, so a name built from a
+ * template would leave the colour undefined and the line undrawn.
+ */
+const DATA_COLORS = [
+  "var(--color-data-1)",
+  "var(--color-data-2)",
+  "var(--color-data-3)",
+  "var(--color-data-4)",
+  "var(--color-data-5)",
+];
+/** Stroke of each round past the first five series: a different dash every time. */
+const REPEAT_DASHES = ["6 3", "2 2", "8 3 2 3"];
 /** Reference lines (requests, limits, allocatable): dashed, in the quietest text colour. */
 export const REFERENCE_COLOR = "var(--color-text-subtle)";
 
 /**
  * Colour and stroke of the series at `index`, in order of first appearance:
- * the five data colours, then the same five dashed, so that a sixth line is
- * never mistaken for the first.
+ * the five data colours solid, then the same five in another dash each round,
+ * so that the sixth line is not mistaken for the first, nor the eleventh.
  */
 export function seriesStyle(index: number): { color: string; dash?: string } {
-  const color = `var(--color-data-${(index % DATA_COLORS) + 1})`;
-  return index < DATA_COLORS ? { color } : { color, dash: "6 3" };
+  const color = DATA_COLORS[index % DATA_COLORS.length];
+  const round = Math.floor(index / DATA_COLORS.length);
+  return round === 0 ? { color } : { color, dash: REPEAT_DASHES[(round - 1) % REPEAT_DASHES.length] };
 }
 
 /**

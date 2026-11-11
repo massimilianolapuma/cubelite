@@ -75,6 +75,9 @@ beforeEach(() => {
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
   ];
   clusters.identityColors = { prod: "blue", staging: "magenta" };
+  clusters.loaded = true;
+  clusters.error = null;
+  health.byContext = {};
   clusters.connectionState = "connected";
   clusters.unreachableReason = null;
   resources.pods = [];
@@ -107,6 +110,20 @@ describe("UnreachableView", () => {
     // Retry is the one primary action; All Clusters is text.
     expect(screen.getByRole("button", { name: "Retry" })).toHaveAttribute("data-variant", "primary");
     expect(screen.getByRole("button", { name: "All Clusters" })).toHaveAttribute("data-variant", "text");
+  });
+
+  it("Retry shows it is running and does not start a second retry", async () => {
+    let done: () => void = () => {};
+    const retry = vi.spyOn(clusters, "retry").mockReturnValue(new Promise<void>((resolve) => (done = resolve)));
+    render(UnreachableView);
+    const button = screen.getByRole("button", { name: "Retry" });
+    await fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-busy", "true");
+    await fireEvent.click(button);
+    expect(retry).toHaveBeenCalledOnce();
+    done();
+    await vi.waitFor(() => expect(button).not.toHaveAttribute("aria-busy"));
+    retry.mockRestore();
     await fireEvent.click(screen.getByText("All Clusters"));
     expect(app.view).toBe("dashboard");
   });
@@ -261,13 +278,14 @@ describe("AllClustersView", () => {
     resources.pods = [pod({ ready: false, phase: "Pending" })];
     render(AllClustersView);
     const prod = screen.getByText("prod").closest<HTMLElement>("[data-tint]")!;
-    const warnings = within(prod).getByText("Warnings").nextElementSibling!;
+    const warnings = within(prod).getByText("Attention").nextElementSibling!;
     expect(warnings).toHaveAttribute("data-attention", "true");
     expect(warnings.querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "warn");
   });
 
-  it("with no context at all says where clusters come from and offers Preferences", async () => {
+  it("with no context at all says where clusters come from and opens Preferences on the kubeconfig files", async () => {
     clusters.contexts = [];
+    clusters.loaded = true;
     app.preferencesOpen = false;
     render(AllClustersView);
     expect(screen.getByRole("heading", { name: "No clusters yet" })).toBeInTheDocument();
@@ -275,7 +293,68 @@ describe("AllClustersView", () => {
     expect(screen.queryByText("Clusters online")).toBeNull();
     await fireEvent.click(screen.getByRole("button", { name: "Open Preferences" }));
     expect(app.preferencesOpen).toBe(true);
+    expect(app.preferencesSection).toBe("kubeconfig");
     app.preferencesOpen = false;
+    app.preferencesSection = null;
+  });
+
+  it("does not say there are no clusters before the kubeconfig has been read", () => {
+    clusters.contexts = [];
+    clusters.loaded = false;
+    render(AllClustersView);
+    expect(screen.queryByText("No clusters yet")).toBeNull();
+    expect(screen.getByRole("status", { name: "Loading clusters" })).toBeInTheDocument();
+    clusters.loaded = true;
+  });
+
+  it("shows why the kubeconfig could not be read, instead of saying there are no clusters", () => {
+    clusters.contexts = [];
+    clusters.loaded = true;
+    clusters.error = "invalid YAML at line 12";
+    render(AllClustersView);
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not read the kubeconfig");
+    expect(screen.getByRole("alert")).toHaveTextContent("invalid YAML at line 12");
+    expect(screen.queryByText("No clusters yet")).toBeNull();
+    clusters.error = null;
+  });
+
+  it("gives every card a disc that shows on the card, and a name that says the cluster and its health", () => {
+    render(AllClustersView);
+    const staging = screen.getByText("staging").closest<HTMLElement>("[data-tint]")!;
+    expect(staging).toHaveAccessibleName("staging, Unknown");
+    // The inactive disc is not the card's own surface.
+    expect(within(staging).getByTestId("identity-avatar")).toHaveAttribute("data-surface", "container");
+  });
+
+  it("counts pods needing attention under that name, not as warnings", () => {
+    resources.pods = [pod({ ready: false, phase: "Pending" })];
+    render(AllClustersView);
+    expect(screen.getByText("Pods needing attention")).toBeInTheDocument();
+    expect(screen.queryByText("Warnings")).toBeNull();
+    const prod = screen.getByText("prod").closest<HTMLElement>("[data-tint]")!;
+    expect(prod).toHaveAccessibleName("prod, Healthy, 1 pod needs attention");
+  });
+
+  it("does not warn about clusters online while the others are only not probed yet", () => {
+    render(AllClustersView);
+    const tile = screen.getByText("Clusters online").closest("[data-tone]")!;
+    expect(tile).toHaveAttribute("data-tone", "none");
+  });
+
+  it("warns about clusters online when one is unreachable", () => {
+    health.byContext = {
+      staging: { state: "unreachable", version: null, nodeCount: null, podCount: null, issuePodCount: null, capacity: null, reason: null, lastSeen: null },
+    };
+    render(AllClustersView);
+    expect(screen.getByText("Clusters online").closest("[data-tone]")).toHaveAttribute("data-tone", "warn");
+  });
+
+  it("shows a long version whole in a tooltip", () => {
+    health.byContext = {
+      staging: { state: "connected", version: "v1.29.6-eks-db838b0", nodeCount: 1, podCount: 1, issuePodCount: 0, capacity: null, reason: null, lastSeen: null },
+    };
+    render(AllClustersView);
+    expect(screen.getByText("v1.29.6-eks-db838b0")).toHaveAttribute("title", "v1.29.6-eks-db838b0");
   });
 
   it("navigates to overview when clicking the active cluster card", async () => {

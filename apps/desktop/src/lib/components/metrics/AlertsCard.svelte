@@ -102,7 +102,7 @@
 					<div class="flex flex-col rounded-md px-2 py-1.5 hover:bg-surface-container-top" data-testid="alert-row" data-tone={tone}>
 						<div class="flex items-center gap-2">
 							<StatusGlyph state={toneGlyph(tone)} class={GLYPH_TONE[tone]} />
-							<span class="type-data-sm shrink-0 {muted ? 'text-text-muted' : 'font-semibold text-text'}">
+							<span class="type-data-sm min-w-0 truncate {muted ? 'text-text-muted' : 'font-semibold text-text'}" title={alert.name}>
 								{alert.name}
 							</span>
 							<span class="type-body-sm shrink-0 text-text-muted">{alert.severity ?? '–'}</span>

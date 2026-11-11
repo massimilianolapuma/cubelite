@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import {
   formatValue,
@@ -102,8 +103,20 @@ describe("seriesStyle (Tonal §8.4)", () => {
     );
   });
 
-  it("past five, repeats the colours dashed, so two lines never look the same", () => {
+  it("past five, repeats the colours dashed, with another dash each time round", () => {
     expect(seriesStyle(5)).toEqual({ color: "var(--color-data-1)", dash: "6 3" });
     expect(seriesStyle(9)).toEqual({ color: "var(--color-data-5)", dash: "6 3" });
+    expect(seriesStyle(10)).toEqual({ color: "var(--color-data-1)", dash: "2 2" });
+    expect(seriesStyle(15)).toEqual({ color: "var(--color-data-1)", dash: "8 3 2 3" });
+  });
+
+  it("no two of the first twenty series look the same", () => {
+    const looks = Array.from({ length: 20 }, (_, i) => JSON.stringify(seriesStyle(i)));
+    expect(new Set(looks).size).toBe(20);
+  });
+
+  it("names each data colour in full in the source: Tailwind only emits the theme variables it can read there", () => {
+    const source = readFileSync("src/lib/metrics.ts", "utf-8");
+    for (const n of [1, 2, 3, 4, 5]) expect(source).toContain(`"var(--color-data-${n})"`);
   });
 });

@@ -3,12 +3,12 @@
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import HostCharts from '#lib/components/metrics/HostCharts.svelte';
 	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { NODE_METRICS_HINT, NODE_PANELS, panelQueries } from '#lib/host-metrics.ts';
 	import { observeOnce } from '#lib/in-view.ts';
 	import { LatestLoad } from '#lib/latest-load.svelte.ts';
-	import { UI_LINK_CLASS } from '#lib/integration.ts';
 	import { canOpenGrafana, openGrafanaQueries, showsIntegrationHint } from '#lib/integration-links.ts';
 	import { METRICS_RANGES } from '#lib/metrics.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -63,13 +63,10 @@
 			<SegmentedControl segments={METRICS_RANGES} bind:value={range} label="Metrics range" />
 			{#if grafana && result}
 				{@const all = result}
-				<button
-					type="button"
-					class={UI_LINK_CLASS}
-					onclick={() => grafana(NODE_PANELS.flatMap((p) => panelQueries(all, p)))}
-				>
-					<ExternalLink class="h-3 w-3" /> Grafana
-				</button>
+				<Button variant="text" size="inline" onclick={() => grafana(NODE_PANELS.flatMap((p) => panelQueries(all, p)))}>
+					{#snippet icon()}<ExternalLink class="h-3.5 w-3.5" aria-hidden="true" />{/snippet}
+					Grafana
+				</Button>
 			{/if}
 		</div>
 		{#if error}

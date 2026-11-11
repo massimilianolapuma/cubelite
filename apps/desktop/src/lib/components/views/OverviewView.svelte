@@ -129,7 +129,8 @@
 		/>
 	</div>
 
-	<div class="grid gap-3 xl:grid-cols-2">
+	<!-- An explicit single column below xl: an implicit one would grow to its widest line. -->
+	<div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
 		<div class="flex flex-col gap-2.5 rounded-lg bg-surface-container-high p-4">
 			<div class="type-label text-text-muted">Capacity</div>
 			<MeterBar
@@ -183,7 +184,7 @@
 
 	<AlertsCard />
 
-	<div class="grid gap-3 xl:grid-cols-2" data-testid="resource-grid">
+	<div class="grid grid-cols-1 gap-3 xl:grid-cols-2" data-testid="resource-grid">
 		<ResourceSummaryCard
 			title="Pods"
 			icon={Box}
@@ -211,7 +212,7 @@
 				{ label: 'Total', value: summary.services?.total ?? null },
 				{ label: 'ClusterIP', value: summary.services?.clusterIP ?? null },
 				{ label: 'NodePort', value: summary.services?.nodePort ?? null, tone: 'warn' },
-				{ label: 'LoadBalancer', value: summary.services?.loadBalancer ?? null, tone: 'accent' }
+				{ label: 'LoadBalancer', value: summary.services?.loadBalancer ?? null }
 			]}
 		/>
 		<ResourceSummaryCard
@@ -229,7 +230,7 @@
 			rows={[
 				{ label: 'Total', value: summary.secrets?.total ?? null },
 				{ label: 'Opaque', value: summary.secrets?.opaque ?? null },
-				{ label: 'TLS', value: summary.secrets?.tls ?? null, tone: 'accent' },
+				{ label: 'TLS', value: summary.secrets?.tls ?? null },
 				{ label: 'Docker', value: summary.secrets?.docker ?? null, tone: 'warn' }
 			]}
 		/>
@@ -245,7 +246,7 @@
 			forbidden={forbidden('ingresses')}
 			rows={[
 				{ label: 'Total', value: summary.ingresses?.total ?? null },
-				{ label: 'with TLS', value: summary.ingresses?.tls ?? null, tone: 'accent' }
+				{ label: 'with TLS', value: summary.ingresses?.tls ?? null }
 			]}
 		/>
 		<ResourceSummaryCard

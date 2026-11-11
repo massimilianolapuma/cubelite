@@ -9,6 +9,18 @@
 	const server = $derived(
 		clusters.contexts.find((c) => c.name === app.activeCluster)?.cluster_server ?? null
 	);
+
+	// One retry at a time, and the button says it is running.
+	let retrying = $state(false);
+	async function retry() {
+		if (retrying) return;
+		retrying = true;
+		try {
+			await clusters.retry();
+		} finally {
+			retrying = false;
+		}
+	}
 </script>
 
 <div class="flex flex-1 flex-col items-center justify-center gap-4 p-6">
@@ -18,7 +30,7 @@
 			<p class="type-data-sm break-all text-text-muted">{server}</p>
 		{/if}
 		<div class="mt-1 flex items-center gap-2">
-			<Button variant="primary" size="primary" onclick={() => void clusters.retry()}>Retry</Button>
+			<Button variant="primary" size="primary" pending={retrying} onclick={() => void retry()}>Retry</Button>
 			<Button variant="text" onclick={() => app.navigate('dashboard')}>All Clusters</Button>
 		</div>
 	</div>

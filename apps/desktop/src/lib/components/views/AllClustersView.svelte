@@ -49,6 +49,17 @@
 		void clusters.switchCluster(name);
 	}
 
+	// Online is a warning only when a cluster is known to be down: one that has
+	// not been probed yet is unknown, not offline.
+	const anyUnreachable = $derived(snapshots.some((s) => s.state === 'unreachable'));
+
+	/** What a screen reader hears for a card: the cluster, its health, what needs attention. */
+	function cardName(name: string, health: string, attention: number | null): string {
+		const parts = [name, health];
+		if (attention) parts.push(`${attention} ${attention === 1 ? 'pod needs' : 'pods need'} attention`);
+		return parts.join(', ');
+	}
+
 	function badgeFor(state: string): { label: string; state: GlyphState } {
 		if (state === 'connected') return { label: 'Healthy', state: 'ok' };
 		if (state === 'unreachable') return { label: 'Unreachable', state: 'err' };
@@ -66,7 +77,23 @@
 		{/if}
 	</div>
 
-	{#if clusters.contexts.length === 0}
+	{#if !clusters.loaded}
+		<!-- The kubeconfig has not been read yet: not "no clusters". -->
+		<div class="grid gap-3 grid-cols-[repeat(auto-fill,minmax(330px,1fr))]" role="status" aria-label="Loading clusters" aria-busy="true">
+			{#each [0, 1] as i (i)}
+				<div class="h-40 rounded-lg bg-surface-container-high motion-safe:animate-pulse"></div>
+			{/each}
+		</div>
+	{:else if clusters.contexts.length === 0 && clusters.error}
+		<div class="flex flex-col items-start gap-3 rounded-lg bg-error-container p-4 text-on-error-container" role="alert">
+			<h2 class="type-title flex items-center gap-2">
+				<StatusGlyph state="err" />
+				Could not read the kubeconfig
+			</h2>
+			<p class="type-data max-w-full [overflow-wrap:anywhere]">{clusters.error}</p>
+			<Button variant="tonal" onclick={() => app.openPreferences('kubeconfig')}>Open Preferences</Button>
+		</div>
+	{:else if clusters.contexts.length === 0}
 		<!-- No context at all (Tonal §8.4): say where they come from and how to add one. -->
 		<div class="flex flex-col items-center gap-3 px-4 py-16 text-center" data-testid="no-clusters">
 			<h2 class="type-headline">No clusters yet</h2>
@@ -74,21 +101,22 @@
 				CubeLite reads the contexts of your kubeconfig: the files in the KUBECONFIG variable, or
 				~/.kube/config. Add a context there, or pick another file in Preferences.
 			</p>
-			<Button variant="tonal" onclick={() => app.openPreferences()}>Open Preferences</Button>
+			<Button variant="tonal" onclick={() => app.openPreferences('kubeconfig')}>Open Preferences</Button>
 		</div>
 	{:else}
 		<div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
 			<StatCard
 				label="Clusters online"
 				value={totals.online}
-				tone={totals.online < totals.watched ? 'warn' : 'ok'}
+				tone={anyUnreachable ? 'warn' : 'ok'}
 			/>
 			<StatCard label="Total pods" value={totals.pods} />
-			<StatCard label="Warnings" value={totals.warnings} tone={totals.warnings > 0 ? 'warn' : 'ok'} />
+			<!-- Pods that are not ready or restart hard: not the warning events the top bar counts. -->
+			<StatCard label="Pods needing attention" value={totals.warnings} tone={totals.warnings > 0 ? 'warn' : 'ok'} />
 			<StatCard label="Contexts watched" value={totals.watched} />
 		</div>
 
-		<div class="grid gap-3" style="grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));">
+		<div class="grid grid-cols-[repeat(auto-fill,minmax(330px,1fr))] gap-3">
 			{#each clusters.contexts as ctx, i (ctx.name)}
 				{@const snap = snapshots[i]}
 				{@const badge = badgeFor(snap.state)}
@@ -96,7 +124,8 @@
 				<!-- Each card carries its own cluster's tint (Tonal §4.1), whatever the window shows. -->
 				<button
 					type="button"
-					class="focus-ring flex flex-col gap-3 rounded-lg bg-surface-container-high p-4 text-left hover:brightness-110"
+					class="focus-ring flex flex-col gap-3 rounded-lg bg-surface-container-high p-4 text-left hover:bg-surface-container-top"
+					aria-label={cardName(ctx.name, badge.label, snap.warnings)}
 					data-tint
 					data-identity={identity}
 					data-state={snap.state}
@@ -104,7 +133,7 @@
 					onclick={() => clickCluster(ctx.name)}
 				>
 					<div class="flex items-center gap-3">
-						<IdentityAvatar name={ctx.name} color={identity} active={ctx.name === app.activeCluster} size={32} />
+						<IdentityAvatar name={ctx.name} color={identity} active={ctx.name === app.activeCluster} size={32} surface="container" />
 						<div class="min-w-0 flex-1">
 							<div class="type-title truncate" title={ctx.name}>{ctx.name}</div>
 							{#if ctx.cluster_server}
@@ -117,13 +146,13 @@
 					</div>
 
 					<dl class="grid grid-cols-4 gap-2">
-						{#each [['Nodes', snap.nodes], ['Pods', snap.pods], ['Version', snap.version], ['Warnings', snap.warnings]] as const as [label, value] (label)}
-							{@const flagged = label === 'Warnings' && typeof value === 'number' && value > 0}
+						{#each [['Nodes', snap.nodes], ['Pods', snap.pods], ['Version', snap.version], ['Attention', snap.warnings]] as const as [label, value] (label)}
+							{@const flagged = label === 'Attention' && typeof value === 'number' && value > 0}
 							<div class="min-w-0">
 								<dt class="type-label mb-0.5 text-text-muted">{label}</dt>
-								<!-- Warnings above zero: bold with the triangle, not a colour. -->
+								<!-- Pods needing attention above zero: bold with the triangle, not a colour. -->
 								<dd
-									class="type-data flex items-center gap-1 truncate {value === null
+									class="type-data flex min-w-0 items-center gap-1 {value === null
 										? 'text-text-subtle'
 										: flagged
 											? 'font-semibold text-text'
@@ -131,7 +160,7 @@
 									data-attention={flagged}
 								>
 									{#if flagged}<StatusGlyph state="warn" class="text-warning" />{/if}
-									{value ?? '–'}
+									<span class="truncate" title={value === null ? undefined : String(value)}>{value ?? '–'}</span>
 								</dd>
 							</div>
 						{/each}
@@ -160,7 +189,7 @@
 					{#if snap.state === 'unreachable'}
 						{@const h = health.for(ctx.name)}
 						<!-- The badge carries the failure; this line says since when and why. -->
-						<p class="type-body-sm text-text-muted" data-testid="unreachable-detail">
+						<p class="type-body-sm text-text-muted [overflow-wrap:anywhere]" data-testid="unreachable-detail">
 							{h.lastSeen ? `Last seen ${formatAge(h.lastSeen)} ago · ` : ''}{(ctx.name ===
 								app.activeCluster && clusters.unreachableReason) ||
 								h.reason ||

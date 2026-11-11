@@ -2,10 +2,10 @@
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import LineChart from '#lib/components/metrics/LineChart.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
-	import { UI_LINK_CLASS } from '#lib/integration.ts';
 	import { observeOnce } from '#lib/in-view.ts';
 	import { LatestLoad } from '#lib/latest-load.svelte.ts';
 	import {
@@ -179,9 +179,10 @@
 				label="Per container or total"
 			/>
 			{#if canOpenGrafana && result}
-				<button type="button" class={UI_LINK_CLASS} onclick={() => void grafana(...ALL)}>
-					<ExternalLink class="h-3 w-3" /> Grafana
-				</button>
+				<Button variant="text" size="inline" onclick={() => void grafana(...ALL)}>
+					{#snippet icon()}<ExternalLink class="h-3.5 w-3.5" aria-hidden="true" />{/snippet}
+					Grafana
+				</Button>
 			{/if}
 		</div>
 		{#if error}
