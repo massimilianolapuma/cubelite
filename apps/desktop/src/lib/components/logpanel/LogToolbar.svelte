@@ -19,7 +19,9 @@
 		TOOLBAR_FIELD_FLEX,
 		TOOLBAR_ICON,
 		TOOLBAR_MENU,
+		TOOLBAR_MENU_DOWN,
 		TOOLBAR_MENU_ITEM,
+		TOOLBAR_MENU_UP,
 		TOOLBAR_SELECT
 	} from '#lib/ui-classes.ts';
 	import HistoryControls from './HistoryControls.svelte';
@@ -32,8 +34,12 @@
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import { errorMessage } from '#lib/errors.ts';
 	import type { KeyedLogLine } from '#lib/stores/logs.svelte.ts';
+	import { fitMenu } from '#lib/menu-fit.ts';
 
 	let { session, detached = false }: { session: LogSession; detached?: boolean } = $props();
+
+	// The pop-out's toolbar is at the top of its window: its menus open downwards (#624).
+	const menuPlace = $derived(detached ? TOOLBAR_MENU_DOWN : TOOLBAR_MENU_UP);
 
 	let pickerOpen = $state(false);
 	let overflowOpen = $state(false);
@@ -166,7 +172,8 @@
      default window down to 1280 px: words of chips give way to their icons as the
      row narrows (they stay in the accessible names), the search field takes what is
      left. Below that it wraps, at most in two rows at 800 px; a horizontal scroller
-     would clip the menus that open upwards. Nothing moves into a menu. -->
+     would clip the menus (upwards in the panel, downwards in the pop-out, #624).
+     Nothing moves into a menu. -->
 <div class="@container shrink-0 px-3 py-1.5">
 <div class="flex flex-wrap items-center gap-1" data-testid="log-toolbar">
 	<!-- container picker -->
@@ -181,7 +188,10 @@
 			<ChevronDown class="h-3.5 w-3.5 shrink-0 text-text-muted" aria-hidden="true" />
 		</button>
 		{#if pickerOpen}
-			<div class="{TOOLBAR_MENU} left-0 w-max max-w-[80vw] min-w-64">
+			<div
+				class="{TOOLBAR_MENU} {menuPlace} left-0 w-max max-w-[80vw] min-w-64"
+				use:fitMenu={{ down: detached }}
+			>
 				{#each mains as c (c.name)}
 					<button type="button" class={TOOLBAR_MENU_ITEM} onclick={() => pick(c.name)}>
 						<span class="type-data-sm min-w-0 flex-1 truncate">{c.name}</span>
@@ -331,7 +341,7 @@
 			<Ellipsis class="h-4 w-4" aria-hidden="true" />
 		</button>
 		{#if overflowOpen}
-			<div class="{TOOLBAR_MENU} right-0 min-w-52">
+			<div class="{TOOLBAR_MENU} {menuPlace} right-0 min-w-52" use:fitMenu={{ down: detached }}>
 				<button
 					type="button"
 					role="menuitemcheckbox"

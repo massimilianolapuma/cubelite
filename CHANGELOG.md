@@ -96,6 +96,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   report their own failure, so being refused one of them no longer hides the
   others. The Pods list says when CPU and memory are missing because
   metrics-server did not answer.
+- **The log pop-out window's menus open downwards** (#624): the container
+  picker and "More log options" no longer open above the top of the window, so
+  every container and option can be picked; in a short window a menu scrolls,
+  and in a narrow one it stays inside the window.
 
 ### Removed
 

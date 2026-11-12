@@ -407,7 +407,9 @@ Decided in phase 7 (#623):
   tab strip.
 - The pop-out follows a change of its cluster's colour made in the main window (the colours setting
   is re-read on a `storage` event). It does not follow a theme change; that is left as it was.
-- Left alone, own issue: in the pop-out the toolbar menus open above the top of the window (#624).
+- In the pop-out the toolbar menus open downwards, below the toolbar at the top of the window; a
+  menu scrolls inside itself where the window is too short and is moved back in where it would
+  leave the window sideways. In the log panel they still open upwards (#624).
 
 ### 8.6 Overlays and settings
 
