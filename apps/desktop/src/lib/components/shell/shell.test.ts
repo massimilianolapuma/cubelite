@@ -238,7 +238,7 @@ describe("ClusterRail", () => {
       { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: [] },
     ];
     render(ClusterRail);
-    expect(screen.getByTitle("staging — /home/u/.kube/team.yaml")).toBeInTheDocument();
+    expect(screen.getByTitle("staging (/home/u/.kube/team.yaml)")).toBeInTheDocument();
   });
 
   it("navigates to the dashboard from the home button", async () => {

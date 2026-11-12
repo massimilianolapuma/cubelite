@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Modal from '#lib/components/ui/Modal.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -23,7 +24,7 @@
 	const facts = $derived<[string, string][]>([
 		['Pod', pod.name],
 		['Namespace', pod.namespace],
-		['Cluster', app.activeCluster ?? '–']
+		['Cluster', app.activeCluster ?? EMPTY]
 	]);
 </script>
 

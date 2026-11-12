@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import StatusGlyph from './StatusGlyph.svelte';
 
 	let {
@@ -42,7 +43,7 @@
 				<StatusGlyph state={style.glyph} size={7} />
 			{/if}
 			<span class="type-data-sm {style.glyph ? 'font-bold' : ''}" data-testid="meter-value">
-				{shown === null ? '–' : `${shown}%`}
+				{shown === null ? EMPTY : `${shown}%`}
 			</span>
 		</span>
 	</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import FileCode from '@lucide/svelte/icons/file-code';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
@@ -94,7 +95,7 @@
 				tone={status.tone === 'ok' ? undefined : 'warn'}
 			/>
 			<!-- A count only once the pods answered: a zero would read as "no pods". -->
-			<StatCard surface="top" label="Pods" value={podsKnown ? childPods.length : '–'} />
+			<StatCard surface="top" label="Pods" value={podsKnown ? childPods.length : EMPTY} />
 		</div>
 
 		<div>

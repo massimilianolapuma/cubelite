@@ -153,7 +153,7 @@
 		>
 			<StatusGlyph state="warn" />
 			<span class="type-body-sm">
-				Reconnecting — attempt {session.reconnectAttempt} · retrying in {retryIn}s
+				Reconnecting: attempt {session.reconnectAttempt} · retrying in {retryIn}s
 			</span>
 			<button
 				type="button"
@@ -187,11 +187,11 @@
 	{:else if lines.length === 0}
 		<p class="type-body-sm py-8 text-center text-text-muted">
 			{#if logPanel.search.filterMode && logPanel.search.query}
-				No matches for "{logPanel.search.query}" — esc clears search
+				No matches for "{logPanel.search.query}". Esc clears the search
 			{:else if session.source === 'history'}
 				{session.history.loading ? 'Loading history…' : session.history.error ? '' : 'No lines in Elasticsearch for this pod and range.'}
 			{:else if session.ring.totalAppended > 0}
-				Buffer cleared — waiting for new lines…
+				Buffer cleared. Waiting for new lines…
 			{:else}
 				Waiting for log lines…
 			{/if}

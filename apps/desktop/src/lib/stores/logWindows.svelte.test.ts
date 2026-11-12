@@ -158,7 +158,7 @@ describe("logWindows", () => {
     });
     expect(vi.mocked(logPanel.openSeeded)).not.toHaveBeenCalled();
     expect(toasts.items.map((t) => t.message)).toEqual([
-      "Log session for api-0 closed — cluster changed",
+      "Log session for api-0 closed: the cluster changed",
     ]);
   });
 

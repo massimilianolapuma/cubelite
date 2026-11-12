@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import type { Snippet } from 'svelte';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import ResourceList from '#lib/components/ui/ResourceList.svelte';
@@ -141,7 +142,7 @@
 		{#if !narrow}
 			<span class="flex min-w-0 items-center gap-1.5">
 				<span class="type-data-sm {usage ? 'text-text-muted' : 'text-text-subtle'}">
-					{usage ? formatCpu(usage.cpu_millis) : '–'}
+					{usage ? formatCpu(usage.cpu_millis) : EMPTY}
 				</span>
 				{#if prometheus.active}
 					<Sparkline points={prometheus.cpuFor(pod.namespace, pod.name)} label="CPU, last hour" />
@@ -149,7 +150,7 @@
 			</span>
 			<span class="flex min-w-0 items-center gap-1.5">
 				<span class="type-data-sm {usage ? 'text-text-muted' : 'text-text-subtle'}">
-					{usage ? formatBytes(usage.memory_bytes) : '–'}
+					{usage ? formatBytes(usage.memory_bytes) : EMPTY}
 				</span>
 				{#if prometheus.active}
 					<Sparkline points={prometheus.memoryFor(pod.namespace, pod.name)} label="Memory, last hour" />

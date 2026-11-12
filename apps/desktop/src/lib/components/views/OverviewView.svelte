@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import PinToggle from '#lib/components/ui/PinToggle.svelte';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
@@ -100,7 +101,7 @@
 	<div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
 		<StatCard
 			label="Nodes"
-			value={summary.nodes ?? '–'}
+			value={summary.nodes ?? EMPTY}
 			icon={Server}
 			target="Nodes"
 			onclick={() => app.navigate('nodes')}
@@ -172,7 +173,7 @@
 							<StatusGlyph state="warn" class="text-warning" />
 							<span class="type-data-sm w-40 shrink-0 truncate text-text" title={event.object}>{event.object}</span>
 							<span class="type-body-sm min-w-0 flex-1 truncate text-text-muted">
-								{event.message ?? event.reason ?? '–'}
+								{event.message ?? event.reason ?? EMPTY}
 							</span>
 							<span class="type-body-sm shrink-0 text-text-muted">{formatAge(event.last_timestamp)}</span>
 						</button>

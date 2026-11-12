@@ -98,7 +98,7 @@ describe("LogBody", () => {
     s.nextRetryAt = Date.now() + 4000;
     const retry = vi.spyOn(s, "retryNow");
     const { getByText } = render(LogBody, { props: { session: s } });
-    expect(getByText(/Reconnecting — attempt 3/)).toBeInTheDocument();
+    expect(getByText(/Reconnecting: attempt 3/)).toBeInTheDocument();
     await getByText("Retry now").click();
     expect(retry).toHaveBeenCalled();
   });
@@ -186,7 +186,7 @@ describe("LogBody", () => {
       logPanel.search.filterMode = true;
       render(LogBody, { props: { session: s } });
       expect(
-        await screen.findByText('No matches for "zzz" — esc clears search'),
+        await screen.findByText('No matches for "zzz". Esc clears the search'),
       ).toBeInTheDocument();
       expect(screen.queryByText("alpha")).toBeNull();
     });

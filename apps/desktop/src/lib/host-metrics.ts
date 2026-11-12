@@ -8,6 +8,7 @@ import { formatAge } from "#lib/age.ts";
 import { formatValue, latest, REFERENCE_COLOR, seriesStyle, type ChartLine, type Unit } from "#lib/metrics.ts";
 import type { StatusTone } from "#lib/status.ts";
 import type { Alert, HostChart, HostChartData, HostMetrics, MetricSource, PodInfo } from "#lib/tauri.ts";
+import { EMPTY } from "./empty";
 
 /** What a panel shows: usage lines and an optional dashed reference line. */
 export type HostPanel = {
@@ -27,9 +28,9 @@ export type HostPanel = {
 
 export const CLUSTER_HINT = "Cluster CPU and memory history and firing alerts from Prometheus.";
 export const NODE_METRICS_HINT = "CPU, memory, pods, network and filesystem history from Prometheus.";
-const NEEDS_CADVISOR = "no data — needs cAdvisor metrics in Prometheus";
-const NEEDS_KSM = "not available — needs kube-state-metrics or kubelet metrics in Prometheus";
-const NEEDS_EXPORTER = "not available — needs node-exporter or cAdvisor metrics for this node";
+const NEEDS_CADVISOR = "no data: needs cAdvisor metrics in Prometheus";
+const NEEDS_KSM = "not available: needs kube-state-metrics or kubelet metrics in Prometheus";
+const NEEDS_EXPORTER = "not available: needs node-exporter or cAdvisor metrics for this node";
 
 const CPU: HostPanel = {
   title: "CPU",
@@ -104,7 +105,7 @@ export function panelLines(result: HostMetrics, panel: HostPanel): ChartLine[] {
 
 /** "250m / alloc 4", or "↓ 1Ki/s ↑ 2Ki/s" for network. */
 export function panelSummary(result: HostMetrics, panel: HostPanel): string {
-  const fmt = (v: number | null) => (v === null ? "—" : formatValue(v, panel.unit));
+  const fmt = (v: number | null) => (v === null ? EMPTY : formatValue(v, panel.unit));
   if (panel.usage.length === 2) {
     return `↓ ${fmt(latestOf(result, panel.usage[0]))} ↑ ${fmt(latestOf(result, panel.usage[1]))}`;
   }

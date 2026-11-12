@@ -85,7 +85,7 @@
 				);
 				if (disposed) return;
 				await startExec(kc, sessionId, namespace, pod, cluster);
-				append('status', 'connected — line-based shell (/bin/sh, no TTY)');
+				append('status', 'connected: line-based shell (/bin/sh, no TTY)');
 				input?.focus();
 			} catch (e: unknown) {
 				sessionError = errorMessage(e);
@@ -111,7 +111,7 @@
 	}
 </script>
 
-<Modal title="{pod} — shell" width={720} {onClose}>
+<Modal title="{pod} shell" width={720} {onClose}>
 	<div class="flex flex-col gap-3">
 		{#if sessionError}
 			<p class="type-body-sm flex items-center justify-center gap-2 py-8 text-text" role="alert">

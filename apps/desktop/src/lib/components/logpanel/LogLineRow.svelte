@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import type { KeyedLogLine } from '#lib/stores/logs.svelte.ts';
 	import type { LogLevel } from '#lib/tauri.ts';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -90,9 +91,9 @@
 	const tone = $derived(source ? (source.index === null ? 'text-text-muted' : sourceClass(source.index)) : '');
 
 	function clock(iso: string | null): string {
-		if (!iso) return '—';
+		if (!iso) return EMPTY;
 		const d = new Date(iso);
-		return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString([], { hour12: false });
+		return Number.isNaN(d.getTime()) ? EMPTY : d.toLocaleTimeString([], { hour12: false });
 	}
 </script>
 

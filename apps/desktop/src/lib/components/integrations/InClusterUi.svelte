@@ -25,8 +25,9 @@
 		class="type-body-sm min-w-0 flex-1 truncate text-text-muted"
 		title="The forward opens {name} at its root; if {name} is served under a sub-path, set its URL instead."
 	>
-		{name} in the cluster: {service.namespace}/{service.service}:{service.port}
-		{urlSet ? '(the URL above wins)' : '— opened through a port-forward'}
+		{name} in the cluster: {service.namespace}/{service.service}:{service.port}{urlSet
+			? ' (the URL above wins)'
+			: ', opened through a port-forward'}
 	</span>
 	<button
 		type="button"

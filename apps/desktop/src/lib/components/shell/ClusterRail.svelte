@@ -51,7 +51,7 @@
 				<button
 					type="button"
 					aria-label="{ctx.name}, {healthWord[state]}"
-					title={multiFile && ctx.source ? `${ctx.name} — ${ctx.source}` : ctx.name}
+					title={multiFile && ctx.source ? `${ctx.name} (${ctx.source})` : ctx.name}
 					aria-current={isActive ? 'true' : undefined}
 					class="focus-ring block rounded-md hover:brightness-110"
 					onclick={() => clickCluster(ctx.name)}

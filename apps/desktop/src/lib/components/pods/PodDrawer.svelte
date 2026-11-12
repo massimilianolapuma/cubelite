@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import FileCode from '@lucide/svelte/icons/file-code';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
@@ -108,7 +109,7 @@
 				value={pod.restarts}
 				tone={pod.phase !== 'Succeeded' && pod.restarts > 3 ? 'warn' : undefined}
 			/>
-			<StatCard surface="top" label="Memory" value={usage ? formatBytes(usage.memory_bytes) : '–'} />
+			<StatCard surface="top" label="Memory" value={usage ? formatBytes(usage.memory_bytes) : EMPTY} />
 		</div>
 
 		<FactRows {facts} />

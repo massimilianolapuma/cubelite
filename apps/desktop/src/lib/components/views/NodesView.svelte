@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import NodeDrawer from '#lib/components/nodes/NodeDrawer.svelte';
 	import ResourceList from '#lib/components/ui/ResourceList.svelte';
 	import SortHeader from '#lib/components/ui/SortHeader.svelte';
@@ -48,8 +49,8 @@
 		<span class="flex min-w-0 items-center">
 			<StatusBadge state={toneGlyph(nodeTone(item.status))} label={item.status} />
 		</span>
-		<span class="type-data-sm truncate text-text-muted">{item.roles.join(', ') || '–'}</span>
-		<span class="type-data-sm text-text-muted">{item.version ?? '–'}</span>
+		<span class="type-data-sm truncate text-text-muted">{item.roles.join(', ') || EMPTY}</span>
+		<span class="type-data-sm text-text-muted">{item.version ?? EMPTY}</span>
 		<span class="type-data-sm text-text-muted">{formatAge(item.creation_timestamp)}</span>
 	{/snippet}
 </ResourceList>

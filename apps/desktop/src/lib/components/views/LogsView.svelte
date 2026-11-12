@@ -245,7 +245,7 @@
 				<span
 					class="type-body-sm rounded-full bg-warning-container px-3 py-1 font-semibold text-on-warning-container shadow-overlay motion-safe:animate-pulse"
 				>
-					paused — new lines buffered
+					paused, new lines buffered
 				</span>
 			</div>
 		{/if}

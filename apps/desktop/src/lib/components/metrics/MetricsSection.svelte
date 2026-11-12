@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import Loading from '#lib/components/ui/Loading.svelte';
 	import LineChart from '#lib/components/metrics/LineChart.svelte';
@@ -99,7 +100,7 @@
 	function usageSummary(usage: Chart, request: Chart, limit: Chart, unit: Unit): string {
 		const parts: string[] = [];
 		const now = latestTotal(series(usage));
-		parts.push(now === null ? '—' : formatValue(now, unit));
+		parts.push(now === null ? EMPTY : formatValue(now, unit));
 		const req = latestTotal(series(request));
 		if (req !== null) parts.push(`req ${formatValue(req, unit)}`);
 		const lim = latestTotal(series(limit));
@@ -121,7 +122,7 @@
 		const tx = series('network-tx')[0];
 		const fmt = (s: Series | undefined) => {
 			const v = s ? latest(s.points) : null;
-			return v === null ? '—' : formatValue(v, 'bytes-per-second');
+			return v === null ? EMPTY : formatValue(v, 'bytes-per-second');
 		};
 		return `↓ ${fmt(rx)} ↑ ${fmt(tx)}`;
 	});
@@ -155,10 +156,10 @@
 	const restartsTotal = $derived.by(() => {
 		const total = series('restarts-total')[0];
 		const value = total ? latest(total.points) : null;
-		return value === null ? '—' : `${Math.round(value)} in range`;
+		return value === null ? EMPTY : `${Math.round(value)} in range`;
 	});
-	const emptyCadvisor = 'no data — needs cAdvisor metrics in Prometheus';
-	const emptyKsm = 'no data — needs kube-state-metrics in Prometheus';
+	const emptyCadvisor = 'no data: needs cAdvisor metrics in Prometheus';
+	const emptyKsm = 'no data: needs kube-state-metrics in Prometheus';
 </script>
 
 {#if endpoint}

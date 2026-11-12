@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ResourceList from '#lib/components/ui/ResourceList.svelte';
 	import SortHeader from '#lib/components/ui/SortHeader.svelte';
 	import { formatAge } from '#lib/age.ts';
@@ -32,12 +33,12 @@
 	{/snippet}
 
 	{#snippet cells(ing)}
-		<span class="type-data-sm truncate text-text-muted">{ing.class ?? '–'}</span>
+		<span class="type-data-sm truncate text-text-muted">{ing.class ?? EMPTY}</span>
 		<span class="type-data-sm truncate {ing.hosts.length ? 'text-text-muted' : 'text-text-subtle'}">
 			{ing.hosts.join(', ') || '*'}
 		</span>
 		<span class="type-data-sm truncate {ing.addresses.length ? 'text-text-muted' : 'text-text-subtle'}">
-			{ing.addresses.join(', ') || '–'}
+			{ing.addresses.join(', ') || EMPTY}
 		</span>
 		<span class="type-data-sm text-text-muted">{ing.tls ? '80, 443' : '80'}</span>
 		<span class="type-data-sm text-text-muted">{formatAge(ing.creation_timestamp)}</span>

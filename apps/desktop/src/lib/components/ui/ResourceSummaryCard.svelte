@@ -6,6 +6,7 @@
 </script>
 
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import type LucideIcon from '@lucide/svelte/icons/box';
 	import StatusGlyph from './StatusGlyph.svelte';
 
@@ -56,7 +57,7 @@
 						{#if flag}
 							<StatusGlyph state={flag} class={flag === 'err' ? 'text-error' : 'text-warning'} />
 						{/if}
-						{row.value ?? '–'}
+						{row.value ?? EMPTY}
 					</dd>
 				</div>
 			{/each}

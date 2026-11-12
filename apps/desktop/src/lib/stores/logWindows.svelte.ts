@@ -49,7 +49,7 @@ class LogWindowsStore {
       // A re-attach racing a cluster switch targets the old cluster's pod:
       // drop it (the pop-out already stopped its streams) (#351).
       if (app.connecting !== null || transfer.activeCluster !== app.activeCluster) {
-        toasts.push(`Log session for ${transfer.pod} closed — cluster changed`, "warn");
+        toasts.push(`Log session for ${transfer.pod} closed: the cluster changed`, "warn");
         return;
       }
       void logPanel.openSeeded(transfer);
@@ -88,7 +88,7 @@ class LogWindowsStore {
     // works there and in the static build alike.
     const win = new WebviewWindow(label, {
       url: `/?logWindow=${encodeURIComponent(key)}`,
-      title: `${transfer.pod} — logs`,
+      title: `${transfer.pod} logs`,
       width: 900,
       height: 500,
     });

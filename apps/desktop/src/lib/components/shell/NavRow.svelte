@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { app, type View } from '#lib/stores/app.svelte.ts';
 	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
@@ -53,7 +54,7 @@
 		</span>
 		{#if unavailable}
 			<span class="sr-only">, not available on this cluster</span>
-			<span class="type-data-sm {active ? '' : 'text-text-subtle'}" aria-hidden="true">–</span>
+			<span class="type-data-sm {active ? '' : 'text-text-subtle'}" aria-hidden="true">{EMPTY}</span>
 		{:else if count}
 			<span class="type-data-sm {active ? '' : 'text-text-subtle'}" data-testid="nav-count">{count.value}</span>
 		{/if}
@@ -64,7 +65,7 @@
 			class="focus-ring type-data-sm mr-1.5 flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 {badge[
 				attention.tone
 			].tone}"
-			title="{attention.label} — show them"
+			title="{attention.label}: show them"
 			aria-label="{attention.label}: show them"
 			data-testid="nav-attention"
 			data-badge

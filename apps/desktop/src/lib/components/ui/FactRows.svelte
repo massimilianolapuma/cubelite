@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	// The facts of an object in a detail panel (Tonal §8.3): one row per fact,
 	// label on the left, value on the right. A missing value is an en dash.
 	let { facts }: { facts: readonly (readonly [label: string, value: string | null])[] } = $props();
@@ -13,7 +14,7 @@
 			class="type-data-sm text-right break-words {value === null ? 'text-text-subtle' : 'text-text'}"
 			data-missing={value === null}
 		>
-			{value ?? '–'}
+			{value ?? EMPTY}
 		</dd>
 	{/each}
 </dl>

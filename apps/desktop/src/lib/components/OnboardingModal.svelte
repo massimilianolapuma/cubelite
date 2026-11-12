@@ -38,7 +38,7 @@
 		{#if step === 0}
 			<h2 class="type-headline mb-2">Welcome to CubeLite</h2>
 			<p class="type-body mb-4 text-text-muted">
-				A fast, keyboard-first Kubernetes client with one identity per cluster — so you always know
+				A fast, keyboard-first Kubernetes client with one identity per cluster, so you always know
 				where you are acting.
 			</p>
 			<div class="flex items-center gap-3 rounded-md bg-surface-sunken px-4 py-3">

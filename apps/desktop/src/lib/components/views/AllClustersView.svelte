@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import Button from '#lib/components/ui/Button.svelte';
 	import IdentityAvatar from '#lib/components/ui/IdentityAvatar.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
@@ -160,7 +161,7 @@
 									data-attention={flagged}
 								>
 									{#if flagged}<StatusGlyph state="warn" class="text-warning" />{/if}
-									<span class="truncate" title={value === null ? undefined : String(value)}>{value ?? '–'}</span>
+									<span class="truncate" title={value === null ? undefined : String(value)}>{value ?? EMPTY}</span>
 								</dd>
 							</div>
 						{/each}

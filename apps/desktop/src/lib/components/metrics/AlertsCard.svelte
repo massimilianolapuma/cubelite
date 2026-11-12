@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
 	import {
@@ -105,7 +106,7 @@
 							<span class="type-data-sm min-w-0 truncate {muted ? 'text-text-muted' : 'font-semibold text-text'}" title={alert.name}>
 								{alert.name}
 							</span>
-							<span class="type-body-sm shrink-0 text-text-muted">{alert.severity ?? '–'}</span>
+							<span class="type-body-sm shrink-0 text-text-muted">{alert.severity ?? EMPTY}</span>
 							{#if subject && target}
 								<button
 									type="button"

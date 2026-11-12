@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import {
 		formatTime,
@@ -138,7 +139,7 @@
 				{@const at = hover?.values.find((v) => v.line === line)}
 				<span class="type-micro flex items-center gap-1 {at ? 'font-mono text-text' : 'text-text-muted'}">
 					{@render swatch(line)}
-					{line.label || title}{#if at}&nbsp;{at.value === null ? '–' : formatValue(at.value, unit)}{/if}
+					{line.label || title}{#if at}&nbsp;{at.value === null ? EMPTY : formatValue(at.value, unit)}{/if}
 				</span>
 			{/each}
 			<span class="type-micro ml-auto font-mono text-text-subtle">
