@@ -23,6 +23,24 @@ use the inter-agent protocol described below.
 
 ---
 
+## Claude Code Agents
+
+The roster above is the GitHub Copilot agents in `.github/agents/`. Work delegated from a
+Claude Code session uses the agents in `.claude/agents/` instead: the session plans, briefs
+and checks; the agents do the work. Each agent file carries the standing rules and the
+pitfalls already found in this repo, so a brief states only the task, the branch and the
+spec sections.
+
+| Agent | Model | Use |
+|---|---|---|
+| `cubelite-implementer` | Claude Opus 5.5 | Implements one specified piece of work on a given branch, test first; never pushes |
+| `cubelite-reviewer` | the session's model, unless the caller sets one | Read-only review of a branch against its base |
+| `cubelite-gates` | Claude Haiku 5.5 | Runs `scripts/gates.sh` and reports; fixes nothing |
+
+Pushing, pull requests, issues and merges stay with the session and the user.
+
+---
+
 ## Ownership Map
 
 ```
@@ -84,6 +102,9 @@ When a task involves **creating a new UI section, view, or panel** (not a minor 
 
 This applies to `apps/desktop/` UI work. Bug fixes, refactors,
 and modifications to existing views that don't introduce new sections are exempt.
+
+A design approved by the user in another form counts as well: a design spec under
+`docs/superpowers/specs/` reviewed with the user, as for the Tonal restyle (#604).
 
 **Rationale**: code-first UI leads to rework; Penpot designs are cheap to iterate on.
 
@@ -180,6 +201,10 @@ for the correct commands per stack.
 ---
 
 ## Quality Gates (All Agents)
+
+`scripts/gates.sh` runs every desktop gate below plus the design token tests, the design lint
+and the Playwright suite, and prints one line per gate (`--no-e2e` skips Playwright, `--rust`
+adds the Rust gates, `--only a,b` runs the named ones). It exits non-zero when any gate fails.
 
 | Gate | Command |
 |---|---|
