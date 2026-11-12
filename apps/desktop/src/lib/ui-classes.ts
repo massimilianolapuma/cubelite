@@ -45,11 +45,17 @@ export function iconToggle(pressed: boolean): string {
 }
 
 /**
- * Filter field in a list's title row: a filled pill, as tall as the chips
- * beside it.
+ * The edge of a filled field: a 1 px `outline-strong` ring drawn inside, so it
+ * takes no room. The fill alone is 1.2:1 from the card; the edge reaches 3:1
+ * (WCAG 1.4.11, spec §4.2: outline-strong is the input border).
  */
-export const SEARCH_FIELD =
-  "focus-ring h-(--chip-h) w-56 max-w-full min-w-0 rounded-full bg-surface-container-high px-4 type-body-sm text-text placeholder:text-text-subtle";
+const FIELD_EDGE = "inset-ring inset-ring-outline-strong";
+
+/**
+ * Filter field in a list's title row: a filled pill, as tall as the chips
+ * beside it, with a field's edge.
+ */
+export const SEARCH_FIELD = `focus-ring h-(--chip-h) w-56 max-w-full min-w-0 rounded-full bg-surface-container-high ${FIELD_EDGE} px-4 type-body-sm text-text placeholder:text-text-subtle`;
 
 /**
  * Column header of a list: stays at the top of the card's scroller. Its cells
@@ -98,8 +104,22 @@ export const TOOLBAR_CHIP =
 /** A resting toolbar chip: a quiet surface that opens or toggles something. */
 export const TOOLBAR_CHIP_REST = `${TOOLBAR_CHIP} bg-surface-container-high text-text hover:brightness-110`;
 
-const TOOLBAR_FILL =
-  "focus-ring h-(--control-inline-h) rounded-full bg-surface-container-high type-body-sm text-text";
+/**
+ * A toolbar chip that toggles (previous instance, filter mode). Pressed it takes
+ * the tonal fill, a weight and the 1.5 px primary ring of a pressed chip
+ * (`ui/Chip.svelte`): where the toolbar is narrow its label is read out only,
+ * and the fill alone is 1.2–1.6:1 from the resting one.
+ */
+export function toolbarToggle(pressed: boolean): string {
+  return `${TOOLBAR_CHIP} ${
+    pressed
+      ? "bg-primary-container font-semibold text-on-primary-container inset-ring-[1.5px] inset-ring-primary"
+      : "bg-surface-container-high text-text-muted hover:brightness-110"
+  }`;
+}
+
+/** Text fields and selects of a toolbar: a filled pill with a field's edge. */
+const TOOLBAR_FILL = `focus-ring h-(--control-inline-h) rounded-full bg-surface-container-high ${FIELD_EDGE} type-body-sm text-text`;
 
 /** Text field in a log toolbar: a filled pill. */
 export const TOOLBAR_FIELD = `${TOOLBAR_FILL} w-44 max-w-full min-w-0 px-3.5 placeholder:text-text-subtle`;

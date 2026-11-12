@@ -85,6 +85,15 @@ const CONTROLS: { control: string; fg: string; on: string[] }[] = [
   { control: "pressed chip: ring on the card", fg: "primary", on: ["surface-container", "surface-overlay"] },
   { control: "pressed chip: ring on the card", fg: "warning", on: ["surface-container", "surface-overlay"] },
   { control: "pressed chip: ring on the card", fg: "error", on: ["surface-container", "surface-overlay"] },
+  // Pressed log toolbar toggle (previous instance, filter): the same ring, on the
+  // log panel's card. Its label is read out only where the toolbar is narrow.
+  { control: "pressed toolbar toggle: ring on its fill", fg: "primary", on: ["primary-container"] },
+  { control: "pressed toolbar toggle: ring on the toolbar", fg: "primary", on: ["surface-container"] },
+  // Filled toolbar fields and selects (list filter, log search, label selector,
+  // toolbar selects, the sidebar's filter): an outline-strong edge inside the
+  // fill, between the fill and the card or window under it.
+  { control: "toolbar field edge: on its fill", fg: "outline-strong", on: ["surface-container-high"] },
+  { control: "toolbar field edge: on the card or window", fg: "outline-strong", on: ["surface-container", "surface-window"] },
   // Icon buttons are identified by their glyph: on a resting disc, a pressed
   // (primary) disc, a tonal disc, or no disc at all.
   { control: "icon button glyph", fg: "text-muted", on: [...SURFACES, "surface-container-high"] },

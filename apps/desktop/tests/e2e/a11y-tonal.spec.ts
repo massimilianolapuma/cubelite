@@ -556,6 +556,63 @@ test.describe("non-text contrast (WCAG 1.4.11) of the controls the token matrix 
       expect(await borderColour(dashTrack)).not.toBe("transparent");
       expect(await contrast(page, await borderColour(dashTrack), dashCard)).toBeGreaterThanOrEqual(3);
     });
+
+    test(`${theme}: a pressed log toolbar toggle has a ring, not a fill alone`, async ({ page }) => {
+      await boot(page, theme);
+      await podsWithPanel(page);
+      await page.getByRole("button", { name: "Open logs" }).click();
+      const logs = page.getByLabel("Pod logs panel");
+      await expect(logs).toBeVisible();
+      const ground = await bg(logs.getByTestId("log-toolbar").locator("xpath=ancestor::*[contains(@class,'card')][1]"));
+      await logs.getByPlaceholder(/^Search/).fill("GET");
+      // The worker container has restarts: the previous-instance toggle shows.
+      for (const toggle of [logs.getByTitle("Previous instance"), logs.getByTitle("Show only matching lines")]) {
+        await toggle.click();
+        await expect(toggle).toHaveAttribute("aria-pressed", "true");
+        const edge = await ring(toggle);
+        expect(edge, "pressed has a ring").not.toBe("transparent");
+        expect(await contrast(page, edge, await bg(toggle)), "ring on its fill").toBeGreaterThanOrEqual(3);
+        expect(await contrast(page, edge, ground), "ring on the toolbar").toBeGreaterThanOrEqual(3);
+        await toggle.click();
+        await expect(toggle).toHaveAttribute("aria-pressed", "false");
+        expect(await ring(toggle), "resting has no ring").toBe("transparent");
+      }
+    });
+
+    test(`${theme}: toolbar text fields and selects have a 3:1 edge`, async ({ page }) => {
+      await boot(page, theme);
+      const fields: Locator[] = [];
+      const check = async (el: Locator, name: string) => {
+        await expect(el, name).toBeVisible();
+        // What the field sits on: its nearest ancestor with a fill of its own.
+        const ground = await el.evaluate((n) => {
+          for (let a = n.parentElement; a; a = a.parentElement) {
+            const c = getComputedStyle(a).backgroundColor;
+            if (c !== "rgba(0, 0, 0, 0)" && c !== "transparent") return c;
+          }
+          return getComputedStyle(document.body).backgroundColor;
+        });
+        const edge = (await borderColour(el)) !== "transparent" ? await borderColour(el) : await ring(el);
+        expect(edge, `${name} has an edge`).not.toBe("transparent");
+        expect(await contrast(page, edge, ground), `${name} edge on its card`).toBeGreaterThanOrEqual(3);
+        fields.push(el);
+      };
+      const panel = await podsWithPanel(page);
+      await check(page.getByPlaceholder("Filter pods…"), "list filter");
+      await panel.getByRole("button", { name: "Open logs" }).click();
+      const logs = page.getByLabel("Pod logs panel");
+      await check(logs.getByPlaceholder(/^Search/), "log search");
+      await check(logs.getByRole("combobox", { name: "Tail lines" }), "tail select");
+      await page.getByRole("complementary").getByText("Logs", { exact: true }).click();
+      const view = page.getByTestId("log-toolbar").first();
+      await check(view.getByRole("combobox", { name: "Workload" }), "workload select");
+      await check(view.getByRole("textbox", { name: "Label selector" }), "label selector");
+      await check(view.getByRole("textbox", { name: "Filter lines" }), "line filter");
+      // The sidebar's custom resource filter, on the window.
+      await page.getByRole("complementary").getByRole("button", { name: /Custom Resources/ }).click();
+      await check(page.getByRole("textbox", { name: "Filter custom resources" }), "custom resource filter");
+      expect(fields).toHaveLength(7);
+    });
   }
 });
 

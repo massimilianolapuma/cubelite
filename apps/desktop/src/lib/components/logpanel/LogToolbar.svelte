@@ -14,7 +14,6 @@
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import FollowChip from './FollowChip.svelte';
 	import {
-		TOOLBAR_CHIP,
 		TOOLBAR_CHIP_REST,
 		TOOLBAR_FIELD_FLEX,
 		TOOLBAR_ICON,
@@ -22,7 +21,8 @@
 		TOOLBAR_MENU_DOWN,
 		TOOLBAR_MENU_ITEM,
 		TOOLBAR_MENU_UP,
-		TOOLBAR_SELECT
+		TOOLBAR_SELECT,
+		toolbarToggle
 	} from '#lib/ui-classes.ts';
 	import HistoryControls from './HistoryControls.svelte';
 	import LogSourceSwitch from './LogSourceSwitch.svelte';
@@ -226,9 +226,7 @@
 	{#if session.source === 'live' && !session.merged && (selected?.restarts ?? 0) > 0}
 		<button
 			type="button"
-			class="{TOOLBAR_CHIP} {session.previous
-				? 'bg-primary-container font-semibold text-on-primary-container'
-				: 'bg-surface-container-high text-text-muted hover:brightness-110'}"
+			class={toolbarToggle(session.previous)}
 			title="Previous instance"
 			aria-pressed={session.previous}
 			onclick={() => void session.setPrevious(!session.previous)}
@@ -260,9 +258,7 @@
 			type="button"
 			aria-pressed={logPanel.search.filterMode}
 			title="Show only matching lines"
-			class="{TOOLBAR_CHIP} {logPanel.search.filterMode
-				? 'bg-primary-container font-semibold text-on-primary-container'
-				: 'bg-surface-container-high text-text-muted hover:brightness-110'}"
+			class={toolbarToggle(logPanel.search.filterMode)}
 			onclick={() => (logPanel.search.filterMode = !logPanel.search.filterMode)}
 		>
 			<ListFilter class="h-3.5 w-3.5" aria-hidden="true" /><span class="@max-[72rem]:sr-only">filter</span>
