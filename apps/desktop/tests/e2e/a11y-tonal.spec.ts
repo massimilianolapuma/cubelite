@@ -420,6 +420,9 @@ test.describe("forced colours (forced-colors: active)", () => {
       const nav = page.getByRole("complementary").locator("[data-nav]").filter({ hasText: "Deployments" }).first();
       await nav.hover();
       expect(await systemEdge(nav), "nav row").toBe(highlight);
+      const section = page.getByRole("complementary").locator("[data-section-toggle]").filter({ hasText: "Workloads" });
+      await section.hover();
+      expect(await systemEdge(section), "section row").toBe(highlight);
       await page.mouse.move(0, 0);
       expect(await systemEdge(nav), "nav row at rest").toBe("none");
     });

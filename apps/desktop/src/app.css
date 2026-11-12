@@ -453,7 +453,8 @@
      toolbar and icon discs, the search button, links in banners: the class
      `forced-edge`, and the text and danger variants of Button) and a key cap
      would read as plain text: they get a system-colour edge.
-   - List and nav rows show hover with a Highlight edge, as the system does. */
+   - List rows and the sidebar's rows (items and section headers) show hover
+     with a Highlight edge, as the system does. */
 @layer utilities {
   @media (forced-colors: active) {
     .forced-edge,
@@ -466,7 +467,7 @@
     kbd {
       outline-color: CanvasText;
     }
-    :where([data-nav]):hover {
+    :where([data-nav], [data-section-toggle]):hover {
       outline: 1px solid Highlight;
       outline-offset: -1px;
     }
