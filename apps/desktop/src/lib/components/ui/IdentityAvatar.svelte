@@ -11,7 +11,8 @@
 		color,
 		active = false,
 		health,
-		size
+		size,
+		surface = 'high'
 	}: {
 		name: string;
 		color: IdentityColor;
@@ -20,6 +21,12 @@
 		health?: Health;
 		/** Side in px; the control height of the current density when omitted. */
 		size?: number;
+		/**
+		 * What the resting disc is filled with: `high` on the window (the rail),
+		 * `container` on a card that is itself `surface-container-high`, where the
+		 * disc would otherwise vanish.
+		 */
+		surface?: 'high' | 'container';
 	} = $props();
 
 	const side = $derived(size ? `${size}px` : 'var(--control-h)');
@@ -40,7 +47,10 @@
 		data-active={active}
 		class="type-body flex h-full w-full items-center justify-center transition-[border-radius] duration-200 motion-reduce:transition-none {active
 			? 'bg-primary font-bold text-on-primary'
-			: 'bg-surface-container-high font-semibold text-text-muted'}"
+			: surface === 'container'
+				? 'bg-primary-container font-semibold text-on-primary-container'
+				: 'bg-surface-container-high font-semibold text-text-muted'}"
+		data-surface={surface}
 		style="{tintStyle(color)}; border-radius: {active ? `calc(${side} * 0.32)` : '9999px'};"
 	>
 		{initials(name)}

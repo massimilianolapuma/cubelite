@@ -38,6 +38,7 @@
 
 	// "Set up" in a panel opens Preferences on an integration (#526).
 	const sections = $state<Record<PreferencesSection, HTMLElement | null>>({
+		kubeconfig: null,
 		navigation: null,
 		integrations: null,
 		elasticsearch: null,
@@ -261,7 +262,7 @@
 			</div>
 		</div>
 
-		<section>
+		<section bind:this={sections.kubeconfig}>
 			<div class="mb-1.5 flex items-baseline justify-between gap-3">
 				<div class="type-body text-text-primary">Kubeconfig</div>
 				<div class="type-caption text-text-tertiary">{originLabel(app.kubeconfigOrigin)}</div>

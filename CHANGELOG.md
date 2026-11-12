@@ -49,6 +49,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   restarted from its panel; other objects get a Summary of every column above
   their YAML. Opening the panel moves keyboard focus to it and Esc gives it
   back to the row; Enter on a pod row and Enter again still opens its logs.
+- **Dashboards in the new look** (#619): on All Clusters every cluster card is
+  in its own cluster's colour, with its health as a shape and a word; an
+  unreachable cluster says when it was last seen, and a card you point at
+  turns one shade lighter. The count of pods that are not
+  ready or keep restarting is now called "Pods needing attention" (on a card,
+  "Attention"): it was labelled "Warnings" but never counted warning events.
+  "Clusters online" warns only when a cluster is known to be unreachable, not
+  while the others simply have not been checked yet. "No clusters yet" appears
+  only once your kubeconfig has been read; if it cannot be read, the page shows
+  why instead, and Open Preferences takes you straight to the kubeconfig
+  files. The window takes a cluster's colour as soon as you start connecting
+  to it. On Overview the resource cards lose their own colours: a count that
+  needs attention (pending, failed, degraded) is bold with a triangle or a
+  square, and alert severity is a shape and a word. Charts draw their lines in
+  five data colours; past five lines the colours repeat with a different dash
+  each round. Request and limit lines are dashed and grey. Pointing at a chart
+  keeps its legend and adds each line's value to it. "Cluster unreachable"
+  leads with the failure and its reason, with Retry as the main action.
 - **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
   saved as amber becomes indigo and one saved as pink becomes magenta: warm
   colours are reserved for warnings and errors.

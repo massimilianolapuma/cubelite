@@ -339,14 +339,31 @@ is fixed.
 
 ### 8.4 Dashboards
 
-- **All Clusters**: tiles (clusters online, pods, warnings, watched); a grid of cluster cards, each
-  **tinted with its own hue** (§4.1), with avatar, server, health badge, facts and meters. An
-  unreachable cluster's card shows the failure badge and "Last seen …". Zero contexts (no state
-  today): `headline` "No clusters yet", how kubeconfig files are found, a button to Preferences.
+- **All Clusters**: tiles (clusters online, pods, pods needing attention, watched); a grid of
+  cluster cards, each **tinted with its own hue** (§4.1), with avatar, server, health badge, facts
+  and meters. An unreachable cluster's card shows the failure badge and "Last seen …".
+  - The third figure counts pods that are not ready or have restarted more than three times. It
+    never counted warning events, so it is "Pods needing attention" on the tile and "Attention" on a
+    card, not "Warnings".
+  - "Clusters online" takes `warning-container` only when a cluster is known to be unreachable. A
+    cluster not probed yet is unknown, not offline.
+  - Card hover is one surface up: `surface-container-top`. The avatar of a cluster that is not
+    active is `primary-container`, so it shows on the card.
+  - Zero contexts (no state today): `headline` "No clusters yet", how kubeconfig files are found, a
+    button to Preferences. It shows only once the kubeconfig has been read; before that, placeholder
+    cards. A read error replaces it with an `error-container` block that gives the error.
+  - Open Preferences, from either, opens on the Kubeconfig files.
 - **Overview**: four tiles, capacity card with meters and history chart, recent warnings, alerts
   card, resource summary cards (neutral, no per-resource tint; "forbidden" uses the dashed ring).
-- **Charts**: series in `data-1` … `data-5`; past five, series repeat dashed. Request and limit
-  lines dashed in `text-subtle`; axes in `outline`. Hand-rolled SVG stays.
+- **Charts**: series in `data-1` … `data-5`; past five, the colours repeat with a different dash
+  each round (`6 3`, then `2 2`, then `8 3 2 3`), so no two of the first twenty series look the
+  same. Request and limit lines dashed in `text-subtle`; axes in `outline`. Hand-rolled SVG stays.
+  Legend and hover values are in the text colour next to a key drawn like the line (same colour,
+  same dash), so a dashed repeat is told apart in the legend too. Hovering keeps the legend and
+  adds each line's value to its entry; the time replaces the maximum. The chart keeps its height.
+  Charts sit on `surface-container-top`, cards on a dashboard on `surface-container-high`.
+- Alert severity and summary counts: a shape and a word, never a colour alone. A summary count that
+  needs attention shows its shape only above zero.
 - **Unreachable**: failure hero with server and reason, Retry (primary), All Clusters (text).
 - **Connecting**: `surface-overlay` card with spinner, cluster name and Cancel; the tint switches to
   the target cluster as soon as connecting starts.
