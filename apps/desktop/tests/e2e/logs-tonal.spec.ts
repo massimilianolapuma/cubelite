@@ -8,6 +8,8 @@ type Boot = {
   theme?: "dark" | "light";
   compact?: boolean;
   containers?: string[];
+  /** Init containers after `containers`. */
+  inits?: string[];
   /** Extra pods after the fixture's own. */
   pods?: string[];
   /** An Elasticsearch endpoint for prod-aks, so History is offered. */
@@ -30,7 +32,11 @@ const ELASTIC = {
 
 async function boot(page: Page, o: Boot = {}) {
   const overrides: Partial<typeof FIXTURES> = {};
-  if (o.containers) overrides.podContainers = o.containers.map((n) => container(n));
+  if (o.containers || o.inits)
+    overrides.podContainers = [
+      ...(o.containers ?? []).map((n) => container(n)),
+      ...(o.inits ?? []).map((n) => container(n, true)),
+    ];
   if (o.pods) overrides.pods = [...FIXTURES.pods, ...o.pods.map((name) => ({ ...FIXTURES.pods[0], name }))];
   await page.addInitScript(tauriMockScript(overrides));
   await page.addInitScript(
@@ -619,3 +625,92 @@ test("800 x 600: the YAML editor fits its modal, with and without an apply error
   expect(withError).toMatchObject({ nested: false, inside: true });
   expect(withError.height).toBeGreaterThan(120);
 });
+
+/**
+ * Every row of the open toolbar menu (the panel after the expanded toggle):
+ * the menu stays inside the window, and each row is inside it and is the
+ * element under its own centre. A menu taller than its room is scrolled, and
+ * only the menu: no box around it may scroll to bring a row into view.
+ */
+async function menuReach(page: Page, toggle: ReturnType<Page["locator"]>) {
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const menu = toggle.locator("xpath=following-sibling::div[1]");
+  await menu.evaluate((m) => Promise.all(m.getAnimations().map((a) => a.finished)).then(() => null));
+  const t = (await toggle.boundingBox())!;
+  const reach = await menu.evaluate((m) => {
+    const problems: string[] = [];
+    const [w, h] = [window.innerWidth, window.innerHeight];
+    const out = (r: DOMRect) => r.left < -0.5 || r.top < -0.5 || r.right > w + 0.5 || r.bottom > h + 0.5;
+    const box = m.getBoundingClientRect();
+    const where = (r: DOMRect) => `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}`;
+    if (out(box)) problems.push(`menu leaves the ${w} x ${h} window at ${where(box)}`);
+    const items = [...m.querySelectorAll<HTMLElement>("button")];
+    for (const item of items) {
+      if (m.scrollHeight > m.clientHeight) m.scrollTop = item.offsetTop - (m.clientHeight - item.offsetHeight) / 2;
+      const r = item.getBoundingClientRect();
+      const name = item.textContent?.replace(/\s+/g, " ").trim() ?? "?";
+      if (out(r)) problems.push(`${name}: outside the window at ${where(r)}`);
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (!hit || !item.contains(hit)) problems.push(`${name}: under its centre is ${hit?.tagName ?? "nothing"}`);
+    }
+    for (let e = m.parentElement; e; e = e.parentElement)
+      if (e.scrollTop || e.scrollLeft) problems.push(`${e.tagName} scrolled to reach the menu`);
+    const after = m.getBoundingClientRect();
+    return { items: items.length, problems, top: after.top, bottom: after.bottom };
+  });
+  return { ...reach, below: reach.top >= t.y + t.height - 0.5, above: reach.bottom <= t.y + 0.5 };
+}
+
+/** The two toolbar menus: the container picker and "More log options". */
+function toolbarMenus(page: Page) {
+  const bar = page.getByTestId("log-toolbar");
+  return [
+    { name: "container picker", toggle: bar.locator("button[aria-expanded]").first(), items: 8 },
+    { name: "More log options", toggle: bar.getByRole("button", { name: "More log options" }), items: 6 },
+  ];
+}
+
+const MANY = { containers: ["worker", "envoy", "istio-proxy", "log-shipper", "metrics-exporter"], inits: ["init-migrate", "init-config"] };
+
+for (const { width, height } of [
+  { width: 900, height: 500 },
+  { width: 520, height: 320 },
+]) {
+  test(`pop-out at ${width} x ${height}: both toolbar menus open downwards with every row inside the window (#624)`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await boot(page, { ...MANY, elastic: true });
+    await openPopout(page, "prod-aks");
+    for (const { name, toggle, items } of toolbarMenus(page)) {
+      await toggle.click();
+      const reach = await menuReach(page, toggle);
+      expect(reach.problems, name).toEqual([]);
+      expect(reach.items, name).toBe(items);
+      expect(reach.below, `${name} opens below its toggle`).toBe(true);
+      await toggle.click();
+    }
+  });
+}
+
+for (const { width, height, mode } of [
+  { width: 800, height: 600, mode: "overlay" },
+  { width: 1440, height: 900, mode: "docked" },
+]) {
+  test(`log panel at ${width} x ${height}, detail panel ${mode}: both toolbar menus open upwards with every row reachable (#624)`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await boot(page, { ...MANY, elastic: true });
+    await openLogPanel(page);
+    await expect(page.getByRole("dialog", { name: "api-0" })).toHaveAttribute("data-mode", mode);
+    for (const { name, toggle, items } of toolbarMenus(page)) {
+      await toggle.click();
+      const reach = await menuReach(page, toggle);
+      expect(reach.problems, name).toEqual([]);
+      expect(reach.items, name).toBe(items);
+      expect(reach.above, `${name} opens above its toggle`).toBe(true);
+      await toggle.click();
+    }
+  });
+}

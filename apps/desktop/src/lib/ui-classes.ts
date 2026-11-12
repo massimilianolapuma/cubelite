@@ -109,9 +109,22 @@ export const TOOLBAR_SELECT = `${TOOLBAR_FILL} max-w-full min-w-0 pr-2 pl-3.5`;
 export const TOOLBAR_ICON =
   "focus-ring hover-layer relative flex h-(--control-inline-h) w-(--control-inline-h) shrink-0 items-center justify-center rounded-full text-text-muted";
 
-/** A menu that opens above its toolbar control (hand-rolled, not bits-ui). */
+/**
+ * A menu of a toolbar control (hand-rolled, not bits-ui). It opens with
+ * `TOOLBAR_MENU_UP` or `TOOLBAR_MENU_DOWN`, and `fitMenu` (menu-fit.ts) keeps it
+ * inside the window.
+ */
 export const TOOLBAR_MENU =
-  "animate-popin absolute bottom-full z-20 mb-1 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
+  "animate-popin absolute z-20 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
+
+/** Opens above its control: the log panel, whose toolbar sits low in the window. */
+export const TOOLBAR_MENU_UP = "bottom-full mb-1";
+
+/**
+ * Opens below its control: the pop-out log window, whose toolbar sits at the top
+ * (#624). Scrolls inside itself where the window is too short for it.
+ */
+export const TOOLBAR_MENU_DOWN = "top-full mt-1 overflow-y-auto overscroll-contain";
 
 /** One row of a `TOOLBAR_MENU`. */
 export const TOOLBAR_MENU_ITEM =
