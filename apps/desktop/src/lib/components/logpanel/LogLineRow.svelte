@@ -6,6 +6,7 @@
 	import { ecsRow, toEcs, type LogViewMode } from '#lib/log-ecs.ts';
 	import JsonTree from './JsonTree.svelte';
 	import EcsFieldTable from './EcsFieldTable.svelte';
+	import { sourceClass } from '#lib/log-sources.ts';
 
 	let {
 		line,
@@ -22,8 +23,12 @@
 		timestamps: boolean;
 		wrap: boolean;
 		search?: { query: string; active: boolean } | null;
-		/** `wide` widens the column for pod names (aggregated Logs view). */
-		source?: { name: string; color: string; wide?: boolean } | null;
+		/**
+		 * Where the line came from. `index` numbers the sources of a merged stream
+		 * (their colour); `null` leaves it neutral. `wide` widens the column for
+		 * pod names (aggregated Logs view).
+		 */
+		source?: { name: string; index: number | null; wide?: boolean } | null;
 		/** Raw, JSON (#454) or ECS (#492) rendering. */
 		mode?: LogViewMode;
 		/** Container for the ECS `container.name` when the line carries no tag. */
@@ -59,20 +64,30 @@
 	const ecsSummary = $derived(ecs ? ecsRow(ecs) : null);
 	const shownLevel = $derived(ecs?.level ?? view?.level ?? line.level);
 
-	const levelColor: Record<LogLevel, string> = {
-		debug: 'var(--color-text-tertiary)',
-		info: 'var(--color-status-info)',
-		warn: 'var(--color-status-warn)',
-		error: 'var(--color-status-err)'
+	// Tonal §8.5: the level is a word in its own column; INFO is neutral, WARN
+	// and ERROR rows get a faint wash of their container. Written in full so
+	// Tailwind emits every class.
+	const LEVEL_TONE: Record<LogLevel, string> = {
+		debug: 'text-text-muted',
+		info: 'text-text-muted',
+		warn: 'text-warning',
+		error: 'text-error'
+	};
+	const ROW_WASH: Record<LogLevel, string> = {
+		debug: '',
+		info: '',
+		warn: 'bg-warning-container/35',
+		error: 'bg-error-container/35'
 	};
 
-	function rowStyle(level: LogLevel): string {
-		if (level === 'error')
-			return 'border-left: 2px solid var(--color-status-err); background: var(--alpha-log-error-row);';
-		if (level === 'warn')
-			return 'border-left: 2px solid color-mix(in srgb, var(--color-status-warn) 50%, transparent); background: var(--alpha-log-warn-row);';
-		return 'border-left: 2px solid transparent;';
-	}
+	// A match is marked by more than its fill, which barely differs from a washed
+	// WARN or ERROR row in the light theme: an underline in the warning colour. The
+	// match the cursor is on is boxed by a ring and set in a heavier weight.
+	const MARK_FILL = 'bg-warning-container text-on-warning-container';
+	const MARK = `${MARK_FILL} underline decoration-warning decoration-2 underline-offset-2`;
+	const MARK_ACTIVE = `${MARK_FILL} font-semibold outline-2 outline-warning`;
+
+	const tone = $derived(source ? (source.index === null ? 'text-text-muted' : sourceClass(source.index)) : '');
 
 	function clock(iso: string | null): string {
 		if (!iso) return '—';
@@ -83,108 +98,94 @@
 
 {#snippet gutter()}
 	{#if timestamps}
-		<span class="w-[94px] shrink-0 type-micro font-mono text-text-disabled">{clock(line.time)}</span>
+		<span class="w-16 shrink-0 whitespace-nowrap text-text-muted">{clock(line.time)}</span>
 	{/if}
 	{#if source}
 		<span
-			class="{source.wide ? 'w-[140px]' : 'w-[52px]'} shrink-0 truncate type-micro font-mono font-semibold"
-			style="color: {source.color};"
+			class="{source.wide ? 'w-36' : 'w-20'} shrink-0 truncate font-semibold {tone}"
+			data-source={source.index === null ? undefined : source.index + 1}
 			title={source.name}>{source.name}</span
 		>
 	{/if}
-	<span
-		class="w-[38px] shrink-0 type-micro font-mono font-semibold uppercase"
-		style="color: {levelColor[shownLevel]};"
-	>
+	<span class="w-12 shrink-0 font-semibold uppercase {LEVEL_TONE[shownLevel]}" data-level-word>
 		{shownLevel}
 	</span>
 {/snippet}
 
 {#snippet marks(segs: { text: string; hit: boolean }[])}
 	{#each segs as seg, i (i)}
-		{#if seg.hit}<mark
-				style={search?.active
-					? 'background: var(--color-status-warn); color: var(--color-surface-window);'
-					: 'background: var(--alpha-pill-warn); color: inherit;'}>{seg.text}</mark>
-		{:else}{seg.text}{/if}
+		{#if seg.hit}<mark class={search?.active ? MARK_ACTIVE : MARK} data-active={search?.active ? 'true' : 'false'}
+				>{seg.text}</mark
+			>{:else}{seg.text}{/if}
 	{/each}
 {/snippet}
 
-{#if ecs && ecsSummary}
-	<div style={rowStyle(shownLevel)}>
-		<div class="flex items-baseline gap-2.5 px-2.5 py-px">
+{#snippet tail(items: { key: string; value: string }[])}
+	{#each items as item, n (item.key)}
+		<span class="whitespace-pre">{n === 0 ? ' ' : '  '}</span><span
+			><span class="text-text-muted">{item.key}</span>=<span class="text-text">{@render marks(segmentsOf(item.value))}</span
+			></span
+		>
+	{/each}
+{/snippet}
+
+<div class="type-log {ROW_WASH[shownLevel]}" data-level={shownLevel}>
+	{#if ecs && ecsSummary}
+		<div class="flex items-baseline gap-3 px-3 py-px">
 			{@render gutter()}
 			<button
 				type="button"
 				aria-expanded={expanded}
 				data-testid="ecs-row"
-				class="focus-ring min-w-0 cursor-pointer text-left type-log text-text-log {wrap
+				class="focus-ring-inset min-w-0 cursor-pointer rounded-xs text-left text-text {wrap
 					? 'break-all whitespace-pre-wrap'
 					: 'whitespace-pre'}"
 				onclick={() => ontoggle?.()}
 			>
-				<ChevronRight size={10} class="inline-block align-baseline {expanded ? 'rotate-90' : ''}" />
+				<ChevronRight size={10} class="inline-block align-baseline text-text-muted {expanded ? 'rotate-90' : ''}" />
 				{#if ecsSummary.service}<span
 						data-testid="ecs-service"
-						class="mr-1.5 rounded-sm bg-surface-raised px-1 type-micro font-mono text-text-secondary"
+						class="mr-1.5 rounded-full bg-surface-container-high px-1.5 text-text-muted"
 						>{ecsSummary.service}</span
-					>{/if}{@render marks(segmentsOf(ecsSummary.message))}
-				{#each ecsSummary.tail as item, n (item.key)}
-					<span class="whitespace-pre">{n === 0 ? ' ' : '  '}</span><span class="type-micro font-mono"
-						><span class="text-text-tertiary">{item.key}</span>=<span class="text-text-secondary"
-							>{@render marks(segmentsOf(item.value))}</span
-						></span
-					>
-				{/each}
+					>{/if}{@render marks(segmentsOf(ecsSummary.message))}{@render tail(ecsSummary.tail)}
 			</button>
 		</div>
 		{#if expanded}
-			<div class="bg-surface-raised px-2.5 py-1">
-				<EcsFieldTable doc={ecs} raw={structured} />
+			<div class="px-3 pt-1 pb-2">
+				<div class="rounded-md bg-surface-container px-3 py-2">
+					<EcsFieldTable doc={ecs} raw={structured} />
+				</div>
 			</div>
 		{/if}
-	</div>
-{:else if view}
-	<div style={rowStyle(shownLevel)}>
-		<div class="flex items-baseline gap-2.5 px-2.5 py-px">
+	{:else if view}
+		<div class="flex items-baseline gap-3 px-3 py-px">
 			{@render gutter()}
 			<button
 				type="button"
 				aria-expanded={expanded}
 				data-testid="json-row"
-				class="focus-ring min-w-0 cursor-pointer text-left type-log text-text-log {wrap
+				class="focus-ring-inset min-w-0 cursor-pointer rounded-xs text-left text-text {wrap
 					? 'break-all whitespace-pre-wrap'
 					: 'whitespace-pre'}"
 				onclick={() => ontoggle?.()}
 			>
-				<ChevronRight size={10} class="inline-block align-baseline {expanded ? 'rotate-90' : ''}" />
-				{@render marks(segmentsOf(view.message))}
-				{#each view.tail as item, n (item.key)}
-					<span class="whitespace-pre">{n === 0 ? ' ' : '  '}</span><span class="type-micro font-mono"
-						><span class="text-text-tertiary">{item.key}</span>=<span class="text-text-secondary"
-							>{@render marks(segmentsOf(item.value))}</span
-						></span
-					>
-				{/each}
+				<ChevronRight size={10} class="inline-block align-baseline text-text-muted {expanded ? 'rotate-90' : ''}" />
+				{@render marks(segmentsOf(view.message))}{@render tail(view.tail)}
 			</button>
 		</div>
 		{#if expanded}
-			<div class="bg-surface-raised px-2.5 py-1">
-				<JsonTree value={view.object} raw={structured} />
+			<div class="px-3 pt-1 pb-2">
+				<div class="rounded-md bg-surface-container px-3 py-2">
+					<JsonTree value={view.object} raw={structured} />
+				</div>
 			</div>
 		{/if}
-	</div>
-{:else}
-<div class="flex items-baseline gap-2.5 px-2.5 py-px" style={rowStyle(line.level)}>
-	{@render gutter()}
-	<span class="type-log text-text-log {wrap ? 'break-all whitespace-pre-wrap' : 'whitespace-pre'}">
-		{#each segments as seg, i (i)}
-			{#if seg.hit}<mark
-					style={search?.active
-						? 'background: var(--color-status-warn); color: var(--color-surface-window);'
-						: 'background: var(--alpha-pill-warn); color: inherit;'}>{seg.text}</mark>
-			{:else}{seg.text}{/if}
-		{/each}
-	</span>
+	{:else}
+		<div class="flex items-baseline gap-3 px-3 py-px">
+			{@render gutter()}
+			<span class="text-text {wrap ? 'break-all whitespace-pre-wrap' : 'whitespace-pre'}"
+				>{@render marks(segments)}</span
+			>
+		</div>
+	{/if}
 </div>
-{/if}

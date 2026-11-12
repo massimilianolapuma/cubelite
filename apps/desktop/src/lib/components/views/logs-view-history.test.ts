@@ -128,7 +128,7 @@ describe("LogsView workload scope and history (#529)", () => {
     expect(screen.getByText("api-7d9f8b6c5-m4n5q")).toBeInTheDocument();
     expect(screen.getByText("api-7d9f8b6c5-x7k2p")).toBeInTheDocument();
     expect(screen.getByTestId("history-strip")).toBeInTheDocument();
-    expect(screen.queryByText("● Following")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Following" })).toBeNull();
 
     await fireEvent.click(screen.getByRole("button", { name: "Open in Kibana" }));
     await waitFor(() =>

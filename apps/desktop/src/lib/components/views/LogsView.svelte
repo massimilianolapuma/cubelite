@@ -19,6 +19,9 @@
 	} from '#lib/log-scope.ts';
 	import type { LogViewMode } from '#lib/log-ecs.ts';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import FollowChip from '#lib/components/logpanel/FollowChip.svelte';
+	import { TOOLBAR_FIELD, TOOLBAR_SELECT } from '#lib/ui-classes.ts';
 	import LogLineRow from '#lib/components/logpanel/LogLineRow.svelte';
 	import HistoryControls from '#lib/components/logpanel/HistoryControls.svelte';
 	import HistoryStrip from '#lib/components/logpanel/HistoryStrip.svelte';
@@ -139,13 +142,13 @@
 		if (history && container) container.scrollTop = container.scrollHeight;
 	});
 
-	const chips: { value: LevelFilter; label: string; color: string | null }[] = [
-		{ value: 'all', label: 'ALL', color: null },
-		{ value: 'info', label: 'INFO', color: 'var(--color-status-info)' },
-		{ value: 'warn', label: 'WARN', color: 'var(--color-status-warn)' },
-		{ value: 'error', label: 'ERROR', color: 'var(--color-status-err)' }
+	// Level filter: one choice of four, as words (Tonal §8.5: no level colour here).
+	const LEVELS: { value: LevelFilter; label: string }[] = [
+		{ value: 'all', label: 'All' },
+		{ value: 'info', label: 'INFO' },
+		{ value: 'warn', label: 'WARN' },
+		{ value: 'error', label: 'ERROR' }
 	];
-
 
 	const VIEW_MODES: { value: LogViewMode; label: string }[] = [
 		{ value: 'raw', label: 'Raw' },
@@ -155,20 +158,24 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col gap-3 p-4">
-	<div class="flex flex-wrap items-center gap-2">
-		<h1 class="type-title">Logs</h1>
-		<PinToggle />
-		<span class="type-caption flex-1 text-text-tertiary">
+	<header class="flex max-w-full min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+		<h1 class="type-display">Logs</h1>
+		<span class="type-body-sm text-text-muted">
 			streaming {Math.min(streamedPods.length, MAX_STREAMED_PODS)}{streamedPods.length >
 			MAX_STREAMED_PODS
 				? ` of ${streamedPods.length}`
 				: ''} pods
 		</span>
+		<span class="flex-1"></span>
+		<span class="self-center"><PinToggle /></span>
+	</header>
 
+	<!-- Toolbar of chips and pill fields on the card (Tonal §8.5) -->
+	<div class="flex flex-wrap items-center gap-2" data-testid="log-toolbar">
 		<!-- one workload's pods, live and in history (#529) -->
 		<select
 			aria-label="Workload"
-			class="focus-ring type-caption h-7 max-w-52 rounded-md border border-border-default bg-surface-window px-2 text-text-primary"
+			class="{TOOLBAR_SELECT} w-52"
 			value={logs.scope ? scopeKey(logs.scope) : ''}
 			onchange={(e) => pickScope(e.currentTarget.value)}
 		>
@@ -183,8 +190,9 @@
 		<input
 			type="text"
 			placeholder="label=value,…"
+			aria-label="Label selector"
 			bind:value={labelSelector}
-			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-data-sm text-text-primary placeholder:text-text-disabled"
+			class={TOOLBAR_FIELD}
 		/>
 
 		<LogSourceSwitch
@@ -193,40 +201,26 @@
 			blocked={mapping.reason}
 			testid="logs-source"
 			hintTestid="logs-history-hint"
+			dense
 		/>
 
 		{#if history}
 			<HistoryControls {history} />
 		{/if}
 
-		<div class="flex overflow-hidden rounded-md border border-border-default">
-			{#each chips as chip (chip.value)}
-				{@const active = logs.level === chip.value}
-				<button
-					type="button"
-					class="focus-ring type-section h-7 border-r border-border-default px-2.5 last:border-r-0"
-					style={active
-						? chip.color
-							? `background: ${chip.color}; color: var(--color-surface-window);`
-							: 'background: var(--color-text-secondary); color: var(--color-surface-window);'
-						: 'color: var(--color-text-tertiary);'}
-					onclick={() => (logs.level = chip.value)}
-				>
-					{chip.label}
-				</button>
-			{/each}
-		</div>
+		<SegmentedControl segments={LEVELS} bind:value={logs.level} label="Level" dense />
 
 		<input
 			type="text"
 			placeholder="Filter…"
+			aria-label="Filter lines"
 			bind:value={logs.textFilter}
-			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
+			class={TOOLBAR_FIELD}
 		/>
 
 		<!-- view mode: own preference, independent of the log panel's (#461, #492) -->
 		<span data-testid="logs-view-mode" title="Log view: raw text, humanised JSON or Elastic Common Schema">
-			<SegmentedControl segments={VIEW_MODES} bind:value={logs.viewMode} />
+			<SegmentedControl segments={VIEW_MODES} bind:value={logs.viewMode} label="Log view" dense />
 		</span>
 
 		{#if history}
@@ -236,37 +230,20 @@
 				</button>
 			{/if}
 		{:else}
-			<button
-				type="button"
-				class="focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md px-2.5 font-medium"
-				style={logs.following
-					? 'background: var(--color-status-ok); color: var(--color-surface-window);'
-					: 'background: var(--alpha-pill-warn); color: var(--color-status-warn);'}
-				onclick={() => logs.toggleFollow()}
-			>
-				{logs.following ? '● Following' : '⏸ Paused'}
-			</button>
-
-			<button
-				type="button"
-				class="focus-ring type-caption flex h-7 items-center rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110"
-				onclick={() => logs.clear()}
-			>
-				Clear
-			</button>
+			<FollowChip following={logs.following} onToggle={() => logs.toggleFollow()} />
+			<Button variant="text" size="inline" onclick={() => logs.clear()}>Clear</Button>
 		{/if}
 	</div>
 
-	<div
-		class="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-default bg-surface-sunken"
-	>
+	<!-- Never shorter than four lines: with the log panel open in a small window the
+	     card scrolls instead. -->
+	<div class="relative flex min-h-18 flex-1 flex-col overflow-hidden rounded-lg bg-surface-sunken" data-testid="logs-lines">
 		{#if history}
 			<HistoryStrip {history} />
 		{:else if !logs.following && logs.bufferedWhilePaused > 0}
 			<div class="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">
 				<span
-					class="type-caption animate-pulse rounded-full px-2.5 py-1"
-					style="background: var(--alpha-pill-warn); color: var(--color-status-warn);"
+					class="type-body-sm rounded-full bg-warning-container px-3 py-1 font-semibold text-on-warning-container shadow-overlay motion-safe:animate-pulse"
 				>
 					paused — new lines buffered
 				</span>
@@ -275,7 +252,7 @@
 
 		<div bind:this={container} class="min-h-0 flex-1 overflow-y-auto py-1">
 			{#if logs.filtered.length === 0}
-				<p class="py-8 text-center text-xs text-text-disabled">
+				<p class="type-body-sm py-8 text-center text-text-muted">
 					{#if history}
 						{history.loading || history.error
 							? ''
@@ -292,7 +269,7 @@
 						{line}
 						timestamps={true}
 						wrap={true}
-						source={{ name: line.pod, color: 'var(--color-text-secondary)', wide: true }}
+						source={{ name: line.pod, index: null, wide: true }}
 						mode={logs.viewMode}
 						expanded={logs.expanded.has(line.id)}
 						ontoggle={() => logs.toggleExpanded(line.id)}

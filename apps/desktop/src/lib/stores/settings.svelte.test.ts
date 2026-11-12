@@ -55,6 +55,23 @@ describe("settings", () => {
     expect((await freshSettings()).kubeconfigPaths.value).toEqual(["/a", "/b"]);
   });
 
+  // A pop-out log window keeps the tint of its pod's cluster (Tonal §4.1, §8.5):
+  // a colour changed in the main window reaches it as a storage event.
+  it("cluster colours follow a change made in another window", async () => {
+    const settings = await freshSettings();
+    expect(settings.identityColors.value).toEqual({});
+    window.localStorage.setItem("cubelite.identityColors", JSON.stringify({ staging: "magenta" }));
+    window.dispatchEvent(new StorageEvent("storage", { key: "cubelite.identityColors" }));
+    expect(settings.identityColors.value).toEqual({ staging: "magenta" });
+  });
+
+  it("other settings do not follow another window", async () => {
+    const settings = await freshSettings();
+    window.localStorage.setItem("cubelite.theme", JSON.stringify("light"));
+    window.dispatchEvent(new StorageEvent("storage", { key: "cubelite.theme" }));
+    expect(settings.theme.value).toBe("dark");
+  });
+
   it("reset clears storage and restores the default", async () => {
     const settings = await freshSettings();
     settings.skipTls.value = true;

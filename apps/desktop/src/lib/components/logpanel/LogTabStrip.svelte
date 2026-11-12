@@ -3,67 +3,57 @@
 	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import X from '@lucide/svelte/icons/x';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
-	import type { SessionStatus } from '#lib/stores/logSession.svelte.ts';
-
-	function dot(status: SessionStatus): string {
-		if (status === 'streaming') return 'var(--color-status-ok)';
-		if (status === 'error') return 'var(--color-status-err)';
-		return 'var(--color-status-warn)';
-	}
+	import { TOOLBAR_ICON } from '#lib/ui-classes.ts';
+	import StreamState from './StreamState.svelte';
 </script>
 
-<div
-	class="flex h-[33px] shrink-0 items-center gap-1 overflow-x-auto border-b border-border-default px-1.5"
->
+<!-- One pill per session; its stream state is a shape and a word (Tonal §9.3). -->
+<div class="flex h-11 shrink-0 items-center gap-1 overflow-x-auto px-2 pt-1" data-testid="log-tabs">
 	{#each logPanel.sessions as session (session.key)}
 		{@const active = session.key === logPanel.activeKey}
 		<div
-			class="group flex h-[26px] shrink-0 items-center gap-1.5 rounded-md px-2 {active
-				? 'bg-surface-sunken'
-				: 'hover:bg-surface-sunken/50'}"
+			class="group flex h-(--control-inline-h) shrink-0 items-center gap-1 rounded-full pr-1 pl-3 {active
+				? 'bg-surface-container-high text-text'
+				: 'text-text-muted hover-layer'}"
 		>
 			<button
 				type="button"
-				class="flex items-center gap-1.5"
+				class="focus-ring flex items-center gap-2 rounded-full"
+				aria-current={active ? 'true' : undefined}
 				onclick={() => logPanel.focus(session.key)}
 			>
-				<span
-					class="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-					style="background: {dot(session.status)};"
-				></span>
-				<span class="type-caption font-mono {active ? 'text-text-primary' : 'text-text-secondary'}"
-					>{session.pod}</span
-				>
-				<span class="type-caption font-mono text-text-tertiary">{session.container ?? ''}</span>
+				<StreamState status={session.status} />
+				<span class="type-data-sm {active ? 'font-semibold' : ''}">{session.pod}</span>
+				<span class="type-data-sm text-text-muted">{session.container ?? ''}</span>
 			</button>
 			<button
 				type="button"
-				class="focus-ring rounded p-0.5 text-text-tertiary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-text-secondary focus-visible:opacity-100"
+				class="focus-ring hover-layer flex h-6 w-6 items-center justify-center rounded-full text-text-muted opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
 				aria-label={`Close ${session.pod} logs`}
 				onclick={() => void logPanel.closeSession(session.key)}
 			>
-				<X size={11} strokeWidth={1.5} />
+				<X class="h-3.5 w-3.5" aria-hidden="true" />
 			</button>
 		</div>
 	{/each}
 	<span class="flex-1"></span>
 	<button
 		type="button"
-		class="focus-ring flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-tertiary hover:text-text-secondary"
+		class={TOOLBAR_ICON}
 		aria-label={logPanel.collapsed ? 'Expand log panel' : 'Collapse log panel'}
 		onclick={() => logPanel.toggleCollapsed()}
 	>
-		{#if logPanel.collapsed}<ChevronUp size={14} strokeWidth={1.5} />{:else}<ChevronDown
-				size={14}
-				strokeWidth={1.5}
+		{#if logPanel.collapsed}<ChevronUp class="h-4 w-4" aria-hidden="true" />{:else}<ChevronDown
+				class="h-4 w-4"
+				aria-hidden="true"
 			/>{/if}
 	</button>
 	<button
 		type="button"
-		class="focus-ring flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-tertiary hover:text-text-secondary"
+		class={TOOLBAR_ICON}
 		aria-label="Close active session"
 		onclick={() => logPanel.active && void logPanel.closeSession(logPanel.active.key)}
 	>
-		<X size={14} strokeWidth={1.5} />
+		<X class="h-4 w-4" aria-hidden="true" />
 	</button>
 </div>

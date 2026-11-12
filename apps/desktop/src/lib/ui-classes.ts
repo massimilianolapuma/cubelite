@@ -77,3 +77,45 @@ export const PANEL_CARD = "rounded-lg bg-surface-container-top";
 
 /** Heading of a section of the detail panel. */
 export const PANEL_SECTION = "type-label mb-2 text-text-muted";
+
+/**
+ * Log toolbars (Tonal §8.5): the Logs view, the log panel and the pop-out
+ * window share chips and pill fields as tall as the segmented groups beside
+ * them, so a toolbar stays one row where it fits.
+ */
+export const TOOLBAR_CHIP =
+  "focus-ring type-body-sm relative inline-flex h-(--control-inline-h) max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-full px-3";
+
+/** A resting toolbar chip: a quiet surface that opens or toggles something. */
+export const TOOLBAR_CHIP_REST = `${TOOLBAR_CHIP} bg-surface-container-high text-text hover:brightness-110`;
+
+const TOOLBAR_FILL =
+  "focus-ring h-(--control-inline-h) rounded-full bg-surface-container-high type-body-sm text-text";
+
+/** Text field in a log toolbar: a filled pill. */
+export const TOOLBAR_FIELD = `${TOOLBAR_FILL} w-44 max-w-full min-w-0 px-3.5 placeholder:text-text-subtle`;
+
+/**
+ * Text field that takes the room a toolbar row has left: from 6 rem up to
+ * 15 rem. Its basis is the minimum, so it never pushes the row's other
+ * controls onto a second row.
+ */
+export const TOOLBAR_FIELD_FLEX = `${TOOLBAR_FILL} min-w-24 max-w-60 grow basis-24 px-3.5 placeholder:text-text-subtle`;
+
+/** Native select in a log toolbar (its popup stays native). */
+export const TOOLBAR_SELECT = `${TOOLBAR_FILL} max-w-full min-w-0 pr-2 pl-3.5`;
+
+/** Icon-only control in a toolbar: a disc with a layer of its own colour on hover. */
+export const TOOLBAR_ICON =
+  "focus-ring hover-layer relative flex h-(--control-inline-h) w-(--control-inline-h) shrink-0 items-center justify-center rounded-full text-text-muted";
+
+/** A menu that opens above its toolbar control (hand-rolled, not bits-ui). */
+export const TOOLBAR_MENU =
+  "animate-popin absolute bottom-full z-20 mb-1 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
+
+/** One row of a `TOOLBAR_MENU`. */
+export const TOOLBAR_MENU_ITEM =
+  "focus-ring-inset hover-layer flex w-full items-center gap-3 rounded-md px-3 py-2 text-left type-body text-text";
+
+/** A small text action inside a block, e.g. Copy JSON above an expanded log line. */
+export const INLINE_ACTION = "focus-ring hover-layer type-label rounded-full px-2.5 py-1 text-text-muted";

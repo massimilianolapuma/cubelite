@@ -171,7 +171,7 @@ test("History reads a pod's logs from Elasticsearch and opens Kibana (#501)", as
   expect(opened).toMatchObject({ kibanaUrl: "https://kibana.example", pod: "api-0", from: "now-1h", to: "now" });
 
   await page.getByTestId("logpanel-source").getByRole("radio", { name: "Live" }).click();
-  await expect(page.getByText("● Following")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Following" })).toBeVisible();
 });
 
 test("Logs view reads a deployment's history from Elasticsearch (#529)", async ({ page }) => {
@@ -209,7 +209,7 @@ test("Logs view reads a deployment's history from Elasticsearch (#529)", async (
   expect(opened).toMatchObject({ kibanaUrl: "https://kibana.example", workload: { kind: "deployment", name: "api" } });
 
   await page.getByTestId("logs-source").getByRole("radio", { name: "Live" }).click();
-  await expect(page.getByText("● Following")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Following" })).toBeVisible();
 });
 
 test("Open in Kibana forwards to an in-cluster Kibana without a URL (#505)", async ({ page }) => {

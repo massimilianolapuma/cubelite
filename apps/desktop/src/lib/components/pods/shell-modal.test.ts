@@ -71,9 +71,9 @@ describe("ShellModal (#488)", () => {
     emit("exec-output", { channel: "stderr", text: "sh: nope: not found" });
     emit("exec-output", { channel: "status", text: "command terminated with exit code 127" });
 
-    expect(await screen.findByText("bin etc usr")).toHaveClass("text-text-log");
-    expect(screen.getByText("sh: nope: not found")).toHaveClass("text-status-err");
-    expect(screen.getByText("command terminated with exit code 127")).toHaveClass("text-text-tertiary");
+    expect(await screen.findByText("bin etc usr")).toHaveAttribute("data-kind", "stdout");
+    expect(screen.getByText("sh: nope: not found")).toHaveAttribute("data-kind", "stderr");
+    expect(screen.getByText("command terminated with exit code 127")).toHaveAttribute("data-kind", "status");
   });
 
   it("disables the input when the session ends", async () => {

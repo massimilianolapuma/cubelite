@@ -17,7 +17,7 @@ import type { SessionTransfer } from "./sessionTransfer";
 export const PANEL_MIN = 160;
 export const PANEL_MAX = 560;
 export const PANEL_DEFAULT = 280;
-export const PANEL_COLLAPSED = 34;
+export const PANEL_COLLAPSED = 48;
 const SESSION_CAP = 6;
 
 const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";

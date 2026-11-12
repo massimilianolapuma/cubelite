@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
@@ -63,11 +63,16 @@ beforeEach(async () => {
 describe("LogsView", () => {
   it("renders severity chips, follow toggle and clear", () => {
     render(LogsView);
-    for (const chip of ["ALL", "INFO", "WARN", "ERROR"]) {
-      expect(screen.getByText(chip)).toBeInTheDocument();
+    const levels = within(screen.getByRole("radiogroup", { name: "Level" }));
+    for (const chip of ["All", "INFO", "WARN", "ERROR"]) {
+      expect(levels.getByRole("radio", { name: chip })).toBeInTheDocument();
     }
-    expect(screen.getByText("● Following")).toBeInTheDocument();
-    expect(screen.getByText("Clear")).toBeInTheDocument();
+    expect(levels.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+    // Following is a chip with the circle, not a coloured word (Tonal §8.5).
+    const follow = screen.getByRole("button", { name: "Following" });
+    expect(follow).toHaveAttribute("data-state", "following");
+    expect(follow.querySelector('[data-glyph="ok"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Clear" })).toBeInTheDocument();
   });
 
   it("renders lines with time, level, pod and message", async () => {
@@ -80,8 +85,8 @@ describe("LogsView", () => {
     expect(await screen.findByText("listening on :8080")).toBeInTheDocument();
     expect(screen.getByText("ERROR boom")).toBeInTheDocument();
     expect(screen.getByText("worker-1")).toBeInTheDocument();
-    const errorRow = screen.getByText("ERROR boom").closest("div");
-    expect(errorRow?.getAttribute("style")).toContain("--alpha-log-error-row");
+    const errorRow = screen.getByText("ERROR boom").closest("[data-level]");
+    expect(errorRow).toHaveAttribute("data-level", "error");
   });
 
   it("filters by severity chip", async () => {
@@ -90,23 +95,23 @@ describe("LogsView", () => {
     logs.push(line({ message: "info line" }));
     logs.push(line({ level: "warn", message: "warn line" }));
     await screen.findByText("warn line");
-    await fireEvent.click(screen.getByText("WARN"));
+    await fireEvent.click(screen.getByRole("radio", { name: "WARN" }));
     expect(screen.queryByText("info line")).toBeNull();
     expect(screen.getByText("warn line")).toBeInTheDocument();
   });
 
   it("shows the paused pill when paused with buffered lines", async () => {
     render(LogsView);
-    await fireEvent.click(screen.getByText("● Following"));
+    await fireEvent.click(screen.getByRole("button", { name: "Following" }));
     logs.push(line());
     expect(await screen.findByText("paused — new lines buffered")).toBeInTheDocument();
-    expect(screen.getByText("⏸ Paused")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Paused" })).toHaveAttribute("data-state", "paused");
   });
 
   it("clears the buffer", async () => {
     logs.push(line());
     render(LogsView);
-    await fireEvent.click(screen.getByText("Clear"));
+    await fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(logs.lines).toHaveLength(0);
   });
 });
@@ -155,16 +160,16 @@ describe("LogsView JSON view (#461)", () => {
     expect(screen.getByTestId("json-tree")).toBeInTheDocument();
     expect(logs.expanded.has(logs.lines[0]!.id)).toBe(true);
 
-    await fireEvent.click(screen.getByText("Clear"));
+    await fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     expect(logs.expanded.size).toBe(0);
   });
 
-  it("pod column is wide and carries the full name as title", async () => {
+  // Its width is checked on the rendered page (logs-tonal.spec.ts).
+  it("pod column carries the full name as title", async () => {
     render(LogsView);
     await new Promise((r) => setTimeout(r, 0));
     logs.push(line({ pod: "simulator-bff-5dd4ff54cf-9bq7n" }));
     const pod = await screen.findByText("simulator-bff-5dd4ff54cf-9bq7n");
     expect(pod).toHaveAttribute("title", "simulator-bff-5dd4ff54cf-9bq7n");
-    expect(pod.className).toContain("w-[140px]");
   });
 });
