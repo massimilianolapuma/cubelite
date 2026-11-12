@@ -34,6 +34,51 @@ async function boot(page: Page, theme: Theme = "dark", hang: string[] = []) {
   await page.goto("/");
 }
 
+/** A Prometheus endpoint for prod-aks: the panels get their Metrics section. Call before `boot`. */
+async function withPrometheus(page: Page) {
+  await page.addInitScript(() =>
+    window.localStorage.setItem(
+      "cubelite.prometheus.endpoints",
+      JSON.stringify({
+        "prod-aks": {
+          target: { kind: "in-cluster", namespace: "monitoring", service: "prometheus-operated", port: 9090, https: false },
+          cluster: null,
+          grafanaDatasource: null,
+          grafanaUrl: null,
+          skipTlsVerify: false,
+        },
+      }),
+    ),
+  );
+}
+
+/**
+ * The elements inside `scope` whose own text matches `pattern` and that a
+ * sighted user sees: laid out wider than a pixel (not `sr-only`) and visible.
+ */
+async function shownText(scope: Locator, pattern: RegExp): Promise<string[]> {
+  return scope.evaluate(
+    (root, [source, flags]) => {
+      const re = new RegExp(source, flags);
+      const out: string[] = [];
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const el = node.parentElement;
+        if (!el || !re.test(node.textContent ?? "") || getComputedStyle(el).visibility !== "visible") continue;
+        // `sr-only` shrinks an ancestor to a pixel and clips what it holds.
+        let shown = true;
+        for (let a: Element | null = el; a && shown; a = a === root ? null : a.parentElement) {
+          const box = a.getBoundingClientRect();
+          shown = box.width > 2 && box.height > 2;
+        }
+        if (shown) out.push(node.textContent!.trim());
+      }
+      return out;
+    },
+    [pattern.source, pattern.flags] as const,
+  );
+}
+
 /** The Pods list with api-0 selected: the content card, the panel and its tiles. */
 async function podsWithPanel(page: Page) {
   await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
@@ -362,27 +407,22 @@ test.describe("reduced motion (prefers-reduced-motion: reduce)", () => {
 
   test("a spinner stops and keeps its word", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.addInitScript(() =>
-      window.localStorage.setItem(
-        "cubelite.prometheus.endpoints",
-        JSON.stringify({
-          "prod-aks": {
-            target: { kind: "in-cluster", namespace: "monitoring", service: "prometheus-operated", port: 9090, https: false },
-            cluster: null,
-            grafanaDatasource: null,
-            grafanaUrl: null,
-            skipTlsVerify: false,
-          },
-        }),
-      ),
-    );
-    await boot(page, "dark", ["apply_resource_yaml", "prometheus_metrics"]);
+    await withPrometheus(page);
+    await boot(page, "dark", ["apply_resource_yaml", "prometheus_metrics", "delete_pod"]);
     const panel = await podsWithPanel(page);
 
-    // Loading metrics: a still circle and the words, which are otherwise read out only.
+    // First load: a still circle by the heading, and the words once, in the section's body.
     const section = panel.getByTestId("metrics-section");
     await section.scrollIntoViewIfNeeded();
-    await expect(section.getByText("Loading metrics", { exact: true })).toBeVisible();
+    await expect(section.locator('[data-loading][data-active="true"]')).toBeVisible();
+    expect(await shownText(section, /loading metrics/i)).toEqual(["loading metrics…"]);
+
+    // A pending button with an icon fades its label as one without: the still
+    // circle in place of the icon is not enough on its own.
+    const restart = panel.getByRole("button", { name: "Restart" });
+    await restart.click();
+    await expect(restart).toHaveAttribute("aria-busy", "true");
+    expect(Number(await restart.getByText("Restart").evaluate((el) => getComputedStyle(el).opacity))).toBe(0.45);
 
     // A pending button with no icon of its own keeps its label in view.
     await panel.getByRole("button", { name: "YAML" }).click();
@@ -392,9 +432,47 @@ test.describe("reduced motion (prefers-reduced-motion: reduce)", () => {
     await apply.click();
     await expect(apply).toHaveAttribute("aria-busy", "true");
     const label = apply.getByText("Apply");
-    expect(Number(await label.evaluate((el) => getComputedStyle(el).opacity))).toBeGreaterThan(0.4);
+    expect(Number(await label.evaluate((el) => getComputedStyle(el).opacity))).toBe(0.45);
     expect(await moving(page), "pending").toEqual([]);
   });
+
+  // A reload keeps the charts on screen: the header above them must not move
+  // while it runs (#632 review), whatever the motion preference.
+  for (const motion of ["reduce", "no-preference"] as const) {
+    for (const subject of ["pod", "node"] as const) {
+      test(`${motion}: the ${subject} Metrics header holds still while a range reloads`, async ({ page }) => {
+        await page.emulateMedia({ reducedMotion: motion });
+        await withPrometheus(page);
+        await boot(page);
+        let section: Locator;
+        if (subject === "pod") {
+          section = (await podsWithPanel(page)).getByTestId("metrics-section");
+        } else {
+          await page.getByRole("complementary").getByText("Nodes", { exact: true }).click();
+          await page.getByText("node-1", { exact: true }).click();
+          section = page.getByRole("dialog", { name: "node-1" }).getByTestId("node-metrics-section");
+        }
+        await section.scrollIntoViewIfNeeded();
+        const chart = section.getByTestId("metrics-chart").first();
+        await expect(chart).toBeVisible();
+        const range = section.getByRole("radiogroup", { name: "Metrics range" });
+        // The range control's top, right edge and height (its width follows the
+        // bold selected segment), and the first chart's whole box.
+        const boxes = async () => {
+          const r = (await range.boundingBox())!;
+          return { range: { top: r.y, right: Math.round(r.x + r.width), height: r.height }, chart: await chart.boundingBox() };
+        };
+        const loaded = await boxes();
+
+        await page.evaluate(() => ((window as unknown as HangWindow).__hang = ["prometheus_metrics", "prometheus_node_metrics"]));
+        await range.getByRole("radio", { name: "6h" }).click();
+        await expect(section.locator('[data-loading][data-active="true"]')).toBeVisible();
+        expect(await boxes(), "while reloading").toEqual(loaded);
+        // Told by more than a still circle, once: the words with reduced motion.
+        expect(await shownText(section, /loading metrics/i)).toEqual(motion === "reduce" ? ["Loading metrics"] : []);
+      });
+    }
+  }
 
   test("with motion allowed, the spinner turns and the label gives way to it", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });

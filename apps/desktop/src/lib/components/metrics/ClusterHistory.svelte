@@ -23,9 +23,8 @@
 	<div class="mt-1 flex flex-col gap-2" data-testid="cluster-history">
 		<div class="flex items-center gap-2">
 			<span class="type-label text-text-muted">History</span>
-			{#if promOverview.usageLoading}
-				<Loading label="Loading cluster history" />
-			{/if}
+			<!-- Always in place, so the range control never moves; the body says it on a first load. -->
+			<Loading label="Loading cluster history" active={promOverview.usageLoading} words={!!promOverview.usage} />
 			<span class="ml-auto"></span>
 			<SegmentedControl segments={METRICS_RANGES} bind:value={promOverview.range} label="History range" />
 		</div>

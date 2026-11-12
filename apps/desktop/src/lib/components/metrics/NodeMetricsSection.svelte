@@ -56,9 +56,8 @@
 	<div bind:this={root} data-testid="node-metrics-section">
 		<div class="mb-2 flex flex-wrap items-center gap-2">
 			<span class="type-label text-text-muted">Metrics</span>
-			{#if loading}
-				<Loading label="Loading metrics" />
-			{/if}
+			<!-- Always in place, so the controls never move; the body says it on a first load. -->
+			<Loading label="Loading metrics" active={loading} words={!!result} />
 			<span class="ml-auto"></span>
 			<SegmentedControl segments={METRICS_RANGES} bind:value={range} label="Metrics range" />
 			{#if grafana && result}
