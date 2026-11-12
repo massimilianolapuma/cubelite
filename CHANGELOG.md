@@ -14,18 +14,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     contrast), secondary text is darker in the light theme and brighter in
     the dark one, and every card, tile, dialog, menu and toast gets a
     visible edge.
-  - In a **Windows contrast theme** nothing is told by a fill alone any more:
-    the selected row, the current sidebar item and cluster, pressed filters,
-    the chosen option of a segmented control, a switch that is on, the
-    highlighted menu, palette row and log tab take the system's highlight
-    colour; fields, toggles, avatars, badges and meters keep an edge; the
-    main action of a panel or dialog stands out from the others; status
-    shapes and icons take the system's text colour.
+  - In a **Windows contrast theme** the states that were told by a fill take
+    a system colour, an edge or a shape instead: the selected row, the current
+    sidebar item and cluster, pressed filters, the chosen option of a
+    segmented control, a switch that is on, the highlighted menu item,
+    palette row and log tab take the system's highlight colour; fields,
+    toggles, avatars, badges and meters keep an edge; buttons, chips, the
+    search buttons and key hints get one too; the main action of a panel or
+    dialog stands out from the others; status shapes and icons take the
+    system's text colour. Chart lines and their legend keys take the text
+    colour, and each series a dash of its own (past eight series the dashes
+    come round again); request and limit lines keep their short dash, which
+    no series uses. The cluster colour swatches keep their colours and name them
+    when you point at one. Rows of a resource list and of the sidebar show
+    where the pointer is.
   - With **reduced motion** nothing moves: panels, dialogs, menus and toasts
     appear at once, chevrons and the cluster colour change at once, the
     loading rows and the paused pill stop pulsing, and spinners stand still.
-    A busy button keeps its label in view, and "Loading metrics" is written
-    beside its still circle.
+    A busy button keeps its label in view, faded. While metrics reload,
+    "Loading metrics" is written beside the still circle; on a first load
+    the section says it once, below.
+  - The Metrics header no longer moves while metrics load, with or without
+    reduced motion.
 
 ### Changed
 
@@ -112,12 +122,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   downloads.
 - **Clearer states everywhere** (#632): a pressed status filter has a ring
   in its state's colour, and a meter's track has a visible edge, so neither
-  depends on a faint fill. The Apply button of the YAML editor is the
-  dialog's main action, as tall as the others. An empty value is an en
-  dash everywhere (ages, metrics, Preferences), and messages no longer use
-  an em dash as punctuation: "Log session for api-0 closed: the cluster
-  changed", the shell dialog is "api-0 shell" and the log window "api-0
-  logs".
+  depends on a faint fill. The log toolbar's previous-instance and filter
+  toggles get the same ring when pressed. Search and filter fields and the
+  menus in toolbars (the list filter, the log search, the label selector,
+  the tail, workload and history menus, the custom resource filter) have a
+  visible edge. A control that Tab scrolls into view in Preferences or a
+  detail panel shows its whole focus ring. The Apply button of the YAML
+  editor is the dialog's main action, as tall as the others. An empty value
+  is an en dash (ages, metrics, Preferences, an event with no object), and
+  CubeLite's own messages, the errors it reports included, no longer use an
+  em dash as punctuation: "Log session for api-0 closed: the cluster
+  changed", "authentication failed: check the credentials", the shell
+  dialog is "api-0 shell" and the log window "api-0 logs".
 - **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
   saved as amber becomes indigo and one saved as pink becomes magenta: warm
   colours are reserved for warnings and errors.

@@ -110,7 +110,7 @@ labels are sentence case) or an unknown colour role stops it.
   `--control-primary-h`; `<html data-density="compact">` swaps each for its `-compact` value (the
   rule at the end of `app.css`).
 - `motion`: animation timings, emitted as `--motion-*`. Under `prefers-reduced-motion: reduce`
-  every animation and transition is off (a rule near the end of `app.css`).
+  every animation and transition is off (see "More contrast, forced colours, reduced motion").
 - `contrast.more`: under `prefers-contrast: more` each role listed takes another role's value
   (`text-subtle` → `text-muted`), on `:root` and every `[data-tint]` subtree, in both themes.
   Cards, tiles and overlays carry the `card` class (`app.css`), which gains an `outline-strong`
@@ -211,7 +211,38 @@ per retired name. Both run in CI (Design Lint job) and in `scripts/gates.sh` (`l
 
 - 4.5:1 — `text`, `text-muted`, `text-subtle`, `primary`, `success`, `warning`, `error` on every
   surface; each `on-*` on its fill; `data-1` … `data-5` on the sunken and container surfaces;
-- 3:1 — `outline-strong` on every surface, `success` on `primary-container`, the meter fills
-  (`primary`, `warning`, `error`) on their `outline` track.
+- 3:1 — `success` on `primary-container` (the healthy glyph on a selected row).
 
-Every colour role must appear in that matrix or in its exempt list with a reason.
+A second table, `CONTROLS`, holds the edge, indicator or glyph that identifies each control to
+3:1 against what it sits on (WCAG 1.4.11), on the same hues and themes: a field's
+`outline-strong` edge (forms, and the filled toolbar fields and selects, on their fill and on the
+card or window), the switch, a checked checkbox, the selected segment's and a pressed chip's or
+log toolbar toggle's `primary` ring (on its fill and on the card), icon glyphs, a pressed icon
+toggle, the meter track's edge and fills, and the focus ring on every surface and row. A control
+named by its own text (a chip's label) is identified by that text, held to 4.5:1 above.
+
+Every colour role must appear in one of the tables or in the exempt list with a reason. What the
+tables cannot see (a ring drawn on a real fill, a meter on its card, the controls in forced
+colours) is checked in the browser by `apps/desktop/tests/e2e/a11y-tonal.spec.ts`.
+
+### More contrast, forced colours, reduced motion
+
+- **More contrast** (`prefers-contrast: more`): `contrast.more` in `tokens.json` swaps
+  `text-subtle` for `text-muted` (generated, on `:root` and every `[data-tint]`); the `card`
+  class gains a 1 px `outline-strong` outline drawn inside.
+- **Forced colours** (`forced-colors: active`, the block at the end of `app.css`): no state may
+  live in a fill or a shadow, which the system palette replaces. Selected rows, current items,
+  pressed and checked controls take `Highlight` / `HighlightText` and opt out of the forcing so
+  their text gets no backplate; fields, toggles, avatars, badges, swatches and tonal buttons get
+  a `CanvasText` border; the one primary action is inverted (`ButtonText` fill); SVG glyphs and
+  icons follow their text. Chart lines and legend keys take `CanvasText` and each series a dash of
+  its rank (`FORCED_DASHES` in `lib/metrics.ts`, set as `--forced-dash`), reference lines keep
+  their own. Cluster colour swatches keep their colour. Button-like controls whose fill was
+  their edge (class `forced-edge`, the text and danger buttons) and `kbd` get a system-colour
+  outline drawn inside, and list rows and the sidebar's rows a `Highlight` one on hover, in the utilities layer
+  so a focus ring wins over them. A focus ring on an item that opted out of the forcing takes a
+  system colour.
+- **Reduced motion**: one rule near the end of `app.css` turns every transition and animation
+  off. A spinner then stands still, so `ui/Loading.svelte` shows its words beside it (it keeps
+  their room whether it is active or not, so nothing next to it moves) and a pending `Button`
+  fades its label to 45 %.
