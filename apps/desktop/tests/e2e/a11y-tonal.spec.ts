@@ -11,9 +11,9 @@ const THEMES: Theme[] = ["dark", "light"];
 type HangWindow = { __hang: string[] };
 
 /**
- * `hang`: commands that never answer, so their spinner or placeholder stays on
+ * `hang`: commands that do not answer, so their spinner or placeholder stays on
  * screen. `window.__hang` can be changed later (`hangFrom`), once the app has
- * started.
+ * started; a held call answers as soon as its command leaves the list.
  */
 async function boot(page: Page, theme: Theme = "dark", hang: string[] = []) {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -23,7 +23,15 @@ async function boot(page: Page, theme: Theme = "dark", hang: string[] = []) {
     const w = window as unknown as { __TAURI_INTERNALS__: Internals } & HangWindow;
     w.__hang = cmds;
     const invoke = w.__TAURI_INTERNALS__.invoke.bind(w.__TAURI_INTERNALS__);
-    w.__TAURI_INTERNALS__.invoke = (cmd, args) => (w.__hang.includes(cmd) ? new Promise(() => {}) : invoke(cmd, args));
+    const held = (cmd: string, args: unknown) =>
+      new Promise((resolve) => {
+        const timer = setInterval(() => {
+          if (w.__hang.includes(cmd)) return;
+          clearInterval(timer);
+          resolve(invoke(cmd, args));
+        }, 20);
+      });
+    w.__TAURI_INTERNALS__.invoke = (cmd, args) => (w.__hang.includes(cmd) ? held(cmd, args) : invoke(cmd, args));
   }, hang);
   await page.addInitScript((t) => {
     window.localStorage.setItem("cubelite.onboardingSeen", "true");
@@ -609,14 +617,28 @@ test.describe("reduced motion (prefers-reduced-motion: reduce)", () => {
           const r = (await range.boundingBox())!;
           return { range: { top: r.y, right: Math.round(r.x + r.width), height: r.height }, chart: await chart.boundingBox() };
         };
-        const loaded = await boxes();
+        const before = await boxes();
 
         await page.evaluate(() => ((window as unknown as HangWindow).__hang = ["prometheus_metrics", "prometheus_node_metrics"]));
         await range.getByRole("radio", { name: "6h" }).click();
-        await expect(section.locator('[data-loading][data-active="true"]')).toBeVisible();
-        expect(await boxes(), "while reloading").toEqual(loaded);
+        const busy = section.locator('[data-loading][data-active="true"]');
+        await expect(busy).toBeVisible();
+        const reloading = await boxes();
         // Told by more than a still circle, once: the words with reduced motion.
         expect(await shownText(section, /loading metrics/i)).toEqual(motion === "reduce" ? ["Loading metrics"] : []);
+
+        // The rows do not move when the reload starts...
+        expect(reloading.range.top, "top while reloading").toBe(before.range.top);
+        expect(reloading.range.height, "height while reloading").toBe(before.range.height);
+        expect(reloading.chart, "chart while reloading").toEqual(before.chart);
+
+        // ...and nothing moves when it ends. The right edge is compared with the
+        // same segment selected on both sides: the bold segment changes the
+        // control's width, and where a row is tight that shifts the edge by a
+        // fraction of a pixel, which has nothing to do with loading.
+        await page.evaluate(() => ((window as unknown as HangWindow).__hang = []));
+        await expect(busy).toHaveCount(0);
+        expect(await boxes(), "after the reload").toEqual(reloading);
       });
     }
   }
