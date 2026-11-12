@@ -42,6 +42,7 @@ function flush(): Promise<void> {
 import CommandPalette from "./CommandPalette.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
+import { health } from "#lib/stores/health.svelte.ts";
 import { logPanel } from "#lib/stores/logPanel.svelte.ts";
 import { elastic } from "#lib/stores/elastic.svelte.ts";
 import { prometheus } from "#lib/stores/prometheus.svelte.ts";
@@ -161,6 +162,49 @@ describe("CommandPalette", () => {
     await flush();
     expect(app.paletteOpen).toBe(false);
     expect(logPanel.activeKey).toBe("default/api-0");
+  });
+});
+
+describe("cluster rows (Tonal §8.6)", () => {
+  const clusterRow = (name: string) => document.querySelector<HTMLElement>(`[data-cluster-row="${name}"]`);
+
+  afterEach(() => {
+    health.byContext = {};
+  });
+
+  it("each row carries its own cluster's tint, not the active one's", async () => {
+    render(CommandPalette);
+    await flush();
+    expect(clusterRow("prod")).toHaveAttribute("data-tint");
+    expect(clusterRow("staging")).toHaveAttribute("data-tint");
+    expect(clusterRow("prod")?.getAttribute("style")).toContain("--cl-hue-blue");
+    expect(clusterRow("staging")?.getAttribute("style")).toContain("--cl-hue-magenta");
+  });
+
+  it("shows health as a shape and a word", async () => {
+    health.byContext = { staging: { ...health.for("staging"), state: "unreachable" } };
+    render(CommandPalette);
+    await flush();
+    const prod = clusterRow("prod")!;
+    const staging = clusterRow("staging")!;
+    expect(prod).toHaveTextContent("Connected");
+    expect(prod.querySelector("[data-glyph]")).toHaveAttribute("data-glyph", "ok");
+    expect(staging).toHaveTextContent("Unreachable");
+    expect(staging.querySelector("[data-glyph]")).toHaveAttribute("data-glyph", "err");
+    clusters.connectionState = "unknown";
+    await flush();
+    expect(prod).toHaveTextContent("Not connected");
+    expect(prod.querySelector("[data-glyph]")).toHaveAttribute("data-glyph", "unknown");
+  });
+
+  it("draws no colour dots: nothing in the palette is painted by an inline style", async () => {
+    render(CommandPalette);
+    await flush();
+    const root = document.querySelector("[data-command-root]")!;
+    const painted = [...root.querySelectorAll<HTMLElement>("[style]")].filter((el) =>
+      /background|color:/.test(el.getAttribute("style") ?? ""),
+    );
+    expect(painted).toEqual([]);
   });
 });
 

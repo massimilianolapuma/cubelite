@@ -507,7 +507,8 @@
   /* Hover and keyboard highlight of unfilled controls: a layer of their own text
      colour, visible on every surface (Tonal §7). */
   .hover-layer:hover:not(:disabled):not([aria-disabled="true"]),
-  .menu-item[data-highlighted] {
+  .menu-item[data-highlighted],
+  .palette-row[data-selected] {
     background-color: color-mix(in srgb, currentColor 14%, transparent);
   }
   /* Inside a scrolling list an outer ring would be clipped. */

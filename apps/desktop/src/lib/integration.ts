@@ -3,7 +3,7 @@
  * Prometheus #510): URL checks, credential binding, saving rules.
  */
 import type { IntegrationTarget, ServiceRef } from "#lib/tauri.ts";
-import { FIELD } from "#lib/ui-classes.ts";
+import { CHECKBOX, FIELD } from "#lib/ui-classes.ts";
 
 export type TargetMode = "off" | "in-cluster" | "external";
 
@@ -51,6 +51,7 @@ export type FormResult = { ok: boolean; text: string };
 
 // Form controls of the integration settings, in the Tonal look (spec §7).
 export const INPUT_CLASS = FIELD;
+export const CHECKBOX_CLASS = CHECKBOX;
 export const BUTTON_CLASS =
   "focus-ring type-body-sm h-(--control-inline-h) shrink-0 rounded-full bg-primary-container px-3.5 font-semibold text-on-primary-container hover:brightness-110 disabled:opacity-45";
 /** Borderless link that opens a web UI (Kibana, Grafana). */

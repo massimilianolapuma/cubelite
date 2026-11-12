@@ -10,6 +10,8 @@
 	import { SORT_FIELDS, type SortDir, type SortField } from '#lib/list-sort.ts';
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
 	import { lists } from '#lib/stores/lists.svelte.ts';
+	import { ACCENT_LINK_CLASS } from '#lib/integration.ts';
+	import { FIELD_BASE } from '#lib/ui-classes.ts';
 
 	// Sidebar order / visibility, the default list sort (#496) and grouping (#547).
 	const arranged = $derived(navigation.arranged);
@@ -19,32 +21,26 @@
 		{ value: 'desc', label: 'Descending' }
 	];
 
+	// Icon-only buttons are discs (Tonal §7); a disabled one fades to 45 %.
 	const iconButton =
-		'focus-ring flex h-6 w-6 items-center justify-center rounded-sm text-text-tertiary hover:text-text-secondary disabled:opacity-30 disabled:hover:text-text-tertiary';
+		'focus-ring hover-layer hit-target flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-muted disabled:opacity-45';
 </script>
 
 <ProfilesPreferences />
 
 <section>
-	<div class="mb-1.5 flex items-baseline justify-between gap-3">
-		<div class="type-body text-text-primary">Navigation</div>
-		<button
-			type="button"
-			class="focus-ring type-caption rounded-sm text-accent hover:brightness-110"
-			onclick={() => navigation.reset()}
-		>
+	<div class="mb-2 flex items-baseline justify-between gap-3">
+		<div class="type-body text-text">Sidebar order</div>
+		<button type="button" class={ACCENT_LINK_CLASS} onclick={() => navigation.reset()}>
 			Reset to default
 		</button>
 	</div>
-	<div
-		class="flex flex-col gap-2 rounded-md border border-border-faint bg-surface-window px-2.5 py-2"
-		data-testid="navigation-prefs"
-	>
+	<!-- No section dots (Tonal §3 #6): sections are named, types indented under them. -->
+	<div class="flex flex-col gap-3 rounded-lg border border-outline px-4 py-3" data-testid="navigation-prefs">
 		{#each arranged as section, s (section.id)}
 			<div>
 				<div class="flex items-center gap-1">
-					<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: {section.dot};"></span>
-					<span class="type-section flex-1 pl-1 text-text-tertiary">{section.label}</span>
+					<span class="type-label flex-1 text-text-muted">{section.label}</span>
 					{#if section.id !== PINNED_SECTION}
 						<button
 							type="button"
@@ -71,8 +67,8 @@
 						{@const hidden = navigation.isHidden(item.view)}
 						{@const pinned = item.view === PINNED_VIEW}
 						{@const firstMovable = section.items[0]?.view === PINNED_VIEW ? 1 : 0}
-						<li class="flex items-center gap-1 pl-3.5" data-view={item.view}>
-							<span class="type-caption flex-1 {hidden ? 'text-text-disabled' : 'text-text-secondary'}">
+						<li class="flex items-center gap-1 pl-4" data-view={item.view}>
+							<span class="type-body-sm flex-1 {hidden ? 'text-text-subtle' : 'text-text'}">
 								{item.label}
 							</span>
 							{#if !pinned}
@@ -105,7 +101,7 @@
 									{#if hidden}<EyeOff size={13} />{:else}<Eye size={13} />{/if}
 								</button>
 							{:else}
-								<span class="type-caption text-text-disabled">always shown</span>
+								<span class="type-body-sm text-text-muted">always shown</span>
 							{/if}
 						</li>
 					{/each}
@@ -113,22 +109,22 @@
 			</div>
 		{/each}
 	</div>
-	<p class="type-caption mt-1 text-text-tertiary">
+	<p class="type-body-sm mt-2 text-text-muted">
 		Hidden types stay reachable from the command palette.
 	</p>
 </section>
 
-<section class="flex items-center justify-between gap-4">
+<section class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
 	<div>
-		<div class="type-body text-text-primary">Default list sort</div>
-		<p class="type-caption mt-0.5 text-text-tertiary">
+		<div class="type-body text-text">Default list sort</div>
+		<p class="type-body-sm mt-0.5 text-text-muted">
 			Click a column header to sort a list for this session.
 		</p>
 	</div>
-	<div class="flex items-center gap-2">
+	<div class="flex flex-wrap items-center gap-2">
 		<select
 			aria-label="Default sort field"
-			class="focus-ring type-caption h-7 rounded-md border border-border-default bg-surface-window px-2 text-text-primary"
+			class="{FIELD_BASE} w-auto pr-2"
 			value={lists.defaultSort.field}
 			onchange={(e) =>
 				(lists.defaultSort = {
@@ -142,6 +138,8 @@
 		</select>
 		{#if lists.defaultSort.field !== 'api'}
 			<SegmentedControl
+				label="Sort direction"
+				outlined
 				segments={dirSegments}
 				value={lists.defaultSort.dir}
 				onChange={(dir) => (lists.defaultSort = { field: lists.defaultSort.field, dir })}
@@ -152,8 +150,8 @@
 
 <section class="flex items-center justify-between gap-4">
 	<div>
-		<div class="type-body text-text-primary">Group by namespace</div>
-		<p class="type-caption mt-0.5 text-text-tertiary">
+		<div class="type-body text-text">Group by namespace</div>
+		<p class="type-body-sm mt-0.5 text-text-muted">
 			With all namespaces shown, lists get one collapsible group per namespace.
 		</p>
 	</div>

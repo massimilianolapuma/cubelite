@@ -23,12 +23,8 @@
 	onMount(() => app.pushModal(() => onClose()));
 </script>
 
-<div
-	class="animate-fadein fixed inset-0 z-40"
-	style="background: color-mix(in srgb, black 50%, transparent);"
-	role="presentation"
-	onclick={onClose}
-></div>
+<!-- Backdrop: black at 50 % (Tonal §7). -->
+<div class="animate-fadein fixed inset-0 z-40 bg-black/50" role="presentation" onclick={onClose}></div>
 <div
 	class="animate-popin fixed top-1/2 left-1/2 z-50 flex max-h-[80vh] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
 	style="width: {width}px;"
@@ -36,7 +32,7 @@
 	aria-modal="true"
 	aria-label={title}
 >
-	<header class="flex items-center justify-between gap-3 px-6 pt-5 pb-3">
+	<header class="flex shrink-0 items-center justify-between gap-3 px-6 pt-5 pb-3">
 		<h2 class="type-headline min-w-0 truncate" {title}>{title}</h2>
 		<button
 			type="button"
@@ -47,12 +43,13 @@
 			<X class="h-4 w-4" aria-hidden="true" />
 		</button>
 	</header>
-	<!-- Without a footer the body owns the bottom gutter. -->
-	<div class="flex-1 overflow-y-auto px-6 pt-2 {footer ? 'pb-2' : 'pb-6'}">
+	<!-- Without a footer the body owns the bottom gutter. Only the body scrolls: the
+	     title and the actions stay in the window however short it is. -->
+	<div class="min-h-0 flex-1 overflow-y-auto px-6 pt-2 {footer ? 'pb-2' : 'pb-6'}">
 		{@render children()}
 	</div>
 	{#if footer}
-		<footer class="flex justify-end gap-2 px-6 pt-3 pb-5">
+		<footer class="flex shrink-0 justify-end gap-2 px-6 pt-3 pb-5">
 			{@render footer()}
 		</footer>
 	{/if}

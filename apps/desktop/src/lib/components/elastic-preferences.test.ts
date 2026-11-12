@@ -75,7 +75,10 @@ describe("ElasticPreferences (#501)", () => {
     await fireEvent.change(screen.getByLabelText("Authentication"), { target: { value: "api-key" } });
     await fireEvent.input(screen.getByLabelText("API key"), { target: { value: "s3cret" } });
     await fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Elasticsearch 8.15.0 · logs · health green · 4 matching");
+    const passed = await screen.findByRole("status");
+    expect(passed).toHaveTextContent("Elasticsearch 8.15.0 · logs · health green · 4 matching");
+    // A passed test is a circle, not only a colour (Tonal §9.3).
+    expect(passed.querySelector("[data-glyph]")).toHaveAttribute("data-glyph", "ok");
     const [, , endpoint, auth] = vi.mocked(elasticTest).mock.calls[0]!;
     expect(endpoint.target).toEqual({ kind: "external", url: "https://es.example:9243" });
     expect(auth).toEqual({ method: "api-key", key: "s3cret" });
@@ -98,7 +101,10 @@ describe("ElasticPreferences (#501)", () => {
     await fireEvent.input(screen.getByLabelText("Namespace"), { target: { value: "logging" } });
     await fireEvent.input(screen.getByLabelText("Service"), { target: { value: "es" } });
     await fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("no ready pod");
+    const failed = await screen.findByRole("alert");
+    expect(failed).toHaveTextContent("no ready pod");
+    // A failed test is a square, not only a colour (Tonal §9.3).
+    expect(failed.querySelector("[data-glyph]")).toHaveAttribute("data-glyph", "err");
   });
 
   it("uses ECK credentials for an in-cluster endpoint", async () => {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { INPUT_CLASS, type SecretFields } from '#lib/integration-form.svelte.ts';
+	import { FIELD_BASE } from '#lib/ui-classes.ts';
 
 	// Authentication method and the secret fields it needs. `secretMethods`
 	// maps single-secret methods (API key, bearer) to their label and hint;
@@ -20,14 +21,14 @@
 	const single = $derived(secretMethods[fields.method]);
 </script>
 
-<div class="flex items-center gap-2">
-	<select class="{INPUT_CLASS} w-40" aria-label="Authentication" bind:value={fields.method}>
+<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+	<select class="{FIELD_BASE} w-44" aria-label="Authentication" bind:value={fields.method}>
 		{#each options as option (option.value)}
 			<option value={option.value}>{option.label}</option>
 		{/each}
 	</select>
 	{#if fields.stored && fields.stored !== 'none'}
-		<span class="type-caption text-text-tertiary">saved in the keychain: {fields.stored}</span>
+		<span class="type-body-sm text-text-muted">saved in the keychain: {fields.stored}</span>
 	{/if}
 </div>
 {#if fields.method === 'basic'}

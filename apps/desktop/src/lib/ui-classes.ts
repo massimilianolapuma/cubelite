@@ -16,12 +16,21 @@ export const MENU_ITEM =
   "menu-item flex cursor-default items-center gap-3 rounded-md px-3 py-2 type-body text-text-muted outline-none data-highlighted:text-text";
 
 /**
- * Text input inside a form: outlined, so it reads as a field on any surface.
+ * Text input inside a form, without a width: outlined, so it reads as a field on any surface.
  * 36 px in both densities: forms live in dialogs, where 44 px fields would
  * double the length of Preferences.
  */
-export const FIELD =
-  "focus-ring h-(--control-h-compact) w-full rounded-md border border-outline-strong bg-transparent px-3 type-body-sm text-text placeholder:text-text-subtle";
+export const FIELD_BASE =
+  "focus-ring h-(--control-h-compact) min-w-0 rounded-md border border-outline-strong bg-transparent px-3 type-body-sm text-text placeholder:text-text-subtle";
+
+/** A form field that takes its row's width. */
+export const FIELD = `${FIELD_BASE} w-full`;
+
+/**
+ * Native checkbox in a form: its box keeps the browser's outline (3:1 on the
+ * overlay in both themes), the tick takes the primary colour.
+ */
+export const CHECKBOX = "focus-ring h-4 w-4 shrink-0 accent-primary";
 
 /**
  * Round icon toggle (pin, group by namespace). Pressed is the full primary fill:

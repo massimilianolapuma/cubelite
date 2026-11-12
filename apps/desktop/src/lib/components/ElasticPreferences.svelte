@@ -340,14 +340,16 @@
 </script>
 
 <section data-testid="elastic-prefs">
-	<div class="mb-1.5 flex items-baseline justify-between gap-3">
-		<div class="type-body text-text-primary">Elasticsearch</div>
-		<div class="type-caption truncate text-text-tertiary">
+	<div class="mb-2 flex items-baseline justify-between gap-3">
+		<div class="type-body text-text">Elasticsearch</div>
+		<div class="type-body-sm min-w-0 truncate text-text-muted">
 			{view === 'default' ? 'for every context' : context ? `for ${context}` : 'no cluster selected'}
 		</div>
 	</div>
 	{#if context}
-		<div class="flex flex-col gap-2 rounded-md border border-border-faint bg-surface-window px-2.5 py-2">
+		<!-- An outlined group on the dialog's surface: its fields, segmented controls and
+		     checkboxes keep their 3:1 edge against the overlay itself. -->
+		<div class="flex flex-col gap-3 rounded-lg border border-outline px-4 py-3">
 			<EndpointScopeBar
 				scope={scope.scope}
 				pending={scope.pending}
@@ -405,7 +407,7 @@
 					</div>
 					<ClusterFilterFields bind:field={clusterField} bind:value={clusterValue} {fieldHint} />
 					<input class={INPUT_CLASS} aria-label="Kibana URL" placeholder="Kibana URL (optional), e.g. https://kibana.example.com" bind:value={kibanaUrl} />
-					{#if kibanaError}<p class="type-caption text-status-err">{kibanaError}</p>{/if}
+					{#if kibanaError}<p class="type-body-sm text-error">{kibanaError}</p>{/if}
 					{#if form.mode === 'in-cluster' && kibanaService}
 						<InClusterUi
 							name="Kibana"
@@ -419,11 +421,11 @@
 					<AuthFields fields={auth} options={authOptions} {secretMethods}>
 						{#snippet extra()}
 							{#if auth.method === 'eck-user'}
-								<div class="flex items-center gap-2">
+								<div class="flex flex-wrap items-center gap-2">
 									<button type="button" class={BUTTON_CLASS} disabled={busy !== null || incomplete} onclick={useEck}>
 										{busy === 'eck' ? 'Checking…' : 'Use ECK credentials'}
 									</button>
-									<span class="type-caption text-text-tertiary">Read from the cluster on each connection, never stored.</span>
+									<span class="type-body-sm text-text-muted">Read from the cluster on each connection, never stored.</span>
 								</div>
 							{/if}
 						{/snippet}

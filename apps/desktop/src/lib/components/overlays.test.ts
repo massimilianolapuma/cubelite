@@ -89,20 +89,23 @@ describe("Toaster", () => {
 });
 
 describe("DeletePodDialog", () => {
-  it("repeats pod name and namespace in mono and disables confirm by default", () => {
+  it("names the pod, its namespace and the cluster, and disables confirm by default", () => {
+    app.activeCluster = "prod";
     render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
-    expect(screen.getByText("api-0")).toBeInTheDocument();
-    expect(screen.getByText("default")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Delete Pod" });
+    const facts = within(dialog).getByRole("list", { name: "Pod to delete" });
+    expect(within(facts).getByText("Pod").nextElementSibling).toHaveTextContent("api-0");
+    expect(within(facts).getByText("Namespace").nextElementSibling).toHaveTextContent("default");
+    expect(within(facts).getByText("Cluster").nextElementSibling).toHaveTextContent("prod");
     expect(screen.getByRole("button", { name: "Delete Pod" })).toBeDisabled();
   });
 
-  it("labels the destructive fill with the role made for it", () => {
-    // `text` on `error-solid` is 2.8:1 in the light theme; `on-error-solid` is the
-    // pair the contrast matrix holds at 4.5:1.
+  it("confirms with the destructive solid button, the only one of its kind", () => {
+    // The colour pairing (`on-error-solid` on `error-solid`) is read on the rendered page (overlays-tonal.spec.ts).
     render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
     const confirm = screen.getByRole("button", { name: "Delete Pod" });
-    expect(confirm).toHaveClass("text-on-error-solid");
     expect(confirm).toHaveAttribute("data-variant", "danger-solid");
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute("data-variant", "text");
   });
 
   it("registers with the overlay stack so Esc closes it before the drawer", () => {
@@ -323,6 +326,45 @@ describe("PreferencesModal", () => {
     expect(screen.queryByText("Accent")).toBeNull();
   });
 
+  it("groups Theme, Density and Cluster colours under Appearance", () => {
+    render(PreferencesModal);
+    const appearance = screen.getByRole("region", { name: "Appearance" });
+    expect(within(appearance).getByRole("radiogroup", { name: "Theme" })).toBeInTheDocument();
+    expect(within(appearance).getByRole("radiogroup", { name: "Density" })).toBeInTheDocument();
+    expect(within(appearance).getByRole("radiogroup", { name: "Color for staging" })).toBeInTheDocument();
+  });
+
+  it("paints each swatch in its own tint and marks the chosen one by more than its colour", async () => {
+    render(PreferencesModal);
+    const group = screen.getByRole("radiogroup", { name: "Color for staging" });
+    for (const radio of within(group).getAllByRole("radio")) {
+      expect(radio).toHaveAttribute("data-tint");
+      expect(radio.getAttribute("style")).toContain(`--cl-hue-${radio.getAttribute("aria-label")}`);
+    }
+    const marked = () =>
+      within(group)
+        .getAllByRole("radio")
+        .filter((r) => r.querySelector("[data-swatch-mark]"))
+        .map((r) => r.getAttribute("aria-label"));
+    expect(marked()).toEqual(["magenta"]);
+    await fireEvent.click(within(group).getByRole("radio", { name: "teal" }));
+    expect(marked()).toEqual(["teal"]);
+  });
+
+  it("marks merged and redefined files with the attention shape, not only a colour", () => {
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/config", exists: true, contexts: 2, shadowed: [] },
+      { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: ["prod"] },
+    ];
+    render(PreferencesModal);
+    const rows = within(screen.getByRole("list", { name: "Kubeconfig files" })).getAllByRole("listitem");
+    expect(rows[0].querySelector("[data-glyph]")).toBeNull();
+    expect(within(rows[1]).getByText(/1 merged/).closest("[data-note]")?.querySelector("[data-glyph]")).toHaveAttribute(
+      "data-glyph",
+      "warn",
+    );
+  });
+
   it("overrides a cluster's identity color", async () => {
     render(PreferencesModal);
     const group = screen.getByRole("radiogroup", { name: "Color for staging" });
@@ -403,15 +445,33 @@ describe("PreferencesModal", () => {
 });
 
 describe("OnboardingModal", () => {
+  it("lists each cluster in its own tint", async () => {
+    app.onboardingOpen = true;
+    render(OnboardingModal);
+    await fireEvent.click(screen.getByText("Continue"));
+    const avatars = screen.getAllByTestId("identity-avatar");
+    expect(avatars.map((a) => a.getAttribute("style"))).toEqual([
+      expect.stringContaining("--cl-hue-blue"),
+      expect.stringContaining("--cl-hue-magenta"),
+    ]);
+    // On the overlay the resting disc is the tonal container: a surface tone would vanish.
+    expect(avatars.map((a) => a.dataset.surface)).toEqual(["container", "container"]);
+  });
+
+
   it("walks the three steps and finishes with the seen flag", async () => {
     app.onboardingOpen = true;
     render(OnboardingModal);
     expect(screen.getByText("Welcome to CubeLite")).toBeInTheDocument();
     expect(screen.getByText("2 contexts found")).toBeInTheDocument();
+    // Progress is a sentence, not only the dots (Tonal §8.6, §9.3).
+    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
     await fireEvent.click(screen.getByText("Continue"));
     expect(screen.getByText("Your clusters")).toBeInTheDocument();
+    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
     await fireEvent.click(screen.getByText("Continue"));
     expect(screen.getByText("Keyboard first")).toBeInTheDocument();
+    expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
     await fireEvent.click(screen.getByText("Start using CubeLite"));
     expect(settings.onboardingSeen.value).toBe(true);
     expect(app.onboardingOpen).toBe(false);
