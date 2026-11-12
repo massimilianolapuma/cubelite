@@ -33,7 +33,7 @@ export type FixedView = (typeof VIEWS)[number];
 export type View = FixedView | CustomView;
 
 /** Preferences sections that can be opened directly (#526). */
-export type PreferencesSection = "navigation" | "integrations" | "elasticsearch" | "prometheus";
+export type PreferencesSection = "kubeconfig" | "navigation" | "integrations" | "elasticsearch" | "prometheus";
 
 export function isView(v: unknown): v is View {
   return typeof v === "string" && ((VIEWS as readonly string[]).includes(v) || isCustomView(v));

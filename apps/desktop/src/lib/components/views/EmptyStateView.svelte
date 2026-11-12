@@ -2,6 +2,6 @@
 	let { message }: { message: string } = $props();
 </script>
 
-<div class="flex flex-1 items-center justify-center">
-	<p class="text-xs text-text-disabled">{message}</p>
+<div class="flex flex-1 items-center justify-center p-6">
+	<p class="type-body-sm text-text-muted">{message}</p>
 </div>

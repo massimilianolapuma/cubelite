@@ -5,7 +5,7 @@
  * first exporter that has data (node-exporter, else cAdvisor).
  */
 import { formatAge } from "#lib/age.ts";
-import { formatValue, latest, seriesColor, type ChartLine, type Unit } from "#lib/metrics.ts";
+import { formatValue, latest, REFERENCE_COLOR, seriesStyle, type ChartLine, type Unit } from "#lib/metrics.ts";
 import type { StatusTone } from "#lib/status.ts";
 import type { Alert, HostChart, HostChartData, HostMetrics, MetricSource, PodInfo } from "#lib/tauri.ts";
 
@@ -91,13 +91,13 @@ export function panelLines(result: HostMetrics, panel: HostPanel): ChartLine[] {
   const lines: ChartLine[] = panel.usage.flatMap((chart, i) =>
     (hostData(result, chart)?.series ?? []).map((s) => ({
       label: panel.labels?.[i] ?? "",
-      color: seriesColor(i),
+      ...seriesStyle(i),
       points: s.points,
     })),
   );
   const ref = panel.reference ? hostData(result, panel.reference)?.series[0] : undefined;
   if (ref) {
-    lines.push({ label: referenceLabel(result, panel), color: "var(--color-text-tertiary)", points: ref.points, dashed: true });
+    lines.push({ label: referenceLabel(result, panel), color: REFERENCE_COLOR, points: ref.points, dashed: true });
   }
   return lines;
 }

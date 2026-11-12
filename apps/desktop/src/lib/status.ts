@@ -71,13 +71,6 @@ export function deploymentStatus(dep: DeploymentInfo): {
   return { label: "Progressing", tone: "warn" };
 }
 
-export const toneColor: Record<StatusTone, string> = {
-  ok: "var(--color-status-ok)",
-  warn: "var(--color-status-warn)",
-  err: "var(--color-status-err)",
-  neutral: "var(--color-text-tertiary)",
-};
-
 // Tones for the Status sort (#496): problems sort first.
 
 export function replicaTone(replicas: number, ready: number): StatusTone {

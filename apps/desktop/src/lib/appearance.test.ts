@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyDensity, applyTint, tintFor, tintStyle } from "./appearance";
+import { applyDensity, applyTint, tintFor, tintStyle, windowTint } from "./appearance";
 
 describe("applyDensity", () => {
   it("marks the root so the compact row padding token applies", () => {
@@ -42,5 +42,30 @@ describe("tintFor", () => {
 describe("tintStyle", () => {
   it("is the inline declaration that tints a data-tint subtree", () => {
     expect(tintStyle("violet")).toBe("--cl-tint-h: var(--cl-hue-violet)");
+  });
+});
+
+describe("windowTint", () => {
+  const identityFor = (name: string) => (name === "prod" ? "violet" : "teal");
+  const base = { popout: false, neutralView: false, connecting: null, active: "prod" } as const;
+
+  it("follows the active cluster", () => {
+    expect(windowTint(base, identityFor)).toBe("violet");
+  });
+
+  it("is the default on a view that belongs to no cluster", () => {
+    expect(windowTint({ ...base, neutralView: true }, identityFor)).toBeNull();
+  });
+
+  it("switches to the cluster being connected to as soon as connecting starts", () => {
+    expect(windowTint({ ...base, connecting: "staging" }, identityFor)).toBe("teal");
+  });
+
+  it("takes the target's tint even from the All Clusters dashboard", () => {
+    expect(windowTint({ ...base, neutralView: true, connecting: "staging" }, identityFor)).toBe("teal");
+  });
+
+  it("a pop-out log window keeps its cluster, whatever view state it carries", () => {
+    expect(windowTint({ ...base, popout: true, neutralView: true }, identityFor)).toBe("violet");
   });
 });

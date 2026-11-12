@@ -38,6 +38,21 @@ export function tintFor(
 }
 
 /**
+ * The tint of a window (Tonal §4.1, §8.4): its cluster's, or the default on a
+ * view that belongs to none (the All Clusters dashboard, onboarding). While a
+ * cluster is being connected to, the tint is already that cluster's: the
+ * colour changes when the user asks, not when the answer arrives. A pop-out
+ * log window always keeps its pod's cluster.
+ */
+export function windowTint(
+  state: { popout: boolean; neutralView: boolean; connecting: string | null; active: string | null },
+  identityFor: (name: string) => IdentityColor,
+): IdentityColor | null {
+  if (state.connecting !== null) return identityFor(state.connecting);
+  return tintFor(!state.popout && state.neutralView, state.active, identityFor);
+}
+
+/**
  * Inline style that gives an element another cluster's tint. Put it on an
  * element that also carries `data-tint`: every colour role is re-declared
  * there, so the whole subtree follows this hue (see design/README.md).
