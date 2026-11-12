@@ -1,5 +1,6 @@
 <script lang="ts">
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { SCOPE_SEGMENTS, SCOPE_TEXT, usedByText, type EndpointScopeKind, type ScopeView } from '#lib/endpoint-scope.ts';
 	import { ACCENT_LINK_CLASS, BUTTON_CLASS } from '#lib/integration-form.svelte.ts';
 
@@ -41,33 +42,35 @@
 	} = $props();
 </script>
 
-<div class="flex items-center justify-between gap-3">
-	<span class="type-caption text-text-secondary">Endpoint for</span>
-	<SegmentedControl segments={SCOPE_SEGMENTS} bind:value={() => scope, onScope} label="Endpoint scope" />
+<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+	<span class="type-label text-text-muted">Endpoint for</span>
+	<SegmentedControl segments={SCOPE_SEGMENTS} bind:value={() => scope, onScope} label="Endpoint scope" outlined />
 </div>
 
 {#if pending}
 	<div class="flex flex-wrap items-center gap-2" role="alert" data-testid="scope-unsaved">
-		<span class="type-caption text-status-warn">{SCOPE_TEXT.unsaved}</span>
+		<span class="type-body-sm flex items-center gap-1.5 font-semibold text-text">
+			<StatusGlyph state="warn" class="text-warning" />{SCOPE_TEXT.unsaved}
+		</span>
 		<button type="button" class={BUTTON_CLASS} onclick={onConfirm}>{SCOPE_TEXT.discard}</button>
 		<button type="button" class={BUTTON_CLASS} onclick={onCancel}>{SCOPE_TEXT.keepEditing}</button>
 	</div>
 {/if}
 
 {#if view === 'default'}
-	<p class="type-caption text-text-tertiary" data-testid="default-used-by">{usedByText(usedBy)}</p>
-	<p class="type-caption text-text-tertiary">{SCOPE_TEXT.defaultHint}</p>
+	<p class="type-body-sm text-text-muted" data-testid="default-used-by">{usedByText(usedBy)}</p>
+	<p class="type-body-sm text-text-muted">{SCOPE_TEXT.defaultHint}</p>
 {:else if view === 'inherited'}
 	<div class="flex flex-wrap items-center gap-2" data-testid="default-in-use">
-		<span class="type-caption min-w-0 truncate text-text-secondary" title={defaultTarget ?? undefined}>
-			{SCOPE_TEXT.usingDefault} · <span class="text-text-tertiary">{defaultTarget}</span>
+		<span class="type-body-sm min-w-0 truncate text-text" title={defaultTarget ?? undefined}>
+			{SCOPE_TEXT.usingDefault} · <span class="text-text-muted">{defaultTarget}</span>
 		</span>
 		<button type="button" class={BUTTON_CLASS} {disabled} onclick={onOverride}>{SCOPE_TEXT.override}</button>
 		<button type="button" class={BUTTON_CLASS} {disabled} onclick={onTurnOff}>{SCOPE_TEXT.turnOff}</button>
 	</div>
 {:else if defaultTarget !== null && (view === 'off' || hasOwn)}
 	<div class="flex flex-wrap items-center gap-2" data-testid="default-not-used">
-		<span class="type-caption text-text-tertiary">
+		<span class="type-body-sm text-text-muted">
 			{view === 'off' ? SCOPE_TEXT.offForContext : SCOPE_TEXT.overridesDefault}
 		</span>
 		<button type="button" class={ACCENT_LINK_CLASS} {disabled} onclick={onUseDefault}>{SCOPE_TEXT.useDefault}</button>

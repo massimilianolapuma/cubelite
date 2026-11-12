@@ -11,7 +11,8 @@
 		value = $bindable(),
 		onChange,
 		label,
-		dense = false
+		dense = false,
+		outlined = false
 	}: {
 		segments: Segment<T>[];
 		value: T;
@@ -20,12 +21,25 @@
 		label?: string;
 		/** Narrower segments, for toolbars that must stay on one row. */
 		dense?: boolean;
+		/**
+		 * An `outline-strong` border instead of the filled track, for forms and
+		 * dialogs: on `surface-overlay` the filled track is one step away and has
+		 * no visible edge.
+		 */
+		outlined?: boolean;
 	} = $props();
 </script>
 
-<!-- One pill group; the selected segment is the tonal fill (Tonal §7). -->
-<div class="inline-flex shrink-0 gap-0.5 rounded-full bg-surface-container-high p-0.5" role="radiogroup"
+<!-- One pill group; the selected segment is the tonal fill (Tonal §7) inside a
+     1.5 px primary ring: the fill alone is 1.3–1.6:1 from its surface, and the
+     ring, drawn inside, reaches 3:1 without changing the segment's size. -->
+<div
+	class="inline-flex shrink-0 gap-0.5 rounded-full p-0.5 {outlined
+		? 'border border-outline-strong'
+		: 'bg-surface-container-high'}"
+	role="radiogroup"
 	aria-label={label}
+	data-outlined={outlined}
 >
 	{#each segments as segment (segment.value)}
 		{@const active = value === segment.value}
@@ -39,8 +53,8 @@
 			class="focus-ring type-body-sm h-(--control-inline-h) rounded-full {dense ? 'px-2' : 'px-3.5'} {segment.disabled
 				? 'text-text-subtle opacity-45'
 				: active
-					? 'bg-primary-container font-semibold text-on-primary-container'
-					: 'text-text-muted hover:bg-surface-container-top'}"
+					? 'bg-primary-container font-semibold text-on-primary-container inset-ring-[1.5px] inset-ring-primary'
+					: 'text-text-muted ' + (outlined ? 'hover-layer' : 'hover:bg-surface-container-top')}"
 			onclick={() => {
 				value = segment.value;
 				onChange?.(segment.value);

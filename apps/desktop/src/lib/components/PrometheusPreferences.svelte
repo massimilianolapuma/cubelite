@@ -324,14 +324,16 @@
 </script>
 
 <section data-testid="prometheus-prefs">
-	<div class="mb-1.5 flex items-baseline justify-between gap-3">
-		<div class="type-body text-text-primary">Prometheus</div>
-		<div class="type-caption truncate text-text-tertiary">
+	<div class="mb-2 flex items-baseline justify-between gap-3">
+		<div class="type-body text-text">Prometheus</div>
+		<div class="type-body-sm min-w-0 truncate text-text-muted">
 			{view === 'default' ? 'for every context' : context ? `for ${context}` : 'no cluster selected'}
 		</div>
 	</div>
 	{#if context}
-		<div class="flex flex-col gap-2 rounded-md border border-border-faint bg-surface-window px-2.5 py-2">
+		<!-- An outlined group on the dialog's surface: its fields, segmented controls and
+		     checkboxes keep their 3:1 edge against the overlay itself. -->
+		<div class="flex flex-col gap-3 rounded-lg border border-outline px-4 py-3">
 			<EndpointScopeBar
 				scope={scope.scope}
 				pending={scope.pending}
@@ -391,7 +393,7 @@
 						<input class={INPUT_CLASS} aria-label="Grafana URL" placeholder="Grafana URL (optional)" bind:value={grafanaUrl} />
 						<input class={INPUT_CLASS} aria-label="Grafana datasource" placeholder="datasource UID" bind:value={grafanaDatasource} />
 					</div>
-					{#if grafanaError}<p class="type-caption text-status-err">{grafanaError}</p>{/if}
+					{#if grafanaError}<p class="type-body-sm text-error">{grafanaError}</p>{/if}
 					{#if form.mode === 'in-cluster' && grafanaService}
 						<InClusterUi
 							name="Grafana"
@@ -403,12 +405,12 @@
 					{/if}
 
 					{#if form.mode === 'in-cluster'}
-						<p class="type-caption text-text-tertiary">Reached through the API server with your cluster credentials.</p>
+						<p class="type-body-sm text-text-muted">Reached through the API server with your cluster credentials.</p>
 					{:else}
 						<AuthFields fields={auth} options={authOptions} {secretMethods}>
 							{#snippet extra()}
 								{#if auth.method === 'azure-cli'}
-									<p class="type-caption {azureError ? 'text-status-err' : 'text-text-tertiary'}">
+									<p class="type-body-sm {azureError ? 'text-error' : 'text-text-muted'}">
 										{azureError ?? 'Uses the account `az` is logged in with; the token is kept in memory only.'}
 									</p>
 								{/if}

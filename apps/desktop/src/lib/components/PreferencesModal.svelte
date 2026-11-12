@@ -9,9 +9,13 @@
 		removePath,
 		seedIfEmpty
 	} from '#lib/kubeconfig-list.ts';
-	import { applyDensity } from '#lib/appearance.ts';
-	import { IDENTITY_COLORS, identityVar } from '#lib/cluster-identity.ts';
+	import Check from '@lucide/svelte/icons/check';
+	import Download from '@lucide/svelte/icons/download';
+	import { applyDensity, tintStyle } from '#lib/appearance.ts';
+	import { IDENTITY_COLORS } from '#lib/cluster-identity.ts';
+	import Button from '#lib/components/ui/Button.svelte';
 	import Modal from '#lib/components/ui/Modal.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import NavigationPreferences from '#lib/components/NavigationPreferences.svelte';
 	import ElasticPreferences from '#lib/components/ElasticPreferences.svelte';
@@ -143,99 +147,130 @@
 	async function useDefaultKubeconfig() {
 		await applyKubeconfigList([]);
 	}
+
+	// One look for every setting (Tonal §7): a group heading in `title`, the
+	// setting's name in `body`, its explanation in `body-sm`. Controls sit on the
+	// dialog's own surface, so they carry outlines rather than fills.
+	const group = 'flex flex-col gap-5 border-t border-outline pt-6 first:border-t-0 first:pt-0';
+	const groupHeading = 'type-title text-text';
+	const row = 'flex items-center justify-between gap-4';
+	const name = 'type-body text-text';
+	const hint = 'type-body-sm mt-0.5 text-text-muted';
 </script>
 
 <Modal title="Preferences" onClose={close}>
-	<div bind:this={content} class="flex flex-col gap-5">
-		<section class="flex items-center justify-between gap-4">
-			<div>
-				<div class="type-body text-text-primary">Appearance</div>
-				<p class="type-caption mt-0.5 text-text-tertiary">System follows the OS preference.</p>
-			</div>
-			<SegmentedControl
-				segments={themeSegments}
-				bind:value={settings.theme.value}
-				onChange={(value) => setMode(value)}
-			/>
-		</section>
-
-		<section class="flex items-center justify-between gap-4">
-			<div>
-				<div class="type-body text-text-primary">Density</div>
-				<p class="type-caption mt-0.5 text-text-tertiary">Compact tightens table rows.</p>
-			</div>
-			<SegmentedControl
-				segments={densitySegments}
-				bind:value={settings.density.value}
-				onChange={(value) => applyDensity(value)}
-			/>
-		</section>
-
-		<section class="flex items-center justify-between gap-4">
-			<div>
-				<div class="type-body text-text-primary">Auto-refresh</div>
-				<p class="type-caption mt-0.5 text-text-tertiary">Re-list resources on an interval, on top of live watches.</p>
-			</div>
-			<SegmentedControl
-				segments={refreshSegments}
-				bind:value={settings.refreshInterval.value}
-				onChange={() => resources.applyRefreshInterval()}
-			/>
-		</section>
-
-		<section class="flex items-center justify-between gap-4">
-			<div>
-				<div class="type-body text-text-primary">Skip TLS verification</div>
-				<p class="type-caption mt-0.5 text-text-tertiary">Stored only — not yet enforced by the backend.</p>
-			</div>
-			<Switch
-				checked={settings.skipTls.value}
-				label="Skip TLS verification"
-				onChange={(v) => (settings.skipTls.value = v)}
-			/>
-		</section>
-
-		{#if clusters.contexts.length > 0}
-			<section>
-				<div class="type-body text-text-primary">Cluster colors</div>
-				<p class="type-caption mt-0.5 mb-1.5 text-text-tertiary">
-					A cluster's color tints the whole window while you are on it.
-				</p>
-				<div class="flex flex-col gap-1.5 rounded-md border border-border-faint bg-surface-window px-2.5 py-2">
-					{#each clusters.contexts as ctx (ctx.name)}
-						{@const current = clusters.identityFor(ctx.name)}
-						<div class="flex items-center gap-3">
-							<span class="min-w-0 flex-1 truncate type-data-sm text-text-secondary">{ctx.name}</span>
-							<div class="flex items-center gap-1.5" role="radiogroup" aria-label="Color for {ctx.name}">
-								{#each IDENTITY_COLORS as color (color)}
-									<button
-										type="button"
-										role="radio"
-										aria-checked={current === color}
-										aria-label={color}
-										class="focus-ring hit-target h-3.5 w-3.5 rounded-full"
-										style="background: {identityVar(color)}; box-shadow: {current === color
-											? `0 0 0 2px var(--color-surface-window), 0 0 0 3.5px ${identityVar(color)}`
-											: 'none'};"
-										onclick={() => clusters.setIdentityColor(ctx.name, color)}
-									></button>
-								{/each}
-							</div>
-						</div>
-					{/each}
+	<div bind:this={content} class="flex flex-col gap-6">
+		<section class={group} aria-labelledby="prefs-appearance">
+			<h3 id="prefs-appearance" class={groupHeading}>Appearance</h3>
+			<div class={row}>
+				<div class="min-w-0 flex-1">
+					<div class={name}>Theme</div>
+					<p class={hint}>System follows the OS preference.</p>
 				</div>
-			</section>
-		{/if}
+				<SegmentedControl
+					label="Theme"
+					outlined
+					segments={themeSegments}
+					bind:value={settings.theme.value}
+					onChange={(value) => setMode(value)}
+				/>
+			</div>
 
-		<div bind:this={sections.navigation} class="flex flex-col gap-5">
-			<NavigationPreferences />
-		</div>
+			<div class={row}>
+				<div class="min-w-0 flex-1">
+					<div class={name}>Density</div>
+					<p class={hint}>Compact tightens table rows.</p>
+				</div>
+				<SegmentedControl
+					label="Density"
+					outlined
+					segments={densitySegments}
+					bind:value={settings.density.value}
+					onChange={(value) => applyDensity(value)}
+				/>
+			</div>
 
-		<div bind:this={sections.integrations} class="flex flex-col gap-5" data-testid="integrations-prefs">
-			<section class="flex items-center justify-between gap-4">
+			{#if clusters.contexts.length > 0}
 				<div>
-					<div class="type-body text-text-primary">Integrations</div>
-					<p class="type-caption mt-0.5 text-text-tertiary">Show integration hints in panels</p>
+					<div class={name}>Cluster colors</div>
+					<p class={hint}>A cluster's color tints the whole window while you are on it.</p>
+					<ul class="mt-3 flex flex-col gap-2" aria-label="Cluster colors">
+						{#each clusters.contexts as ctx (ctx.name)}
+							{@const current = clusters.identityFor(ctx.name)}
+							<li class="flex items-center gap-3">
+								<span class="type-data-sm min-w-0 flex-1 truncate text-text" title={ctx.name}>{ctx.name}</span>
+								<div class="flex items-center gap-2" role="radiogroup" aria-label="Color for {ctx.name}">
+									<!-- Each swatch carries its colour as a tint (Tonal §4.1); the chosen one
+									     also holds a check, so it is not told by colour alone. -->
+									{#each IDENTITY_COLORS as color (color)}
+										<button
+											type="button"
+											role="radio"
+											aria-checked={current === color}
+											aria-label={color}
+											data-tint
+											style={tintStyle(color)}
+											class="focus-ring flex h-6 w-6 items-center justify-center rounded-full bg-primary text-on-primary"
+											onclick={() => clusters.setIdentityColor(ctx.name, color)}
+										>
+											{#if current === color}
+												<Check class="h-3.5 w-3.5" strokeWidth={3} aria-hidden="true" data-swatch-mark />
+											{/if}
+										</button>
+									{/each}
+								</div>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
+		</section>
+
+		<section class={group} aria-labelledby="prefs-connection">
+			<h3 id="prefs-connection" class={groupHeading}>Connection</h3>
+			<div class={row}>
+				<div class="min-w-0 flex-1">
+					<div class={name}>Auto-refresh</div>
+					<p class={hint}>Re-list resources on an interval, on top of live watches.</p>
+				</div>
+				<SegmentedControl
+					label="Auto-refresh"
+					outlined
+					segments={refreshSegments}
+					bind:value={settings.refreshInterval.value}
+					onChange={() => resources.applyRefreshInterval()}
+				/>
+			</div>
+
+			<div class={row}>
+				<div class="min-w-0 flex-1">
+					<div class={name}>Skip TLS verification</div>
+					<p class={hint}>Stored only — not yet enforced by the backend.</p>
+				</div>
+				<Switch
+					checked={settings.skipTls.value}
+					label="Skip TLS verification"
+					onChange={(v) => (settings.skipTls.value = v)}
+				/>
+			</div>
+		</section>
+
+		<section bind:this={sections.navigation} class={group} aria-labelledby="prefs-navigation">
+			<h3 id="prefs-navigation" class={groupHeading}>Navigation</h3>
+			<NavigationPreferences />
+		</section>
+
+		<section
+			bind:this={sections.integrations}
+			class={group}
+			data-testid="integrations-prefs"
+			aria-labelledby="prefs-integrations"
+		>
+			<h3 id="prefs-integrations" class={groupHeading}>Integrations</h3>
+			<div class={row}>
+				<div class="min-w-0 flex-1">
+					<div class={name}>Integration hints</div>
+					<p class={hint}>Show integration hints in panels</p>
 					{#if app.activeCluster && integrations.dismissed(app.activeCluster).length > 0}
 						<button
 							type="button"
@@ -251,7 +286,7 @@
 					label="Show integration hints in panels"
 					onChange={(v) => (settings.integrationHints.value = v)}
 				/>
-			</section>
+			</div>
 
 			<div bind:this={sections.elasticsearch}>
 				<ElasticPreferences />
@@ -260,102 +295,112 @@
 			<div bind:this={sections.prometheus}>
 				<PrometheusPreferences />
 			</div>
-		</div>
-
-		<section bind:this={sections.kubeconfig}>
-			<div class="mb-1.5 flex items-baseline justify-between gap-3">
-				<div class="type-body text-text-primary">Kubeconfig</div>
-				<div class="type-caption text-text-tertiary">{originLabel(app.kubeconfigOrigin)}</div>
-			</div>
-			<ul
-				class="overflow-hidden rounded-md border border-border-faint bg-surface-window"
-				aria-label="Kubeconfig files"
-			>
-				{#each kubeconfigRows as row (row.path)}
-					{@const redefined = redefinedEntries(row)}
-					<li class="flex items-start gap-2 border-b border-border-faint px-2.5 py-2 last:border-b-0">
-						<div class="min-w-0 flex-1">
-							<div
-								class="truncate type-data-sm {row.exists ? 'text-text-secondary' : 'text-text-disabled'}"
-								title={row.path}
-							>
-								{row.path}
-							</div>
-							<div class="type-caption mt-0.5 text-text-tertiary">
-								{#if !row.exists}
-									not found — skipped
-								{:else}
-									{row.contexts} context{row.contexts === 1 ? '' : 's'}
-									{#if row.shadowed.length > 0}
-										<span
-											class="text-status-warn"
-											title="Also defined in an earlier file, which wins: {row.shadowed.join(', ')}"
-										>
-											· {row.shadowed.length} merged
-										</span>
-									{/if}
-									{#if redefined.length > 0}
-										<span
-											class="text-status-warn"
-											title="Also defined differently in an earlier file: {redefined.join(
-												', '
-											)}. Contexts in this file use this file's definition."
-										>
-											· {redefined.length} redefined
-										</span>
-									{/if}
-								{/if}
-							</div>
-						</div>
-						{#if app.kubeconfigSources.length > 0 && !(app.kubeconfigOrigin !== 'custom' && kubeconfigRows.length === 1)}
-							<button
-								type="button"
-								class="focus-ring type-caption shrink-0 rounded-sm px-1.5 py-0.5 text-text-tertiary hover:text-status-err"
-								aria-label="Remove {row.path}"
-								onclick={() => void removeKubeconfigFile(row.path)}
-							>
-								Remove
-							</button>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-			<div class="mt-1.5 flex items-center gap-3">
-				<button
-					type="button"
-					class="focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110"
-					onclick={() => void addKubeconfigFiles()}
-				>
-					Add file…
-				</button>
-				{#if app.kubeconfigOrigin === 'custom'}
-					<button
-						type="button"
-						class="focus-ring type-caption rounded-sm text-accent hover:brightness-110"
-						onclick={() => void useDefaultKubeconfig()}
-					>
-						Use defaults
-					</button>
-				{/if}
-			</div>
-			{#if app.kubeconfigOrigin === 'custom'}
-				<p class="type-caption mt-1 text-text-tertiary">
-					Custom list replaces KUBECONFIG; remove every file to go back to defaults.
-				</p>
-			{:else if kubeconfigRows.length > 1}
-				<p class="type-caption mt-1 text-text-tertiary">
-					Files come from KUBECONFIG; on a name clash the first file wins.
-				</p>
-			{/if}
 		</section>
 
-		<section class="flex items-center justify-between gap-4">
+		<section bind:this={sections.kubeconfig} class={group} aria-labelledby="prefs-kubeconfig">
+			<div class="flex flex-wrap items-baseline justify-between gap-x-3">
+				<h3 id="prefs-kubeconfig" class={groupHeading}>Kubeconfig files</h3>
+				<div class="type-body-sm text-text-muted">{originLabel(app.kubeconfigOrigin)}</div>
+			</div>
 			<div>
-				<div class="type-body text-text-primary">Updates</div>
-				<p class="type-caption mt-0.5 text-text-tertiary">
+				<ul class="rounded-lg border border-outline" aria-label="Kubeconfig files">
+					{#each kubeconfigRows as row (row.path)}
+						{@const redefined = redefinedEntries(row)}
+						<li class="flex items-center gap-3 border-b border-outline px-4 py-2.5 last:border-b-0">
+							<div class="min-w-0 flex-1">
+								<div
+									class="type-data-sm truncate {row.exists ? 'text-text' : 'text-text-subtle'}"
+									title={row.path}
+								>
+									{row.path}
+								</div>
+								<div class="type-body-sm mt-0.5 flex flex-wrap items-center gap-x-1.5 text-text-muted">
+									{#if !row.exists}
+										not found — skipped
+									{:else}
+										<span>{row.contexts} context{row.contexts === 1 ? '' : 's'}</span>
+										<!-- Attention is the triangle and a weight, not a colour alone (Tonal §6). -->
+										{#if row.shadowed.length > 0}
+											<span
+												class="inline-flex items-center gap-1 font-semibold text-text"
+												data-note="merged"
+												title="Also defined in an earlier file, which wins: {row.shadowed.join(', ')}"
+											>
+												· <StatusGlyph state="warn" class="text-warning" />
+												{row.shadowed.length} merged
+											</span>
+										{/if}
+										{#if redefined.length > 0}
+											<span
+												class="inline-flex items-center gap-1 font-semibold text-text"
+												data-note="redefined"
+												title="Also defined differently in an earlier file: {redefined.join(
+													', '
+												)}. Contexts in this file use this file's definition."
+											>
+												· <StatusGlyph state="warn" class="text-warning" />
+												{redefined.length} redefined
+											</span>
+										{/if}
+									{/if}
+								</div>
+							</div>
+							{#if app.kubeconfigSources.length > 0 && !(app.kubeconfigOrigin !== 'custom' && kubeconfigRows.length === 1)}
+								<Button
+									variant="danger"
+									size="inline"
+									aria-label="Remove {row.path}"
+									onclick={() => void removeKubeconfigFile(row.path)}
+								>
+									Remove
+								</Button>
+							{/if}
+						</li>
+					{/each}
+				</ul>
+				<div class="mt-3 flex flex-wrap items-center gap-3">
+					<Button variant="tonal" size="inline" onclick={() => void addKubeconfigFiles()}>Add file…</Button>
+					{#if app.kubeconfigOrigin === 'custom'}
+						<button type="button" class={ACCENT_LINK_CLASS} onclick={() => void useDefaultKubeconfig()}>
+							Use defaults
+						</button>
+					{/if}
+				</div>
+				{#if app.kubeconfigOrigin === 'custom'}
+					<p class="{hint} mt-2">Custom list replaces KUBECONFIG; remove every file to go back to defaults.</p>
+				{:else if kubeconfigRows.length > 1}
+					<p class="{hint} mt-2">Files come from KUBECONFIG; on a name clash the first file wins.</p>
+				{/if}
+			</div>
+		</section>
+
+		<section class={group} aria-labelledby="prefs-updates">
+			<h3 id="prefs-updates" class={groupHeading}>Updates</h3>
+			<!-- The action first, its outcome beside it: the row reads left to right. -->
+			<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+				{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
+					<Button
+						variant="tonal"
+						size="inline"
+						pending={updater.status === 'downloading'}
+						onclick={() => updater.installAndRestart()}
+					>
+						<!-- While it downloads the icon turns into the spinner; the label and the
+						     width stay, and the line beside it says what is happening (§7, §9.3). -->
+						{#snippet icon()}<Download class="h-4 w-4" aria-hidden="true" />{/snippet}
+						Install update
+					</Button>
+				{:else}
+					<Button variant="tonal" size="inline" pending={updater.status === 'checking'} onclick={checkForUpdates}>
+						Check for updates
+					</Button>
+				{/if}
+				<p class="type-body-sm min-w-0 text-text-muted" aria-live="polite">
 					{#if updater.status === 'checking'}
 						Checking…
-					{:else if updater.status === 'available' || updater.status === 'downloading'}
+					{:else if updater.status === 'downloading'}
+						Downloading update {updater.version}…
+					{:else if updater.status === 'available'}
 						Update {updater.version} available
 					{:else if updater.status === 'ready'}
 						Update {updater.version} ready to install
@@ -366,36 +411,17 @@
 					{/if}
 				</p>
 			</div>
-			{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
-				<button
-					type="button"
-					class="focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110"
-					disabled={updater.status === 'downloading'}
-					onclick={() => updater.installAndRestart()}
-				>
-					{updater.status === 'downloading' ? 'Downloading…' : 'Install update'}
-				</button>
-			{:else}
-				<button
-					type="button"
-					class="focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110"
-					disabled={updater.status === 'checking'}
-					onclick={checkForUpdates}
-				>
-					Check for updates
-				</button>
-			{/if}
-		</section>
 
-		<button
-			type="button"
-			class="focus-ring type-caption self-start rounded-sm text-accent hover:brightness-110"
-			onclick={() => {
-				close();
-				app.onboardingOpen = true;
-			}}
-		>
-			Show first-launch onboarding again
-		</button>
+			<button
+				type="button"
+				class="{ACCENT_LINK_CLASS} self-start"
+				onclick={() => {
+					close();
+					app.onboardingOpen = true;
+				}}
+			>
+				Show first-launch onboarding again
+			</button>
+		</section>
 	</div>
 </Modal>

@@ -1,6 +1,8 @@
 <script lang="ts">
 	// Services found by Detect, each with a Use button (shared by the
 	// integration preferences).
+	import { ACCENT_LINK_CLASS } from '#lib/integration.ts';
+
 	type Found = { kind: string; namespace: string; name: string; port: number; https: boolean };
 	let {
 		services,
@@ -17,17 +19,17 @@
 
 {#if services}
 	{#if services.length === 0}
-		<p class="type-caption text-text-tertiary">{empty}</p>
+		<p class="type-body-sm text-text-muted">{empty}</p>
 	{:else}
-		<ul class="flex flex-col gap-0.5" aria-label="Detected services">
+		<ul class="flex flex-col gap-1" aria-label="Detected services">
 			{#each services as svc (svc.kind + ':' + svc.namespace + '/' + svc.name)}
-				<li class="flex items-center gap-2">
-					<span class="type-data-sm flex-1 truncate text-text-secondary">
+				<li class="flex items-center gap-3">
+					<span class="type-data-sm min-w-0 flex-1 truncate text-text" title="{svc.kind} · {svc.namespace}/{svc.name}:{svc.port}">
 						{svc.kind} · {svc.namespace}/{svc.name}:{svc.port}{svc.https ? ' (https)' : ''}
 					</span>
 					<button
 						type="button"
-						class="focus-ring type-caption rounded-sm text-accent hover:brightness-110"
+						class="{ACCENT_LINK_CLASS} shrink-0 px-2"
 						aria-label="Use {svc.kind} {svc.namespace}/{svc.name}"
 						onclick={() => onUse(svc)}>Use</button
 					>
