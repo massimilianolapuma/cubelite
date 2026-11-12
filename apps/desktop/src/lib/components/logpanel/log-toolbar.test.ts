@@ -71,6 +71,40 @@ describe("LogToolbar", () => {
   });
 });
 
+describe("LogToolbar follow chip (Tonal §8.5)", () => {
+  it("is a Following chip with the circle, and a Paused chip with the pause icon", async () => {
+    const s = new LogSession("default", "api-0");
+    render(LogToolbar, { props: { session: s } });
+    const following = screen.getByRole("button", { name: "Following" });
+    expect(following).toHaveAttribute("data-state", "following");
+    expect(following.querySelector('[data-glyph="ok"]')).not.toBeNull();
+
+    await fireEvent.click(following);
+    expect(s.following).toBe(false);
+    const paused = screen.getByRole("button", { name: "Paused" });
+    expect(paused).toHaveAttribute("data-state", "paused");
+    expect(paused.querySelector('[data-icon="pause"]')).not.toBeNull();
+  });
+
+  it("picks the tail size from a pill select", async () => {
+    const s = new LogSession("default", "api-0");
+    const setTail = vi.spyOn(s, "setTail").mockResolvedValue();
+    render(LogToolbar, { props: { session: s } });
+    const tail = screen.getByRole("combobox", { name: "Tail lines" });
+    expect(tail).toHaveValue(String(s.tailLines));
+    await fireEvent.change(tail, { target: { value: "5000" } });
+    expect(setTail).toHaveBeenCalledWith(5000);
+  });
+
+  it("loads earlier lines from an icon button with its name", async () => {
+    const s = new LogSession("default", "api-0");
+    const loadEarlier = vi.spyOn(s, "loadEarlier").mockResolvedValue();
+    render(LogToolbar, { props: { session: s } });
+    await fireEvent.click(screen.getByRole("button", { name: "Load 500 earlier" }));
+    expect(loadEarlier).toHaveBeenCalled();
+  });
+});
+
 describe("LogToolbar merged mode", () => {
   it("picker menu offers an 'all containers' entry after the container groups, which switches to the merged stream", async () => {
     const s = new LogSession("default", "api-0");

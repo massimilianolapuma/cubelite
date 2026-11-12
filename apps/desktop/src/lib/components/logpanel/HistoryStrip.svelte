@@ -2,6 +2,8 @@
 	import type { LogHistory } from '#lib/stores/logHistory.svelte.ts';
 	import { HISTORY_CAP } from '#lib/stores/logHistory.svelte.ts';
 	import { HISTORY_RANGES, hitsLabel } from '#lib/elastic.ts';
+	import Button from '#lib/components/ui/Button.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 
 	// Top strip of the log body in History mode (#501): status, hit count,
 	// Load older and errors.
@@ -11,21 +13,18 @@
 	const hits = $derived(hitsLabel(history.total, history.totalIsLowerBound));
 </script>
 
-<div
-	class="flex shrink-0 items-center gap-2 border-b border-border-faint px-2.5 py-1"
-	data-testid="history-strip"
->
+<div class="flex shrink-0 items-center gap-2 px-3 pt-1.5 pb-1" data-testid="history-strip">
 	{#if history.next !== null && history.lines.length < HISTORY_CAP}
-		<button
-			type="button"
-			class="focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2 py-0.5 text-text-secondary hover:brightness-110 disabled:opacity-50"
+		<Button
+			variant="tonal"
+			size="inline"
 			disabled={!history.canLoadOlder}
 			onclick={() => void history.loadOlder()}
 		>
 			Load older
-		</button>
+		</Button>
 	{/if}
-	<span class="type-caption flex-1 truncate text-text-tertiary" aria-live="polite">
+	<span class="type-body-sm min-w-0 flex-1 truncate text-text-muted" aria-live="polite">
 		{#if history.loading}
 			Loading history…
 		{:else if history.error === null && history.started}
@@ -35,13 +34,9 @@
 		{/if}
 	</span>
 	{#if history.error}
-		<span class="type-caption truncate text-status-err" role="alert" title={history.error}>{history.error}</span>
-		<button
-			type="button"
-			class="focus-ring type-caption shrink-0 rounded-sm text-accent hover:brightness-110"
-			onclick={() => void history.reload()}
-		>
-			Retry
-		</button>
+		<span class="type-body-sm flex min-w-0 items-center gap-1.5 text-text" role="alert" title={history.error}>
+			<StatusGlyph state="err" class="text-error" /><span class="truncate">{history.error}</span>
+		</span>
+		<Button variant="text" size="inline" onclick={() => void history.reload()}>Retry</Button>
 	{/if}
 </div>

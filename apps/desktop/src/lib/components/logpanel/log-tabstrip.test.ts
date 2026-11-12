@@ -49,13 +49,27 @@ describe("LogTabStrip", () => {
     );
   });
 
-  it("shows a status dot per session reflecting streaming vs error state", async () => {
+  // Tonal §9.3: the stream state is a shape and a word, not a coloured dot.
+  it("shows each session's stream state as a shape and a word", async () => {
     await logPanel.openFor({ namespace: "default", name: "api-0" });
-    logPanel.active!.status = "error";
+    await logPanel.openFor({ namespace: "default", name: "web-1" });
+    logPanel.sessions[0]!.status = "error";
+    logPanel.sessions[1]!.status = "streaming";
     render(LogTabStrip);
-    // one dot per session; assert count matches session count as a smoke check
-    const dots = document.querySelectorAll(".group span.rounded-full");
-    expect(dots).toHaveLength(1);
+    const failing = screen.getByRole("button", { name: /^(?!Close ).*api-0/ });
+    expect(failing).toHaveAccessibleName(/Error/);
+    expect(failing.querySelector('[data-glyph="err"]')).not.toBeNull();
+    const streaming = screen.getByRole("button", { name: /^(?!Close ).*web-1/ });
+    expect(streaming).toHaveAccessibleName(/Streaming/);
+    expect(streaming.querySelector('[data-glyph="ok"]')).not.toBeNull();
+  });
+
+  it("marks the active tab as the current one", async () => {
+    await logPanel.openFor({ namespace: "default", name: "api-0" });
+    await logPanel.openFor({ namespace: "default", name: "web-1" });
+    render(LogTabStrip);
+    expect(screen.getByRole("button", { name: /^(?!Close ).*web-1/ })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: /^(?!Close ).*api-0/ })).not.toHaveAttribute("aria-current");
   });
 
   it("keeps the strip's own collapse and close-panel controls", async () => {

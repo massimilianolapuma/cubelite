@@ -3,6 +3,7 @@
 	import LogTabStrip from './LogTabStrip.svelte';
 	import LogToolbar from './LogToolbar.svelte';
 	import { logPanel, PANEL_COLLAPSED, PANEL_MAX, PANEL_MIN } from '#lib/stores/logPanel.svelte.ts';
+	import { layout } from '#lib/stores/layout.svelte.ts';
 
 	let dragging = $state(false);
 
@@ -24,21 +25,31 @@
 </script>
 
 {#if logPanel.open}
-	<!-- z-[35]: above the pod drawer (z-30) so the toolbar's upward menus stay
-	     clickable over it, below modals (z-40). -->
+	<!-- A surface-sunken card under the list and the detail panel (Tonal §5). While
+	     the detail panel lies over the list (overlay mode) the card is lifted above it
+	     (z-30) so the toolbar's upward menus stay clickable, below modals (z-40).
+	     Docked, nothing covers it. -->
 	<section
-		class="relative z-[35] flex shrink-0 flex-col border-t border-border-default bg-surface-window"
+		class="relative flex shrink-0 flex-col rounded-xl bg-surface-sunken data-[lifted=true]:z-[35]"
 		style="height: {logPanel.collapsed ? PANEL_COLLAPSED : logPanel.height}px;"
 		aria-label="Pod logs panel"
+		data-lifted={layout.docked ? undefined : 'true'}
 	>
-		<!-- resize handle -->
+		<!-- resize handle: the card's top edge -->
 		{#if !logPanel.collapsed}
 			<div
 				role="separator"
 				aria-orientation="horizontal"
-				class="h-1 shrink-0 cursor-row-resize {dragging ? 'bg-border-default' : 'hover:bg-border-default'}"
+				aria-label="Resize log panel"
+				class="group absolute inset-x-0 top-0 z-10 flex h-2 cursor-row-resize justify-center"
 				onpointerdown={startDrag}
-			></div>
+			>
+				<span
+					class="mt-0.5 h-1 w-10 rounded-full {dragging
+						? 'bg-outline-strong'
+						: 'bg-transparent group-hover:bg-outline-strong'}"
+				></span>
+			</div>
 		{/if}
 
 		<!-- tab strip: one tab per session + collapse/close -->

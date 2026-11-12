@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import Modal from '#lib/components/ui/Modal.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { errorMessage } from '#lib/errors.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { execSend, startExec, stopExec, type ExecLine } from '#lib/tauri.ts';
@@ -26,11 +27,13 @@
 	type Kind = 'input' | ExecLine['channel'];
 	type Row = { id: number; kind: Kind; text: string };
 
+	// On the sunken code area (Tonal §8.5). stderr is told apart by weight too,
+	// not by colour alone; input lines start with "$ ".
 	const KIND_CLASS: Record<Kind, string> = {
-		input: 'text-accent',
-		stdout: 'text-text-log',
-		stderr: 'text-status-err',
-		status: 'text-text-tertiary'
+		input: 'text-primary',
+		stdout: 'text-text',
+		stderr: 'font-semibold text-error',
+		status: 'text-text-muted'
 	};
 
 	const sessionId = crypto.randomUUID();
@@ -109,13 +112,15 @@
 </script>
 
 <Modal title="{pod} — shell" width={720} {onClose}>
-	<div class="flex flex-col gap-2">
+	<div class="flex flex-col gap-3">
 		{#if sessionError}
-			<p class="py-8 text-center text-xs text-status-err" role="alert">{sessionError}</p>
+			<p class="type-body-sm flex items-center justify-center gap-2 py-8 text-text" role="alert">
+				<StatusGlyph state="err" class="text-error" />{sessionError}
+			</p>
 		{:else}
 			<div
 				bind:this={scroller}
-				class="type-log h-[50vh] overflow-auto rounded-lg border border-border-faint bg-surface-sunken p-3"
+				class="type-log h-[50vh] overflow-auto rounded-md bg-surface-sunken p-3"
 				data-testid="shell-scrollback"
 			>
 				{#each rows as row (row.id)}
@@ -132,7 +137,7 @@
 				send();
 			}}
 		>
-			<span class="type-log font-semibold text-accent" aria-hidden="true">$</span>
+			<span class="type-log font-semibold text-primary" aria-hidden="true">$</span>
 			<input
 				bind:this={input}
 				bind:value={command}
@@ -141,7 +146,7 @@
 				autocomplete="off"
 				spellcheck="false"
 				disabled={ended || sessionError !== null}
-				class="focus-ring type-log h-7 flex-1 rounded-md border border-border-default bg-surface-sunken px-2 text-text-primary disabled:opacity-45"
+				class="focus-ring type-log h-(--control-h-compact) min-w-0 flex-1 rounded-md border border-outline-strong bg-surface-sunken px-3 text-text placeholder:text-text-muted disabled:opacity-45"
 			/>
 		</form>
 	</div>

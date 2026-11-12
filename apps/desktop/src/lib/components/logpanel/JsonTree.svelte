@@ -3,6 +3,7 @@
   import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { jsonText, prettyJson, type JsonValue, type JsonObject } from "#lib/log-json.ts";
   import JsonTree from "./JsonTree.svelte";
+  import { INLINE_ACTION as COPY } from "#lib/ui-classes.ts";
 
   interface Props {
     value: JsonValue;
@@ -48,11 +49,13 @@
     return "boolean";
   }
 
-  const SCALAR_COLOR = {
-    string: "var(--color-cluster-teal)",
-    number: "var(--color-cluster-amber)",
-    boolean: "var(--color-cluster-violet)",
-    null: "var(--color-cluster-violet)",
+  // Tonal §8.5: keys muted, strings in the text colour, numbers data-2,
+  // booleans and null data-3. Written in full so Tailwind emits them.
+  const SCALAR_TONE = {
+    string: "text-text",
+    number: "text-data-2",
+    boolean: "text-data-3",
+    null: "text-data-3",
   } as const;
 
   async function copy(text: string): Promise<void> {
@@ -66,46 +69,44 @@
 
 {#snippet label(key: string)}
   {#if Array.isArray(value)}
-    <span class="text-text-tertiary">[{key}]</span>
+    <span class="text-text-muted">[{key}]</span>
   {:else}
-    <span class="text-text-secondary">{key}</span>
-    <span class="text-text-tertiary">:</span>
+    <span class="text-text-muted">{key}</span>
+    <span class="text-text-muted">:</span>
   {/if}
 {/snippet}
 
-<div data-testid={depth === 0 ? "json-tree" : undefined} class="type-micro font-mono">
+<div data-testid={depth === 0 ? "json-tree" : undefined} class="type-log">
   {#if depth === 0}
-    <div class="flex gap-2 pb-1">
+    <div class="flex gap-1 pb-1">
       <button
         type="button"
-        class="type-caption text-text-secondary hover:underline"
+        class={COPY}
         aria-label="Copy JSON"
         onclick={() => copy(isComposite(value) && !Array.isArray(value) ? prettyJson(value) : jsonText(value, 2))}
       >Copy JSON</button>
       <button
         type="button"
-        class="type-caption text-text-secondary hover:underline"
+        class={COPY}
         aria-label="Copy raw"
         onclick={() => copy(raw)}
       >Copy raw</button>
     </div>
   {/if}
   {#if !isComposite(value)}
-    <span class="break-words" data-json={scalarType(value)} style="color: {SCALAR_COLOR[scalarType(value)]}"
-      >{jsonText(value)}</span
-    >
+    <span class="break-words {SCALAR_TONE[scalarType(value)]}" data-json={scalarType(value)}>{jsonText(value)}</span>
   {:else}
     {#each entries as [key, child] (key)}
       <!-- Relative indent: nested trees sit inside the parent row, so 12px per level compounds to depth * 12. -->
       <div style="padding-left: {depth > 0 ? 12 : 0}px">
         {#if isComposite(child) && Object.keys(child).length === 0}
           {@render label(key)}
-          <span class="text-text-tertiary" data-json="empty">{Array.isArray(child) ? "[]" : "{}"}</span>
+          <span class="text-text-muted" data-json="empty">{Array.isArray(child) ? "[]" : "{}"}</span>
         {:else if isComposite(child)}
           {@const open = isOpen(key)}
           <button
             type="button"
-            class="inline-flex items-center"
+            class="focus-ring-inset inline-flex items-center rounded-xs text-text-muted"
             aria-expanded={open}
             aria-label="Toggle {key}"
             onclick={() => toggle(key)}
@@ -116,13 +117,11 @@
           {#if open}
             <JsonTree value={child} {raw} depth={depth + 1} />
           {:else}
-            <span class="text-text-tertiary">{placeholder(child)}</span>
+            <span class="text-text-muted">{placeholder(child)}</span>
           {/if}
         {:else}
           {@render label(key)}
-          <span class="break-words" data-json={scalarType(child)} style="color: {SCALAR_COLOR[scalarType(child)]}"
-            >{jsonText(child)}</span
-          >
+          <span class="break-words {SCALAR_TONE[scalarType(child)]}" data-json={scalarType(child)}>{jsonText(child)}</span>
         {/if}
       </div>
     {/each}

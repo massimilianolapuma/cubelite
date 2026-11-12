@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import ArrowUpToLine from '@lucide/svelte/icons/arrow-up-to-line';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -10,6 +11,16 @@
 	import { canOpenKibana, kibanaBase, toastErrors } from '#lib/integration-links.ts';
 	import { openKibanaDiscover } from '#lib/tauri.ts';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import FollowChip from './FollowChip.svelte';
+	import {
+		TOOLBAR_CHIP,
+		TOOLBAR_CHIP_REST,
+		TOOLBAR_FIELD,
+		TOOLBAR_ICON,
+		TOOLBAR_MENU,
+		TOOLBAR_MENU_ITEM,
+		TOOLBAR_SELECT
+	} from '#lib/ui-classes.ts';
 	import HistoryControls from './HistoryControls.svelte';
 	import LogSourceSwitch from './LogSourceSwitch.svelte';
 	import Check from '@lucide/svelte/icons/check';
@@ -143,58 +154,47 @@
 	];
 </script>
 
-<div class="flex h-9 shrink-0 items-center gap-2 border-b border-border-default bg-surface-raised px-2.5">
+<!-- Toolbar of chips and pill fields on the card (Tonal §8.5). It wraps where
+     it does not fit: a horizontal scroller would clip the menus that open upwards. -->
+<div class="flex shrink-0 flex-wrap items-center gap-2 px-3 py-1.5" data-testid="log-toolbar">
 	<!-- container picker -->
-	<div class="relative">
+	<div class="relative min-w-0">
 		<button
 			type="button"
-			class="focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md border border-border-default bg-surface-window px-2.5 font-mono text-text-primary"
+			class="{TOOLBAR_CHIP_REST} type-data-sm"
+			aria-expanded={pickerOpen}
 			onclick={() => (pickerOpen = !pickerOpen)}
 		>
-			{session.merged ? 'all containers' : (session.container ?? '…')}
-			<ChevronDown size={12} strokeWidth={1.5} />
+			<span class="truncate">{session.merged ? 'all containers' : (session.container ?? '…')}</span>
+			<ChevronDown class="h-3.5 w-3.5 shrink-0 text-text-muted" aria-hidden="true" />
 		</button>
 		{#if pickerOpen}
-			<div
-				class="absolute bottom-full left-0 z-20 mb-1 min-w-56 rounded-md border border-border-strong bg-surface-overlay py-1 shadow-overlay"
-			>
+			<div class="{TOOLBAR_MENU} left-0 w-max max-w-[80vw] min-w-64">
 				{#each mains as c (c.name)}
-					<button
-						type="button"
-						class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-raised"
-						onclick={() => pick(c.name)}
-					>
-						<span class="type-caption flex-1 font-mono text-text-primary">{c.name}</span>
-						<span class="type-caption flex items-center gap-1 text-text-tertiary">
+					<button type="button" class={TOOLBAR_MENU_ITEM} onclick={() => pick(c.name)}>
+						<span class="type-data-sm min-w-0 flex-1 truncate">{c.name}</span>
+						<span class="type-body-sm flex shrink-0 items-center gap-1 text-text-muted">
 							{c.state}
 							{#if c.restarts > 0}
 								<span aria-hidden="true">·</span>
-								<RotateCcw size={10} strokeWidth={1.5} aria-label="restarts" />{c.restarts}
+								<RotateCcw class="h-3 w-3" aria-label="restarts" />{c.restarts}
 							{/if}
 						</span>
 					</button>
 				{/each}
 				{#if inits.length > 0}
-					<div class="my-1 border-t border-border-default"></div>
+					<div class="mx-3 my-1 border-t border-outline"></div>
 					{#each inits as c (c.name)}
-						<button
-							type="button"
-							class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-raised"
-							onclick={() => pick(c.name)}
-						>
-							<span class="type-caption flex-1 font-mono text-text-secondary">{c.name}</span>
-							<span class="type-caption text-text-tertiary">init</span>
+						<button type="button" class={TOOLBAR_MENU_ITEM} onclick={() => pick(c.name)}>
+							<span class="type-data-sm min-w-0 flex-1 truncate text-text-muted">{c.name}</span>
+							<span class="type-body-sm shrink-0 text-text-muted">init</span>
 						</button>
 					{/each}
 				{/if}
-				<div class="my-1 border-t border-border-default"></div>
-				<button
-					type="button"
-					class="flex w-full items-center gap-2 px-2.5 py-1 text-left hover:bg-surface-raised"
-					onclick={() => pick(ALL_CONTAINERS)}
-				>
-					<span class="type-caption flex-1 font-mono text-text-primary">all containers</span>
-					<span class="type-caption text-text-tertiary">merged stream, color-tagged</span>
+				<div class="mx-3 my-1 border-t border-outline"></div>
+				<button type="button" class={TOOLBAR_MENU_ITEM} onclick={() => pick(ALL_CONTAINERS)}>
+					<span class="type-data-sm min-w-0 flex-1 whitespace-nowrap">all containers</span>
+					<span class="type-body-sm shrink-0 text-text-muted">merged stream, color-tagged</span>
 				</button>
 			</div>
 		{/if}
@@ -204,13 +204,14 @@
 	{#if session.source === 'live' && !session.merged && (selected?.restarts ?? 0) > 0}
 		<button
 			type="button"
-			class="focus-ring type-caption flex h-7 items-center gap-1 rounded-md px-2 {session.previous
-				? 'bg-surface-sunken text-text-primary'
-				: 'text-text-tertiary'}"
+			class="{TOOLBAR_CHIP} {session.previous
+				? 'bg-primary-container font-semibold text-on-primary-container'
+				: 'bg-surface-container-high text-text-muted hover:brightness-110'}"
 			title="Previous instance"
+			aria-pressed={session.previous}
 			onclick={() => void session.setPrevious(!session.previous)}
 		>
-			<RotateCcw size={12} strokeWidth={1.5} /> prev
+			<RotateCcw class="h-3.5 w-3.5" aria-hidden="true" /> prev
 		</button>
 	{/if}
 
@@ -220,7 +221,7 @@
 	<span class="flex-1"></span>
 
 	<!-- search -->
-	<div class="flex items-center gap-1">
+	<div class="flex min-w-0 items-center gap-1.5">
 		<input
 			bind:this={searchInput}
 			type="text"
@@ -228,19 +229,20 @@
 			value={logPanel.search.query}
 			oninput={(e) => logPanel.search.setQuery(e.currentTarget.value)}
 			onkeydown={onSearchKeydown}
-			class="focus-ring h-7 w-44 rounded-md border border-border-default bg-surface-window px-2.5 type-caption text-text-primary placeholder:text-text-disabled"
+			class={TOOLBAR_FIELD}
 		/>
 		{#if logPanel.search.query}
-			<span class="type-caption text-text-tertiary">
+			<span class="type-data-sm shrink-0 text-text-muted">
 				{logPanel.search.count === 0
 					? '0 results'
 					: `${logPanel.search.cursor + 1}/${logPanel.search.count}`}
 			</span>
 			<button
 				type="button"
-				class="type-caption h-7 rounded-md px-2 {logPanel.search.filterMode
-					? 'bg-surface-sunken text-text-primary'
-					: 'text-text-tertiary'}"
+				aria-pressed={logPanel.search.filterMode}
+				class="{TOOLBAR_CHIP} {logPanel.search.filterMode
+					? 'bg-primary-container font-semibold text-on-primary-container'
+					: 'bg-surface-container-high text-text-muted hover:brightness-110'}"
 				onclick={() => (logPanel.search.filterMode = !logPanel.search.filterMode)}
 			>
 				filter
@@ -251,58 +253,46 @@
 	{#if session.source === 'history'}
 		<HistoryControls history={session.history} />
 	{:else}
-	<!-- tail size -->
-	<div class="flex overflow-hidden rounded-md border border-border-default">
-		{#each TAIL_OPTIONS as n (n)}
-			<button
-				type="button"
-				class="type-section h-7 border-r border-border-default px-2 last:border-r-0"
-				style={session.tailLines === n
-					? 'background: var(--color-text-secondary); color: var(--color-surface-window);'
-					: 'color: var(--color-text-tertiary);'}
-				onclick={() => void session.setTail(n)}
-			>
-				{n}
-			</button>
-		{/each}
-	</div>
-	<button
-		type="button"
-		class="focus-ring type-caption h-7 rounded-md px-2 text-text-tertiary hover:text-text-secondary"
-		onclick={() => void session.loadEarlier()}
-	>
-		Load 500 earlier
-	</button>
+		<!-- tail size: a pill select keeps the toolbar on one row where it fits -->
+		<select
+			aria-label="Tail lines"
+			class={TOOLBAR_SELECT}
+			value={String(session.tailLines)}
+			onchange={(e) => void session.setTail(Number(e.currentTarget.value))}
+		>
+			{#each TAIL_OPTIONS as n (n)}
+				<option value={String(n)}>{n} lines</option>
+			{/each}
+		</select>
+		<button
+			type="button"
+			class={TOOLBAR_ICON}
+			aria-label="Load 500 earlier"
+			title="Load 500 earlier"
+			onclick={() => void session.loadEarlier()}
+		>
+			<ArrowUpToLine class="h-4 w-4" aria-hidden="true" />
+		</button>
 
-	<!-- follow/pause -->
-	<button
-		type="button"
-		class="type-caption flex h-7 items-center gap-1.5 rounded-md px-2.5 font-medium"
-		style={session.following
-			? 'background: var(--color-status-ok); color: var(--color-surface-window);'
-			: 'background: var(--alpha-pill-warn); color: var(--color-status-warn);'}
-		onclick={() => session.toggleFollow()}
-	>
-		{session.following ? '● Following' : '⏸ Paused'}
-	</button>
+		<FollowChip following={session.following} onToggle={() => session.toggleFollow()} />
 	{/if}
 
 	<!-- view mode: raw / JSON / ECS (#492) -->
 	<span data-testid="logpanel-view-mode" title="Log view: raw text, humanised JSON or Elastic Common Schema">
-		<SegmentedControl segments={VIEW_MODES} bind:value={logPanel.viewMode} />
+		<SegmentedControl segments={VIEW_MODES} bind:value={logPanel.viewMode} label="Log view" />
 	</span>
 
 	<!-- pop out to separate window -->
 	{#if !detached}
 		<button
 			type="button"
-			class="focus-ring flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary hover:text-text-secondary"
+			class={TOOLBAR_ICON}
 			title="Open this session in a separate window"
 			aria-label="Pop out log session"
 			data-testid="logpanel-detach"
 			onclick={() => void logWindows.detach(session.key)}
 		>
-			<SquareArrowOutUpRight size={14} strokeWidth={1.5} />
+			<SquareArrowOutUpRight class="h-4 w-4" aria-hidden="true" />
 		</button>
 	{/if}
 
@@ -310,69 +300,52 @@
 	<div class="relative">
 		<button
 			type="button"
-			class="focus-ring flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary hover:text-text-secondary"
+			class={TOOLBAR_ICON}
 			aria-label="More log options"
+			aria-expanded={overflowOpen}
 			onclick={() => (overflowOpen = !overflowOpen)}
 		>
-			<Ellipsis size={14} strokeWidth={1.5} />
+			<Ellipsis class="h-4 w-4" aria-hidden="true" />
 		</button>
 		{#if overflowOpen}
-			<div
-				class="absolute right-0 bottom-full z-20 mb-1 min-w-44 rounded-md border border-border-strong bg-surface-overlay py-1 shadow-overlay"
-			>
+			<div class="{TOOLBAR_MENU} right-0 min-w-52">
 				<button
 					type="button"
 					role="menuitemcheckbox"
 					aria-checked={logPanel.timestamps}
-					class="type-caption flex w-full items-center gap-1.5 px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
+					class={TOOLBAR_MENU_ITEM}
 					onclick={() => {
 						logPanel.timestamps = !logPanel.timestamps;
 						overflowOpen = false;
 					}}
 				>
-					<Check size={12} strokeWidth={2} class={logPanel.timestamps ? '' : 'invisible'} />Timestamps
+					<Check class="h-4 w-4 {logPanel.timestamps ? '' : 'invisible'}" aria-hidden="true" />Timestamps
 				</button>
 				<button
 					type="button"
 					role="menuitemcheckbox"
 					aria-checked={logPanel.wrap}
-					class="type-caption flex w-full items-center gap-1.5 px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
+					class={TOOLBAR_MENU_ITEM}
 					onclick={() => {
 						logPanel.wrap = !logPanel.wrap;
 						overflowOpen = false;
 					}}
 				>
-					<Check size={12} strokeWidth={2} class={logPanel.wrap ? '' : 'invisible'} />Wrap lines
+					<Check class="h-4 w-4 {logPanel.wrap ? '' : 'invisible'}" aria-hidden="true" />Wrap lines
 				</button>
 				{#if canOpen}
-					<div class="my-1 border-t border-border-default"></div>
-					<button
-						type="button"
-						class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
-						onclick={() => void openKibana()}
-					>
+					<div class="mx-3 my-1 border-t border-outline"></div>
+					<button type="button" class={TOOLBAR_MENU_ITEM} onclick={() => void openKibana()}>
 						Open in Kibana
 					</button>
 				{/if}
-				<div class="my-1 border-t border-border-default"></div>
+				<div class="mx-3 my-1 border-t border-outline"></div>
+				<button type="button" class={TOOLBAR_MENU_ITEM} onclick={exportVisible}>Export visible…</button>
+				<button type="button" class={TOOLBAR_MENU_ITEM} onclick={exportFull}>Export full buffer…</button>
+				<div class="mx-3 my-1 border-t border-outline"></div>
 				<button
 					type="button"
-					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
-					onclick={exportVisible}
-				>
-					Export visible…
-				</button>
-				<button
-					type="button"
-					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
-					onclick={exportFull}
-				>
-					Export full buffer…
-				</button>
-				<div class="my-1 border-t border-border-default"></div>
-				<button
-					type="button"
-					class="type-caption block w-full px-2.5 py-1 text-left text-text-primary hover:bg-surface-raised"
+					class={TOOLBAR_MENU_ITEM}
 					onclick={() => {
 						session.clear();
 						overflowOpen = false;

@@ -29,6 +29,14 @@ export function persisted<T>(
   key: string,
   fallback: T,
   validate: (v: unknown) => v is T,
+  options: {
+    /**
+     * Follow writes made by another window of the app (a pop-out log window
+     * and the main window share this storage): the browser tells the other
+     * windows with a `storage` event, never the one that wrote.
+     */
+    shared?: boolean;
+  } = {},
 ): Persisted<T> {
   const storageKey = PREFIX + key;
 
@@ -44,6 +52,13 @@ export function persisted<T>(
   }
 
   let value = $state(load());
+
+  if (options.shared && typeof window !== "undefined") {
+    window.addEventListener("storage", (event) => {
+      // A null key means the whole storage was cleared.
+      if (event.key === storageKey || event.key === null) value = load();
+    });
+  }
 
   return {
     get value(): T {
@@ -100,7 +115,8 @@ export const settings = {
   /** Custom kubeconfig file list; empty = follow KUBECONFIG / ~/.kube. */
   kubeconfigPaths: persisted<string[]>("kubeconfigPaths", [], isStringArray),
   /** contextName → identity color key; written back on context discovery. */
-  identityColors: persisted<Record<string, string>>("identityColors", {}, isStringRecord),
+  /** Shared: a pop-out log window follows a colour changed in the main window. */
+  identityColors: persisted<Record<string, string>>("identityColors", {}, isStringRecord, { shared: true }),
   /** contextName → RFC 3339 of the last successful reachability probe. */
   lastSeen: persisted<Record<string, string>>("lastSeen", {}, isStringRecord),
 };

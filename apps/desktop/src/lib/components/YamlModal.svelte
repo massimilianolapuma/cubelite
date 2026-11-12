@@ -2,8 +2,9 @@
 	import Check from '@lucide/svelte/icons/check';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Pencil from '@lucide/svelte/icons/pencil';
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import Modal from '#lib/components/ui/Modal.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { errorMessage } from '#lib/errors.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { applyResourceYaml, getResourceYaml, type YamlResourceType } from '#lib/tauri.ts';
@@ -90,66 +91,56 @@
 		queueMicrotask(() => area.setSelectionRange(start + 2, start + 2));
 	}
 
-	const secondary =
-		'focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110 disabled:opacity-45';
 </script>
 
 <Modal title="{name}.yaml" width={720} {onClose}>
-	<div class="flex flex-col gap-2">
+	<div class="flex flex-col gap-3">
 		<div class="flex justify-end gap-2">
 			{#if editing}
-				<button type="button" class={secondary} disabled={applying} onclick={cancelEditing}>
-					Cancel
-				</button>
-				<button
-					type="button"
-					disabled={applying}
-					class="focus-ring type-caption flex h-7 items-center gap-1.5 rounded-md bg-accent px-2.5 font-medium text-surface-window hover:brightness-110 disabled:opacity-45"
-					onclick={() => void apply()}
-				>
-					{#if applying}
-						<LoaderCircle class="h-3 w-3 animate-spin" />
-						Applying…
-					{:else}
-						Apply
-					{/if}
-				</button>
+				<Button variant="text" size="inline" disabled={applying} onclick={cancelEditing}>Cancel</Button>
+				<Button variant="primary" size="inline" pending={applying} onclick={() => void apply()}>
+					Apply
+				</Button>
 			{:else}
-				<button type="button" disabled={!yaml} class={secondary} onclick={startEditing}>
-					<Pencil class="h-3 w-3" />
+				<Button variant="tonal" size="inline" disabled={!yaml} onclick={startEditing}>
+					{#snippet icon()}<Pencil class="h-3.5 w-3.5" aria-hidden="true" />{/snippet}
 					Edit
-				</button>
-				<button type="button" disabled={!yaml} class={secondary} onclick={() => void copy()}>
-					{#if copied}
-						<Check class="h-3 w-3 text-status-ok" />
-						Copied
-					{:else}
-						<Copy class="h-3 w-3" />
-						Copy
-					{/if}
-				</button>
+				</Button>
+				<Button variant="tonal" size="inline" disabled={!yaml} onclick={() => void copy()}>
+					{#snippet icon()}
+						{#if copied}
+							<Check class="h-3.5 w-3.5" aria-hidden="true" />
+						{:else}
+							<Copy class="h-3.5 w-3.5" aria-hidden="true" />
+						{/if}
+					{/snippet}
+					{copied ? 'Copied' : 'Copy'}
+				</Button>
 			{/if}
 		</div>
 
 		{#if editing}
 			{#if applyError}
-				<p class="type-caption text-status-err" role="alert">{applyError}</p>
+				<p class="type-body-sm flex items-start gap-2 text-text" role="alert">
+					<StatusGlyph state="err" class="mt-1 text-error" />{applyError}
+				</p>
 			{/if}
 			<textarea
 				bind:value={draft}
 				aria-label="Manifest YAML"
 				spellcheck="false"
 				autocapitalize="off"
-				class="focus-ring type-log h-[60vh] w-full resize-none rounded-lg border border-border-faint bg-surface-sunken p-3 text-text-log"
+				class="focus-ring type-log h-[60vh] w-full resize-none rounded-md bg-surface-sunken p-3 text-text"
 				onkeydown={onEditorKeydown}
 			></textarea>
 		{:else if error}
-			<p class="py-8 text-center text-xs text-status-err">{error}</p>
+			<p class="type-body-sm flex items-center justify-center gap-2 py-8 text-text" role="alert">
+				<StatusGlyph state="err" class="text-error" />{error}
+			</p>
 		{:else if yaml === null}
-			<p class="py-8 text-center text-xs text-text-disabled">Loading…</p>
+			<p class="type-body-sm py-8 text-center text-text-muted" role="status">Loading…</p>
 		{:else}
-			<pre
-				class="type-log max-h-[60vh] overflow-auto rounded-lg border border-border-faint bg-surface-sunken p-3 text-text-log">{yaml}</pre>
+			<pre class="type-log max-h-[60vh] overflow-auto rounded-md bg-surface-sunken p-3 text-text">{yaml}</pre>
 		{/if}
 	</div>
 </Modal>

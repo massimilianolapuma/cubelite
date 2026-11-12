@@ -163,7 +163,7 @@ describe("History in the log panel (#501)", () => {
     expect(await screen.findByText(/1,234 hits · showing 1 · last 1 h/)).toBeInTheDocument();
     expect(screen.getByLabelText("History range")).toHaveValue("now-1h");
     expect(screen.getByRole("button", { name: "Load older" })).toBeEnabled();
-    expect(screen.queryByText("● Following")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Following" })).toBeNull();
     expect(screen.getByText("disk full")).toBeInTheDocument();
 
     logPanel.viewMode = "ecs";

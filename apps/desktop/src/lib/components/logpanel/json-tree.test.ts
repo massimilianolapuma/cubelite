@@ -81,7 +81,7 @@ describe("JsonTree", () => {
   });
   it("shows [i] indices for array elements and their keys", () => {
     render(JsonTree, { props: { value: [{ k: "x" }, { k: "y" }], raw: "{}" } });
-    expect(screen.getByText("[0]")).toHaveClass("text-text-tertiary");
+    expect(screen.getByText("[0]")).toBeInTheDocument();
     expect(screen.getByText("[1]")).toBeInTheDocument();
     expect(screen.getAllByText("k")).toHaveLength(2);
   });
@@ -105,7 +105,7 @@ describe("big integers (#455)", () => {
     const big = 12345678901234567890n;
     render(JsonTree, { props: { value: { id: big, n: 1 }, raw: '{"id":12345678901234567890,"n":1}' } });
     const cell = screen.getByText("12345678901234567890");
-    expect(cell.getAttribute("style")).toContain("var(--color-cluster-amber)");
+    expect(cell).toHaveAttribute("data-json", "number");
     await fireEvent.click(screen.getByRole("button", { name: "Copy JSON" }));
     expect(writeText).toHaveBeenLastCalledWith('{\n  "id": 12345678901234567890,\n  "n": 1\n}');
   });

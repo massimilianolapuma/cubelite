@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/svelte";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -29,16 +29,16 @@ import LogBody from "./LogBody.svelte";
 import { LogSession, ALL_CONTAINERS } from "#lib/stores/logSession.svelte.ts";
 import { logPanel } from "#lib/stores/logPanel.svelte.ts";
 import { SEARCH_DEBOUNCE_MS } from "#lib/stores/logSearch.svelte.ts";
-import type { ContainerDetail } from "#lib/tauri.ts";
+import type { ContainerDetail, LogLevel } from "#lib/tauri.ts";
 
-function sessionWith(messages: string[]): LogSession {
+function sessionWith(messages: string[], level: LogLevel = "info"): LogSession {
   const s = new LogSession("default", "api-0");
   s.ring.append(
     messages.map((m) => ({
       pod: "api-0",
       namespace: "default",
       time: "2026-08-04T10:00:00Z",
-      level: "info",
+      level,
       message: m,
     })),
   );
@@ -71,6 +71,26 @@ describe("LogBody", () => {
     expect(await screen.findByText("↓ 1 new line")).toBeInTheDocument();
   });
 
+  // Tonal §8.5: the level is a word in its own column, and the row says which
+  // level it shows (WARN and ERROR rows carry a wash of their container).
+  it("shows the level as a word and marks the row with it", async () => {
+    render(LogBody, { props: { session: sessionWith(["disk on fire"], "error") } });
+    const row = (await screen.findByText("disk on fire")).closest("[data-level]");
+    expect(row).toHaveAttribute("data-level", "error");
+    expect(within(row as HTMLElement).getByText("error")).toHaveAttribute("data-level-word");
+  });
+
+  it("shows the paused pill with the number of lines buffered", async () => {
+    const s = sessionWith(["a"]);
+    s.toggleFollow();
+    s.ring.append([
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "b" },
+      { pod: "api-0", namespace: "default", time: null, level: "info", message: "c" },
+    ]);
+    render(LogBody, { props: { session: s } });
+    expect(await screen.findByRole("button", { name: "↓ 2 new lines" })).toBeInTheDocument();
+  });
+
   it("shows the reconnecting banner with attempt count and retry-now", async () => {
     const s = sessionWith(["a"]);
     s.status = "reconnecting";
@@ -89,7 +109,7 @@ describe("LogBody", () => {
       { name: "envoy", init: false } as ContainerDetail,
     ];
 
-    it("shows the container name with identity styling when merged", async () => {
+    it("shows the container name tagged with its source number when merged", async () => {
       const s = new LogSession("default", "api-0", ALL_CONTAINERS);
       s.containers = containers;
       s.ring.append([
@@ -108,9 +128,9 @@ describe("LogBody", () => {
 
       const sourceLabel = await screen.findByText("envoy");
       expect(sourceLabel).toBeInTheDocument();
-      // Assert the rendered inline style, not the computed one: jsdom resolves
-      // shorthands/custom properties differently across releases (#444).
-      expect(sourceLabel.getAttribute("style")).toContain("var(--color-cluster-teal)");
+      // envoy is the second regular container: data-2 (the colour itself is
+      // checked on the rendered page, see logpanel.spec.ts).
+      expect(sourceLabel).toHaveAttribute("data-source", "2");
     });
 
     it("omits the source column in single-container mode", async () => {
@@ -142,16 +162,18 @@ describe("LogBody", () => {
     });
 
     it("highlights the query and marks the active match", async () => {
-      const s = sessionWith(["needle here", "no match"]);
+      const s = sessionWith(["needle here", "no match", "needle again"]);
       logPanel.search.attach(() => s.ring.lines);
       vi.useFakeTimers();
       logPanel.search.setQuery("needle");
       vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS + 10);
       vi.useRealTimers();
       render(LogBody, { props: { session: s } });
-      const mark = await screen.findByText("needle");
-      expect(mark.tagName).toBe("MARK");
-      expect(mark.getAttribute("style")).toContain("background: var(--color-status-warn)");
+      const [active, other] = await screen.findAllByText("needle");
+      expect(active.tagName).toBe("MARK");
+      expect(active).toHaveAttribute("data-active", "true");
+      expect(other.tagName).toBe("MARK");
+      expect(other).toHaveAttribute("data-active", "false");
     });
 
     it("shows a no-matches message when filter mode yields nothing", async () => {
