@@ -186,9 +186,16 @@ tokens. It fails on:
 | `type-caption` | `type-body-sm` (running text) or `type-label` (a label) |
 | `type-colhead`, `type-section` | `type-label` |
 | `rounded-2xl`, `--radius-2xl` | `rounded-xl` |
+| `shadow-drawer`, `--shadow-drawer` | none (cards have no shadow; `shadow-overlay` under overlays) |
+| `--control-height` | `--control-h` |
+| `--row-pad-default`, `--row-pad-compact` | `--row-h` |
+| `--icon-2xs` … `--icon-2xl` | a size class (`h-4 w-4`) |
+| `--min-hit-target` | the `hit-target` class (`app.css`) |
 
-`text-primary` alone is the primary role used as text and is allowed: a colour name is matched
-after the dash that joins it to its utility or to `--color-`.
+A colour name is matched only right after a colour utility (`bg-`, `text-`, `border-t-`, `fill-`,
+`inset-ring-`, …) or `--color-` / `--cl-color-`, itself not part of a longer word. So `text-primary`
+alone (the primary role used as text) is allowed, and so are attributes and words that merely end
+in a retired stem (`data-accent`, `data-testid="conn-status-ok"`, "pre-accent").
 
 `scripts/design-lint.test.sh` runs the lint on throwaway trees: a clean one, and one per rule and
 per retired name. Both run in CI (Design Lint job) and in `scripts/gates.sh` (`lint-test`,

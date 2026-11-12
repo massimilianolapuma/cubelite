@@ -7,7 +7,10 @@
 #   apps/desktop/{src,tests}/**/*.{svelte,ts,js,css}
 #                                 → no name the Tonal restyle retired (spec
 #                                   §4.5): the v2 colour names, the v2 type
-#                                   styles, the --alpha-* recipes, radius 2xl.
+#                                   styles, the --alpha-* recipes, radius 2xl,
+#                                   and the tokens dropped with them
+#                                   (shadow-drawer, --control-height,
+#                                   --row-pad-*, --icon-*, --min-hit-target).
 #                                   The generated regions of app.css are
 #                                   skipped: design:test keeps them in sync
 #                                   with design/tokens.json.
@@ -24,20 +27,26 @@ DESKTOP_PX='text-\[[0-9.]+px\]'
 DESKTOP_HEX='(^|[^&[:alnum:]_])#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b'
 
 # Retired names, one rule each: "<label>|<extended regex>". A colour name is
-# matched after the `-` that joins it to its utility (`bg-`, `text-`, …) or to
-# `--color-`, so `text-primary` (the primary role as text) stays allowed while
-# `text-text-primary` (the v2 primary text) does not.
+# matched only right after a colour utility (`bg-`, `text-`, `border-t-`, …)
+# or a colour variable (`--color-`, `--cl-color-`), itself not part of a longer
+# word: `text-primary` (the primary role as text) stays allowed while
+# `text-text-primary` (the v2 primary text) does not, and an attribute or a word
+# that merely ends in a retired stem (`data-accent`, `conn-status-ok`,
+# "pre-accent") is not a colour at all.
 END='([^[:alnum:]_-]|$)'
+COLOR_UTIL='(^|[^[:alnum:]_-])(--color|--cl-color|bg|text|fill|stroke|border(-[xytrblse])?|outline|ring|inset-ring|ring-offset|divide|placeholder|caret|accent|decoration|shadow|inset-shadow|from|via|to)'
 RETIRED=(
-  "v2 surface (surface-container, surface-container-high)|-surface-(panel|surface|raised|row-hover)$END"
-  "v2 border (outline, outline-strong)|-border-(default|strong|faint)$END"
-  "v2 text colour (text, text-muted, text-subtle)|-text-(primary|secondary|tertiary|disabled|data-bright|log)$END"
-  "accent (primary, data-*)|-accent(-alt-(violet|teal))?$END"
-  "status-* (success, warning, error, error-solid)|-status-(ok|warn|err|err-solid|info)$END"
-  "cluster-* colour (a data-tint subtree, data-*)|-cluster-(amber|pink|blue|magenta|teal|violet|indigo)$END"
+  "v2 surface (surface-container, surface-container-high)|$COLOR_UTIL-surface-(panel|surface|raised|row-hover)$END"
+  "v2 border (outline, outline-strong)|$COLOR_UTIL-border-(default|strong|faint)$END"
+  "v2 text colour (text, text-muted, text-subtle)|$COLOR_UTIL-text-(primary|secondary|tertiary|disabled|data-bright|log)$END"
+  "accent (primary, data-*)|$COLOR_UTIL-accent(-alt-(violet|teal))?$END"
+  "status-* (success, warning, error, error-solid)|$COLOR_UTIL-status-(ok|warn|err|err-solid|info)$END"
+  "cluster-* colour (a data-tint subtree, data-*)|$COLOR_UTIL-cluster-(amber|pink|blue|magenta|teal|violet|indigo)$END"
   "v2 type style (title, body-sm, label)|(^|[^[:alnum:]_-])type-(caption|colhead|section|subtitle)$END"
   "--alpha-* recipe (a container role)|--alpha-[[:alnum:]-]+"
   "radius 2xl (xl)|(rounded(-[a-z]{1,2})?|--radius)-2xl$END"
+  "removed shadow (shadow-overlay, under overlays only)|(^|[^[:alnum:]_-])(--(cl-)?)?shadow-drawer$END"
+  "removed size token (--control-h, --row-h, an h-/w- size)|(^|[^[:alnum:]_-])--(control-height|row-pad-(default|compact)|icon-(2xs|xs|sm|md|lg|xl|2xl)|min-hit-target)$END"
 )
 
 fail=0

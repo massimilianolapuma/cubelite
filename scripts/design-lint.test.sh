@@ -22,6 +22,9 @@ fixture() {
 <p class="type-body-sm text-text bg-surface-container rounded-xl" style="color: var(--color-primary);">ok &#8212; fine</p>
 <a class="type-label text-primary hover:bg-surface-container-high border-outline-strong">link</a>
 <i class="text-text-muted text-text-subtle bg-surface-sunken bg-surface-overlay bg-primary-container text-success text-warning text-error bg-error-solid"></i>
+<!-- Attributes and prose that end in a retired stem are not a colour: a pre-accent note. -->
+<div data-accent data-status-ok data-testid="conn-status-ok" data-cluster-blue data-surface-raised data-border-strong data-text-secondary></div>
+<b class="shadow-overlay h-(--control-h) p-(--row-h)">pre-accent, re-status-ok</b>
 EOF
   cat > "$dir/apps/desktop/src/lib/ok.ts" <<'EOF'
 export const LINK = "focus-ring type-data-sm text-primary";
@@ -85,6 +88,15 @@ for cls in \
   rounded-2xl rounded-t-2xl; do
   expect 1 "retired class $cls fails" "$(with src/lib/Ok.svelte "<p class=\"$cls\">x</p>")"
 done
+
+# Tokens removed with the v2 aliases (phase 9): they would draw nothing.
+for cls in \
+  shadow-drawer hover:shadow-drawer 'h-(--control-height)' 'p-(--row-pad-default)' \
+  'py-(--row-pad-compact)' 'w-(--icon-md)' 'size-(--icon-2xs)' 'min-h-(--min-hit-target)'; do
+  expect 1 "removed token $cls fails" "$(with src/lib/Ok.svelte "<p class=\"$cls\">x</p>")"
+done
+expect 1 "removed variable in hand-written CSS fails" "$(with src/app.css 'a { min-width: var(--min-hit-target); }')"
+expect 1 "removed shadow variable fails" "$(with src/lib/ok.ts 'const s = "var(--cl-shadow-drawer)";')"
 
 # The same names as CSS variables, in TypeScript, CSS and an e2e spec.
 expect 1 "retired variable in TypeScript fails" "$(with src/lib/ok.ts 'const c = "var(--color-status-warn)";')"
