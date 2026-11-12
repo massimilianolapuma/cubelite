@@ -68,7 +68,7 @@
 			<span class="type-data-sm truncate text-text-muted">
 				{event.reason ?? EMPTY}{event.count > 1 ? ` ×${event.count}` : ''}
 			</span>
-			<span class="type-data-sm truncate text-text-muted" title={event.object}>{event.object}</span>
+			<span class="type-data-sm truncate text-text-muted" title={event.object || undefined}>{event.object || EMPTY}</span>
 			<span class="type-body-sm truncate text-text-muted" title={event.message ?? undefined}>{event.message ?? EMPTY}</span>
 			<span class="type-data-sm text-text-muted">{formatAge(event.last_timestamp)}</span>
 		</div>

@@ -171,7 +171,7 @@
 							onclick={() => app.navigate('events')}
 						>
 							<StatusGlyph state="warn" class="text-warning" />
-							<span class="type-data-sm w-40 shrink-0 truncate text-text" title={event.object}>{event.object}</span>
+							<span class="type-data-sm w-40 shrink-0 truncate text-text" title={event.object || undefined}>{event.object || EMPTY}</span>
 							<span class="type-body-sm min-w-0 flex-1 truncate text-text-muted">
 								{event.message ?? event.reason ?? EMPTY}
 							</span>

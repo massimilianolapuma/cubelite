@@ -774,6 +774,7 @@ dependencies = [
  "http",
  "k8s-openapi",
  "kube",
+ "proc-macro2",
  "proptest",
  "regex",
  "reqwest",

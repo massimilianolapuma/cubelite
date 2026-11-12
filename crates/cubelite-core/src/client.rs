@@ -892,7 +892,8 @@ fn event_to_info(e: Event) -> EventInfo {
     let object = match (&e.involved_object.kind, &e.involved_object.name) {
         (Some(kind), Some(name)) => format!("{kind}/{name}"),
         (None, Some(name)) => name.clone(),
-        _ => "—".to_string(),
+        // No involved object: an empty value, which the UI shows as its en dash.
+        _ => String::new(),
     };
     // Prefer the most recent signal available: series, lastTimestamp, eventTime.
     let last_timestamp = e
@@ -1250,7 +1251,7 @@ users:
             ..Default::default()
         };
         let info = event_to_info(e);
-        assert_eq!(info.object, "—");
+        assert_eq!(info.object, "");
         assert_eq!(info.count, 1);
         assert!(info.last_timestamp.is_none());
     }

@@ -532,9 +532,9 @@ pub fn error_reason(body: &str, status: u16) -> String {
             .or_else(|| error.as_str().map(str::to_owned))
     });
     from_json.unwrap_or_else(|| match status {
-        401 => "authentication failed — check the credentials".to_string(),
+        401 => "authentication failed: check the credentials".to_string(),
         403 => "the user may not read these indices".to_string(),
-        404 => "not found — check the index pattern".to_string(),
+        404 => "not found: check the index pattern".to_string(),
         _ => body.chars().take(200).collect(),
     })
 }

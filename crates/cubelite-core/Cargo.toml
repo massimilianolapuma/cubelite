@@ -29,3 +29,4 @@ serial_test = "4"
 tower-test = "0.4"
 regex = "1"
 proptest = { version = "1", default-features = false, features = ["std"] }
+proc-macro2 = "1"
