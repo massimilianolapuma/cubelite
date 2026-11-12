@@ -1,5 +1,11 @@
 # Handoff: CubeLite Unified UI (Design System v1 + Main App)
 
+> **Historical.** This folder is the v2 design handoff and no longer describes the app. It is
+> superseded by the Tonal design system: the spec
+> `docs/superpowers/specs/2026-11-10-tonal-design-system-design.md` and `design/README.md`
+> (tokens, generator, lint). Its token names, Geist fonts and `tokens-v2.json` are retired; it is
+> kept for the record only.
+
 ## Overview
 Redesign of the CubeLite desktop app around a **single unified visual identity for macOS / Windows / Linux** (Linear/Lens-style, not platform-native). Core concepts:
 
