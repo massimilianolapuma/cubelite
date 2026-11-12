@@ -8,7 +8,7 @@ type ColorToken = { $dark: ColorValue; $light: ColorValue };
 
 const tokens: {
   color: Record<string, ColorToken>;
-  identity: { $dark: [number, number]; $light: [number, number]; hues: Record<string, number> };
+  identity: { hues: Record<string, number> };
 } = JSON.parse(readFileSync(resolve(__dirname, "../../../../design/tokens.json"), "utf8"));
 
 const THEMES = ["dark", "light"] as const;
@@ -80,18 +80,6 @@ describe("token contrast (WCAG AA) on every cluster tint", () => {
       }
     }
   }
-
-  it("identity colours read as text on the wells that show them", () => {
-    for (const hue of Object.values(tokens.identity.hues)) {
-      for (const theme of THEMES) {
-        const [l, c] = theme === "dark" ? tokens.identity.$dark : tokens.identity.$light;
-        for (const bg of ["surface-sunken", "surface-window", "surface-container"]) {
-          // An identity colour is always shown inside its own tint.
-          expect(contrastRatioOklch([l, c, hue], color(bg, theme, hue))).toBeGreaterThanOrEqual(4.5);
-        }
-      }
-    }
-  });
 
   it("every colour role is audited or exempt with a reason", () => {
     const audited = new Set(MATRIX.flatMap((row) => [row.fg, ...row.on]));

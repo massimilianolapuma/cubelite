@@ -7,7 +7,6 @@ test("parses weight, size and family", () => {
     size: 13,
     weight: 500,
     family: "sans",
-    uppercase: false,
     tracking: 0,
   });
 });
@@ -17,19 +16,21 @@ test("parses fractional sizes and mono family", () => {
     size: 11.5,
     weight: 400,
     family: "mono",
-    uppercase: false,
     tracking: 0,
   });
 });
 
-test("parses uppercase and letter-spacing flags", () => {
-  assert.deepEqual(parseTypeStyle("600 10px sans · uppercase · ls .07em"), {
-    size: 10,
+test("parses the letter-spacing flag", () => {
+  assert.deepEqual(parseTypeStyle("600 12px sans · ls .07em"), {
+    size: 12,
     weight: 600,
     family: "sans",
-    uppercase: true,
     tracking: 0.07,
   });
+});
+
+test("rejects uppercase: labels are sentence case (Tonal §4.3)", () => {
+  assert.throws(() => parseTypeStyle("600 12px sans · uppercase"), /Unknown typography flag "uppercase"/);
 });
 
 test("rejects unknown flags", () => {

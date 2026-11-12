@@ -35,9 +35,9 @@ test("a tinted subtree re-declares what utilities and recipes read", () => {
   const sub = rule(buildLayer(tokens), "[data-tint]");
   for (const line of [
     "--color-surface-window: var(--cl-color-surface-window);",
-    "--color-text-primary: var(--cl-color-text);",
-    "--color-accent: var(--cl-color-primary);",
-    "--alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);",
+    "--color-text: var(--cl-color-text);",
+    "--color-primary: var(--cl-color-primary);",
+    "--color-data-1: var(--cl-color-data-1);",
   ]) {
     assert.ok(sub.includes(line), `missing "${line}"`);
   }
@@ -72,45 +72,33 @@ test("the default tint and every identity hue are declared on :root", () => {
   assert.ok(root.includes("--cl-hue-magenta: 345;"));
 });
 
-test("identity colours take the primary lightness and chroma at their own hue", () => {
-  const layer = buildLayer(tokens);
-  assert.ok(
-    rule(layer, ".dark, .dark [data-tint]").includes("--cl-color-cluster-magenta: oklch(0.84 0.09 345);"),
-  );
-  assert.ok(
-    rule(layer, ":root, [data-tint]").includes("--cl-color-cluster-teal: oklch(0.45 0.14 190);"),
-  );
-});
-
-test("v2 names alias the new roles", () => {
+test("every colour role is a theme colour, under its own name", () => {
   const theme = buildTheme(tokens);
-  for (const line of [
-    "--color-surface-container: var(--cl-color-surface-container);",
-    "--color-surface-panel: var(--cl-color-surface-container);",
-    "--color-border-default: var(--cl-color-outline);",
-    "--color-text-secondary: var(--cl-color-text-muted);",
-    "--color-accent: var(--cl-color-primary);",
-    "--color-status-err: var(--cl-color-error);",
-    "--color-cluster-amber: var(--cl-color-data-4);",
-    "--color-cluster-indigo: var(--cl-color-cluster-indigo);",
-    "--font-display:",
-  ]) {
-    assert.ok(theme.includes(line), `missing "${line}"`);
+  for (const role of Object.keys(tokens.color)) {
+    assert.ok(theme.includes(`--color-${role}: var(--cl-color-${role});`), `missing role "${role}"`);
   }
+  assert.ok(theme.includes("--font-display:"));
 });
 
-test("an alias of a role that does not exist is rejected", () => {
-  assert.throws(
-    () => buildTheme({ ...tokens, alias: { ...tokens.alias, "surface-panel": "surface-nope" } }),
-    /unknown colour role "surface-nope"/,
-  );
+// The names the Tonal restyle retired (spec §4.5), as they would appear in CSS.
+const RETIRED = [
+  /--color-(surface-(panel|surface|raised|row-hover)|border-(default|strong|faint))\b/,
+  /--color-text-(primary|secondary|tertiary|disabled|data-bright|log)\b/,
+  /--color-(accent|status-[a-z-]+)\b/,
+  /color-cluster-[a-z]+/,
+  /--alpha-/,
+  /type-(caption|colhead|section|subtitle)\b/,
+  /--radius-2xl\b/,
+];
+
+test("the generated CSS has no v2 name", () => {
+  const css = [buildTheme(tokens), buildLayer(tokens), buildType(tokens)].join("\n");
+  for (const name of RETIRED) assert.doesNotMatch(css, name);
 });
 
-test("a role and an alias cannot share a name", () => {
-  assert.throws(
-    () => buildTheme({ ...tokens, alias: { ...tokens.alias, text: "text-muted" } }),
-    /"text" is both a colour role and an alias/,
-  );
+test("tokens.json has no alias group left", () => {
+  assert.ok(!("alias" in tokens), "color alias group");
+  assert.ok(!("alias" in tokens.font), "type alias group");
 });
 
 test("type styles use their family, tracking and colour", () => {
@@ -131,17 +119,9 @@ test("type styles use their family, tracking and colour", () => {
   );
 });
 
-test("retired type names reuse the new style", () => {
-  const type = buildType(tokens);
-  const body = (name: string) => {
-    const start = type.indexOf(`@utility type-${name} {`);
-    assert.notEqual(start, -1, `no type-${name}`);
-    return type.slice(type.indexOf("{", start), type.indexOf("}", start));
-  };
-  assert.equal(body("caption"), body("body-sm"));
-  assert.equal(body("colhead"), body("label"));
-  assert.equal(body("subtitle"), body("title"));
-  assert.ok(!body("section").includes("uppercase"));
+test("there is one type utility per style", () => {
+  const names = [...buildType(tokens).matchAll(/@utility type-([a-z-]+) \{/g)].map((m) => m[1]);
+  assert.deepEqual(names, Object.keys(tokens.font.style));
 });
 
 test("no shadcn bridge is emitted", () => {
