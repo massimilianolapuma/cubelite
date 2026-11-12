@@ -761,20 +761,64 @@ test.describe("non-text contrast (WCAG 1.4.11) of the controls the token matrix 
 });
 
 /**
+ * The ancestor that cuts the focused element's ring, or "" when the ring is
+ * whole: the ring's box (the element grown by its outline width and offset; an
+ * inset ring on ::after grows nothing) must lie inside the visible box of every
+ * ancestor that clips (a scroller, an overflow-hidden box).
+ */
+async function activeRingCut(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el || el === document.body) return "";
+    const own = getComputedStyle(el);
+    const drawn = own.outlineStyle !== "none" ? own : getComputedStyle(el, "::after");
+    const grow = Math.max(0, parseFloat(drawn.outlineWidth) + parseFloat(drawn.outlineOffset));
+    const b = el.getBoundingClientRect();
+    const box = { left: b.left - grow, top: b.top - grow, right: b.right + grow, bottom: b.bottom + grow };
+    // A fixed box (a dialog) escapes the overflow of everything above it.
+    for (
+      let a = getComputedStyle(el).position === "fixed" ? null : el.parentElement;
+      a && a !== document.body;
+      a = getComputedStyle(a).position === "fixed" ? null : a.parentElement
+    ) {
+      const cs = getComputedStyle(a);
+      const clipX = cs.overflowX !== "visible";
+      const clipY = cs.overflowY !== "visible";
+      if (!clipX && !clipY) continue;
+      const ab = a.getBoundingClientRect();
+      const left = ab.left + a.clientLeft;
+      const top = ab.top + a.clientTop;
+      const outX = clipX && (box.left < left - 0.5 || box.right > left + a.clientWidth + 0.5);
+      const outY = clipY && (box.top < top - 0.5 || box.bottom > top + a.clientHeight + 0.5);
+      if (outX || outY) return `${a.tagName.toLowerCase()}.${String(a.getAttribute("class")).slice(0, 50)}`;
+    }
+    return "";
+  });
+}
+
+/**
  * Presses Tab up to `max` times, or until the focus comes back to an element it
  * has already visited, and returns how many elements inside `scope` took the
- * focus and those that showed no visible ring: a solid outline of 2 px or more,
- * on the element or, for a list row, on its ::after (drawn above the sticky cell).
+ * focus, those that showed no visible ring (a solid outline of 2 px or more, on
+ * the element or, for a list row, on its ::after, drawn above the sticky cell),
+ * and those whose ring a scroller or another clipping ancestor cut
+ * (`activeRingCut`).
  */
-async function tabWalk(page: Page, scope: string, max = 80): Promise<{ visited: number; missing: string[] }> {
+async function tabWalk(
+  page: Page,
+  scope: string,
+  max = 80,
+): Promise<{ visited: number; missing: string[]; clipped: string[] }> {
   const missing: string[] = [];
+  const clipped: string[] = [];
   let visited = 0;
   for (let i = 0; i < max; i++) {
     await page.keyboard.press("Tab");
     const r = await page.evaluate((sel) => {
       const el = document.activeElement as HTMLElement | null;
       const root = document.querySelector(sel);
-      if (!el || !root || !root.contains(el) || el === document.body) return { inside: false, again: false, name: "", ok: true };
+      if (!el || !root || !root.contains(el) || el === document.body)
+        return { inside: false, again: false, name: "", ok: true };
       const again = el.dataset.walked === "true";
       el.dataset.walked = "true";
       const ring = (s: CSSStyleDeclaration) =>
@@ -790,8 +834,18 @@ async function tabWalk(page: Page, scope: string, max = 80): Promise<{ visited: 
     if (r.again) break;
     visited++;
     if (!r.ok) missing.push(r.name);
+    const cut = await activeRingCut(page);
+    if (cut) clipped.push(`${r.name} cut by ${cut}`);
   }
-  return { visited, missing };
+  return { visited, missing, clipped };
+}
+
+/** Walks `scope` with Tab and requires a whole ring on every control it reaches. */
+async function ringsIn(page: Page, scope: string, label: string, min: number, max = 80) {
+  const walk = await tabWalk(page, scope, max);
+  expect(walk.visited, `${label}: controls reached`).toBeGreaterThanOrEqual(min);
+  expect(walk.missing, `${label}: no ring`).toEqual([]);
+  expect(walk.clipped, `${label}: ring cut`).toEqual([]);
 }
 
 test.describe("focus: every control shows the ring from the keyboard", () => {
@@ -802,29 +856,82 @@ test.describe("focus: every control shows the ring from the keyboard", () => {
     await page.getByRole("button", { name: "Open logs" }).click();
     await expect(page.getByLabel("Pod logs panel")).toBeVisible();
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    const walk = await tabWalk(page, "body", 200);
     // The rail, the sidebar, the top bar, the list, the panel and the log toolbar.
-    expect(walk.visited).toBeGreaterThan(40);
-    expect(walk.missing).toEqual([]);
+    await ringsIn(page, "body", "pods", 41, 200);
+  });
+
+  test("a detail panel that scrolls keeps every ring whole", async ({ page }) => {
+    await withPrometheus(page);
+    await boot(page);
+    await page.setViewportSize({ width: 1440, height: 560 });
+    const panel = await podsWithPanel(page);
+    await ringsIn(page, '[role="dialog"][aria-label="api-0"]', "panel", 10, 120);
+
+    // A control half under the scroller's edge is scrolled just into view when
+    // Tab reaches it, flush with the edge: its ring must still show whole.
+    const body = panel.locator("[data-panel-body]");
+    const range = panel.getByRole("radiogroup", { name: "Metrics range" });
+    const split = panel.getByRole("radiogroup", { name: "Per container or total" });
+    await focusVisible(page, range.getByRole("radio").last());
+    await body.evaluate((b, s) => {
+      const half = s.getBoundingClientRect();
+      b.scrollTop += half.bottom - b.getBoundingClientRect().bottom - half.height / 2;
+    }, await split.elementHandle());
+    await page.keyboard.press("Tab");
+    await expect(split.getByRole("radio").first()).toBeFocused();
+    expect(await activeRingCut(page)).toBe("");
   });
 
   test("Preferences, the palette and a dialog", async ({ page }) => {
     await boot(page);
     await page.getByLabel("Preferences").click();
-    const prefs = await tabWalk(page, '[role="dialog"][aria-label="Preferences"]', 150);
-    expect(prefs.visited).toBeGreaterThan(20);
-    expect(prefs.missing, "preferences").toEqual([]);
+    // Each control scrolls into view as it takes the focus: its ring must not
+    // be cut by the dialog's scroller.
+    await ringsIn(page, '[role="dialog"][aria-label="Preferences"]', "preferences", 21, 150);
     await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: /Search & switch/ }).click();
-    expect((await tabWalk(page, '[data-testid="command-palette"]', 10)).missing, "palette").toEqual([]);
+    await ringsIn(page, '[data-testid="command-palette"]', "palette", 1, 10);
     await page.keyboard.press("Escape");
 
     const panel = await podsWithPanel(page);
     await panel.getByRole("button", { name: "YAML" }).click();
-    expect((await tabWalk(page, '[role="dialog"][aria-label="api-0.yaml"]', 10)).missing, "yaml").toEqual([]);
+    await ringsIn(page, '[role="dialog"][aria-label="api-0.yaml"]', "yaml", 1, 80);
     await page.keyboard.press("Escape");
     await panel.getByRole("button", { name: "Delete" }).click();
-    expect((await tabWalk(page, '[role="dialog"][aria-label="Delete Pod"]', 10)).missing, "delete").toEqual([]);
+    await ringsIn(page, '[role="dialog"][aria-label="Delete Pod"]', "delete", 1, 80);
+  });
+
+  test("Overview, All Clusters and the Logs view", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 700 });
+    await withPrometheus(page);
+    await boot(page);
+    await page.setViewportSize({ width: 1440, height: 700 });
+    await expect(page.getByRole("heading", { level: 1, name: /Overview/ })).toBeVisible();
+    await ringsIn(page, "main", "overview", 5);
+
+    await page.getByRole("complementary").getByText("Logs", { exact: true }).click();
+    await expect(page.getByTestId("log-toolbar").first()).toBeVisible();
+    await ringsIn(page, "main", "logs view", 6);
+
+    await page.getByRole("button", { name: "All Clusters" }).click();
+    await expect(page.locator("[data-meter-track]").first()).toBeVisible();
+    await ringsIn(page, "main", "all clusters", 2);
+  });
+
+  test("onboarding", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 700 });
+    await page.addInitScript(tauriMockScript());
+    await page.addInitScript(() => window.localStorage.setItem("cubelite.theme", '"dark"'));
+    await page.goto("/");
+    const dialog = '[role="dialog"][aria-label="Welcome to CubeLite"]';
+    await expect(page.locator(dialog)).toBeVisible();
+    for (let step = 0; step < 3; step++) {
+      // The walk passes the app behind the dialog too (the onboarding does not keep
+      // the focus inside it): it counts and checks only what is inside.
+      await ringsIn(page, dialog, `onboarding step ${step + 1}`, 1, 150);
+      await page.evaluate((sel) => document.querySelectorAll(`${sel} [data-walked]`).forEach((n) => n.removeAttribute("data-walked")), dialog);
+      if (step < 2) await page.locator(dialog).getByRole("button", { name: "Continue" }).click();
+    }
   });
 });

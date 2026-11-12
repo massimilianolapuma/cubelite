@@ -119,7 +119,9 @@
 			</Button>
 		</header>
 
-		<div bind:this={body} class="min-h-0 flex-1 overflow-y-auto px-4 pb-4" data-panel-body>
+		<!-- Scroll padding: a control the focus scrolls into view stays clear of the
+		     edge, so its 4 px ring is not cut. -->
+		<div bind:this={body} class="min-h-0 flex-1 scroll-py-2 overflow-y-auto px-4 pb-4" data-panel-body>
 			{@render children()}
 			{#if footer && !pinned}
 				<footer class="mt-4 flex flex-wrap items-center gap-2" data-pinned="false">
