@@ -67,6 +67,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each round. Request and limit lines are dashed and grey. Pointing at a chart
   keeps its legend and adds each line's value to it. "Cluster unreachable"
   leads with the failure and its reason, with Retry as the main action.
+- **Logs in the new look** (#623): the Logs view, the log panel and the pop-out
+  window share one look, with a toolbar of chips and pill fields and the lines
+  on a sunken area. The level is a word in its own column; warning and error
+  lines get a faint wash instead of a coloured left edge, and INFO is neutral.
+  Following and Paused are a chip with a circle or a pause icon. In a merged
+  stream each container has one of five data colours; past five the colours
+  repeat with a dashed, dotted or double underline. Search matches are filled
+  and underlined, and the current one is outlined and bold. A stream's state
+  (streaming, connecting, reconnecting, ended, error) is a shape and a word on
+  its tab and in the pop-out. Tail size is a menu, and a size reached with
+  "Load 500 earlier" shows in it. The log panel always keeps at least four
+  lines visible. The pop-out window takes the colour of its pod's cluster and
+  follows a change of that colour. The pod shell and YAML dialogs have a sunken
+  code area, and the YAML editor fits its dialog in a small window.
 - **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
   saved as amber becomes indigo and one saved as pink becomes magenta: warm
   colours are reserved for warnings and errors.

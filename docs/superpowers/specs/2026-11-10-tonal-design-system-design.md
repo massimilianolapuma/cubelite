@@ -227,8 +227,10 @@ carries no contrast requirement.
 - **Detail panel**: docked or overlay is decided by the width of the content column (≥ 1000 px
   docked), not by the window width, so it follows sidebar and rail changes. The shell measures the
   column (a container query cannot tell the list which columns to keep).
-- **Log panel**: a `surface-sunken` card under the list and the detail panel, resizable 160–560 as
-  today. The `z-[35]` rule that lifts it above the drawer is kept only for overlay mode.
+- **Log panel**: a card under the list and the detail panel, resizable 160–560 as today. Tab strip
+  and toolbar sit on the card (`surface-container`); only the lines are `surface-sunken`, inset
+  (§8.5). The card grows past the height the user set when that would leave fewer than four lines.
+  The `z-[35]` rule that lifts it above the drawer is kept only for overlay mode.
 - Banners (update available, integrations) become one pill-shaped row above the cards, on
   `surface-container-high`, with their action as a text button.
 
@@ -382,6 +384,30 @@ is fixed.
   `data-3`.
 - Pop-out window: its root carries the tint of the cluster the pod belongs to.
 - Pod shell and YAML modals: `radius-xl` modal with a `surface-sunken`, `radius-md` code area.
+
+Decided in phase 7 (#623):
+
+- The toolbar and the tab strip are on `surface-container` in the panel and the pop-out too: light
+  `surface-container-high` (controls) and light `surface-sunken` differ by .005 L, so controls on a
+  sunken card had no shape.
+- The panel toolbar is one row from 1280 × 800 up and at most two at 800 × 600. To get there the
+  words of "prev", "filter" and the Following / Paused chip hide in a narrow toolbar (they stay in
+  the accessible name; the chip keeps its circle or pause icon), the search field shrinks to 6 rem,
+  and below 44 rem of toolbar Raw · JSON · ECS is a pill select. No control moves into a menu.
+- The lines area never shows fewer than four lines (72 px), in the panel and in the Logs view.
+- Tail size is a pill select; a size reached with "Load 500 earlier" is listed as its own option.
+- Sources: regular containers in pod-spec order, then init containers. Past five the colours repeat
+  with a dashed, then dotted, then double underline. The pod column of the Logs view stays neutral.
+- Message text is `text`; timestamps, JSON keys and DEBUG are `text-muted`. The WARN / ERROR wash is
+  the container token at 35 %.
+- Search matches: `warning-container` fill with a `warning` underline; the active match has a
+  `warning` outline and semibold weight instead.
+- A stream's state is a shape and a word: streaming circle, connecting dashed ring, reconnecting
+  triangle, ended ring, error square. The word is visible in the pop-out header and read out in the
+  tab strip.
+- The pop-out follows a change of its cluster's colour made in the main window (the colours setting
+  is re-read on a `storage` event). It does not follow a theme change; that is left as it was.
+- Left alone, own issue: in the pop-out the toolbar menus open above the top of the window (#624).
 
 ### 8.6 Overlays and settings
 
