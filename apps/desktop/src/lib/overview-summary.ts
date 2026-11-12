@@ -1,6 +1,6 @@
 /**
  * Overview counts (parity v2 §4). Pure, so the counting rules are unit-tested.
- * A `null` list means "not loaded" and yields `null` counts (UI shows "—").
+ * A `null` list means "not loaded" and yields `null` counts (the UI shows the empty value).
  */
 import type {
   ConfigMapInfo,

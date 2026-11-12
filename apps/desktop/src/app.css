@@ -55,38 +55,7 @@
   --color-data-4: var(--cl-color-data-4);
   --color-data-5: var(--cl-color-data-5);
 
-  --color-surface-panel: var(--cl-color-surface-container);
-  --color-surface-surface: var(--cl-color-surface-container);
-  --color-surface-raised: var(--cl-color-surface-container-high);
-  --color-surface-row-hover: var(--cl-color-surface-container-high);
-  --color-border-default: var(--cl-color-outline);
-  --color-border-strong: var(--cl-color-outline-strong);
-  --color-border-faint: var(--cl-color-outline);
-  --color-text-primary: var(--cl-color-text);
-  --color-text-secondary: var(--cl-color-text-muted);
-  --color-text-tertiary: var(--cl-color-text-subtle);
-  --color-text-disabled: var(--cl-color-text-subtle);
-  --color-text-data-bright: var(--cl-color-text);
-  --color-text-log: var(--cl-color-text-muted);
-  --color-accent: var(--cl-color-primary);
-  --color-accent-alt-violet: var(--cl-color-data-3);
-  --color-accent-alt-teal: var(--cl-color-data-2);
-  --color-status-ok: var(--cl-color-success);
-  --color-status-warn: var(--cl-color-warning);
-  --color-status-err: var(--cl-color-error);
-  --color-status-err-solid: var(--cl-color-error-solid);
-  --color-status-info: var(--cl-color-text-muted);
-  --color-cluster-amber: var(--cl-color-data-4);
-  --color-cluster-pink: var(--cl-color-data-5);
-
-  --color-cluster-blue: var(--cl-color-cluster-blue);
-  --color-cluster-magenta: var(--cl-color-cluster-magenta);
-  --color-cluster-teal: var(--cl-color-cluster-teal);
-  --color-cluster-violet: var(--cl-color-cluster-violet);
-  --color-cluster-indigo: var(--cl-color-cluster-indigo);
-
   --shadow-overlay: var(--cl-shadow-overlay);
-  --shadow-drawer: var(--cl-shadow-drawer);
 
   --spacing-1: 4px;
   --spacing-2: 8px;
@@ -101,7 +70,6 @@
   --radius-md: 16px;
   --radius-lg: 20px;
   --radius-xl: 28px;
-  --radius-2xl: 28px;
   --radius-full: 9999px;
 }
 /* @generated:theme-end */
@@ -140,11 +108,6 @@
     --cl-color-data-3: oklch(0.45 0.14 310);
     --cl-color-data-4: oklch(0.5 0.14 275);
     --cl-color-data-5: oklch(0.45 0.14 345);
-    --cl-color-cluster-blue: oklch(0.45 0.14 240);
-    --cl-color-cluster-magenta: oklch(0.45 0.14 345);
-    --cl-color-cluster-teal: oklch(0.45 0.14 190);
-    --cl-color-cluster-violet: oklch(0.45 0.14 310);
-    --cl-color-cluster-indigo: oklch(0.45 0.14 275);
   }
   :root {
     --cl-tint-h: 240;
@@ -155,20 +118,7 @@
     --cl-hue-indigo: 275;
 
     --cl-shadow-overlay: 0 24px 64px rgba(20,24,48,.18);
-    --cl-shadow-drawer: -16px 0 40px rgba(20,20,30,.12);
 
-    --alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);
-    --alpha-active-nav-bg: color-mix(in srgb, var(--color-accent) 14%, transparent);
-    --alpha-pill-ok: color-mix(in srgb, var(--color-status-ok) 10%, transparent);
-    --alpha-pill-warn: color-mix(in srgb, var(--color-status-warn) 10%, transparent);
-    --alpha-pill-err: color-mix(in srgb, var(--color-status-err) 10%, transparent);
-    --alpha-log-error-row: color-mix(in srgb, var(--color-status-err) 7%, transparent);
-    --alpha-log-warn-row: color-mix(in srgb, var(--color-status-warn) 4.5%, transparent);
-
-    --row-pad-default: 9px;
-    --row-pad-compact: 5px;
-    --control-height: 28px;
-    --min-hit-target: 28px;
     --row-h: 46px;
     --row-h-compact: 38px;
     --nav-h: 28px;
@@ -180,14 +130,6 @@
     --chip-h: 40px;
     --chip-h-compact: 36px;
     --control-primary-h: 48px;
-
-    --icon-2xs: 7px;
-    --icon-xs: 8px;
-    --icon-sm: 10px;
-    --icon-md: 11px;
-    --icon-lg: 14px;
-    --icon-xl: 28px;
-    --icon-2xl: 40px;
 
     --motion-fadein: 100ms ease;
     --motion-popin: 140ms ease;
@@ -227,44 +169,6 @@
     --color-data-3: var(--cl-color-data-3);
     --color-data-4: var(--cl-color-data-4);
     --color-data-5: var(--cl-color-data-5);
-
-    --color-surface-panel: var(--cl-color-surface-container);
-    --color-surface-surface: var(--cl-color-surface-container);
-    --color-surface-raised: var(--cl-color-surface-container-high);
-    --color-surface-row-hover: var(--cl-color-surface-container-high);
-    --color-border-default: var(--cl-color-outline);
-    --color-border-strong: var(--cl-color-outline-strong);
-    --color-border-faint: var(--cl-color-outline);
-    --color-text-primary: var(--cl-color-text);
-    --color-text-secondary: var(--cl-color-text-muted);
-    --color-text-tertiary: var(--cl-color-text-subtle);
-    --color-text-disabled: var(--cl-color-text-subtle);
-    --color-text-data-bright: var(--cl-color-text);
-    --color-text-log: var(--cl-color-text-muted);
-    --color-accent: var(--cl-color-primary);
-    --color-accent-alt-violet: var(--cl-color-data-3);
-    --color-accent-alt-teal: var(--cl-color-data-2);
-    --color-status-ok: var(--cl-color-success);
-    --color-status-warn: var(--cl-color-warning);
-    --color-status-err: var(--cl-color-error);
-    --color-status-err-solid: var(--cl-color-error-solid);
-    --color-status-info: var(--cl-color-text-muted);
-    --color-cluster-amber: var(--cl-color-data-4);
-    --color-cluster-pink: var(--cl-color-data-5);
-
-    --color-cluster-blue: var(--cl-color-cluster-blue);
-    --color-cluster-magenta: var(--cl-color-cluster-magenta);
-    --color-cluster-teal: var(--cl-color-cluster-teal);
-    --color-cluster-violet: var(--cl-color-cluster-violet);
-    --color-cluster-indigo: var(--cl-color-cluster-indigo);
-
-    --alpha-selection-bg: color-mix(in srgb, var(--color-accent) 10%, transparent);
-    --alpha-active-nav-bg: color-mix(in srgb, var(--color-accent) 14%, transparent);
-    --alpha-pill-ok: color-mix(in srgb, var(--color-status-ok) 10%, transparent);
-    --alpha-pill-warn: color-mix(in srgb, var(--color-status-warn) 10%, transparent);
-    --alpha-pill-err: color-mix(in srgb, var(--color-status-err) 10%, transparent);
-    --alpha-log-error-row: color-mix(in srgb, var(--color-status-err) 7%, transparent);
-    --alpha-log-warn-row: color-mix(in srgb, var(--color-status-warn) 4.5%, transparent);
   }
   .dark, .dark [data-tint] {
     --cl-color-surface-window: oklch(0.165 0.03 var(--cl-tint-h));
@@ -298,15 +202,14 @@
     --cl-color-data-3: oklch(0.84 0.09 310);
     --cl-color-data-4: oklch(0.72 0.12 275);
     --cl-color-data-5: oklch(0.86 0.07 345);
-    --cl-color-cluster-blue: oklch(0.84 0.09 240);
-    --cl-color-cluster-magenta: oklch(0.84 0.09 345);
-    --cl-color-cluster-teal: oklch(0.84 0.09 190);
-    --cl-color-cluster-violet: oklch(0.84 0.09 310);
-    --cl-color-cluster-indigo: oklch(0.84 0.09 275);
   }
   .dark {
     --cl-shadow-overlay: 0 24px 64px rgba(0,0,0,.5);
-    --cl-shadow-drawer: -16px 0 40px rgba(0,0,0,.45);
+  }
+  @media (prefers-contrast: more) {
+    :root, [data-tint], .dark, .dark [data-tint] {
+      --cl-color-text-subtle: var(--cl-color-text-muted);
+    }
   }
 }
 /* @generated:layer-end */
@@ -317,14 +220,14 @@
     height: 100%;
     overflow: hidden;
     background: var(--color-surface-window);
-    color: var(--color-text-secondary);
+    color: var(--color-text-muted);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-border-strong) transparent;
+    scrollbar-color: var(--color-outline-strong) transparent;
   }
 
   ::-webkit-scrollbar {
@@ -332,7 +235,7 @@
     height: 10px;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-border-strong);
+    background: var(--color-outline-strong);
     border: 3px solid transparent;
     border-radius: 999px;
     background-clip: content-box;
@@ -415,33 +318,6 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
-}
-@utility type-subtitle {
-  font-family: var(--font-sans);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--color-text);
-}
-@utility type-caption {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.4;
-}
-@utility type-colhead {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--color-text-subtle);
-}
-@utility type-section {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--color-text-subtle);
 }
 /* @generated:type-end */
 
@@ -557,6 +433,59 @@
   }
 }
 
+/* Cards, tiles and overlays have no edge of their own (Tonal §4.4). With more
+   contrast, and in forced colours where their fill is replaced, each gains an
+   outline-strong edge (§9.1). An outline drawn inside: the layout does not move,
+   and a focus ring (2 px, more specific) still wins over it. */
+@layer utilities {
+  @media (prefers-contrast: more), (forced-colors: active) {
+    .card {
+      outline: 1px solid var(--color-outline-strong);
+      outline-offset: -1px;
+    }
+  }
+}
+
+/* Forced colours, continued: edges and hover drawn as an outline inside the
+   control, so nothing moves, and in this layer, so a focus ring (more specific)
+   still wins over them.
+   - A button-like control whose fill was its only edge (text buttons, chips,
+     toolbar and icon discs, the search button, links in banners: the class
+     `forced-edge`, and the text and danger variants of Button) and a key cap
+     would read as plain text: they get a system-colour edge.
+   - List rows and the sidebar's rows (items and section headers) show hover
+     with a Highlight edge, as the system does. */
+@layer utilities {
+  @media (forced-colors: active) {
+    .forced-edge,
+    [data-variant="text"],
+    [data-variant="danger"],
+    kbd {
+      outline: 1px solid ButtonText;
+      outline-offset: -1px;
+    }
+    kbd {
+      outline-color: CanvasText;
+    }
+    :where([data-nav], [data-section-toggle]):hover {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+    /* A list row's sticky name cell would cover an outline of the row: the edge
+       is drawn above the cells, where its focus ring is (which wins over it). */
+    :where(.list-row):hover::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      border-radius: inherit;
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+      pointer-events: none;
+    }
+  }
+}
+
 /* Minimum 28×28 hit target (spec) for compact controls: an invisible
    pseudo-element grows the clickable area without changing the layout. */
 @layer utilities {
@@ -577,7 +506,6 @@
 /* Compact density (Preferences → Density); outside @layer so it wins over
    the generated :root tokens. */
 :root[data-density="compact"] {
-  --row-pad-default: var(--row-pad-compact);
   --row-h: var(--row-h-compact);
   --nav-h: var(--nav-h-compact);
   --control-h: var(--control-h-compact);
@@ -589,8 +517,163 @@
 :root {
   transition: --cl-tint-h var(--motion-tint);
 }
+
+/* Reduced motion (Tonal §9.1): no transition and no animation anywhere: the
+   tint, panels, overlays, toasts, chevrons and meters change at once, the
+   loading placeholders and the paused pill stop pulsing, a spinner stands
+   still (its word stays: Button, Loading). Outside any layer, so it wins over
+   every utility. */
 @media (prefers-reduced-motion: reduce) {
-  :root {
+  :root,
+  *,
+  *::before,
+  *::after {
     transition: none;
+    animation: none;
+  }
+}
+
+/* Forced colours (Windows contrast themes, Tonal §9.1). The browser replaces
+   every background, border and text colour with the system palette, keeps the
+   system colours an author names, drops box-shadows and leaves SVG colours
+   alone. So no state may live in a fill or a shadow: selection, the current
+   item and pressed controls take Highlight; a control whose fill was its edge
+   gets a border; glyphs follow their text. Outside any layer, so it wins over
+   the utilities. */
+@media (forced-colors: active) {
+  /* An SVG keeps the colour an author gives it: a state glyph would stay green
+     or red, an icon its role colour, unreadable on some palettes. They follow
+     their text instead. */
+  svg {
+    color: inherit;
+  }
+
+  /* Edges that were fills. A bare field (the palette's) is framed by its
+     container: a box of its own would be square inside a rounded one. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [data-bare]),
+  textarea,
+  select,
+  [aria-pressed],
+  [data-variant="tonal"],
+  [data-avatar],
+  [data-swatch],
+  [data-badge],
+  [data-state]:is([data-fill="warning"], [data-fill="error"]) {
+    border: 1px solid CanvasText;
+  }
+  [role="switch"] {
+    border-color: ButtonText;
+  }
+  [role="switch"] [data-knob],
+  [data-meter-fill],
+  [data-step-dot] {
+    background-color: CanvasText;
+  }
+  /* Chart lines keep their colour (an SVG stroke is not forced), and a data
+     colour can vanish on the system palette: every line and legend key takes the
+     text colour, and each series the dash of its rank (lib/metrics.ts
+     FORCED_DASHES, set by LineChart as --forced-dash); reference lines keep
+     their short even dash, which no series uses. */
+  [data-chart-guide],
+  [data-series] {
+    stroke: CanvasText;
+  }
+  [data-series="series"] {
+    stroke-dasharray: var(--forced-dash, none);
+  }
+
+  /* The one main action of a panel or dialog stands out from the tonal ones. */
+  :is([data-variant="primary"], [data-variant="danger-solid"]) {
+    forced-color-adjust: none;
+    border: 1px solid ButtonText;
+    background-color: ButtonText;
+    color: ButtonFace;
+  }
+  :is([data-variant="primary"], [data-variant="danger-solid"]) * {
+    color: ButtonFace;
+  }
+  :is([data-variant="primary"], [data-variant="danger-solid"]):focus-visible {
+    outline-color: ButtonText;
+  }
+  :is([data-variant="primary"], [data-variant="danger-solid"]):disabled,
+  :is([data-variant="primary"], [data-variant="danger-solid"]):disabled * {
+    border-color: GrayText;
+    background-color: Canvas;
+    color: GrayText;
+  }
+
+  /* Selection, current items, pressed and checked controls. A filled item opts
+     out of the forcing (forced-color-adjust: none, which its content inherits):
+     the browser would otherwise paint a Canvas backplate behind each run of its
+     text, and HighlightText on that backplate is invisible. Its content is then
+     coloured here, in system colours only. */
+  .list-row[data-selected="true"],
+  .palette-row[data-selected],
+  .menu-item[data-highlighted],
+  [data-nav][data-active="true"],
+  [data-avatar][data-active="true"],
+  [data-log-tab][data-active="true"],
+  [data-step-dot][data-current="true"],
+  [aria-pressed="true"],
+  [role="radio"][aria-checked="true"],
+  [role="switch"][aria-checked="true"] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background-color: Highlight;
+    box-shadow: none;
+    color: HighlightText;
+  }
+  :is(
+      .list-row[data-selected="true"],
+      .palette-row[data-selected],
+      .menu-item[data-highlighted],
+      [data-nav][data-active="true"],
+      [data-log-tab][data-active="true"],
+      [aria-pressed="true"],
+      [role="radio"][aria-checked="true"]
+    )
+    * {
+    border-color: HighlightText;
+    outline-color: HighlightText;
+    background-color: transparent;
+    box-shadow: none;
+    color: HighlightText;
+  }
+  /* The row's sticky name cell covers the cells that scroll under it. */
+  .list-row[data-selected="true"] > .sticky {
+    background-color: Highlight;
+  }
+  [role="switch"][aria-checked="true"] [data-knob] {
+    background-color: HighlightText;
+  }
+  /* A cluster colour swatch: the colour is the information. Each keeps its own
+     (and names it in its tooltip) with an edge; the chosen one keeps its check
+     rather than turning Highlight like the other radios. */
+  [data-swatch],
+  [data-swatch][aria-checked="true"] {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+    background-color: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  [data-swatch][aria-checked="true"] * {
+    color: var(--color-on-primary);
+  }
+  [data-swatch]:focus-visible {
+    outline-color: CanvasText;
+  }
+  /* A focus ring around a highlighted control sits on the canvas; one inside a
+     highlighted row sits on Highlight. */
+  :is(
+      .menu-item[data-highlighted],
+      [aria-pressed="true"],
+      [role="radio"][aria-checked="true"],
+      [role="switch"][aria-checked="true"]
+    ):focus-visible {
+    outline-color: CanvasText;
+  }
+  /* A focus ring inside a highlighted row. */
+  .list-row[data-selected="true"]:focus-visible::after {
+    outline-color: HighlightText;
   }
 }

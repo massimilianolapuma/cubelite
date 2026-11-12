@@ -53,7 +53,7 @@ cubelite/
 | Layer | Language | Key Libraries |
 |---|---|---|
 | `crates/cubelite-core` | Rust 1.82+ | kube-rs 0.97, tokio, thiserror, anyhow |
-| `apps/desktop` | TypeScript + Svelte 5 | Tauri v2, shadcn-svelte, Tailwind v4, Vitest |
+| `apps/desktop` | TypeScript + Svelte 5 | Tauri v2, bits-ui, Tailwind v4, Vitest |
 
 The Rust core is used by the Tauri desktop backend via Cargo dependency.
 

@@ -9,6 +9,9 @@ import {
   nearestIndex,
   niceMax,
   seriesStyle,
+  forcedDash,
+  REFERENCE_DASH,
+  FORCED_DASHES,
   sumPoints,
 } from "./metrics";
 import { bindingOf, saveCredentials, urlProblem } from "./integration";
@@ -108,6 +111,16 @@ describe("seriesStyle (Tonal §8.4)", () => {
     expect(seriesStyle(9)).toEqual({ color: "var(--color-data-5)", dash: "6 3" });
     expect(seriesStyle(10)).toEqual({ color: "var(--color-data-1)", dash: "2 2" });
     expect(seriesStyle(15)).toEqual({ color: "var(--color-data-1)", dash: "8 3 2 3" });
+  });
+
+  it("in forced colours, where every line is the text colour, gives each series its own dash", () => {
+    expect(forcedDash(0)).toBe("none");
+    const dashes = FORCED_DASHES.map((_, i) => forcedDash(i));
+    expect(new Set(dashes).size).toBe(FORCED_DASHES.length);
+    expect(FORCED_DASHES.length).toBeGreaterThanOrEqual(8);
+    // A reference line (request, limit) is never taken for a series.
+    expect(dashes).not.toContain(REFERENCE_DASH);
+    expect(forcedDash(FORCED_DASHES.length)).toBe(forcedDash(0));
   });
 
   it("no two of the first twenty series look the same", () => {

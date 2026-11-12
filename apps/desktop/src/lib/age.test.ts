@@ -5,8 +5,8 @@ const now = new Date("2026-07-11T12:00:00Z");
 
 describe("formatAge", () => {
   it("returns a dash for missing or invalid timestamps", () => {
-    expect(formatAge(null, now)).toBe("—");
-    expect(formatAge("not-a-date", now)).toBe("—");
+    expect(formatAge(null, now)).toBe("–");
+    expect(formatAge("not-a-date", now)).toBe("–");
   });
 
   it("formats seconds and minutes", () => {

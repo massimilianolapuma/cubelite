@@ -1,6 +1,6 @@
 <script lang="ts">
 	import ExternalLink from '@lucide/svelte/icons/external-link';
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Loading from '#lib/components/ui/Loading.svelte';
 	import HostCharts from '#lib/components/metrics/HostCharts.svelte';
 	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
@@ -56,9 +56,8 @@
 	<div bind:this={root} data-testid="node-metrics-section">
 		<div class="mb-2 flex flex-wrap items-center gap-2">
 			<span class="type-label text-text-muted">Metrics</span>
-			{#if loading}
-				<LoaderCircle class="h-3 w-3 animate-spin text-text-muted" aria-label="Loading metrics" />
-			{/if}
+			<!-- Always in place, so the controls never move; the body says it on a first load. -->
+			<Loading label="Loading metrics" active={loading} words={!!result} />
 			<span class="ml-auto"></span>
 			<SegmentedControl segments={METRICS_RANGES} bind:value={range} label="Metrics range" />
 			{#if grafana && result}

@@ -26,7 +26,7 @@
 <!-- Backdrop: black at 50 % (Tonal §7). -->
 <div class="animate-fadein fixed inset-0 z-40 bg-black/50" role="presentation" onclick={onClose}></div>
 <div
-	class="animate-popin fixed top-1/2 left-1/2 z-50 flex max-h-[80vh] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
+	class="card animate-popin fixed top-1/2 left-1/2 z-50 flex max-h-[80vh] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
 	style="width: {width}px;"
 	role="dialog"
 	aria-modal="true"
@@ -37,15 +37,17 @@
 		<button
 			type="button"
 			aria-label="Close"
-			class="focus-ring hover-layer -mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-muted"
+			class="focus-ring forced-edge hover-layer -mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text-muted"
 			onclick={onClose}
 		>
 			<X class="h-4 w-4" aria-hidden="true" />
 		</button>
 	</header>
 	<!-- Without a footer the body owns the bottom gutter. Only the body scrolls: the
-	     title and the actions stay in the window however short it is. -->
-	<div class="min-h-0 flex-1 overflow-y-auto px-6 pt-2 {footer ? 'pb-2' : 'pb-6'}">
+	     title and the actions stay in the window however short it is. Scroll padding
+	     keeps a control the focus scrolls into view clear of the edge, so its 4 px
+	     ring is not cut. -->
+	<div class="min-h-0 flex-1 scroll-py-2 overflow-y-auto px-6 pt-2 {footer ? 'pb-2' : 'pb-6'}">
 		{@render children()}
 	</div>
 	{#if footer}

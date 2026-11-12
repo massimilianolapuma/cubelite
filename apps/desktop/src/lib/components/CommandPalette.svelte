@@ -174,19 +174,21 @@
 			bind:value={highlighted}
 			filter={paletteFilter}
 			onkeydowncapture={onKeydownCapture}
-			class="animate-popin flex max-h-[calc(100vh-110px-1rem)] flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
+			class="card animate-popin flex max-h-[calc(100vh-110px-1rem)] flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
 			data-testid="command-palette"
 		>
 			<div class="flex shrink-0 items-center gap-3 border-b border-outline px-5">
 				<Command.Input
 					autofocus
 					aria-describedby="palette-keys"
+					data-bare
 					placeholder="Search clusters, resources, actions…"
 					class="type-title h-12 min-w-0 flex-1 bg-transparent font-normal text-text outline-none placeholder:text-text-subtle"
 				/>
 				<Kbd label="esc" />
 			</div>
-			<Command.List class="max-h-80 min-h-0 overflow-y-auto p-2">
+			<!-- A scroller is a Tab stop of its own (Chromium): it shows the ring inside. -->
+			<Command.List class="focus-ring-inset max-h-80 min-h-0 overflow-y-auto rounded-b-xl p-2">
 				<Command.Viewport>
 					<Command.Empty class="type-body-sm py-6 text-center text-text-subtle">
 						No results.

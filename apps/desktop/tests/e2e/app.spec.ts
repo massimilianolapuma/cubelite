@@ -58,8 +58,8 @@ test("pod shell runs a line and shows its output (#488)", async ({ page }) => {
   await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
   await page.getByText("api-0").click();
   await page.getByRole("button", { name: "Shell" }).click();
-  const modal = page.getByRole("dialog", { name: "api-0 — shell" });
-  await expect(modal.getByText("connected — line-based shell (/bin/sh, no TTY)")).toBeVisible();
+  const modal = page.getByRole("dialog", { name: "api-0 shell" });
+  await expect(modal.getByText("connected: line-based shell (/bin/sh, no TTY)")).toBeVisible();
 
   const sessionId = await page.evaluate(() => window.__lastExec?.sessionId as string);
   expect(await page.evaluate(() => window.__lastExec?.pod)).toBe("api-0");

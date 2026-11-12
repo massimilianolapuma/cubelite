@@ -104,7 +104,7 @@ test("Overview cluster history and alerts, and a node's metrics (#530)", async (
   const section = drawer.getByTestId("node-metrics-section");
   await section.scrollIntoViewIfNeeded();
   await expect(section.getByTestId("metrics-chart")).toHaveCount(5);
-  await expect(section.getByText("not available — needs node-exporter or cAdvisor metrics for this node")).toBeVisible();
+  await expect(section.getByText("not available: needs node-exporter or cAdvisor metrics for this node")).toBeVisible();
 });
 
 test("Open in Grafana forwards to an in-cluster Grafana without a URL (#525)", async ({ page }) => {

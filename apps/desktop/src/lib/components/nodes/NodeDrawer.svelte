@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import { formatAge } from '#lib/age.ts';
 	import NodeMetricsSection from '#lib/components/metrics/NodeMetricsSection.svelte';
 	import Drawer from '#lib/components/ui/Drawer.svelte';
@@ -41,8 +42,8 @@
 		{/if}
 		<div class="grid grid-cols-2 gap-2">
 			<!-- A count only once the pods answered: a zero would read as "no pods". -->
-			<StatCard surface="top" label={podLabel} value={podsKnown ? podCount : '–'} />
-			<StatCard surface="top" label="CPU" value={cpu === null ? '–' : `${Math.round(cpu)}%`} tone={cpuTone} />
+			<StatCard surface="top" label={podLabel} value={podsKnown ? podCount : EMPTY} />
+			<StatCard surface="top" label="CPU" value={cpu === null ? EMPTY : `${Math.round(cpu)}%`} tone={cpuTone} />
 		</div>
 		<FactRows {facts} />
 		<NodeMetricsSection node={name} />

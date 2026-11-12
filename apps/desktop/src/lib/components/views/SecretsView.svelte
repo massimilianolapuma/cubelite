@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
 	import Button from '#lib/components/ui/Button.svelte';
@@ -41,7 +42,7 @@
 >
 	{#snippet tools()}
 		<span class="type-body-sm rounded-full bg-warning-container px-3 py-1 text-on-warning-container">
-			values decoded locally — never leave this machine
+			values decoded on this machine only
 		</span>
 	{/snippet}
 
@@ -54,7 +55,7 @@
 
 	{#snippet cells(secret)}
 		{@const isRevealed = revealed[keyOf(secret.namespace, secret.name)] ?? false}
-		<span class="type-data-sm truncate text-text-muted">{secret.secret_type ?? '–'}</span>
+		<span class="type-data-sm truncate text-text-muted">{secret.secret_type ?? EMPTY}</span>
 		<span class="type-data-sm text-right text-text-muted">{Object.keys(secret.data).length}</span>
 		<span class="type-data-sm text-text-muted">{formatAge(secret.creation_timestamp)}</span>
 		<span class="flex min-w-0 items-center">

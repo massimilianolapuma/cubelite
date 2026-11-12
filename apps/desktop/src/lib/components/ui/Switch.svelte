@@ -24,6 +24,7 @@
 	onclick={() => onChange(!checked)}
 >
 	<span
+		data-knob
 		class="absolute top-1/2 h-[18px] w-[18px] -translate-y-1/2 rounded-full transition-[left] motion-reduce:transition-none {checked
 			? 'bg-on-primary'
 			: 'bg-outline-strong'}"

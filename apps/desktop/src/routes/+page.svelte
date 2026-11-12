@@ -184,14 +184,14 @@
 		<TopBar />
 		{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
 			<div
-				class="flex min-h-(--chip-h) shrink-0 items-center gap-3 rounded-full bg-success-container px-4 text-on-success-container"
+				class="card flex min-h-(--chip-h) shrink-0 items-center gap-3 rounded-full bg-success-container px-4 text-on-success-container"
 				role="status"
 			>
 				<StatusGlyph state="ok" />
 				<span class="type-body-sm min-w-0 flex-1 truncate">Update {updater.version} available</span>
 				<button
 					type="button"
-					class="focus-ring type-body rounded-full px-2 font-semibold underline-offset-2 hover:underline disabled:opacity-45"
+					class="focus-ring forced-edge type-body rounded-full px-2 font-semibold underline-offset-2 hover:underline disabled:opacity-45"
 					disabled={updater.status === 'downloading'}
 					onclick={() => updater.installAndRestart()}
 				>
@@ -199,7 +199,7 @@
 				</button>
 				<button
 					type="button"
-					class="focus-ring type-body rounded-full px-2 underline-offset-2 hover:underline"
+					class="focus-ring forced-edge type-body rounded-full px-2 underline-offset-2 hover:underline"
 					onclick={() => updater.dismiss()}
 				>
 					Later
@@ -214,7 +214,7 @@
 		     row is narrower than 1000 px it lies over the card instead. The row's width is
 		     what decides, so the rule follows the sidebar and the rail, not the window. -->
 		<div class="relative flex min-h-0 min-w-0 flex-1" bind:clientWidth={layout.contentWidth}>
-			<main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-container">
+			<main class="card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-container">
 				<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
 					{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
 						<UnreachableView />

@@ -51,7 +51,7 @@
 	// Chips may shrink: a long context name truncates rather than pushing the bar
 	// out of the window. What follows the name never shrinks.
 	const chip =
-		'focus-ring flex h-(--chip-h) min-w-0 items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110';
+		'focus-ring forced-edge flex h-(--chip-h) min-w-0 items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110';
 </script>
 
 <!-- The mousedown handler only begins a window drag — not an
@@ -118,7 +118,7 @@
 	{#if warningCount > 0}
 		<button
 			type="button"
-			class="focus-ring type-body flex h-(--chip-h) shrink-0 items-center gap-2 rounded-full bg-warning-container px-4 font-semibold text-on-warning-container hover:brightness-110"
+			class="focus-ring forced-edge type-body flex h-(--chip-h) shrink-0 items-center gap-2 rounded-full bg-warning-container px-4 font-semibold text-on-warning-container hover:brightness-110"
 			onclick={() => {
 				app.navigate('events');
 				// The chip counts warnings: show them, whatever was pressed there before.

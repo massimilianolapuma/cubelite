@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import StatusGlyph from './StatusGlyph.svelte';
 
 	let {
@@ -27,10 +28,13 @@
 <div class="flex flex-col gap-1" data-level={level}>
 	<div class="flex items-center gap-2.5">
 		<span class="type-label w-9 shrink-0">{label}</span>
-		<div class="h-2 flex-1 overflow-hidden rounded-full bg-outline">
+		<!-- The track's own fill is 1.3–1.9:1 from the card under it; its outline-strong
+		     edge is 3:1, so the meter's extent reads (WCAG 1.4.11). -->
+		<div class="h-2 flex-1 overflow-hidden rounded-full border border-outline-strong bg-outline" data-meter-track>
 			<div
 				class="h-full rounded-full transition-[width] motion-reduce:transition-none {style.fill}"
 				data-testid="meter-fill"
+				data-meter-fill
 				style="width: {percent ?? 0}%;"
 			></div>
 		</div>
@@ -39,7 +43,7 @@
 				<StatusGlyph state={style.glyph} size={7} />
 			{/if}
 			<span class="type-data-sm {style.glyph ? 'font-bold' : ''}" data-testid="meter-value">
-				{shown === null ? '–' : `${shown}%`}
+				{shown === null ? EMPTY : `${shown}%`}
 			</span>
 		</span>
 	</div>

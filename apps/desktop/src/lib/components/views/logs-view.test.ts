@@ -104,7 +104,7 @@ describe("LogsView", () => {
     render(LogsView);
     await fireEvent.click(screen.getByRole("button", { name: "Following" }));
     logs.push(line());
-    expect(await screen.findByText("paused — new lines buffered")).toBeInTheDocument();
+    expect(await screen.findByText("paused, new lines buffered")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Paused" })).toHaveAttribute("data-state", "paused");
   });
 

@@ -5,7 +5,7 @@
 
 /** Dropdown and context menu panel. */
 export const MENU_CONTENT =
-  "animate-popin z-50 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
+  "card animate-popin z-50 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
 
 /**
  * One row of a menu. `data-highlighted` is bits-ui's keyboard and hover state;
@@ -45,11 +45,17 @@ export function iconToggle(pressed: boolean): string {
 }
 
 /**
- * Filter field in a list's title row: a filled pill, as tall as the chips
- * beside it.
+ * The edge of a filled field: a 1 px `outline-strong` ring drawn inside, so it
+ * takes no room. The fill alone is 1.2:1 from the card; the edge reaches 3:1
+ * (WCAG 1.4.11, spec §4.2: outline-strong is the input border).
  */
-export const SEARCH_FIELD =
-  "focus-ring h-(--chip-h) w-56 max-w-full min-w-0 rounded-full bg-surface-container-high px-4 type-body-sm text-text placeholder:text-text-subtle";
+const FIELD_EDGE = "inset-ring inset-ring-outline-strong";
+
+/**
+ * Filter field in a list's title row: a filled pill, as tall as the chips
+ * beside it, with a field's edge.
+ */
+export const SEARCH_FIELD = `focus-ring h-(--chip-h) w-56 max-w-full min-w-0 rounded-full bg-surface-container-high ${FIELD_EDGE} px-4 type-body-sm text-text placeholder:text-text-subtle`;
 
 /**
  * Column header of a list: stays at the top of the card's scroller. Its cells
@@ -82,7 +88,7 @@ export const LIST_PINNED = "sticky left-0 w-[100cqw]";
 export const LIST_STICKY = "sticky left-0 z-[1] bg-inherit";
 
 /** A block inside the detail panel: one surface above the panel's own, in both its modes. */
-export const PANEL_CARD = "rounded-lg bg-surface-container-top";
+export const PANEL_CARD = "card rounded-lg bg-surface-container-top";
 
 /** Heading of a section of the detail panel. */
 export const PANEL_SECTION = "type-label mb-2 text-text-muted";
@@ -93,13 +99,27 @@ export const PANEL_SECTION = "type-label mb-2 text-text-muted";
  * them, so a toolbar stays one row where it fits.
  */
 export const TOOLBAR_CHIP =
-  "focus-ring type-body-sm relative inline-flex h-(--control-inline-h) max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-full px-3";
+  "focus-ring forced-edge type-body-sm relative inline-flex h-(--control-inline-h) max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-full px-3";
 
 /** A resting toolbar chip: a quiet surface that opens or toggles something. */
 export const TOOLBAR_CHIP_REST = `${TOOLBAR_CHIP} bg-surface-container-high text-text hover:brightness-110`;
 
-const TOOLBAR_FILL =
-  "focus-ring h-(--control-inline-h) rounded-full bg-surface-container-high type-body-sm text-text";
+/**
+ * A toolbar chip that toggles (previous instance, filter mode). Pressed it takes
+ * the tonal fill, a weight and the 1.5 px primary ring of a pressed chip
+ * (`ui/Chip.svelte`): where the toolbar is narrow its label is read out only,
+ * and the fill alone is 1.2–1.6:1 from the resting one.
+ */
+export function toolbarToggle(pressed: boolean): string {
+  return `${TOOLBAR_CHIP} ${
+    pressed
+      ? "bg-primary-container font-semibold text-on-primary-container inset-ring-[1.5px] inset-ring-primary"
+      : "bg-surface-container-high text-text-muted hover:brightness-110"
+  }`;
+}
+
+/** Text fields and selects of a toolbar: a filled pill with a field's edge. */
+const TOOLBAR_FILL = `focus-ring h-(--control-inline-h) rounded-full bg-surface-container-high ${FIELD_EDGE} type-body-sm text-text`;
 
 /** Text field in a log toolbar: a filled pill. */
 export const TOOLBAR_FIELD = `${TOOLBAR_FILL} w-44 max-w-full min-w-0 px-3.5 placeholder:text-text-subtle`;
@@ -116,7 +136,7 @@ export const TOOLBAR_SELECT = `${TOOLBAR_FILL} max-w-full min-w-0 pr-2 pl-3.5`;
 
 /** Icon-only control in a toolbar: a disc with a layer of its own colour on hover. */
 export const TOOLBAR_ICON =
-  "focus-ring hover-layer relative flex h-(--control-inline-h) w-(--control-inline-h) shrink-0 items-center justify-center rounded-full text-text-muted";
+  "focus-ring forced-edge hover-layer relative flex h-(--control-inline-h) w-(--control-inline-h) shrink-0 items-center justify-center rounded-full text-text-muted";
 
 /**
  * A menu of a toolbar control (hand-rolled, not bits-ui). It opens with
@@ -124,7 +144,7 @@ export const TOOLBAR_ICON =
  * inside the window.
  */
 export const TOOLBAR_MENU =
-  "animate-popin absolute z-20 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
+  "card animate-popin absolute z-20 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
 
 /** Opens above its control: the log panel, whose toolbar sits low in the window. */
 export const TOOLBAR_MENU_UP = "bottom-full mb-1";
@@ -140,4 +160,4 @@ export const TOOLBAR_MENU_ITEM =
   "focus-ring-inset hover-layer flex w-full items-center gap-3 rounded-md px-3 py-2 text-left type-body text-text";
 
 /** A small text action inside a block, e.g. Copy JSON above an expanded log line. */
-export const INLINE_ACTION = "focus-ring hover-layer type-label rounded-full px-2.5 py-1 text-text-muted";
+export const INLINE_ACTION = "focus-ring forced-edge hover-layer type-label rounded-full px-2.5 py-1 text-text-muted";

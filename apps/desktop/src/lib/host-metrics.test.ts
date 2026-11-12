@@ -71,7 +71,7 @@ describe("host panels (#530)", () => {
     expect(panelSummary(result, NETWORK)).toBe("↓ 2Ki/s ↑ 1Ki/s");
     expect(panelLines(result, NETWORK).map((l) => l.label)).toEqual(["rx", "tx"]);
     expect(panelSource(result, NETWORK)).toBe("from node-exporter");
-    expect(panelSummary(metrics({}), CPU)).toBe("—");
+    expect(panelSummary(metrics({}), CPU)).toBe("–");
   });
 
   it("says why a chart is empty", () => {

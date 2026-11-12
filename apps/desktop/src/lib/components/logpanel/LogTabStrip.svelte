@@ -12,6 +12,8 @@
 	{#each logPanel.sessions as session (session.key)}
 		{@const active = session.key === logPanel.activeKey}
 		<div
+			data-log-tab
+			data-active={active}
 			class="group flex h-(--control-inline-h) shrink-0 items-center gap-1 rounded-full pr-1 pl-3 {active
 				? 'bg-surface-container-high text-text'
 				: 'text-text-muted hover-layer'}"

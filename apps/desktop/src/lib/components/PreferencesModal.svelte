@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import { tick, untrack } from 'svelte';
 	import { setMode } from 'mode-watcher';
 	import { open } from '@tauri-apps/plugin-dialog';
@@ -102,7 +103,7 @@
 			? app.kubeconfigSources
 			: [
 					{
-						path: app.kubeconfigPath || '—',
+						path: app.kubeconfigPath || EMPTY,
 						exists: true,
 						contexts: clusters.contexts.length,
 						shadowed: [] as string[]
@@ -208,7 +209,9 @@
 											role="radio"
 											aria-checked={current === color}
 											aria-label={color}
+											title={color}
 											data-tint
+											data-swatch
 											style={tintStyle(color)}
 											class="focus-ring flex h-6 w-6 items-center justify-center rounded-full bg-primary text-on-primary"
 											onclick={() => clusters.setIdentityColor(ctx.name, color)}
@@ -245,7 +248,7 @@
 			<div class={row}>
 				<div class="min-w-0 flex-1">
 					<div class={name}>Skip TLS verification</div>
-					<p class={hint}>Stored only — not yet enforced by the backend.</p>
+					<p class={hint}>Stored only, not yet enforced by the backend.</p>
 				</div>
 				<Switch
 					checked={settings.skipTls.value}
@@ -316,7 +319,7 @@
 								</div>
 								<div class="type-body-sm mt-0.5 flex flex-wrap items-center gap-x-1.5 text-text-muted">
 									{#if !row.exists}
-										not found — skipped
+										not found, skipped
 									{:else}
 										<span>{row.contexts} context{row.contexts === 1 ? '' : 's'}</span>
 										<!-- Attention is the triangle and a weight, not a colour alone (Tonal §6). -->

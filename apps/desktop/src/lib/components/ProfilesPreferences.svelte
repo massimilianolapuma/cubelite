@@ -92,7 +92,7 @@
 	// enlarged hit area: the rows touch, and a 28 px target would reach into the
 	// row above and take its clicks. 24 px meets the WCAG 2.2 minimum.
 	const iconButton =
-		'focus-ring hover-layer flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-muted disabled:opacity-45';
+		'focus-ring forced-edge hover-layer flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-muted disabled:opacity-45';
 </script>
 
 <section data-testid="profiles-prefs" bind:this={root}>

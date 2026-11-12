@@ -6,6 +6,7 @@
 </script>
 
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import type LucideIcon from '@lucide/svelte/icons/box';
 	import StatusGlyph from './StatusGlyph.svelte';
 
@@ -29,7 +30,7 @@
 		row.value && (row.tone === 'warn' || row.tone === 'err') ? row.tone : null;
 </script>
 
-<section class="flex flex-col rounded-lg bg-surface-container-high p-4" aria-label={title}>
+<section class="card flex flex-col rounded-lg bg-surface-container-high p-4" aria-label={title}>
 	<div class="flex items-center gap-2 pb-3">
 		<Icon class="h-4 w-4 shrink-0 text-text-muted" strokeWidth={2} aria-hidden="true" />
 		<h2 class="type-title">{title}</h2>
@@ -56,7 +57,7 @@
 						{#if flag}
 							<StatusGlyph state={flag} class={flag === 'err' ? 'text-error' : 'text-warning'} />
 						{/if}
-						{row.value ?? '–'}
+						{row.value ?? EMPTY}
 					</dd>
 				</div>
 			{/each}

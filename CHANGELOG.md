@@ -7,14 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The app follows your system's accessibility settings** (#632):
+  - With **more contrast** asked for in the system (on macOS, Increase
+    contrast), secondary text is darker in the light theme and brighter in
+    the dark one, and every card, tile, dialog, menu and toast gets a
+    visible edge.
+  - In a **Windows contrast theme** the states that were told by a fill take
+    a system colour, an edge or a shape instead: the selected row, the current
+    sidebar item and cluster, pressed filters, the chosen option of a
+    segmented control, a switch that is on, the highlighted menu item,
+    palette row and log tab take the system's highlight colour; fields,
+    toggles, avatars, badges and meters keep an edge; buttons, chips, the
+    search buttons and key hints get one too; the main action of a panel or
+    dialog stands out from the others; status shapes and icons take the
+    system's text colour. Chart lines and their legend keys take the text
+    colour, and each series a dash of its own (past eight series the dashes
+    come round again); request and limit lines keep their short dash, which
+    no series uses. The cluster colour swatches keep their colours and name them
+    when you point at one. Rows of a resource list and of the sidebar show
+    where the pointer is.
+  - With **reduced motion** nothing moves: panels, dialogs, menus and toasts
+    appear at once, chevrons and the cluster colour change at once, the
+    loading rows and the paused pill stop pulsing, and spinners stand still.
+    A busy button keeps its label in view, faded. While metrics reload,
+    "Loading metrics" is written beside the still circle; on a first load
+    the section says it once, below.
+  - The Metrics header no longer moves while metrics load, with or without
+    reduced motion.
+
 ### Changed
 
 - **Tonal design system, foundations** (#604, #608): colours, fonts and corner
   radii now come from the Tonal tokens. The window takes its colour from the
   cluster you are on, so switching cluster changes the tint of the whole app;
   the All Clusters dashboard keeps the default tint. Fonts are Inter, Space
-  Grotesk and JetBrains Mono. Components keep their current layout: they are
-  restyled in the following phases.
+  Grotesk and JetBrains Mono.
 - **New shell** (#611): the title bar and the status bar are gone. A top bar
   holds the cluster chip (name, provider, Kubernetes version, connection state;
   its menu has the server address, Copy and Reconnect), the namespace chip, a
@@ -81,6 +110,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lines visible. The pop-out window takes the colour of its pod's cluster and
   follows a change of that colour. The pod shell and YAML dialogs have a sunken
   code area, and the YAML editor fits its dialog in a small window.
+- **Palette, Preferences, onboarding and the delete dialog in the new look**
+  (#627): the palette is wider, and a cluster in it keeps its own colour
+  and shows its health as a shape (and a word when it is not connected); a
+  long cluster name wraps instead of being cut. Preferences is grouped
+  under Appearance, Connection, Navigation, Integrations, Kubeconfig files
+  and Updates; cluster colours are swatches, the chosen one with a check.
+  Onboarding says which step you are on. The delete dialog names the pod,
+  its namespace and the cluster. The one main action of a dialog is as tall
+  as in the pod panel, and Install update keeps its label while it
+  downloads.
+- **Clearer states everywhere** (#632): a pressed status filter has a ring
+  in its state's colour, and a meter's track has a visible edge, so neither
+  depends on a faint fill. The log toolbar's previous-instance and filter
+  toggles get the same ring when pressed. Search and filter fields and the
+  menus in toolbars (the list filter, the log search, the label selector,
+  the tail, workload and history menus, the custom resource filter) have a
+  visible edge. A control that Tab scrolls into view in Preferences or a
+  detail panel shows its whole focus ring. The Apply button of the YAML
+  editor is the dialog's main action, as tall as the others. An empty value
+  is an en dash (ages, metrics, Preferences, an event with no object), and
+  CubeLite's own messages, the errors it reports included, no longer use an
+  em dash as punctuation: "Log session for api-0 closed: the cluster
+  changed", "authentication failed: check the credentials", the shell
+  dialog is "api-0 shell" and the log window "api-0 logs".
 - **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
   saved as amber becomes indigo and one saved as pink becomes magenta: warm
   colours are reserved for warnings and errors.

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ListCard from '#lib/components/ui/ListCard.svelte';
 	import StatusBadge from '#lib/components/ui/StatusBadge.svelte';
 	import { formatAge } from '#lib/age.ts';
@@ -61,14 +62,14 @@
 				{#if event.event_type === 'Warning'}
 					<StatusBadge state="warn" label="Warning" />
 				{:else}
-					<span class="type-body-sm truncate text-text-muted">{event.event_type ?? '–'}</span>
+					<span class="type-body-sm truncate text-text-muted">{event.event_type ?? EMPTY}</span>
 				{/if}
 			</span>
 			<span class="type-data-sm truncate text-text-muted">
-				{event.reason ?? '–'}{event.count > 1 ? ` ×${event.count}` : ''}
+				{event.reason ?? EMPTY}{event.count > 1 ? ` ×${event.count}` : ''}
 			</span>
-			<span class="type-data-sm truncate text-text-muted" title={event.object}>{event.object}</span>
-			<span class="type-body-sm truncate text-text-muted" title={event.message ?? undefined}>{event.message ?? '–'}</span>
+			<span class="type-data-sm truncate text-text-muted" title={event.object || undefined}>{event.object || EMPTY}</span>
+			<span class="type-body-sm truncate text-text-muted" title={event.message ?? undefined}>{event.message ?? EMPTY}</span>
 			<span class="type-data-sm text-text-muted">{formatAge(event.last_timestamp)}</span>
 		</div>
 	{/each}

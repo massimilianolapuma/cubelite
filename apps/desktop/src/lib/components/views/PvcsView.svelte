@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ResourceList from '#lib/components/ui/ResourceList.svelte';
 	import SortHeader from '#lib/components/ui/SortHeader.svelte';
 	import StatusBadge from '#lib/components/ui/StatusBadge.svelte';
@@ -38,12 +39,12 @@
 
 	{#snippet cells(item)}
 		<span class="flex min-w-0 items-center">
-			<StatusBadge state={toneGlyph(pvcTone(item.status))} label={item.status ?? '–'} />
+			<StatusBadge state={toneGlyph(pvcTone(item.status))} label={item.status ?? EMPTY} />
 		</span>
-		<span class="type-data-sm truncate text-text-muted">{item.volume ?? '–'}</span>
-		<span class="type-data-sm text-text-muted">{item.capacity ?? '–'}</span>
-		<span class="type-data-sm truncate text-text-muted">{item.access_modes.join(', ') || '–'}</span>
-		<span class="type-data-sm truncate text-text-muted">{item.storage_class ?? '–'}</span>
+		<span class="type-data-sm truncate text-text-muted">{item.volume ?? EMPTY}</span>
+		<span class="type-data-sm text-text-muted">{item.capacity ?? EMPTY}</span>
+		<span class="type-data-sm truncate text-text-muted">{item.access_modes.join(', ') || EMPTY}</span>
+		<span class="type-data-sm truncate text-text-muted">{item.storage_class ?? EMPTY}</span>
 		<span class="type-data-sm text-text-muted">{formatAge(item.creation_timestamp)}</span>
 	{/snippet}
 </ResourceList>

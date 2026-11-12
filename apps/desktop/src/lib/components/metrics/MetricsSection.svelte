@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Loading from '#lib/components/ui/Loading.svelte';
 	import LineChart from '#lib/components/metrics/LineChart.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
@@ -99,7 +100,7 @@
 	function usageSummary(usage: Chart, request: Chart, limit: Chart, unit: Unit): string {
 		const parts: string[] = [];
 		const now = latestTotal(series(usage));
-		parts.push(now === null ? '—' : formatValue(now, unit));
+		parts.push(now === null ? EMPTY : formatValue(now, unit));
 		const req = latestTotal(series(request));
 		if (req !== null) parts.push(`req ${formatValue(req, unit)}`);
 		const lim = latestTotal(series(limit));
@@ -121,7 +122,7 @@
 		const tx = series('network-tx')[0];
 		const fmt = (s: Series | undefined) => {
 			const v = s ? latest(s.points) : null;
-			return v === null ? '—' : formatValue(v, 'bytes-per-second');
+			return v === null ? EMPTY : formatValue(v, 'bytes-per-second');
 		};
 		return `↓ ${fmt(rx)} ↑ ${fmt(tx)}`;
 	});
@@ -155,19 +156,18 @@
 	const restartsTotal = $derived.by(() => {
 		const total = series('restarts-total')[0];
 		const value = total ? latest(total.points) : null;
-		return value === null ? '—' : `${Math.round(value)} in range`;
+		return value === null ? EMPTY : `${Math.round(value)} in range`;
 	});
-	const emptyCadvisor = 'no data — needs cAdvisor metrics in Prometheus';
-	const emptyKsm = 'no data — needs kube-state-metrics in Prometheus';
+	const emptyCadvisor = 'no data: needs cAdvisor metrics in Prometheus';
+	const emptyKsm = 'no data: needs kube-state-metrics in Prometheus';
 </script>
 
 {#if endpoint}
 	<div bind:this={root} data-testid="metrics-section">
 		<div class="mb-2 flex flex-wrap items-center gap-2">
 			<span class="type-label text-text-muted">Metrics</span>
-			{#if loading}
-				<LoaderCircle class="h-3 w-3 animate-spin text-text-muted" aria-label="Loading metrics" />
-			{/if}
+			<!-- Always in place, so the controls never move; the body says it on a first load. -->
+			<Loading label="Loading metrics" active={loading} words={!!result} />
 			<span class="ml-auto"></span>
 			<SegmentedControl segments={METRICS_RANGES} bind:value={range} label="Metrics range" />
 			<SegmentedControl

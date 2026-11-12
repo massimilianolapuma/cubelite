@@ -260,7 +260,7 @@ describe("Node metrics (#530)", () => {
     expect(screen.getAllByText("from node-exporter")).toHaveLength(3);
     expect(screen.getByText("from kube-state-metrics")).toBeInTheDocument();
     expect(
-      screen.getByText("not available — needs node-exporter or cAdvisor metrics for this node"),
+      screen.getByText("not available: needs node-exporter or cAdvisor metrics for this node"),
     ).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: "Open CPU in Grafana" }));

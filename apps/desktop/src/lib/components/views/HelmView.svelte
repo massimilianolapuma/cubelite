@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ResourceList from '#lib/components/ui/ResourceList.svelte';
 	import SortHeader from '#lib/components/ui/SortHeader.svelte';
 	import StatusBadge from '#lib/components/ui/StatusBadge.svelte';
@@ -37,10 +38,10 @@
 	{#snippet cells(release)}
 		<span class="type-data-sm text-right text-text-muted">{release.revision}</span>
 		<span class="flex min-w-0 items-center">
-			<StatusBadge state={toneGlyph(helmTone(release.status))} label={release.status ?? '–'} />
+			<StatusBadge state={toneGlyph(helmTone(release.status))} label={release.status ?? EMPTY} />
 		</span>
 		<span class="type-data-sm truncate {release.chart ? 'text-text-muted' : 'text-text-subtle'}">
-			{release.chart ?? '–'}
+			{release.chart ?? EMPTY}
 		</span>
 		<span class="type-data-sm text-text-muted">{formatAge(release.updated)}</span>
 	{/snippet}

@@ -1,12 +1,15 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import {
 		formatTime,
 		formatValue,
 		linePath,
 		maxValue,
+		forcedDash,
 		nearestIndex,
 		niceMax,
+		REFERENCE_DASH,
 		type ChartLine,
 		type Unit
 	} from '#lib/metrics.ts';
@@ -63,7 +66,12 @@
 	});
 
 	// Reference lines (requests, limits) are short dashes; a series that repeats a colour has its own pattern.
-	const dashOf = (line: ChartLine) => (line.dashed ? '3 3' : line.dash);
+	const dashOf = (line: ChartLine) => (line.dashed ? REFERENCE_DASH : line.dash);
+	// In forced colours every line is the text colour (app.css): each series then
+	// takes the dash of its rank among the series, which the legend key repeats.
+	const forced = $derived(
+		new Map(lines.filter((l) => !l.dashed).map((l, i) => [l, forcedDash(i)] as const))
+	);
 
 	function move(event: PointerEvent) {
 		const rect = (event.currentTarget as SVGElement).getBoundingClientRect();
@@ -76,7 +84,17 @@
 {#snippet swatch(line: ChartLine)}
 	<!-- The legend draws each line as the chart does: a dashed line has a dashed key. -->
 	<svg width="14" height="4" viewBox="0 0 14 4" aria-hidden="true" class="shrink-0">
-		<line x1="0" y1="2" x2="14" y2="2" stroke={line.color} stroke-width="2" stroke-dasharray={dashOf(line)} />
+		<line
+			x1="0"
+			y1="2"
+			x2="14"
+			y2="2"
+			stroke={line.color}
+			stroke-width="2"
+			stroke-dasharray={dashOf(line)}
+			data-series={line.dashed ? 'reference' : 'series'}
+			style:--forced-dash={forced.get(line)}
+		/>
 	</svg>
 {/snippet}
 
@@ -89,7 +107,7 @@
 		{#if onGrafana}
 			<button
 				type="button"
-				class="focus-ring rounded-xs text-text-muted hover:text-text"
+				class="focus-ring forced-edge rounded-xs text-text-muted hover:text-text"
 				aria-label="Open {title} in Grafana"
 				title="Open in Grafana"
 				onclick={onGrafana}
@@ -116,7 +134,7 @@
 			onpointermove={move}
 			onpointerleave={() => (hoverT = null)}
 		>
-			<line x1="0" y1={HEIGHT} x2={WIDTH} y2={HEIGHT} stroke="var(--color-outline)" vector-effect="non-scaling-stroke" />
+			<line data-chart-guide x1="0" y1={HEIGHT} x2={WIDTH} y2={HEIGHT} stroke="var(--color-outline)" vector-effect="non-scaling-stroke" />
 			{#each lines as line (line.label + (line.dashed ? '-ref' : ''))}
 				<path
 					d={linePath(line.points, box)}
@@ -125,10 +143,12 @@
 					stroke-width="1.5"
 					stroke-dasharray={dashOf(line)}
 					vector-effect="non-scaling-stroke"
+					data-series={line.dashed ? 'reference' : 'series'}
+					style:--forced-dash={forced.get(line)}
 				/>
 			{/each}
 			{#if hover}
-				<line x1={hover.x} y1="0" x2={hover.x} y2={HEIGHT} stroke="var(--color-outline-strong)" vector-effect="non-scaling-stroke" />
+				<line data-chart-guide x1={hover.x} y1="0" x2={hover.x} y2={HEIGHT} stroke="var(--color-outline-strong)" vector-effect="non-scaling-stroke" />
 			{/if}
 		</svg>
 		<!-- Legend and hover values are in the text colour: the key carries the line's colour.
@@ -138,7 +158,7 @@
 				{@const at = hover?.values.find((v) => v.line === line)}
 				<span class="type-micro flex items-center gap-1 {at ? 'font-mono text-text' : 'text-text-muted'}">
 					{@render swatch(line)}
-					{line.label || title}{#if at}&nbsp;{at.value === null ? '–' : formatValue(at.value, unit)}{/if}
+					{line.label || title}{#if at}&nbsp;{at.value === null ? EMPTY : formatValue(at.value, unit)}{/if}
 				</span>
 			{/each}
 			<span class="type-micro ml-auto font-mono text-text-subtle">

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import Button from '#lib/components/ui/Button.svelte';
 	import IdentityAvatar from '#lib/components/ui/IdentityAvatar.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
@@ -85,7 +86,7 @@
 			{/each}
 		</div>
 	{:else if clusters.contexts.length === 0 && clusters.error}
-		<div class="flex flex-col items-start gap-3 rounded-lg bg-error-container p-4 text-on-error-container" role="alert">
+		<div class="card flex flex-col items-start gap-3 rounded-lg bg-error-container p-4 text-on-error-container" role="alert">
 			<h2 class="type-title flex items-center gap-2">
 				<StatusGlyph state="err" />
 				Could not read the kubeconfig
@@ -124,7 +125,7 @@
 				<!-- Each card carries its own cluster's tint (Tonal §4.1), whatever the window shows. -->
 				<button
 					type="button"
-					class="focus-ring flex flex-col gap-3 rounded-lg bg-surface-container-high p-4 text-left hover:bg-surface-container-top"
+					class="card focus-ring flex flex-col gap-3 rounded-lg bg-surface-container-high p-4 text-left hover:bg-surface-container-top"
 					aria-label={cardName(ctx.name, badge.label, snap.warnings)}
 					data-tint
 					data-identity={identity}
@@ -160,7 +161,7 @@
 									data-attention={flagged}
 								>
 									{#if flagged}<StatusGlyph state="warn" class="text-warning" />{/if}
-									<span class="truncate" title={value === null ? undefined : String(value)}>{value ?? '–'}</span>
+									<span class="truncate" title={value === null ? undefined : String(value)}>{value ?? EMPTY}</span>
 								</dd>
 							</div>
 						{/each}

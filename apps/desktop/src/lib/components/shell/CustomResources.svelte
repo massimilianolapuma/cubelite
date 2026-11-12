@@ -72,7 +72,7 @@
 				bind:value={sidebar.customFilter}
 				aria-label="Filter custom resources"
 				placeholder="Filter…"
-				class="focus-ring type-body-sm h-(--control-inline-h) w-full rounded-full bg-surface-container-high px-3.5 text-text placeholder:text-text-subtle"
+				class="focus-ring type-body-sm h-(--control-inline-h) w-full rounded-full bg-surface-container-high inset-ring inset-ring-outline-strong px-3.5 text-text placeholder:text-text-subtle"
 			/>
 		</div>
 		<ul

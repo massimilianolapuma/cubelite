@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import PinToggle from '#lib/components/ui/PinToggle.svelte';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
@@ -80,7 +81,7 @@
 			<!-- Alerts firing: the pill takes the worst severity's container and shape. -->
 			<button
 				type="button"
-				class="focus-ring type-body flex h-(--chip-h) shrink-0 items-center gap-2 rounded-full px-4 font-semibold hover:brightness-110 {firing.tone ===
+				class="focus-ring forced-edge type-body flex h-(--chip-h) shrink-0 items-center gap-2 rounded-full px-4 font-semibold hover:brightness-110 {firing.tone ===
 				'err'
 					? 'bg-error-container text-on-error-container'
 					: 'bg-warning-container text-on-warning-container'}"
@@ -100,7 +101,7 @@
 	<div class="grid grid-cols-2 gap-3 xl:grid-cols-4">
 		<StatCard
 			label="Nodes"
-			value={summary.nodes ?? '–'}
+			value={summary.nodes ?? EMPTY}
 			icon={Server}
 			target="Nodes"
 			onclick={() => app.navigate('nodes')}
@@ -131,7 +132,7 @@
 
 	<!-- An explicit single column below xl: an implicit one would grow to its widest line. -->
 	<div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
-		<div class="flex flex-col gap-2.5 rounded-lg bg-surface-container-high p-4">
+		<div class="card flex flex-col gap-2.5 rounded-lg bg-surface-container-high p-4">
 			<div class="type-label text-text-muted">Capacity</div>
 			<MeterBar
 				label="CPU"
@@ -151,7 +152,7 @@
 			<ClusterHistory />
 		</div>
 
-		<div class="rounded-lg bg-surface-container-high p-4">
+		<div class="card rounded-lg bg-surface-container-high p-4">
 			<div class="mb-2 flex items-center">
 				<div class="type-label flex-1 text-text-muted">Recent warnings</div>
 				<Button variant="text" size="inline" onclick={() => app.navigate('events')}>
@@ -170,9 +171,9 @@
 							onclick={() => app.navigate('events')}
 						>
 							<StatusGlyph state="warn" class="text-warning" />
-							<span class="type-data-sm w-40 shrink-0 truncate text-text" title={event.object}>{event.object}</span>
+							<span class="type-data-sm w-40 shrink-0 truncate text-text" title={event.object || undefined}>{event.object || EMPTY}</span>
 							<span class="type-body-sm min-w-0 flex-1 truncate text-text-muted">
-								{event.message ?? event.reason ?? '–'}
+								{event.message ?? event.reason ?? EMPTY}
 							</span>
 							<span class="type-body-sm shrink-0 text-text-muted">{formatAge(event.last_timestamp)}</span>
 						</button>

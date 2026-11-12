@@ -4,11 +4,11 @@
  * Pure builders that turn design/tokens.json (v3, Tonal) into the generated
  * regions of apps/desktop/src/app.css:
  *
- *   @generated:theme  — Tailwind v4 `@theme` vars: fonts, colour roles and the
- *                       v2 names kept as aliases, identity colours, shadows,
- *                       spacing, radius
+ *   @generated:theme  — Tailwind v4 `@theme` vars: fonts, colour roles,
+ *                       shadows, spacing, radius
  *   @generated:layer  — `@layer base` custom properties: the colour values per
- *                       theme, tint hue, alpha recipes, density, icons, motion
+ *                       theme, the tint hue and the identity hues, density,
+ *                       motion, the more-contrast swaps
  *   @generated:type   — `@utility type-*` typography classes
  *
  * Tinted colours are `oklch(L C var(--cl-tint-h))`. They are declared on
@@ -50,19 +50,17 @@ type Meta<T> = Record<string, T | string>;
 export interface Tokens {
   color: Group<ColorToken>;
   identity: {
-    $dark: [number, number];
-    $light: [number, number];
     hues: Record<string, number>;
     default: string;
   };
-  alias: Meta<string>;
   spacing: Group<Token>;
   radius: Meta<Token>;
   shadow: Group<Token>;
-  font: { family: Group<Token>; style: Group<Token>; alias: Meta<string> };
+  font: { family: Group<Token>; style: Group<Token> };
   density: Group<Token>;
-  icon: Group<Token>;
   motion: Group<Token>;
+  /** `more`: under `prefers-contrast: more`, each role takes another role's value. */
+  contrast?: { more?: Record<string, string> };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -107,43 +105,22 @@ function identityHues(tk: Tokens): [string, number][] {
 /** Motion values may carry a transform note after "·" — keep only duration/ease. */
 const motionValue = (v: string): string => v.split("·")[0].trim();
 
-const mix = (colorVar: string, pct: string): string =>
-  `color-mix(in srgb, var(${colorVar}) ${pct}, transparent)`;
-
 function plainLines(group: Meta<Token>, prefix: string, indent: string, map = (v: string) => v): string {
   return entries<Token>(group)
     .map(([k, t]) => `${indent}--${prefix}${k}: ${map(t.$value)};`)
     .join("\n");
 }
 
-/** Old name → role, validated: the role exists and the name is not itself a role. */
-function aliases(tk: Tokens): [string, string][] {
-  return entries<string>(tk.alias).map(([name, role]) => {
-    if (!tk.color[role]) throw new Error(`Alias "${name}" points at unknown colour role "${role}"`);
-    if (tk.color[name]) throw new Error(`"${name}" is both a colour role and an alias`);
-    return [name, role];
-  });
-}
-
 // ── @theme ────────────────────────────────────────────────────────────────────
 
 /**
- * `--color-*` → `--cl-color-*` for every role, v2 alias and identity colour.
- * Emitted in `@theme` (so Tailwind builds the utilities) and again on
- * `[data-tint]`: `@theme` lands on `:root`, where `var(--cl-color-*)` is
- * already resolved to the window's tint, so a tinted subtree must re-declare
- * them to get its own.
+ * `--color-*` → `--cl-color-*` for every role. Emitted in `@theme` (so
+ * Tailwind builds the utilities) and again on `[data-tint]`: `@theme` lands on
+ * `:root`, where `var(--cl-color-*)` is already resolved to the window's tint,
+ * so a tinted subtree must re-declare them to get its own.
  */
-function colorAliasLines(tk: Tokens, indent: string): string[] {
-  return [
-    ...Object.keys(tk.color).map((r) => `${indent}--color-${r}: var(--cl-color-${r});`),
-    "",
-    ...aliases(tk).map(([name, role]) => `${indent}--color-${name}: var(--cl-color-${role});`),
-    "",
-    ...identityHues(tk).map(
-      ([id]) => `${indent}--color-cluster-${id}: var(--cl-color-cluster-${id});`,
-    ),
-  ];
+function colorRoleLines(tk: Tokens, indent: string): string[] {
+  return Object.keys(tk.color).map((r) => `${indent}--color-${r}: var(--cl-color-${r});`);
 }
 
 export function buildTheme(tk: Tokens): string {
@@ -151,7 +128,7 @@ export function buildTheme(tk: Tokens): string {
     "@theme {",
     ...entries<Token>(tk.font.family).map(([k, t]) => `  --font-${k}: ${t.$value};`),
     "",
-    ...colorAliasLines(tk, "  "),
+    ...colorRoleLines(tk, "  "),
     "",
     ...entries<Token>(tk.shadow).map(([k]) => `  --shadow-${k}: var(--cl-shadow-${k});`),
     "",
@@ -166,13 +143,9 @@ export function buildTheme(tk: Tokens): string {
 
 function colorBlock(tk: Tokens, theme: Theme): string {
   const key = theme === "dark" ? "$dark" : "$light";
-  const [l, c] = tk.identity[key];
-  return [
-    ...Object.entries(tk.color).map(
-      ([name, t]) => `    --cl-color-${name}: ${oklch(checkColor(name, key, t?.[key]))};`,
-    ),
-    ...identityHues(tk).map(([id, hue]) => `    --cl-color-cluster-${id}: ${oklch([l, c, hue])};`),
-  ].join("\n");
+  return Object.entries(tk.color)
+    .map(([name, t]) => `    --cl-color-${name}: ${oklch(checkColor(name, key, t?.[key]))};`)
+    .join("\n");
 }
 
 const shadowBlock = (tk: Tokens, theme: Theme): string =>
@@ -180,22 +153,34 @@ const shadowBlock = (tk: Tokens, theme: Theme): string =>
     .map(([k, t]) => `    --cl-shadow-${k}: ${themed(t, theme)};`)
     .join("\n");
 
+/**
+ * `prefers-contrast: more` (spec §9.1): each role listed takes another role's
+ * value. One rule for the four grounds the colours are declared on, after the
+ * theme rules, so it wins over `.dark [data-tint]`; the value is a reference,
+ * so it resolves to each subtree's own tint and theme.
+ */
+function contrastBlock(tk: Tokens): string[] {
+  const swaps = Object.entries(tk.contrast?.more ?? {});
+  for (const [from, to] of swaps) {
+    for (const role of [from, to]) {
+      if (!tk.color[role]) throw new Error(`Unknown colour role "${role}" in contrast.more (${from} → ${to})`);
+    }
+  }
+  if (swaps.length === 0) return [];
+  return [
+    "  @media (prefers-contrast: more) {",
+    "    :root, [data-tint], .dark, .dark [data-tint] {",
+    ...swaps.map(([from, to]) => `      --cl-color-${from}: var(--cl-color-${to});`),
+    "    }",
+    "  }",
+  ];
+}
+
 export function buildLayer(tk: Tokens): string {
   const defaultHue = tk.identity.hues[tk.identity.default];
   if (defaultHue === undefined) {
     throw new Error(`Default identity "${tk.identity.default}" has no hue`);
   }
-  // Alpha recipes still read the v2 names; they follow the aliases above.
-  const alpha = [
-    `    --alpha-selection-bg: ${mix("--color-accent", "10%")};`,
-    `    --alpha-active-nav-bg: ${mix("--color-accent", "14%")};`,
-    `    --alpha-pill-ok: ${mix("--color-status-ok", "10%")};`,
-    `    --alpha-pill-warn: ${mix("--color-status-warn", "10%")};`,
-    `    --alpha-pill-err: ${mix("--color-status-err", "10%")};`,
-    `    --alpha-log-error-row: ${mix("--color-status-err", "7%")};`,
-    `    --alpha-log-warn-row: ${mix("--color-status-warn", "4.5%")};`,
-  ].join("\n");
-
   return [
     "@layer base {",
     "  :root, [data-tint] {",
@@ -207,18 +192,12 @@ export function buildLayer(tk: Tokens): string {
     "",
     shadowBlock(tk, "light"),
     "",
-    alpha,
-    "",
     plainLines(tk.density, "", "    "),
-    "",
-    plainLines(tk.icon, "icon-", "    "),
     "",
     plainLines(tk.motion, "motion-", "    ", motionValue),
     "  }",
     "  [data-tint] {",
-    ...colorAliasLines(tk, "    "),
-    "",
-    alpha,
+    ...colorRoleLines(tk, "    "),
     "  }",
     "  .dark, .dark [data-tint] {",
     colorBlock(tk, "dark"),
@@ -226,6 +205,7 @@ export function buildLayer(tk: Tokens): string {
     "  .dark {",
     shadowBlock(tk, "dark"),
     "  }",
+    ...contrastBlock(tk),
     "}",
   ].join("\n");
 }
@@ -247,21 +227,14 @@ function typeDecls(tk: Tokens, name: string): string[] {
   ];
   if (meta.$lineHeight) decls.push(`  line-height: ${meta.$lineHeight};`);
   if (s.tracking) decls.push(`  letter-spacing: ${s.tracking}em;`);
-  if (s.uppercase) decls.push(`  text-transform: uppercase;`);
   if (meta.$color) decls.push(`  color: var(--color-${meta.$color});`);
   return decls;
 }
 
 export function buildType(tk: Tokens): string {
-  const utility = (name: string, style: string): string =>
-    `@utility type-${name} {\n${typeDecls(tk, style).join("\n")}\n}`;
-  return [
-    ...Object.keys(tk.font.style).map((name) => utility(name, name)),
-    ...entries<string>(tk.font.alias).map(([name, style]) => {
-      if (tk.font.style[name]) throw new Error(`"${name}" is both a type style and an alias`);
-      return utility(name, style);
-    }),
-  ].join("\n");
+  return Object.keys(tk.font.style)
+    .map((name) => `@utility type-${name} {\n${typeDecls(tk, name).join("\n")}\n}`)
+    .join("\n");
 }
 
 // ── Assemble ──────────────────────────────────────────────────────────────────

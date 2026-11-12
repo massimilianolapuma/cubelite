@@ -33,7 +33,7 @@
 		{/if}
 	</div>
 {:else}
-	<div class="flex flex-col gap-1 rounded-lg p-4 {look[fill]}" data-hero={fill}>
+	<div class="card flex flex-col gap-1 rounded-lg p-4 {look[fill]}" data-hero={fill}>
 		<div class="type-headline flex min-w-0 items-center gap-2.5 text-inherit">
 			<StatusGlyph {state} size={12} />
 			<span class="min-w-0 break-words" role={heading ? 'heading' : undefined} aria-level={heading}>{label}</span>

@@ -112,7 +112,7 @@ export class LogHistory {
     const context = app.activeCluster;
     const endpoint = elastic.endpointFor(context);
     if (!context || !endpoint) {
-      this.error = "No Elasticsearch endpoint for this cluster — set one in Preferences → Integrations.";
+      this.error = "No Elasticsearch endpoint for this cluster. Set one in Preferences → Integrations.";
       return null;
     }
     const source = { kubeconfigPath: app.kubeconfigPath, context, endpoint };

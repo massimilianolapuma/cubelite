@@ -39,7 +39,7 @@ async function openShell() {
   const view = render(ShellModal, {
     props: { namespace: "default", pod: "api-0", onClose: vi.fn() },
   });
-  await screen.findByText("connected — line-based shell (/bin/sh, no TTY)");
+  await screen.findByText("connected: line-based shell (/bin/sh, no TTY)");
   return view;
 }
 
@@ -50,7 +50,7 @@ describe("ShellModal (#488)", () => {
     expect([kc, namespace, pod, context]).toEqual(["/home/u/.kube/config", "default", "api-0", "prod"]);
     expect(handlers.has(`exec-output:${sessionId}`)).toBe(true);
     expect(handlers.has(`exec-end:${sessionId}`)).toBe(true);
-    expect(screen.getByText("api-0 — shell")).toBeInTheDocument();
+    expect(screen.getByText("api-0 shell")).toBeInTheDocument();
   });
 
   it("Enter sends the line with a newline and echoes it", async () => {

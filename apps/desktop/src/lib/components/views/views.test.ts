@@ -31,6 +31,7 @@ import EmptyStateView from "./EmptyStateView.svelte";
 import UnreachableView from "./UnreachableView.svelte";
 import EventsView from "./EventsView.svelte";
 import OverviewView from "./OverviewView.svelte";
+import { EMPTY } from "#lib/empty.ts";
 import AllClustersView from "./AllClustersView.svelte";
 import PodsView from "./PodsView.svelte";
 import PodDrawer from "#lib/components/pods/PodDrawer.svelte";
@@ -154,6 +155,23 @@ describe("OverviewView", () => {
     // A recent warning is told by its triangle, not by a coloured dot.
     const row = screen.getByText("Pod/api-1").closest("button")!;
     expect(row.querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "warn");
+  });
+
+  it("shows a warning with no involved object as the empty value (Tonal §6)", () => {
+    resources.events = [
+      {
+        event_type: "Warning",
+        reason: "FailedMount",
+        object: "",
+        message: "orphan warning",
+        namespace: "default",
+        count: 1,
+        last_timestamp: new Date().toISOString(),
+      },
+    ];
+    render(OverviewView);
+    const row = screen.getByText("orphan warning").closest("button")!;
+    expect(within(row).getByText(EMPTY)).toBeInTheDocument();
   });
 
   it("marks a summary count that needs attention by shape and weight, and leaves a zero plain", () => {
@@ -553,6 +571,24 @@ describe("EventsView", () => {
     expect(warningRow.getAttribute("style")).toBeNull();
     const normalRow = screen.getByText("Pod/api-1").closest<HTMLElement>("[data-event-type]")!;
     expect(within(normalRow).getByText("Normal").closest("[data-state]")).toBeNull();
+  });
+
+  it("shows an event with no involved object as the empty value (Tonal §6)", async () => {
+    const events: EventInfo[] = [
+      {
+        event_type: "Normal",
+        reason: "Sync",
+        object: "",
+        message: "orphan event",
+        namespace: "default",
+        count: 1,
+        last_timestamp: new Date().toISOString(),
+      },
+    ];
+    await loadMain({ events });
+    render(EventsView);
+    const row = screen.getByText("orphan event").closest<HTMLElement>("[data-event-type]")!;
+    expect(within(row).getByText(EMPTY)).toBeInTheDocument();
   });
 
   it("shows the empty state", async () => {

@@ -172,7 +172,7 @@ describe("SecretsView", () => {
 
   it("masks values and shows the local-only warning pill", async () => {
     await renderList(SecretsView, "listSecrets", [secret]);
-    expect(screen.getByText(/never leave this machine/)).toBeInTheDocument();
+    expect(screen.getByText(/decoded on this machine only/)).toBeInTheDocument();
     expect(screen.getByText("••••••••")).toBeInTheDocument();
     expect(screen.queryByText("hunter2")).toBeNull();
   });

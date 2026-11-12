@@ -28,7 +28,7 @@
 <!-- A dialog in the Modal look (Tonal §7, §8.6). Only the step's content scrolls,
      so the progress and the actions stay in a short window. -->
 <div
-	class="animate-popin fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[480px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
+	class="card animate-popin fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[480px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
 	role="dialog"
 	aria-modal="true"
 	aria-label="Welcome to CubeLite"
@@ -38,7 +38,7 @@
 		{#if step === 0}
 			<h2 class="type-headline mb-2">Welcome to CubeLite</h2>
 			<p class="type-body mb-4 text-text-muted">
-				A fast, keyboard-first Kubernetes client with one identity per cluster — so you always know
+				A fast, keyboard-first Kubernetes client with one identity per cluster, so you always know
 				where you are acting.
 			</p>
 			<div class="flex items-center gap-3 rounded-md bg-surface-sunken px-4 py-3">
@@ -86,6 +86,7 @@
 		<div class="flex items-center gap-1.5" aria-hidden="true">
 			{#each Array.from({ length: STEPS }, (_, i) => i) as dot (dot)}
 				<span
+					data-step-dot
 					data-current={dot === step}
 					class="h-2 rounded-full {dot === step ? 'w-5 bg-primary' : 'w-2 bg-outline-strong'}"
 				></span>

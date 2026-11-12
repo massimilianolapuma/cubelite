@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
 	import {
@@ -66,7 +67,7 @@
 		id="overview-alerts"
 		tabindex="-1"
 		aria-labelledby="overview-alerts-title"
-		class="focus-ring scroll-mt-4 rounded-lg bg-surface-container-high p-4"
+		class="card focus-ring scroll-mt-4 rounded-lg bg-surface-container-high p-4"
 		data-testid="alerts-card"
 	>
 		<div class="mb-2 flex items-center gap-2">
@@ -105,7 +106,7 @@
 							<span class="type-data-sm min-w-0 truncate {muted ? 'text-text-muted' : 'font-semibold text-text'}" title={alert.name}>
 								{alert.name}
 							</span>
-							<span class="type-body-sm shrink-0 text-text-muted">{alert.severity ?? '–'}</span>
+							<span class="type-body-sm shrink-0 text-text-muted">{alert.severity ?? EMPTY}</span>
 							{#if subject && target}
 								<button
 									type="button"
@@ -124,7 +125,7 @@
 								{@const ep = endpoint}
 								<button
 									type="button"
-									class="focus-ring rounded-xs text-text-muted hover:text-text"
+									class="focus-ring forced-edge rounded-xs text-text-muted hover:text-text"
 									aria-label="Open {alert.name} in Grafana"
 									title="Open in Grafana"
 									onclick={() => void grafana(ep, alert)}

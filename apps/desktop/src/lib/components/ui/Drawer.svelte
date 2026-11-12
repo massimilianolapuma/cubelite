@@ -90,7 +90,7 @@
 	<div
 		bind:this={root}
 		bind:clientHeight={height}
-		class="flex w-[360px] max-w-full shrink-0 flex-col rounded-xl {mode === 'docked'
+		class="card flex w-[360px] max-w-full shrink-0 flex-col rounded-xl {mode === 'docked'
 			? 'ml-3 bg-surface-container'
 			: 'animate-drawer-in absolute inset-y-0 right-0 z-30 bg-surface-overlay shadow-overlay'}"
 		role="dialog"
@@ -119,7 +119,9 @@
 			</Button>
 		</header>
 
-		<div bind:this={body} class="min-h-0 flex-1 overflow-y-auto px-4 pb-4" data-panel-body>
+		<!-- Scroll padding: a control the focus scrolls into view stays clear of the
+		     edge, so its 4 px ring is not cut. -->
+		<div bind:this={body} class="min-h-0 flex-1 scroll-py-2 overflow-y-auto px-4 pb-4" data-panel-body>
 			{@render children()}
 			{#if footer && !pinned}
 				<footer class="mt-4 flex flex-wrap items-center gap-2" data-pinned="false">

@@ -28,6 +28,28 @@ const DATA_COLORS = [
 const REPEAT_DASHES = ["6 3", "2 2", "8 3 2 3"];
 /** Reference lines (requests, limits, allocatable): dashed, in the quietest text colour. */
 export const REFERENCE_COLOR = "var(--color-text-subtle)";
+/** The short even dash of a reference line. */
+export const REFERENCE_DASH = "3 3";
+/**
+ * Stroke of each series in forced colours (Tonal §9.1), by order: the system
+ * palette draws every line in the text colour, so the dash alone tells them
+ * apart. None is the reference lines' dash; past eight they come round again.
+ */
+export const FORCED_DASHES = [
+  "none",
+  "6 3",
+  "1.5 2.5",
+  "6 3 1.5 3",
+  "12 3",
+  "1.5 2.5 1.5 6",
+  "12 3 1.5 3",
+  "6 2 6 2 1.5 2",
+];
+
+/** The forced-colours dash of the series at `index`. */
+export function forcedDash(index: number): string {
+  return FORCED_DASHES[index % FORCED_DASHES.length];
+}
 
 /**
  * Colour and stroke of the series at `index`, in order of first appearance:

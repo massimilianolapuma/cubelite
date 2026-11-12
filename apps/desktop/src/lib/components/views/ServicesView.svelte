@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ResourceList from '#lib/components/ui/ResourceList.svelte';
 	import SortHeader from '#lib/components/ui/SortHeader.svelte';
 	import { formatAge } from '#lib/age.ts';
@@ -32,12 +33,12 @@
 	{/snippet}
 
 	{#snippet cells(svc)}
-		<span class="type-data-sm truncate text-text-muted">{svc.service_type ?? '–'}</span>
-		<span class="type-data-sm truncate text-text-muted">{svc.cluster_ip ?? '–'}</span>
+		<span class="type-data-sm truncate text-text-muted">{svc.service_type ?? EMPTY}</span>
+		<span class="type-data-sm truncate text-text-muted">{svc.cluster_ip ?? EMPTY}</span>
 		<span class="type-data-sm truncate {svc.external_ips.length ? 'text-text-muted' : 'text-text-subtle'}">
-			{svc.external_ips.join(', ') || '–'}
+			{svc.external_ips.join(', ') || EMPTY}
 		</span>
-		<span class="type-data-sm truncate text-text-muted">{svc.ports.join(', ') || '–'}</span>
+		<span class="type-data-sm truncate text-text-muted">{svc.ports.join(', ') || EMPTY}</span>
 		<span class="type-data-sm text-text-muted">{formatAge(svc.creation_timestamp)}</span>
 	{/snippet}
 </ResourceList>

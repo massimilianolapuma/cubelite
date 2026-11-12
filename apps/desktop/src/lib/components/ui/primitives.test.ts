@@ -10,7 +10,9 @@ import Switch from "./Switch.svelte";
 import SegmentedControl from "./SegmentedControl.svelte";
 import StatCard from "./StatCard.svelte";
 import Toaster from "./Toaster.svelte";
+import ConnectingOverlay from "./ConnectingOverlay.svelte";
 import { toasts } from "#lib/stores/toasts.svelte.ts";
+import { app } from "#lib/stores/app.svelte.ts";
 
 const text = (value: string) => createRawSnippet(() => ({ render: () => `<span>${value}</span>` }));
 const glyphOf = (el: Element) => el.querySelector("svg[data-glyph]")?.getAttribute("data-glyph") ?? null;
@@ -156,7 +158,6 @@ describe("Switch", () => {
     render(Switch, { props: { checked: true, label: "Hints", onChange: () => {} } });
     const toggle = screen.getByRole("switch", { name: "Hints" });
     expect(toggle).toHaveClass("bg-primary");
-    expect(toggle.getAttribute("style") ?? "").not.toContain("status-ok");
   });
 });
 
@@ -220,5 +221,19 @@ describe("icon toggles", () => {
     expect(iconToggle(true)).toContain("bg-primary ");
     expect(iconToggle(true)).toContain("text-on-primary ");
     expect(iconToggle(false)).not.toContain("bg-primary");
+  });
+});
+
+describe("ConnectingOverlay", () => {
+  it("takes its backdrop from a utility, like every modal, not from an inline style", () => {
+    app.connecting = "prod-aks";
+    try {
+      render(ConnectingOverlay);
+      const backdrop = screen.getByText("Connecting to prod-aks…").closest('[role="status"]')!;
+      expect(backdrop).not.toHaveAttribute("style");
+      expect(backdrop).toHaveClass("bg-black/50");
+    } finally {
+      app.connecting = null;
+    }
   });
 });
