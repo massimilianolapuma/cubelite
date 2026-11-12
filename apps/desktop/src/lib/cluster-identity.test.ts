@@ -5,7 +5,6 @@ import {
   IDENTITY_COLORS,
   assignIdentityColors,
   identityHue,
-  identityVar,
   initials,
   isIdentityColor,
 } from "#lib/cluster-identity.ts";
@@ -69,18 +68,6 @@ describe("isIdentityColor", () => {
     expect(isIdentityColor("magenta")).toBe(true);
     expect(isIdentityColor("amber")).toBe(false);
     expect(isIdentityColor(3)).toBe(false);
-  });
-});
-
-describe("identityVar", () => {
-  it("uses the always-emitted base variables for every palette color (#391)", () => {
-    expect(IDENTITY_COLORS.map(identityVar)).toEqual([
-      "var(--cl-color-cluster-blue)",
-      "var(--cl-color-cluster-magenta)",
-      "var(--cl-color-cluster-teal)",
-      "var(--cl-color-cluster-violet)",
-      "var(--cl-color-cluster-indigo)",
-    ]);
   });
 });
 

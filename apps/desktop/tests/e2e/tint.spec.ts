@@ -60,7 +60,7 @@ test("a subtree marked data-tint paints utilities in its own tint", async ({ pag
     const make = (tinted: boolean) => {
       const el = document.createElement("div");
       // Classes the app already uses, so Tailwind has emitted them.
-      el.className = "bg-surface-window text-text-primary";
+      el.className = "bg-surface-window text-text";
       if (tinted) {
         el.dataset.tint = "";
         el.style.setProperty("--cl-tint-h", "var(--cl-hue-magenta)");

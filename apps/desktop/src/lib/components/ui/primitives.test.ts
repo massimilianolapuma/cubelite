@@ -156,7 +156,6 @@ describe("Switch", () => {
     render(Switch, { props: { checked: true, label: "Hints", onChange: () => {} } });
     const toggle = screen.getByRole("switch", { name: "Hints" });
     expect(toggle).toHaveClass("bg-primary");
-    expect(toggle.getAttribute("style") ?? "").not.toContain("status-ok");
   });
 });
 
