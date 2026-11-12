@@ -446,6 +446,45 @@
   }
 }
 
+/* Forced colours, continued: edges and hover drawn as an outline inside the
+   control, so nothing moves, and in this layer, so a focus ring (more specific)
+   still wins over them.
+   - A button-like control whose fill was its only edge (text buttons, chips,
+     toolbar and icon discs, the search button, links in banners: the class
+     `forced-edge`, and the text and danger variants of Button) and a key cap
+     would read as plain text: they get a system-colour edge.
+   - List and nav rows show hover with a Highlight edge, as the system does. */
+@layer utilities {
+  @media (forced-colors: active) {
+    .forced-edge,
+    [data-variant="text"],
+    [data-variant="danger"],
+    kbd {
+      outline: 1px solid ButtonText;
+      outline-offset: -1px;
+    }
+    kbd {
+      outline-color: CanvasText;
+    }
+    :where([data-nav]):hover {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+    /* A list row's sticky name cell would cover an outline of the row: the edge
+       is drawn above the cells, where its focus ring is (which wins over it). */
+    :where(.list-row):hover::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      border-radius: inherit;
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+      pointer-events: none;
+    }
+  }
+}
+
 /* Minimum 28×28 hit target (spec) for compact controls: an invisible
    pseudo-element grows the clickable area without changing the layout. */
 @layer utilities {
@@ -508,8 +547,9 @@
     color: inherit;
   }
 
-  /* Edges that were fills. */
-  input:not([type="checkbox"], [type="radio"], [type="range"]),
+  /* Edges that were fills. A bare field (the palette's) is framed by its
+     container: a box of its own would be square inside a rounded one. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [data-bare]),
   textarea,
   select,
   [aria-pressed],
@@ -528,8 +568,17 @@
   [data-step-dot] {
     background-color: CanvasText;
   }
-  [data-chart-guide] {
+  /* Chart lines keep their colour (an SVG stroke is not forced), and a data
+     colour can vanish on the system palette: every line and legend key takes the
+     text colour, and each series the dash of its rank (lib/metrics.ts
+     FORCED_DASHES, set by LineChart as --forced-dash); reference lines keep
+     their short even dash, which no series uses. */
+  [data-chart-guide],
+  [data-series] {
     stroke: CanvasText;
+  }
+  [data-series="series"] {
+    stroke-dasharray: var(--forced-dash, none);
   }
 
   /* The one main action of a panel or dialog stands out from the tonal ones. */
@@ -595,6 +644,22 @@
   }
   [role="switch"][aria-checked="true"] [data-knob] {
     background-color: HighlightText;
+  }
+  /* A cluster colour swatch: the colour is the information. Each keeps its own
+     (and names it in its tooltip) with an edge; the chosen one keeps its check
+     rather than turning Highlight like the other radios. */
+  [data-swatch],
+  [data-swatch][aria-checked="true"] {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+    background-color: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  [data-swatch][aria-checked="true"] * {
+    color: var(--color-on-primary);
+  }
+  [data-swatch]:focus-visible {
+    outline-color: CanvasText;
   }
   /* A focus ring around a highlighted control sits on the canvas; one inside a
      highlighted row sits on Highlight. */

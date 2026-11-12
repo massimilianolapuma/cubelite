@@ -20,7 +20,7 @@
 				<button
 					type="button"
 					aria-label="Dismiss"
-					class="focus-ring hover-layer ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-muted"
+					class="focus-ring forced-edge hover-layer ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-muted"
 					onclick={() => toasts.dismiss(toast.id)}
 				>
 					<X size={14} strokeWidth={2} aria-hidden="true" />

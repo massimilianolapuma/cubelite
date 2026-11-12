@@ -125,7 +125,7 @@
 								{@const ep = endpoint}
 								<button
 									type="button"
-									class="focus-ring rounded-xs text-text-muted hover:text-text"
+									class="focus-ring forced-edge rounded-xs text-text-muted hover:text-text"
 									aria-label="Open {alert.name} in Grafana"
 									title="Open in Grafana"
 									onclick={() => void grafana(ep, alert)}

@@ -169,7 +169,7 @@
 		<div class="pointer-events-auto absolute inset-x-0 bottom-2 z-10 flex justify-center">
 			<button
 				type="button"
-				class="focus-ring type-body-sm rounded-full bg-warning-container px-3 py-1 font-semibold text-on-warning-container shadow-overlay hover:brightness-105"
+				class="focus-ring forced-edge type-body-sm rounded-full bg-warning-container px-3 py-1 font-semibold text-on-warning-container shadow-overlay hover:brightness-105"
 				onclick={resume}
 			>
 				↓ {newLines} new {newLines === 1 ? 'line' : 'lines'}

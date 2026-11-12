@@ -209,6 +209,7 @@
 											role="radio"
 											aria-checked={current === color}
 											aria-label={color}
+											title={color}
 											data-tint
 											data-swatch
 											style={tintStyle(color)}

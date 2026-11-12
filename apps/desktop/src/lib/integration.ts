@@ -53,12 +53,12 @@ export type FormResult = { ok: boolean; text: string };
 export const INPUT_CLASS = FIELD;
 export const CHECKBOX_CLASS = CHECKBOX;
 export const BUTTON_CLASS =
-  "focus-ring type-body-sm h-(--control-inline-h) shrink-0 rounded-full bg-primary-container px-3.5 font-semibold text-on-primary-container hover:brightness-110 disabled:opacity-45";
+  "focus-ring forced-edge type-body-sm h-(--control-inline-h) shrink-0 rounded-full bg-primary-container px-3.5 font-semibold text-on-primary-container hover:brightness-110 disabled:opacity-45";
 /** Borderless link that opens a web UI (Kibana, Grafana). */
 export const UI_LINK_CLASS =
-  "focus-ring type-body-sm flex items-center gap-1 rounded-full text-text-subtle hover:text-text-muted";
+  "focus-ring forced-edge type-body-sm flex items-center gap-1 rounded-full text-text-subtle hover:text-text-muted";
 /** Borderless link in the primary colour ("Set up"). */
-export const ACCENT_LINK_CLASS = "focus-ring type-body-sm rounded-full font-semibold text-primary hover:brightness-110";
+export const ACCENT_LINK_CLASS = "focus-ring forced-edge type-body-sm rounded-full font-semibold text-primary hover:brightness-110";
 
 /**
  * Stores the credentials typed for `endpoint` (or removes them when the

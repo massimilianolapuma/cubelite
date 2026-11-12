@@ -20,7 +20,7 @@
 	const healthWord = { connected: 'connected', unreachable: 'unreachable', unknown: 'not connected' } as const;
 
 	const disc =
-		'focus-ring flex h-(--control-h) w-(--control-h) shrink-0 items-center justify-center rounded-full';
+		'focus-ring forced-edge flex h-(--control-h) w-(--control-h) shrink-0 items-center justify-center rounded-full';
 </script>
 
 <!-- All Clusters and Preferences stay put; with many contexts only the avatars scroll. -->

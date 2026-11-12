@@ -191,7 +191,7 @@
 				<span class="type-body-sm min-w-0 flex-1 truncate">Update {updater.version} available</span>
 				<button
 					type="button"
-					class="focus-ring type-body rounded-full px-2 font-semibold underline-offset-2 hover:underline disabled:opacity-45"
+					class="focus-ring forced-edge type-body rounded-full px-2 font-semibold underline-offset-2 hover:underline disabled:opacity-45"
 					disabled={updater.status === 'downloading'}
 					onclick={() => updater.installAndRestart()}
 				>
@@ -199,7 +199,7 @@
 				</button>
 				<button
 					type="button"
-					class="focus-ring type-body rounded-full px-2 underline-offset-2 hover:underline"
+					class="focus-ring forced-edge type-body rounded-full px-2 underline-offset-2 hover:underline"
 					onclick={() => updater.dismiss()}
 				>
 					Later

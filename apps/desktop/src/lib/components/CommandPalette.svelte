@@ -181,6 +181,7 @@
 				<Command.Input
 					autofocus
 					aria-describedby="palette-keys"
+					data-bare
 					placeholder="Search clusters, resources, actions…"
 					class="type-title h-12 min-w-0 flex-1 bg-transparent font-normal text-text outline-none placeholder:text-text-subtle"
 				/>

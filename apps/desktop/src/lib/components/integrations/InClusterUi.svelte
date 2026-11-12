@@ -31,7 +31,7 @@
 	</span>
 	<button
 		type="button"
-		class="focus-ring hover-layer type-body-sm shrink-0 rounded-full px-2.5 py-0.5 font-semibold text-text-muted"
+		class="focus-ring forced-edge hover-layer type-body-sm shrink-0 rounded-full px-2.5 py-0.5 font-semibold text-text-muted"
 		aria-label="Clear the in-cluster {name}"
 		onclick={onClear}>Clear</button
 	>

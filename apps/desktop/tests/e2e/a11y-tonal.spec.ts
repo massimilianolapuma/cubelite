@@ -207,6 +207,26 @@ async function border(el: Locator) {
   });
 }
 
+/** Focuses `el` as the keyboard would, so that it matches :focus-visible. */
+async function focusVisible(page: Page, el: Locator) {
+  await page.keyboard.press("Shift");
+  await el.focus();
+  expect(await el.evaluate((n) => n.matches(":focus-visible"))).toBe(true);
+}
+
+/**
+ * An edge drawn in a system colour: a border or an outline, at least 1 px, of
+ * the element or (`pseudo`) of its ::after.
+ */
+async function systemEdge(el: Locator, pseudo: string | null = null): Promise<string> {
+  return el.evaluate((n, p) => {
+    const s = getComputedStyle(n, p);
+    if (s.borderTopStyle === "solid" && parseFloat(s.borderTopWidth) >= 1) return s.borderTopColor;
+    if (s.outlineStyle === "solid" && parseFloat(s.outlineWidth) >= 1) return s.outlineColor;
+    return "none";
+  }, pseudo);
+}
+
 test.describe("forced colours (forced-colors: active)", () => {
   // The window's theme and the system's palette are independent: check both pairs that differ.
   for (const [theme, scheme] of [
@@ -225,10 +245,12 @@ test.describe("forced colours (forced-colors: active)", () => {
         await sys(page, "CanvasText"),
       ];
 
-      // Selected list row: the row and every cell in it.
+      // Selected list row: the row and every cell in it, the sticky name cell too
+      // (it covers the cells that scroll under it, with a fill of its own).
       const row = page.locator('.list-row[data-selected="true"]');
       expect(await bg(row)).toBe(highlight);
       await unforced(row);
+      expect(await bg(row.locator(":scope > .sticky"))).toBe(highlight);
       expect(await fg(row.getByText("api-0", { exact: true }))).toBe(highlightText);
       expect(await fg(row.getByText("Running"))).toBe(highlightText);
       // A glyph follows its text instead of keeping its state's colour.
@@ -273,6 +295,18 @@ test.describe("forced colours (forced-colors: active)", () => {
 
       // Fields keep their edge.
       expect(await border(page.getByPlaceholder("Filter pods…"))).toEqual({ style: "solid", width: 1 });
+
+      // A focus ring on an item that opted out of the forcing would keep its
+      // tinted primary: it takes a system colour instead.
+      const ringOf = (el: Locator, pseudo: string | null = null) =>
+        el.evaluate((n, p) => getComputedStyle(n, p).outlineColor, pseudo);
+      await focusVisible(page, openLogs);
+      expect(await ringOf(openLogs), "primary button").toBe(await sys(page, "ButtonText"));
+      const pressed = chips.getByRole("button", { pressed: true });
+      await focusVisible(page, pressed);
+      expect(await ringOf(pressed), "pressed chip").toBe(canvasText);
+      await focusVisible(page, row);
+      expect(await ringOf(row, "::after"), "selected row").toBe(highlightText);
     });
 
     test(`${theme} app on a ${scheme} system palette: Preferences, menus, palette and meters`, async ({ page }) => {
@@ -280,11 +314,11 @@ test.describe("forced colours (forced-colors: active)", () => {
       await boot(page, theme);
       const highlight = await sys(page, "Highlight");
 
-      // Meters on All Clusters: the track has an edge, the fill a system colour.
+      // Meters on All Clusters: the fill takes a system colour (the track's edge is
+      // its own outline-strong border, there in every mode).
       await page.getByRole("button", { name: "All Clusters" }).click();
       const meter = page.locator("[data-level]").first();
       await expect(meter).toBeVisible();
-      expect(await border(meter.locator("[data-meter-track]"))).toEqual({ style: "solid", width: 1 });
       expect(await bg(meter.getByTestId("meter-fill"))).toBe(await sys(page, "CanvasText"));
 
       // The highlighted menu item.
@@ -312,20 +346,130 @@ test.describe("forced colours (forced-colors: active)", () => {
       for (const sw of [tls, hints]) {
         const on = (await sw.getAttribute("aria-checked")) === "true";
         const knob = sw.locator("[data-knob]");
-        expect(await border(sw)).toEqual({ style: "solid", width: 1 });
         expect(await bg(knob)).toBe(await sys(page, on ? "HighlightText" : "ButtonText"));
         if (on) expect(await bg(sw)).toBe(highlight);
       }
-      const swatches = prefs.getByRole("radiogroup", { name: "Color for prod-aks" });
-      expect(await border(swatches.getByRole("radio", { checked: false }).first())).toEqual({
-        style: "solid",
-        width: 1,
-      });
-      expect(await bg(swatches.getByRole("radio", { checked: true }))).toBe(highlight);
 
-      // A disabled control is grey text, whatever its role colour was. The browser
-      // does this for a native disabled control; this checks no rule above undoes it.
-      expect(await fg(prefs.getByRole("button", { name: "Move On-call up" }))).toBe(await sys(page, "GrayText"));
+      // Cluster colour swatches: the colour is the information, so each keeps its
+      // own, names it in a tooltip and keeps an edge; the chosen one keeps its check.
+      const swatches = prefs.getByRole("radiogroup", { name: "Color for prod-aks" }).getByRole("radio");
+      await expect(swatches).toHaveCount(5);
+      const fills = new Set<string>();
+      for (const swatch of await swatches.all()) {
+        await unforced(swatch);
+        expect(await swatch.getAttribute("title")).toBe(await swatch.getAttribute("aria-label"));
+        expect(await border(swatch)).toEqual({ style: "solid", width: 1 });
+        fills.add(await bg(swatch));
+      }
+      expect(fills.size, "five different colours").toBe(5);
+      expect(fills.has(highlight)).toBe(false);
+      await expect(swatches.and(page.locator('[aria-checked="true"]')).locator("[data-swatch-mark]")).toHaveCount(1);
+    });
+
+    test(`${theme} app on a ${scheme} system palette: every button-like control and key has an edge`, async ({ page }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await withPrometheus(page);
+      await boot(page, theme);
+      const system = [await sys(page, "CanvasText"), await sys(page, "ButtonText")];
+      const edged = async (el: Locator, name: string) => {
+        await expect(el, name).toBeVisible();
+        expect(system, `${name} has a system-colour edge`).toContain(await systemEdge(el));
+      };
+      // Top bar: the scope chips, the search button and its key.
+      await edged(page.getByRole("button", { name: /^prod-aks AKS/ }), "cluster chip");
+      await edged(page.getByRole("button", { name: /^Namespace/ }), "namespace chip");
+      const search = page.getByRole("button", { name: /Search & switch/ });
+      await edged(search, "search button");
+      await edged(search.locator("kbd"), "key");
+      await edged(page.getByRole("button", { name: "Go to resource" }), "sidebar search");
+
+      // Text and icon buttons of the panel, the log toolbar's chips and icons.
+      const panel = await podsWithPanel(page);
+      await edged(panel.getByRole("button", { name: "Delete" }), "text button");
+      await edged(panel.getByRole("button", { name: "Close" }), "icon button");
+      await panel.getByRole("button", { name: "Open logs" }).click();
+      const logs = page.getByLabel("Pod logs panel");
+      await edged(logs.getByRole("button", { name: /^worker/ }), "container chip");
+      await edged(logs.getByTitle(/Following/), "follow chip");
+      await edged(logs.getByRole("button", { name: "More log options" }), "toolbar icon");
+
+      // Preferences: the integration buttons.
+      await page.getByLabel("Preferences").click();
+      const prefs = page.getByRole("dialog", { name: "Preferences" });
+      for (const name of ["Detect", "Test connection"]) {
+        await edged(prefs.getByRole("button", { name, exact: true }).first(), name);
+      }
+      await edged(prefs.getByRole("button", { name: "Close" }), "dialog close");
+      await page.keyboard.press("Escape");
+
+      // The palette's field: the palette is its edge, the field draws no box of its own.
+      await page.getByRole("button", { name: /Search & switch/ }).click();
+      const input = page.getByTestId("command-palette").getByRole("combobox");
+      expect((await border(input)).width).toBe(0);
+    });
+
+    test(`${theme} app on a ${scheme} system palette: list and nav rows show hover`, async ({ page }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await boot(page, theme);
+      await podsWithPanel(page);
+      const highlight = await sys(page, "Highlight");
+      const row = page.locator(".list-row").filter({ hasText: "worker-0" });
+      await row.hover();
+      // Above the cells, where the sticky name cell cannot cover it.
+      expect(await systemEdge(row, "::after"), "list row").toBe(highlight);
+      const nav = page.getByRole("complementary").locator("[data-nav]").filter({ hasText: "Deployments" }).first();
+      await nav.hover();
+      expect(await systemEdge(nav), "nav row").toBe(highlight);
+      await page.mouse.move(0, 0);
+      expect(await systemEdge(nav), "nav row at rest").toBe("none");
+    });
+
+    test(`${theme} app on a ${scheme} system palette: chart lines are the text colour, told apart by their dash`, async ({ page }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await withPrometheus(page);
+      await boot(page, theme);
+      const canvasText = await sys(page, "CanvasText");
+      const stroke = (el: Locator) =>
+        el.evaluate((n) => ({ colour: getComputedStyle(n).stroke, dash: getComputedStyle(n).strokeDasharray }));
+
+      // The list's sparkline.
+      await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
+      const spark = page.getByRole("img", { name: "CPU, last hour" }).first();
+      await expect(spark).toBeVisible();
+      expect((await stroke(spark.locator("path"))).colour, "sparkline").toBe(canvasText);
+
+      const panel = await podsWithPanel(page);
+      const section = panel.getByTestId("metrics-section");
+      await section.scrollIntoViewIfNeeded();
+      const charts = section.getByTestId("metrics-chart");
+      await expect(charts).toHaveCount(4);
+      // CPU: one series (a container) and two references; Network: two series (rx, tx).
+      for (const [index, seriesCount] of [
+        [0, 1],
+        [3, 2],
+      ]) {
+        const chart = charts.nth(index);
+        const lines = chart.locator("svg[role=img] path");
+        const keys = chart.locator("svg[aria-hidden] line");
+        const n = await lines.count();
+        expect(await keys.count()).toBe(n);
+        const looks: { colour: string; dash: string }[] = [];
+        for (let i = 0; i < n; i++) {
+          const line = await stroke(lines.nth(i));
+          expect(line.colour, `line ${i}`).toBe(canvasText);
+          // The legend key is drawn as its line.
+          expect(await stroke(keys.nth(i)), `key ${i}`).toEqual(line);
+          looks.push(line);
+        }
+        // Series (CPU: one per container; Network: rx and tx) each have their own dash;
+        // the request and limit references share one no series has.
+        const series = looks.slice(0, seriesCount).map((l) => l.dash);
+        const refs = looks.slice(series.length).map((l) => l.dash);
+        expect(new Set(series).size).toBe(series.length);
+        for (const ref of refs) expect(series).not.toContain(ref);
+        // The baseline guide too.
+        expect((await stroke(chart.locator("[data-chart-guide]").first())).colour, "guide").toBe(canvasText);
+      }
     });
 
     test(`${theme} app on a ${scheme} system palette: cards keep an edge`, async ({ page }) => {

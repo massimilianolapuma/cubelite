@@ -99,7 +99,7 @@ export const PANEL_SECTION = "type-label mb-2 text-text-muted";
  * them, so a toolbar stays one row where it fits.
  */
 export const TOOLBAR_CHIP =
-  "focus-ring type-body-sm relative inline-flex h-(--control-inline-h) max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-full px-3";
+  "focus-ring forced-edge type-body-sm relative inline-flex h-(--control-inline-h) max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-full px-3";
 
 /** A resting toolbar chip: a quiet surface that opens or toggles something. */
 export const TOOLBAR_CHIP_REST = `${TOOLBAR_CHIP} bg-surface-container-high text-text hover:brightness-110`;
@@ -136,7 +136,7 @@ export const TOOLBAR_SELECT = `${TOOLBAR_FILL} max-w-full min-w-0 pr-2 pl-3.5`;
 
 /** Icon-only control in a toolbar: a disc with a layer of its own colour on hover. */
 export const TOOLBAR_ICON =
-  "focus-ring hover-layer relative flex h-(--control-inline-h) w-(--control-inline-h) shrink-0 items-center justify-center rounded-full text-text-muted";
+  "focus-ring forced-edge hover-layer relative flex h-(--control-inline-h) w-(--control-inline-h) shrink-0 items-center justify-center rounded-full text-text-muted";
 
 /**
  * A menu of a toolbar control (hand-rolled, not bits-ui). It opens with
@@ -160,4 +160,4 @@ export const TOOLBAR_MENU_ITEM =
   "focus-ring-inset hover-layer flex w-full items-center gap-3 rounded-md px-3 py-2 text-left type-body text-text";
 
 /** A small text action inside a block, e.g. Copy JSON above an expanded log line. */
-export const INLINE_ACTION = "focus-ring hover-layer type-label rounded-full px-2.5 py-1 text-text-muted";
+export const INLINE_ACTION = "focus-ring forced-edge hover-layer type-label rounded-full px-2.5 py-1 text-text-muted";

@@ -81,7 +81,7 @@
 			<!-- Alerts firing: the pill takes the worst severity's container and shape. -->
 			<button
 				type="button"
-				class="focus-ring type-body flex h-(--chip-h) shrink-0 items-center gap-2 rounded-full px-4 font-semibold hover:brightness-110 {firing.tone ===
+				class="focus-ring forced-edge type-body flex h-(--chip-h) shrink-0 items-center gap-2 rounded-full px-4 font-semibold hover:brightness-110 {firing.tone ===
 				'err'
 					? 'bg-error-container text-on-error-container'
 					: 'bg-warning-container text-on-warning-container'}"

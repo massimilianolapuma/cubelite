@@ -81,7 +81,7 @@
 		<div class="min-w-0 flex-1"><ProfileMenu /></div>
 		<button
 			type="button"
-			class="focus-ring flex h-(--control-h-compact) w-(--control-h-compact) shrink-0 items-center justify-center rounded-full bg-surface-container-high text-text-muted hover:brightness-110"
+			class="focus-ring forced-edge flex h-(--control-h-compact) w-(--control-h-compact) shrink-0 items-center justify-center rounded-full bg-surface-container-high text-text-muted hover:brightness-110"
 			aria-label="Go to resource"
 			title="Go to resource ({modLabel}K)"
 			onclick={() => (app.paletteOpen = true)}

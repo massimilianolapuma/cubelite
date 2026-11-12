@@ -13,7 +13,7 @@
 	type="button"
 	title={following ? 'Following: click to pause' : 'Paused: click to follow'}
 	data-state={following ? 'following' : 'paused'}
-	class="focus-ring type-body-sm relative inline-flex h-(--control-inline-h) shrink-0 items-center gap-2 rounded-full px-3 font-semibold hover:brightness-110 {following
+	class="focus-ring forced-edge type-body-sm relative inline-flex h-(--control-inline-h) shrink-0 items-center gap-2 rounded-full px-3 font-semibold hover:brightness-110 {following
 		? 'bg-success-container text-on-success-container'
 		: 'bg-warning-container text-on-warning-container'}"
 	onclick={onToggle}

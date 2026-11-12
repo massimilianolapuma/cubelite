@@ -51,7 +51,7 @@
 			type="button"
 			aria-label="Dismiss"
 			title="Hide for this cluster (Preferences → Integrations brings it back)"
-			class="focus-ring rounded-full p-1 opacity-80 hover:opacity-100"
+			class="focus-ring forced-edge rounded-full p-1 opacity-80 hover:opacity-100"
 			disabled={busy}
 			onclick={() => integrations.dismiss(banner.context)}
 		>
