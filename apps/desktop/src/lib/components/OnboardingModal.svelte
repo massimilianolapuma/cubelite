@@ -61,7 +61,7 @@
 					<!-- The avatar carries its own cluster's tint (Tonal §4.1). -->
 					<li class="flex items-center gap-3 py-1">
 						<IdentityAvatar name={ctx.name} color={clusters.identityFor(ctx.name)} size={32} surface="container" />
-						<span class="type-body min-w-0 flex-1 truncate text-text">{ctx.name}</span>
+						<span class="type-body min-w-0 flex-1 truncate text-text" title={ctx.name}>{ctx.name}</span>
 						<Kbd label="{modLabel}{i + 1}" />
 					</li>
 				{/each}
@@ -80,6 +80,7 @@
 		{/if}
 	</div>
 
+	<!-- The one primary action is 48 px (Tonal §7), as in the pod panel. -->
 	<div class="flex shrink-0 flex-wrap items-center gap-2 px-6 pt-3 pb-5">
 		<!-- Progress is a sentence; the dots repeat it, the current one longer (Tonal §9.3). -->
 		<div class="flex items-center gap-1.5" aria-hidden="true">
@@ -94,9 +95,9 @@
 		<span class="flex-1"></span>
 		{#if step < STEPS - 1}
 			<Button variant="text" onclick={finish}>Skip</Button>
-			<Button variant="primary" onclick={() => (step += 1)}>Continue</Button>
+			<Button variant="primary" size="primary" onclick={() => (step += 1)}>Continue</Button>
 		{:else}
-			<Button variant="primary" onclick={finish}>Start using CubeLite</Button>
+			<Button variant="primary" size="primary" onclick={finish}>Start using CubeLite</Button>
 		{/if}
 	</div>
 </div>

@@ -88,9 +88,11 @@
 		}
 	}
 
-	// Icon-only buttons are discs (Tonal §7); a disabled one fades to 45 %.
+	// Icon-only buttons are discs (Tonal §7); a disabled one fades to 45 %. No
+	// enlarged hit area: the rows touch, and a 28 px target would reach into the
+	// row above and take its clicks. 24 px meets the WCAG 2.2 minimum.
 	const iconButton =
-		'focus-ring hover-layer hit-target flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-muted disabled:opacity-45';
+		'focus-ring hover-layer flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-text-muted disabled:opacity-45';
 </script>
 
 <section data-testid="profiles-prefs" bind:this={root}>
@@ -107,7 +109,7 @@
 								aria-label="New name for {profile.name}"
 								maxlength={NAME_MAX}
 								{@attach focusOnMount}
-								class="{FIELD_BASE} h-8 flex-1"
+								class="{FIELD_BASE} flex-1"
 								onkeydown={(e) => onRenameKeydown(e, profile.id)}
 							/>
 						{:else}

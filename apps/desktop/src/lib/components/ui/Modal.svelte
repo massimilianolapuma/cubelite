@@ -49,7 +49,7 @@
 		{@render children()}
 	</div>
 	{#if footer}
-		<footer class="flex shrink-0 justify-end gap-2 px-6 pt-3 pb-5">
+		<footer class="flex shrink-0 items-center justify-end gap-2 px-6 pt-3 pb-5">
 			{@render footer()}
 		</footer>
 	{/if}

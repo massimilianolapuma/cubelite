@@ -208,15 +208,21 @@
 									class={row}
 								>
 									<span class="h-2.5 w-2.5 shrink-0 rounded-[3px] bg-primary" data-testid="identity-mark"></span>
-									<span class="type-body min-w-0 flex-1 truncate">{ctx.name}</span>
+									<!-- Long context names (EKS ARNs) often differ only at the end: the name
+									     wraps anywhere onto a second line rather than losing its end (§9.2). -->
+									<span class="type-body line-clamp-2 min-w-0 flex-1 [overflow-wrap:anywhere]" title={ctx.name}
+										>{ctx.name}</span
+									>
 									<span
 										class="type-micro shrink-0 rounded-xs bg-primary-container px-1.5 py-px font-mono text-on-primary-container"
 									>
 										{providerOf(ctx.name, ctx.cluster_server)}
 									</span>
+									<!-- Connected is the circle alone, its word kept for screen readers; a state
+									     that needs attention is written out. -->
 									<span class="flex shrink-0 items-center gap-1.5 {look.tone}" data-testid="cluster-health">
 										<StatusGlyph state={look.glyph} />
-										<span class="type-body-sm text-text-muted">{look.word}</span>
+										<span class={look.glyph === 'ok' ? 'sr-only' : 'type-body-sm text-text-muted'}>{look.word}</span>
 									</span>
 									{#if i < 5}
 										<Kbd label="{modLabel}{i + 1}" />

@@ -30,7 +30,9 @@
 	} = $props();
 </script>
 
-<!-- One pill group; the selected segment is the tonal fill (Tonal §7). -->
+<!-- One pill group; the selected segment is the tonal fill (Tonal §7) inside a
+     1.5 px primary ring: the fill alone is 1.3–1.6:1 from its surface, and the
+     ring, drawn inside, reaches 3:1 without changing the segment's size. -->
 <div
 	class="inline-flex shrink-0 gap-0.5 rounded-full p-0.5 {outlined
 		? 'border border-outline-strong'
@@ -51,7 +53,7 @@
 			class="focus-ring type-body-sm h-(--control-inline-h) rounded-full {dense ? 'px-2' : 'px-3.5'} {segment.disabled
 				? 'text-text-subtle opacity-45'
 				: active
-					? 'bg-primary-container font-semibold text-on-primary-container'
+					? 'bg-primary-container font-semibold text-on-primary-container inset-ring-[1.5px] inset-ring-primary'
 					: 'text-text-muted ' + (outlined ? 'hover-layer' : 'hover:bg-surface-container-top')}"
 			onclick={() => {
 				value = segment.value;

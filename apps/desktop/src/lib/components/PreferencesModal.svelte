@@ -10,6 +10,7 @@
 		seedIfEmpty
 	} from '#lib/kubeconfig-list.ts';
 	import Check from '@lucide/svelte/icons/check';
+	import Download from '@lucide/svelte/icons/download';
 	import { applyDensity, tintStyle } from '#lib/appearance.ts';
 	import { IDENTITY_COLORS } from '#lib/cluster-identity.ts';
 	import Button from '#lib/components/ui/Button.svelte';
@@ -384,7 +385,10 @@
 						pending={updater.status === 'downloading'}
 						onclick={() => updater.installAndRestart()}
 					>
-						{updater.status === 'downloading' ? 'Downloading…' : 'Install update'}
+						<!-- While it downloads the icon turns into the spinner; the label and the
+						     width stay, and the line beside it says what is happening (§7, §9.3). -->
+						{#snippet icon()}<Download class="h-4 w-4" aria-hidden="true" />{/snippet}
+						Install update
 					</Button>
 				{:else}
 					<Button variant="tonal" size="inline" pending={updater.status === 'checking'} onclick={checkForUpdates}>
@@ -394,7 +398,9 @@
 				<p class="type-body-sm min-w-0 text-text-muted" aria-live="polite">
 					{#if updater.status === 'checking'}
 						Checking…
-					{:else if updater.status === 'available' || updater.status === 'downloading'}
+					{:else if updater.status === 'downloading'}
+						Downloading update {updater.version}…
+					{:else if updater.status === 'available'}
 						Update {updater.version} available
 					{:else if updater.status === 'ready'}
 						Update {updater.version} ready to install

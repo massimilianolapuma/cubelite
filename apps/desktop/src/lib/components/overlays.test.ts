@@ -39,6 +39,7 @@ import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
 import { settings } from "#lib/stores/settings.svelte.ts";
 import { toasts } from "#lib/stores/toasts.svelte.ts";
+import { updater } from "#lib/stores/updater.svelte.ts";
 import { installLocalStorageMock } from "#lib/stores/storage-mock.ts";
 import type { PodInfo } from "#lib/tauri.ts";
 
@@ -296,6 +297,32 @@ describe("PreferencesModal", () => {
     delete (Element.prototype as Partial<Element>).scrollIntoView;
   });
 
+  it("lands on the section asked for: Integrations as a whole, Prometheus on its own form", async () => {
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      app.openPreferences("integrations");
+      let view = render(PreferencesModal);
+      await tick();
+      expect(scrolled).toEqual([screen.getByRole("region", { name: "Integrations" })]);
+      view.unmount();
+
+      scrolled.length = 0;
+      app.openPreferences("prometheus");
+      view = render(PreferencesModal);
+      await tick();
+      // The Prometheus form, not the Integrations section it sits in (which starts with Elasticsearch).
+      expect(scrolled).toHaveLength(1);
+      expect(scrolled[0].firstElementChild).toBe(screen.getByTestId("prometheus-prefs"));
+      expect(scrolled[0].contains(screen.getByTestId("elastic-prefs"))).toBe(false);
+      view.unmount();
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    }
+  });
+
   it("opens on the kubeconfig files when asked (All Clusters' Open Preferences)", async () => {
     const scrolled: Element[] = [];
     Element.prototype.scrollIntoView = function (this: Element) {
@@ -355,14 +382,22 @@ describe("PreferencesModal", () => {
     app.kubeconfigSources = [
       { path: "/home/u/.kube/config", exists: true, contexts: 2, shadowed: [] },
       { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: ["prod"] },
+      {
+        path: "/home/u/.kube/dolomiti",
+        exists: true,
+        contexts: 1,
+        shadowed: [],
+        redefined_clusters: ["aks-prod-01"],
+        redefined_users: [],
+      },
     ];
     render(PreferencesModal);
     const rows = within(screen.getByRole("list", { name: "Kubeconfig files" })).getAllByRole("listitem");
+    const triangle = (row: HTMLElement, note: RegExp) =>
+      within(row).getByText(note).closest("[data-note]")?.querySelector("[data-glyph]");
     expect(rows[0].querySelector("[data-glyph]")).toBeNull();
-    expect(within(rows[1]).getByText(/1 merged/).closest("[data-note]")?.querySelector("[data-glyph]")).toHaveAttribute(
-      "data-glyph",
-      "warn",
-    );
+    expect(triangle(rows[1], /1 merged/)).toHaveAttribute("data-glyph", "warn");
+    expect(triangle(rows[2], /1 redefined/)).toHaveAttribute("data-glyph", "warn");
   });
 
   it("overrides a cluster's identity color", async () => {
@@ -444,6 +479,26 @@ describe("PreferencesModal", () => {
   });
 });
 
+describe("PreferencesModal updates", () => {
+  it("keeps 'Install update' on its button while downloading and says so beside it", () => {
+    updater.status = "downloading";
+    updater.version = "0.11.0";
+    try {
+      render(PreferencesModal);
+      const region = screen.getByRole("region", { name: "Updates" });
+      // Pending swaps the icon for a spinner; the name and the label stay (§7, §9.3).
+      const install = within(region).getByRole("button", { name: "Install update" });
+      expect(install).toHaveAttribute("aria-busy", "true");
+      // The overlay spinner of an icon-less button would hide the label (opacity 0).
+      expect(within(install).getByText("Install update")).not.toHaveClass("opacity-0");
+      expect(within(region).getByText("Downloading update 0.11.0…")).toBeInTheDocument();
+    } finally {
+      updater.status = "idle";
+      updater.version = null;
+    }
+  });
+});
+
 describe("OnboardingModal", () => {
   it("lists each cluster in its own tint", async () => {
     app.onboardingOpen = true;
@@ -458,6 +513,14 @@ describe("OnboardingModal", () => {
     expect(avatars.map((a) => a.dataset.surface)).toEqual(["container", "container"]);
   });
 
+  it("keeps a cut cluster name whole in its title (§9.2)", async () => {
+    app.onboardingOpen = true;
+    render(OnboardingModal);
+    await fireEvent.click(screen.getByText("Continue"));
+    const list = screen.getByRole("list", { name: "Clusters" });
+    expect(within(list).getByText("prod")).toHaveAttribute("title", "prod");
+    expect(within(list).getByText("staging")).toHaveAttribute("title", "staging");
+  });
 
   it("walks the three steps and finishes with the seen flag", async () => {
     app.onboardingOpen = true;

@@ -41,8 +41,10 @@
 
 	{#snippet footer()}
 		<Button variant="text" onclick={onCancel}>Cancel</Button>
+		<!-- The dialog's one primary action: 48 px (Tonal §7). -->
 		<Button
 			variant="danger-solid"
+			size="primary"
 			disabled={confirmDisabled}
 			title={confirmDisabled ? 'Requires backend support' : undefined}
 			onclick={onConfirm}

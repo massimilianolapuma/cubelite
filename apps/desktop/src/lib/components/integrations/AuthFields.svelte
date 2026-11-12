@@ -22,7 +22,8 @@
 </script>
 
 <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-	<select class="{FIELD_BASE} w-44" aria-label="Authentication" bind:value={fields.method}>
+	<!-- As wide as its longest option ("Azure CLI (Azure Monitor)"), never wider than the form. -->
+	<select class="{FIELD_BASE} w-auto max-w-full" aria-label="Authentication" bind:value={fields.method}>
 		{#each options as option (option.value)}
 			<option value={option.value}>{option.label}</option>
 		{/each}
