@@ -81,8 +81,10 @@ describe("JsonTree", () => {
   });
   it("shows [i] indices for array elements and their keys", () => {
     render(JsonTree, { props: { value: [{ k: "x" }, { k: "y" }], raw: "{}" } });
-    expect(screen.getByText("[0]")).toBeInTheDocument();
-    expect(screen.getByText("[1]")).toBeInTheDocument();
+    // Indices are bracketed and carry no colon; keys of their objects do.
+    const indices = screen.getAllByText(/^\[\d+\]$/);
+    expect(indices.map((el) => el.textContent)).toEqual(["[0]", "[1]"]);
+    for (const index of indices) expect(index.nextElementSibling?.textContent).not.toBe(":");
     expect(screen.getAllByText("k")).toHaveLength(2);
   });
   it("lets long scalar values wrap", () => {

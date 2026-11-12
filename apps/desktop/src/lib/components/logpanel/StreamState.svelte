@@ -22,7 +22,9 @@
 	const look = $derived(LOOK[status]);
 </script>
 
-<span class="inline-flex shrink-0 items-center gap-1.5" title={look.word} data-status={status}>
+<!-- relative: the hidden word is positioned absolutely; without a box of its own
+     it would hang off the panel and widen the page when the tab strip scrolls. -->
+<span class="relative inline-flex shrink-0 items-center gap-1.5" title={look.word} data-status={status}>
 	<StatusGlyph state={look.state} class={look.tone} />
 	<span class={word ? 'type-body-sm text-text-muted' : 'sr-only'}>{look.word}</span>
 </span>

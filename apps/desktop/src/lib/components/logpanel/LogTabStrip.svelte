@@ -8,7 +8,7 @@
 </script>
 
 <!-- One pill per session; its stream state is a shape and a word (Tonal §9.3). -->
-<div class="flex h-11 shrink-0 items-center gap-1 overflow-x-auto px-2 pt-1">
+<div class="flex h-11 shrink-0 items-center gap-1 overflow-x-auto px-2 pt-1" data-testid="log-tabs">
 	{#each logPanel.sessions as session (session.key)}
 		{@const active = session.key === logPanel.activeKey}
 		<div

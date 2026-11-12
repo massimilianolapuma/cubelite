@@ -164,7 +164,7 @@ describe("LogsView JSON view (#461)", () => {
     expect(logs.expanded.size).toBe(0);
   });
 
-  // Its width is checked on the rendered page (logpanel.spec.ts).
+  // Its width is checked on the rendered page (logs-tonal.spec.ts).
   it("pod column carries the full name as title", async () => {
     render(LogsView);
     await new Promise((r) => setTimeout(r, 0));

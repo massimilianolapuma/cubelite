@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { HISTORY_RANGES, isHistoryRange } from '#lib/elastic.ts';
 	import type { LogHistory } from '#lib/stores/logHistory.svelte.ts';
-	import { TOOLBAR_FIELD, TOOLBAR_SELECT } from '#lib/ui-classes.ts';
+	import { TOOLBAR_FIELD_FLEX, TOOLBAR_SELECT } from '#lib/ui-classes.ts';
 
 	// History range and Elasticsearch query (#501), shared by the log panel
 	// and the Logs view (#529).
@@ -32,5 +32,5 @@
 	onkeydown={(e) => {
 		if (e.key === 'Enter') void history.reload();
 	}}
-	class={TOOLBAR_FIELD}
+	class={TOOLBAR_FIELD_FLEX}
 />

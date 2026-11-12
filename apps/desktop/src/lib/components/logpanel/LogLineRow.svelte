@@ -80,9 +80,12 @@
 		error: 'bg-error-container/35'
 	};
 
-	const MARK = 'bg-warning-container text-on-warning-container';
-	// The match the cursor is on stands out by a ring and weight, not by colour alone.
-	const MARK_ACTIVE = `${MARK} font-semibold outline-2 outline-warning`;
+	// A match is marked by more than its fill, which barely differs from a washed
+	// WARN or ERROR row in the light theme: an underline in the warning colour. The
+	// match the cursor is on is boxed by a ring and set in a heavier weight.
+	const MARK_FILL = 'bg-warning-container text-on-warning-container';
+	const MARK = `${MARK_FILL} underline decoration-warning decoration-2 underline-offset-2`;
+	const MARK_ACTIVE = `${MARK_FILL} font-semibold outline-2 outline-warning`;
 
 	const tone = $derived(source ? (source.index === null ? 'text-text-muted' : sourceClass(source.index)) : '');
 

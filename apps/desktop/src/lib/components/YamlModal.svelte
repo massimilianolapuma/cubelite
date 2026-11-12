@@ -93,8 +93,17 @@
 
 </script>
 
+<!-- The code area fits the modal at any window height, so there is one scroller,
+     not two. The modal is at most 80vh; its header and body padding take 6.25rem
+     (Modal.svelte), the button row 2.75rem. Editing, the column is as tall as the
+     room left (60vh of editor at most) and the editor takes what the error line,
+     when there is one, leaves. -->
 <Modal title="{name}.yaml" width={720} {onClose}>
-	<div class="flex flex-col gap-3">
+	<div
+		class="flex flex-col gap-3 {editing
+			? 'h-[min(calc(60vh_+_2.75rem),calc(80vh_-_6.25rem))]'
+			: ''}"
+	>
 		<div class="flex justify-end gap-2">
 			{#if editing}
 				<Button variant="text" size="inline" disabled={applying} onclick={cancelEditing}>Cancel</Button>
@@ -121,7 +130,7 @@
 
 		{#if editing}
 			{#if applyError}
-				<p class="type-body-sm flex items-start gap-2 text-text" role="alert">
+				<p class="type-body-sm flex shrink-0 items-start gap-2 text-text" role="alert">
 					<StatusGlyph state="err" class="mt-1 text-error" />{applyError}
 				</p>
 			{/if}
@@ -130,7 +139,7 @@
 				aria-label="Manifest YAML"
 				spellcheck="false"
 				autocapitalize="off"
-				class="focus-ring type-log h-[60vh] w-full resize-none rounded-md bg-surface-sunken p-3 text-text"
+				class="focus-ring type-log min-h-0 w-full flex-1 resize-none rounded-md bg-surface-sunken p-3 text-text"
 				onkeydown={onEditorKeydown}
 			></textarea>
 		{:else if error}
@@ -140,7 +149,8 @@
 		{:else if yaml === null}
 			<p class="type-body-sm py-8 text-center text-text-muted" role="status">Loading…</p>
 		{:else}
-			<pre class="type-log max-h-[60vh] overflow-auto rounded-md bg-surface-sunken p-3 text-text">{yaml}</pre>
+			<pre
+				class="type-log max-h-[min(60vh,calc(80vh_-_9rem))] overflow-auto rounded-md bg-surface-sunken p-3 text-text">{yaml}</pre>
 		{/if}
 	</div>
 </Modal>

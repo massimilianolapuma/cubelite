@@ -78,9 +78,10 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<!-- The whole window is the log card (Tonal §8.5). Its tint is its pod's cluster's,
+<!-- The whole window is the log card (Tonal §8.5): header and toolbar on the card,
+     lines on surface-sunken. Its tint is its pod's cluster's,
      set on <html> by the page (windowTint), and follows that cluster's colour. -->
-<div class="flex h-screen flex-col overflow-hidden bg-surface-sunken">
+<div class="flex h-screen flex-col overflow-hidden bg-surface-container" data-testid="logwindow">
 	{#if session}
 		<header class="flex h-11 shrink-0 items-center gap-2 px-3 pt-1">
 			<span class="inline-flex shrink-0 items-center" data-testid="logwindow-state">

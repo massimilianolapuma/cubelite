@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import ArrowUpToLine from '@lucide/svelte/icons/arrow-up-to-line';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ListFilter from '@lucide/svelte/icons/list-filter';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import SquareArrowOutUpRight from '@lucide/svelte/icons/square-arrow-out-up-right';
@@ -15,7 +16,7 @@
 	import {
 		TOOLBAR_CHIP,
 		TOOLBAR_CHIP_REST,
-		TOOLBAR_FIELD,
+		TOOLBAR_FIELD_FLEX,
 		TOOLBAR_ICON,
 		TOOLBAR_MENU,
 		TOOLBAR_MENU_ITEM,
@@ -38,7 +39,14 @@
 	let overflowOpen = $state(false);
 	let searchInput = $state<HTMLInputElement | null>(null);
 
-	const TAIL_OPTIONS = [100, 500, 1000, 5000] as const;
+	const TAIL_PRESETS = [100, 500, 1000, 5000];
+	// "Load 500 earlier" raises the tail past the presets: list the current
+	// size too, so the select never shows a blank.
+	const tailOptions = $derived(
+		TAIL_PRESETS.includes(session.tailLines)
+			? TAIL_PRESETS
+			: [...TAIL_PRESETS, session.tailLines].sort((a, b) => a - b)
+	);
 
 	const selected = $derived(session.containers.find((c) => c.name === session.container) ?? null);
 	const mains = $derived(session.containers.filter((c) => !c.init));
@@ -154,14 +162,18 @@
 	];
 </script>
 
-<!-- Toolbar of chips and pill fields on the card (Tonal §8.5). It wraps where
-     it does not fit: a horizontal scroller would clip the menus that open upwards. -->
-<div class="flex shrink-0 flex-wrap items-center gap-2 px-3 py-1.5" data-testid="log-toolbar">
+<!-- Toolbar of chips and pill fields on the card (Tonal §8.5). One row from the
+     default window down to 1280 px: words of chips give way to their icons as the
+     row narrows (they stay in the accessible names), the search field takes what is
+     left. Below that it wraps, at most in two rows at 800 px; a horizontal scroller
+     would clip the menus that open upwards. Nothing moves into a menu. -->
+<div class="@container shrink-0 px-3 py-1.5">
+<div class="flex flex-wrap items-center gap-1" data-testid="log-toolbar">
 	<!-- container picker -->
 	<div class="relative min-w-0">
 		<button
 			type="button"
-			class="{TOOLBAR_CHIP_REST} type-data-sm"
+			class="{TOOLBAR_CHIP_REST} type-data-sm max-w-40"
 			aria-expanded={pickerOpen}
 			onclick={() => (pickerOpen = !pickerOpen)}
 		>
@@ -211,44 +223,41 @@
 			aria-pressed={session.previous}
 			onclick={() => void session.setPrevious(!session.previous)}
 		>
-			<RotateCcw class="h-3.5 w-3.5" aria-hidden="true" /> prev
+			<RotateCcw class="h-3.5 w-3.5" aria-hidden="true" /><span class="@max-[72rem]:sr-only">prev</span>
 		</button>
 	{/if}
 
 	<!-- live stream or Elasticsearch history (#501) -->
-	<LogSourceSwitch value={session.source} onChange={(v) => session.setSource(v)} setup={!detached} />
+	<LogSourceSwitch value={session.source} onChange={(v) => session.setSource(v)} setup={!detached} dense />
 
-	<span class="flex-1"></span>
-
-	<!-- search -->
-	<div class="flex min-w-0 items-center gap-1.5">
-		<input
-			bind:this={searchInput}
-			type="text"
-			placeholder="Search… (⌘F)"
-			value={logPanel.search.query}
-			oninput={(e) => logPanel.search.setQuery(e.currentTarget.value)}
-			onkeydown={onSearchKeydown}
-			class={TOOLBAR_FIELD}
-		/>
-		{#if logPanel.search.query}
-			<span class="type-data-sm shrink-0 text-text-muted">
-				{logPanel.search.count === 0
-					? '0 results'
-					: `${logPanel.search.cursor + 1}/${logPanel.search.count}`}
-			</span>
-			<button
-				type="button"
-				aria-pressed={logPanel.search.filterMode}
-				class="{TOOLBAR_CHIP} {logPanel.search.filterMode
-					? 'bg-primary-container font-semibold text-on-primary-container'
-					: 'bg-surface-container-high text-text-muted hover:brightness-110'}"
-				onclick={() => (logPanel.search.filterMode = !logPanel.search.filterMode)}
-			>
-				filter
-			</button>
-		{/if}
-	</div>
+	<!-- search: takes the room the row has left -->
+	<input
+		bind:this={searchInput}
+		type="text"
+		placeholder="Search… (⌘F)"
+		value={logPanel.search.query}
+		oninput={(e) => logPanel.search.setQuery(e.currentTarget.value)}
+		onkeydown={onSearchKeydown}
+		class={TOOLBAR_FIELD_FLEX}
+	/>
+	{#if logPanel.search.query}
+		<span class="type-data-sm shrink-0 text-text-muted">
+			{logPanel.search.count === 0
+				? '0 results'
+				: `${logPanel.search.cursor + 1}/${logPanel.search.count}`}
+		</span>
+		<button
+			type="button"
+			aria-pressed={logPanel.search.filterMode}
+			title="Show only matching lines"
+			class="{TOOLBAR_CHIP} {logPanel.search.filterMode
+				? 'bg-primary-container font-semibold text-on-primary-container'
+				: 'bg-surface-container-high text-text-muted hover:brightness-110'}"
+			onclick={() => (logPanel.search.filterMode = !logPanel.search.filterMode)}
+		>
+			<ListFilter class="h-3.5 w-3.5" aria-hidden="true" /><span class="@max-[72rem]:sr-only">filter</span>
+		</button>
+	{/if}
 
 	{#if session.source === 'history'}
 		<HistoryControls history={session.history} />
@@ -260,7 +269,7 @@
 			value={String(session.tailLines)}
 			onchange={(e) => void session.setTail(Number(e.currentTarget.value))}
 		>
-			{#each TAIL_OPTIONS as n (n)}
+			{#each tailOptions as n (n)}
 				<option value={String(n)}>{n} lines</option>
 			{/each}
 		</select>
@@ -277,10 +286,24 @@
 		<FollowChip following={session.following} onToggle={() => session.toggleFollow()} />
 	{/if}
 
-	<!-- view mode: raw / JSON / ECS (#492) -->
-	<span data-testid="logpanel-view-mode" title="Log view: raw text, humanised JSON or Elastic Common Schema">
-		<SegmentedControl segments={VIEW_MODES} bind:value={logPanel.viewMode} label="Log view" />
+	<!-- view mode: raw / JSON / ECS (#492); a pill select where three segments do not fit -->
+	<span
+		class="hidden @min-[44rem]:inline-flex"
+		data-testid="logpanel-view-mode"
+		title="Log view: raw text, humanised JSON or Elastic Common Schema"
+	>
+		<SegmentedControl segments={VIEW_MODES} bind:value={logPanel.viewMode} label="Log view" dense />
 	</span>
+	<select
+		aria-label="Log view"
+		title="Log view: raw text, humanised JSON or Elastic Common Schema"
+		class="{TOOLBAR_SELECT} @min-[44rem]:hidden"
+		bind:value={logPanel.viewMode}
+	>
+		{#each VIEW_MODES as mode (mode.value)}
+			<option value={mode.value}>{mode.label}</option>
+		{/each}
+	</select>
 
 	<!-- pop out to separate window -->
 	{#if !detached}
@@ -356,4 +379,5 @@
 			</div>
 		{/if}
 	</div>
+</div>
 </div>

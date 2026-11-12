@@ -129,7 +129,7 @@ describe("LogBody", () => {
       const sourceLabel = await screen.findByText("envoy");
       expect(sourceLabel).toBeInTheDocument();
       // envoy is the second regular container: data-2 (the colour itself is
-      // checked on the rendered page, see logpanel.spec.ts).
+      // checked on the rendered page, see logs-tonal.spec.ts).
       expect(sourceLabel).toHaveAttribute("data-source", "2");
     });
 

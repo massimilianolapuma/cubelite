@@ -25,12 +25,15 @@
 </script>
 
 {#if logPanel.open}
-	<!-- A surface-sunken card under the list and the detail panel (Tonal §5). While
+	<!-- A card under the list and the detail panel (Tonal §5): tabs and toolbar on
+	     surface-container, the lines on surface-sunken (§8.5). It never gets shorter
+	     than its tab strip, its toolbar as wrapped and four lines (min-content), so a
+	     saved height of 160 cannot squeeze the lines out of the card. While
 	     the detail panel lies over the list (overlay mode) the card is lifted above it
 	     (z-30) so the toolbar's upward menus stay clickable, below modals (z-40).
 	     Docked, nothing covers it. -->
 	<section
-		class="relative flex shrink-0 flex-col rounded-xl bg-surface-sunken data-[lifted=true]:z-[35]"
+		class="relative flex min-h-min shrink-0 flex-col rounded-xl bg-surface-container data-[lifted=true]:z-[35]"
 		style="height: {logPanel.collapsed ? PANEL_COLLAPSED : logPanel.height}px;"
 		aria-label="Pod logs panel"
 		data-lifted={layout.docked ? undefined : 'true'}

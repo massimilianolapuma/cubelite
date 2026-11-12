@@ -175,7 +175,7 @@
 		<!-- one workload's pods, live and in history (#529) -->
 		<select
 			aria-label="Workload"
-			class="{TOOLBAR_SELECT} max-w-52"
+			class="{TOOLBAR_SELECT} w-52"
 			value={logs.scope ? scopeKey(logs.scope) : ''}
 			onchange={(e) => pickScope(e.currentTarget.value)}
 		>
@@ -201,13 +201,14 @@
 			blocked={mapping.reason}
 			testid="logs-source"
 			hintTestid="logs-history-hint"
+			dense
 		/>
 
 		{#if history}
 			<HistoryControls {history} />
 		{/if}
 
-		<SegmentedControl segments={LEVELS} bind:value={logs.level} label="Level" />
+		<SegmentedControl segments={LEVELS} bind:value={logs.level} label="Level" dense />
 
 		<input
 			type="text"
@@ -219,7 +220,7 @@
 
 		<!-- view mode: own preference, independent of the log panel's (#461, #492) -->
 		<span data-testid="logs-view-mode" title="Log view: raw text, humanised JSON or Elastic Common Schema">
-			<SegmentedControl segments={VIEW_MODES} bind:value={logs.viewMode} label="Log view" />
+			<SegmentedControl segments={VIEW_MODES} bind:value={logs.viewMode} label="Log view" dense />
 		</span>
 
 		{#if history}
@@ -234,7 +235,9 @@
 		{/if}
 	</div>
 
-	<div class="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-surface-sunken">
+	<!-- Never shorter than four lines: with the log panel open in a small window the
+	     card scrolls instead. -->
+	<div class="relative flex min-h-18 flex-1 flex-col overflow-hidden rounded-lg bg-surface-sunken" data-testid="logs-lines">
 		{#if history}
 			<HistoryStrip {history} />
 		{:else if !logs.following && logs.bufferedWhilePaused > 0}

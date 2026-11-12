@@ -4,20 +4,44 @@ import { type Browser, type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { tauriMockScript, emitPodLogLine, FIXTURES } from "./tauri-mock";
 
-type Boot = { theme?: "dark" | "light"; compact?: boolean; containers?: string[] };
+type Boot = {
+  theme?: "dark" | "light";
+  compact?: boolean;
+  containers?: string[];
+  /** Extra pods after the fixture's own. */
+  pods?: string[];
+  /** An Elasticsearch endpoint for prod-aks, so History is offered. */
+  elastic?: boolean;
+  /** Saved log panel height. */
+  panelHeight?: number;
+};
 
 const container = (name: string, init = false) => ({ ...FIXTURES.podContainers[0], name, init, restarts: 0 });
 
+const ELASTIC = {
+  "prod-aks": {
+    target: { kind: "in-cluster", namespace: "logging", service: "es", port: 9200, https: true },
+    indexPattern: "logs-*",
+    preset: "ecs",
+    kibanaUrl: "https://kibana.example",
+    skipTlsVerify: false,
+  },
+};
+
 async function boot(page: Page, o: Boot = {}) {
-  const overrides = o.containers ? { podContainers: o.containers.map((n) => container(n)) } : {};
+  const overrides: Partial<typeof FIXTURES> = {};
+  if (o.containers) overrides.podContainers = o.containers.map((n) => container(n));
+  if (o.pods) overrides.pods = [...FIXTURES.pods, ...o.pods.map((name) => ({ ...FIXTURES.pods[0], name }))];
   await page.addInitScript(tauriMockScript(overrides));
   await page.addInitScript(
-    ([theme, compact]) => {
+    ([theme, compact, elastic, height]) => {
       window.localStorage.setItem("cubelite.onboardingSeen", "true");
       window.localStorage.setItem("cubelite.theme", JSON.stringify(theme));
       if (compact) window.localStorage.setItem("cubelite.density", '"compact"');
+      if (elastic) window.localStorage.setItem("cubelite.elastic.endpoints", elastic);
+      if (height) window.localStorage.setItem("cubelite.logPanel.height", String(height));
     },
-    [o.theme ?? "dark", !!o.compact] as const,
+    [o.theme ?? "dark", !!o.compact, o.elastic ? JSON.stringify(ELASTIC) : "", o.panelHeight ?? 0] as const,
   );
   await page.goto("/");
 }
@@ -128,17 +152,24 @@ for (const theme of ["dark", "light"] as const) {
   });
 }
 
-test("a merged stream colours its sources data-1 to data-5, and repeats them underlined past five", async ({
+test("a merged stream colours its sources data-1 to data-5, and repeats them dashed, dotted, double", async ({
   page,
 }) => {
-  const names = ["worker", "envoy", "proxy", "metrics", "fluent", "cache"];
+  // Four rounds: plain, dashed, dotted, double.
+  const names = Array.from({ length: 16 }, (_, i) => `c${String(i + 1).padStart(2, "0")}`);
   await boot(page, { containers: names });
   await openLogPanel(page);
-  await page.getByRole("button", { name: "worker", exact: true }).click();
+  await page.getByRole("button", { name: "c01", exact: true }).click();
   await page.getByRole("button", { name: /all containers/ }).click();
   for (const name of names) await emitPodLogLine(page, name, `hello from ${name}`);
   const panel = page.getByLabel("Pod logs panel");
-  await expect(panel.getByText("hello from cache")).toBeVisible();
+  await expect(panel.getByText("hello from c16")).toBeAttached();
+  const ROUNDS = [
+    ["none", "solid"],
+    ["underline", "dashed"],
+    ["underline", "dotted"],
+    ["underline", "double"],
+  ];
 
   for (const [i, name] of names.entries()) {
     const label = panel.locator(`[data-source="${i + 1}"]`);
@@ -149,8 +180,7 @@ test("a merged stream colours its sources data-1 to data-5, and repeats them und
       dash: getComputedStyle(el).textDecorationStyle,
     }));
     expect(style.color, name).toBe(await resolved(page, `var(--color-data-${(i % 5) + 1})`));
-    if (i < 5) expect(style.line, name).toBe("none");
-    else expect([style.line, style.dash], name).toEqual(["underline", "dashed"]);
+    expect([style.line, style.dash], name).toEqual(ROUNDS[Math.floor(i / 5)]);
   }
   // Two sources with the same colour still differ.
   expect(await resolved(page, "var(--color-data-1)")).not.toBe(await resolved(page, "var(--color-data-2)"));
@@ -194,8 +224,11 @@ test("the log panel lies above the detail panel only while that panel overlays t
   await page.setViewportSize({ width: 1440, height: 900 });
   await expect(page.getByRole("dialog", { name: "api-0" })).toHaveAttribute("data-mode", "docked");
   expect(await panel.evaluate((el) => getComputedStyle(el).zIndex)).toBe("auto");
-  // A surface-sunken card.
+  // Toolbar on the card, lines on surface-sunken (Tonal §8.5).
   expect(await panel.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
+    await resolved(page, "var(--color-surface-container)"),
+  );
+  expect(await page.getByTestId("log-lines").evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(
     await resolved(page, "var(--color-surface-sunken)"),
   );
 });
@@ -285,6 +318,104 @@ test("the pop-out takes its pod's cluster tint and follows a colour change made 
   await context.close();
 });
 
+/** Rows the toolbar's controls occupy, and whether everything stays inside the panel card. */
+async function toolbarLayout(page: Page) {
+  return page.evaluate(() => {
+    const card = document.querySelector<HTMLElement>('[aria-label="Pod logs panel"], [data-testid="logwindow"]')!;
+    const bar = card.querySelector<HTMLElement>('[data-testid="log-toolbar"]')!;
+    const lines = card.querySelector<HTMLElement>('[data-testid="log-lines"]')!;
+    const box = card.getBoundingClientRect();
+    const tops: number[] = [];
+    const outside: string[] = [];
+    for (const control of bar.querySelectorAll<HTMLElement>("button, input, select")) {
+      const r = control.getBoundingClientRect();
+      if (!r.width) continue;
+      // A row is told by the controls' centre line (a text link is shorter than a chip).
+      const middle = r.top + r.height / 2;
+      if (!tops.some((t) => Math.abs(t - middle) < 6)) tops.push(middle);
+      if (r.left < box.left - 0.5 || r.right > box.right + 0.5 || r.top < box.top - 0.5 || r.bottom > box.bottom + 0.5)
+        outside.push(control.getAttribute("aria-label") ?? control.textContent?.trim() ?? "?");
+    }
+    const l = lines.getBoundingClientRect();
+    if (l.bottom > box.bottom + 0.5) outside.push("lines");
+    return {
+      rows: tops.length,
+      outside,
+      lines: Math.round(l.height),
+      sideways: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    };
+  });
+}
+
+type Size = { width: number; height: number; rows: number };
+const SIZES: Size[] = [
+  { width: 1360, height: 860, rows: 1 },
+  { width: 1280, height: 800, rows: 1 },
+  { width: 800, height: 600, rows: 2 },
+];
+
+for (const { width, height, rows } of SIZES) {
+  for (const compact of [false, true]) {
+    const density = compact ? "compact" : "default";
+    test(`${width} x ${height}, ${density}: the panel toolbar takes at most ${rows} row(s), live and history, with the detail panel open`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      // Live without Elasticsearch shows the "Set up" link as well: the widest live toolbar.
+      await boot(page, { compact });
+      await openLogPanel(page);
+      await page.getByPlaceholder("Search… (⌘F)").fill("needle");
+      await expect(page.getByText("0 results")).toBeVisible();
+      const layout = await toolbarLayout(page);
+      expect(layout.outside).toEqual([]);
+      expect(layout.rows).toBeLessThanOrEqual(rows);
+      expect(layout.sideways).toBe(false);
+    });
+
+    test(`${width} x ${height}, ${density}: history toolbar takes at most ${rows} row(s)`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await boot(page, { compact, elastic: true });
+      await openLogPanel(page);
+      await page.getByTestId("logpanel-source").getByRole("radio", { name: "History" }).click();
+      await expect(page.getByText("e2e-history-newest")).toBeVisible();
+      await page.getByPlaceholder("Search… (⌘F)").fill("needle");
+      await page.getByLabel("Elasticsearch query").fill("level:error");
+      await expect(page.getByLabel("Pod logs panel").getByText(/^(\d+\/\d+|0 results)$/)).toBeVisible();
+      const layout = await toolbarLayout(page);
+      expect(layout.outside).toEqual([]);
+      expect(layout.rows).toBeLessThanOrEqual(rows);
+    });
+  }
+}
+
+for (const compact of [false, true]) {
+  test(`800 x 600, ${compact ? "compact" : "default"}: at the smallest panel height the body keeps four lines inside the card`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 800, height: 600 });
+    await boot(page, { compact, panelHeight: 160 });
+    await openLogPanel(page);
+    await page.getByPlaceholder("Search… (⌘F)").fill("needle");
+    // With the detail panel over the list, then without it.
+    for (const step of ["overlay", "closed"]) {
+      const layout = await toolbarLayout(page);
+      expect(layout.outside, step).toEqual([]);
+      expect(layout.lines, step).toBeGreaterThanOrEqual(72);
+      if (step === "overlay") await page.getByRole("dialog", { name: "api-0" }).getByRole("button", { name: "Close" }).click();
+    }
+  });
+}
+
+test("800 x 600: the Logs view keeps a lines box with the log panel open", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await boot(page);
+  await openLogPanel(page);
+  await page.getByRole("list", { name: /^Pinned/ }).getByRole("button", { name: "Logs" }).click();
+  await expect(page.getByRole("heading", { name: "Logs", level: 1 })).toBeVisible();
+  const box = await page.getByTestId("logs-lines").boundingBox();
+  expect(box?.height).toBeGreaterThanOrEqual(72);
+});
+
 for (const theme of ["dark", "light"] as const) {
   test(`${theme}: at 800 x 600 in compact density every log toolbar stays inside its card`, async ({ page }) => {
     await page.setViewportSize({ width: 800, height: 600 });
@@ -298,7 +429,7 @@ for (const theme of ["dark", "light"] as const) {
           const box = bar.getBoundingClientRect();
           for (const control of bar.querySelectorAll<HTMLElement>("button, input, select")) {
             const r = control.getBoundingClientRect();
-            if (r.width && (r.right > box.right + 0.5 || r.left < box.left - 0.5))
+            if (r.width && (r.right > box.right + 0.5 || r.left < box.left - 0.5 || r.bottom > box.bottom + 0.5))
               out.push(control.getAttribute("aria-label") ?? control.textContent ?? "?");
           }
         }
@@ -306,17 +437,185 @@ for (const theme of ["dark", "light"] as const) {
       });
 
     await openLogPanel(page);
-    await page.getByRole("dialog", { name: "api-0" }).getByRole("button", { name: "Close" }).click();
     await page.getByPlaceholder("Search… (⌘F)").fill("needle");
     await expect(page.getByTestId("log-toolbar")).toHaveCount(1);
-    expect(await inside()).toEqual([]);
+    expect(await inside(), "panel with the detail panel").toEqual([]);
+    await page.getByRole("dialog", { name: "api-0" }).getByRole("button", { name: "Close" }).click();
+    expect(await inside(), "panel").toEqual([]);
 
     await page.getByRole("list", { name: /^Pinned/ }).getByRole("button", { name: "Logs" }).click();
     await expect(page.getByRole("heading", { name: "Logs", level: 1 })).toBeVisible();
     await expect(page.getByTestId("log-toolbar")).toHaveCount(2);
-    expect(await inside()).toEqual([]);
+    expect(await inside(), "Logs view").toEqual([]);
 
     await openPopout(page, "prod-aks");
-    expect(await inside()).toEqual([]);
+    expect(await inside(), "pop-out").toEqual([]);
+    const layout = await toolbarLayout(page);
+    expect(layout.outside).toEqual([]);
+    expect(layout.lines).toBeGreaterThanOrEqual(72);
   });
 }
+
+/**
+ * How far a control's fill stands out from what is under it: the contrast
+ * between the surface below (composited) and that surface with the fill on top.
+ */
+async function shapeContrast(page: Page, selector: string): Promise<number> {
+  return page.locator(selector).first().evaluate((el) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const paint = (layers: string[]) => {
+      ctx.clearRect(0, 0, 1, 1);
+      for (const layer of layers) {
+        ctx.fillStyle = layer;
+        ctx.fillRect(0, 0, 1, 1);
+      }
+      return [...ctx.getImageData(0, 0, 1, 1).data];
+    };
+    const under: string[] = [];
+    for (let e = el.parentElement; e; e = e.parentElement) {
+      const bg = getComputedStyle(e).backgroundColor;
+      if (paint([bg])[3] === 0) continue;
+      under.unshift(bg);
+      if (paint([bg])[3] === 255) break;
+    }
+    const lum = ([r, g, b]: number[]) => {
+      const f = (v: number) => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const [hi, lo] = [lum(paint(under)), lum(paint([...under, getComputedStyle(el).backgroundColor]))].sort(
+      (a, b) => b - a,
+    );
+    return (hi + 0.05) / (lo + 0.05);
+  });
+}
+
+for (const theme of ["dark", "light"] as const) {
+  test(`${theme}: toolbar fields, chips and the active tab show their shape as well as the Logs view's`, async ({
+    page,
+  }) => {
+    await boot(page, { theme });
+    await page.getByRole("list", { name: /^Pinned/ }).getByRole("button", { name: "Logs" }).click();
+    const baseline = await shapeContrast(page, '[placeholder="Filter…"]');
+    expect(baseline).toBeGreaterThan(1.1);
+
+    await openLogPanel(page);
+    const panel = '[aria-label="Pod logs panel"]';
+    const measured = {
+      field: await shapeContrast(page, `${panel} [placeholder="Search… (⌘F)"]`),
+      chip: await shapeContrast(page, `${panel} [data-testid="log-toolbar"] button[aria-expanded]`),
+      tab: await shapeContrast(page, `${panel} [data-testid="log-tabs"] > :has([aria-current="true"])`),
+    };
+    for (const [what, ratio] of Object.entries(measured)) expect(ratio, what).toBeGreaterThanOrEqual(baseline - 0.005);
+
+    await openPopout(page, "prod-aks");
+    const popout = {
+      field: await shapeContrast(page, '[placeholder="Search… (⌘F)"]'),
+      chip: await shapeContrast(page, '[data-testid="log-toolbar"] button[aria-expanded]'),
+    };
+    for (const [what, ratio] of Object.entries(popout)) expect(ratio, `pop-out ${what}`).toBeGreaterThanOrEqual(baseline - 0.005);
+  });
+
+  test(`${theme}: a search match on a WARN row is marked by more than colour; the active one is stronger`, async ({
+    page,
+  }) => {
+    await boot(page, { theme });
+    await openLogPanel(page);
+    await emitPodLogLine(page, "worker", "first needle", { level: "warn" });
+    await emitPodLogLine(page, "worker", "second needle", { level: "warn" });
+    await expect(page.getByText("second")).toBeVisible();
+    await page.getByPlaceholder("Search… (⌘F)").fill("needle");
+    await page.getByPlaceholder("Search… (⌘F)").press("Enter");
+    await expect(page.locator('mark[data-active="true"]')).toHaveCount(1);
+    const style = (sel: string) =>
+      page.locator(sel).first().evaluate((el) => {
+        const s = getComputedStyle(el);
+        return {
+          line: s.textDecorationLine,
+          decoration: s.textDecorationColor,
+          outline: `${s.outlineStyle} ${s.outlineWidth}`,
+          weight: s.fontWeight,
+        };
+      });
+    const rest = await style('mark[data-active="false"]');
+    const active = await style('mark[data-active="true"]');
+    expect(rest.line).toBe("underline");
+    expect(rest.decoration).toBe(await resolved(page, "var(--color-warning)"));
+    expect(active.outline).toBe("solid 2px");
+    expect(Number(active.weight)).toBeGreaterThan(Number(rest.weight));
+    // The underline reads on the mark's fill over the washed row (3:1, a graphic):
+    // a child painted in the underline colour, measured against what is under it.
+    await page.locator('mark[data-active="false"]').evaluate((el) => {
+      const probe = document.createElement("span");
+      probe.dataset.probe = "";
+      probe.textContent = "x";
+      probe.style.backgroundColor = getComputedStyle(el).textDecorationColor;
+      el.append(probe);
+    });
+    expect(await shapeContrast(page, "[data-probe]")).toBeGreaterThanOrEqual(3);
+  });
+}
+
+test("800 x 600: an overflowing tab strip does not widen the page", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  const pods = ["payments-api-7d9f8b6c5-x7k2p", "checkout-worker-5dd4ff54cf-9bq7n", "inventory-sync-6c8d9-zz1"];
+  await boot(page, { pods });
+  for (const pod of ["api-0", ...pods]) await openLogPanel(page, pod);
+  const strip = await page
+    .getByLabel("Pod logs panel")
+    .locator("[data-testid=log-tabs]")
+    .evaluate((el) => el.scrollWidth > el.clientWidth);
+  expect(strip).toBe(true);
+  // No box around the panel can be scrolled sideways (an overflow-hidden root
+  // still scrolls when something is brought into view).
+  const wider = await page.getByLabel("Pod logs panel").evaluate((panel) => {
+    const out: string[] = [];
+    for (let e: Element | null = panel; e; e = e.parentElement)
+      if (e.scrollWidth > e.clientWidth) out.push(`${e.tagName} ${e.scrollWidth} > ${e.clientWidth}`);
+    return out;
+  });
+  expect(wider).toEqual([]);
+});
+
+test("800 x 600: the YAML editor fits its modal, with and without an apply error", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await boot(page);
+  await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
+  await page.getByText("api-0", { exact: true }).click();
+  await page.getByRole("button", { name: "YAML" }).click();
+  const fits = (area: string) =>
+    page.evaluate((sel) => {
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"][aria-modal="true"]')!;
+      const body = dialog.querySelector<HTMLElement>("header + div")!;
+      const el = dialog.querySelector<HTMLElement>(sel)!;
+      const d = dialog.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      return {
+        nested: body.scrollHeight > body.clientHeight + 1,
+        inside: r.top >= d.top && r.bottom <= d.bottom,
+        height: r.height,
+      };
+    }, area);
+  await expect(page.getByText("kind: Pod")).toBeVisible();
+  expect(await fits("pre")).toMatchObject({ nested: false, inside: true });
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  expect(await fits("textarea")).toMatchObject({ nested: false, inside: true });
+
+  // The apply fails: the error line takes room from the editor, not from the modal.
+  await page.evaluate(() => {
+    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: (c: string, a: unknown) => unknown } })
+      .__TAURI_INTERNALS__;
+    const invoke = internals.invoke.bind(internals);
+    internals.invoke = async (cmd: string, args: unknown) => {
+      if (cmd === "apply_resource_yaml") throw "admission webhook denied the request: replicas must be at least 1";
+      return invoke(cmd, args);
+    };
+  });
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByRole("alert")).toContainText("admission webhook");
+  const withError = await fits("textarea");
+  expect(withError).toMatchObject({ nested: false, inside: true });
+  expect(withError.height).toBeGreaterThan(120);
+});

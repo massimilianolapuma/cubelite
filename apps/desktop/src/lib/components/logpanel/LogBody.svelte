@@ -138,9 +138,12 @@
 	}
 </script>
 
-<!-- Lines in the log type on surface-sunken (Tonal §8.5). The bottom corners
-     follow the log panel card, which does not clip: its menus open upwards. -->
-<div class="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-xl bg-surface-sunken">
+<!-- Lines in the log type on surface-sunken, inset in the card (Tonal §8.5), never
+     shorter than four lines (4 × 18 px). -->
+<div
+	class="relative mx-3 mb-3 flex min-h-18 flex-1 flex-col overflow-hidden rounded-lg bg-surface-sunken"
+	data-testid="log-lines"
+>
 	{#if session.source === 'history'}
 		<HistoryStrip history={session.history} />
 	{:else if session.status === 'reconnecting'}

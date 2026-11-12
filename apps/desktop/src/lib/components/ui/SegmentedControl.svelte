@@ -10,13 +10,16 @@
 		segments,
 		value = $bindable(),
 		onChange,
-		label
+		label,
+		dense = false
 	}: {
 		segments: Segment<T>[];
 		value: T;
 		onChange?: (value: T) => void;
 		/** Accessible name of the group. */
 		label?: string;
+		/** Narrower segments, for toolbars that must stay on one row. */
+		dense?: boolean;
 	} = $props();
 </script>
 
@@ -33,7 +36,7 @@
 			disabled={segment.disabled}
 			title={segment.title}
 			data-selected={active}
-			class="focus-ring type-body-sm h-(--control-inline-h) rounded-full px-3.5 {segment.disabled
+			class="focus-ring type-body-sm h-(--control-inline-h) rounded-full {dense ? 'px-2' : 'px-3.5'} {segment.disabled
 				? 'text-text-subtle opacity-45'
 				: active
 					? 'bg-primary-container font-semibold text-on-primary-container'
