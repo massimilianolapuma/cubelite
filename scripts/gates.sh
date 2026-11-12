@@ -29,8 +29,15 @@ while [ $# -gt 0 ]; do
 done
 ROOT="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 cd "$ROOT" || exit 2
+# A gate that passes because nothing ran is worse than no gate: pnpm exits 0
+# when its filter matches no project.
+if [ ! -f apps/desktop/package.json ]; then
+  echo "gates: $ROOT is not the CubeLite repository (no apps/desktop/package.json)" >&2
+  exit 2
+fi
 
-LOGS="${TMPDIR:-/tmp}/cubelite-gates"
+TMP="${TMPDIR:-/tmp}"
+LOGS="${TMP%/}/cubelite-gates"
 mkdir -p "$LOGS"
 failed=0
 
@@ -72,7 +79,7 @@ run lint 'true' pnpm -s --filter desktop lint
 run types 'grep -Eo "[0-9]+ ERRORS [0-9]+ WARNINGS" | tail -1' \
   sh -c 'cd apps/desktop && npx svelte-check --threshold error'
 run unit 'grep -E "^ +Tests " | tail -1' pnpm -s --filter desktop test
-if grep -q '"design:test"' package.json; then
+if grep -q '"design:test"' package.json 2>/dev/null; then
   run design 'grep -E "^ℹ (pass|fail) " | tr "\n" " "' pnpm -s design:test
 else
   skip design 'no design:test script on this branch'
