@@ -410,3 +410,73 @@ test.describe("reduced motion (prefers-reduced-motion: reduce)", () => {
     expect(await apply.locator("svg").evaluate((el) => getComputedStyle(el).animationName)).toBe("spin");
   });
 });
+
+/** WCAG contrast of two CSS colours as the browser paints them (oklch, color-mix…). */
+async function contrast(page: Page, a: string, b: string): Promise<number> {
+  return page.evaluate(
+    ([x, y]) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 1;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+      const lum = (c: string) => {
+        ctx.clearRect(0, 0, 1, 1);
+        ctx.fillStyle = c;
+        ctx.fillRect(0, 0, 1, 1);
+        const [r, g, bl] = [...ctx.getImageData(0, 0, 1, 1).data].map((v) =>
+          v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4,
+        );
+        return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+      };
+      const [hi, lo] = [lum(x), lum(y)].sort((p, q) => q - p);
+      return (hi + 0.05) / (lo + 0.05);
+    },
+    [a, b] as const,
+  );
+}
+
+/** The colour of an element's inset ring (an inset box-shadow with a spread, no blur). */
+const ring = (el: Locator) =>
+  el.evaluate((n) => {
+    const shadows = getComputedStyle(n).boxShadow.split(/,(?![^(]*\))/);
+    const drawn = shadows.find((sh) => /inset/.test(sh) && /\s0px\s0px\s0px\s[1-9][\d.]*px/.test(sh));
+    return drawn?.match(/^\s*(\w+\([^)]*\)|#\w+|\w+)/)?.[1] ?? "transparent";
+  });
+/** The colour of an element's top border; transparent when it has none. */
+const borderColour = (el: Locator) =>
+  el.evaluate((n) => {
+    const s = getComputedStyle(n);
+    return parseFloat(s.borderTopWidth) >= 1 && s.borderTopStyle !== "none" ? s.borderTopColor : "transparent";
+  });
+
+test.describe("non-text contrast (WCAG 1.4.11) of the controls the token matrix cannot see", () => {
+  for (const theme of THEMES) {
+    test(`${theme}: a pressed chip's ring and a meter track's edge reach 3:1`, async ({ page }) => {
+      await boot(page, theme);
+      const panel = await podsWithPanel(page);
+      const card = await bg(page.locator("main"));
+      const chips = page.getByRole("group", { name: "Filter by status" });
+      for (const name of [/Running/, /Pending/]) {
+        const chip = chips.getByRole("button", { name });
+        await chip.click();
+        await expect(chip).toHaveAttribute("aria-pressed", "true");
+        const edge = await ring(chip);
+        expect(edge, `${name} has a ring`).not.toBe("transparent");
+        expect(await contrast(page, edge, await bg(chip)), `${name} ring on its fill`).toBeGreaterThanOrEqual(3);
+        expect(await contrast(page, edge, card), `${name} ring on the card`).toBeGreaterThanOrEqual(3);
+        await chip.click();
+      }
+
+      // A meter track on the panel's card (no metrics: an empty track) and on a dashboard card.
+      const track = panel.locator("[data-meter-track]").first();
+      const panelCard = await bg(track.locator("xpath=ancestor::*[contains(@class,'card')][1]"));
+      expect(await borderColour(track)).not.toBe("transparent");
+      expect(await contrast(page, await borderColour(track), panelCard)).toBeGreaterThanOrEqual(3);
+      await page.getByRole("button", { name: "All Clusters" }).click();
+      const dashTrack = page.locator("[data-meter-track]").first();
+      await expect(dashTrack).toBeVisible();
+      const dashCard = await bg(dashTrack.locator("xpath=ancestor::*[contains(@class,'card')][1]"));
+      expect(await borderColour(dashTrack)).not.toBe("transparent");
+      expect(await contrast(page, await borderColour(dashTrack), dashCard)).toBeGreaterThanOrEqual(3);
+    });
+  }
+});

@@ -21,11 +21,14 @@
 	const fill = $derived(
 		!pressed ? 'none' : state === 'err' ? 'error' : state === 'warn' ? 'warning' : 'primary'
 	);
+	// Pressed adds a 1.5 px inset ring in the state's colour: the container fill alone
+	// is 1.2–1.9:1 from the card, the ring reaches 3:1 on both the fill and the card
+	// (WCAG 1.4.11), as on the selected segment.
 	const look = {
 		none: 'bg-surface-container-high text-text-muted',
-		error: 'bg-error-container text-on-error-container font-semibold',
-		warning: 'bg-warning-container text-on-warning-container font-semibold',
-		primary: 'bg-primary-container text-on-primary-container font-semibold'
+		error: 'bg-error-container text-on-error-container font-semibold inset-ring-[1.5px] inset-ring-error',
+		warning: 'bg-warning-container text-on-warning-container font-semibold inset-ring-[1.5px] inset-ring-warning',
+		primary: 'bg-primary-container text-on-primary-container font-semibold inset-ring-[1.5px] inset-ring-primary'
 	} as const;
 	// Resting, the glyph keeps its state's colour; pressed, it takes the fill's text colour.
 	const glyphTone = $derived(

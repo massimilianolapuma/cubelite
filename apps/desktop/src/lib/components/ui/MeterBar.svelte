@@ -27,7 +27,9 @@
 <div class="flex flex-col gap-1" data-level={level}>
 	<div class="flex items-center gap-2.5">
 		<span class="type-label w-9 shrink-0">{label}</span>
-		<div class="h-2 flex-1 overflow-hidden rounded-full bg-outline" data-meter-track>
+		<!-- The track's own fill is 1.3–1.9:1 from the card under it; its outline-strong
+		     edge is 3:1, so the meter's extent reads (WCAG 1.4.11). -->
+		<div class="h-2 flex-1 overflow-hidden rounded-full border border-outline-strong bg-outline" data-meter-track>
 			<div
 				class="h-full rounded-full transition-[width] motion-reduce:transition-none {style.fill}"
 				data-testid="meter-fill"

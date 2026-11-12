@@ -517,7 +517,6 @@
   [data-avatar],
   [data-swatch],
   [data-badge],
-  [data-meter-track],
   [data-state]:is([data-fill="warning"], [data-fill="error"]) {
     border: 1px solid CanvasText;
   }
@@ -571,6 +570,7 @@
     forced-color-adjust: none;
     border-color: Highlight;
     background-color: Highlight;
+    box-shadow: none;
     color: HighlightText;
   }
   :is(
@@ -592,9 +592,6 @@
   /* The row's sticky name cell covers the cells that scroll under it. */
   .list-row[data-selected="true"] > .sticky {
     background-color: Highlight;
-  }
-  .palette-row[data-selected] {
-    box-shadow: none;
   }
   [role="switch"][aria-checked="true"] [data-knob] {
     background-color: HighlightText;
