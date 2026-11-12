@@ -86,6 +86,7 @@
 		<div class="flex items-center gap-1.5" aria-hidden="true">
 			{#each Array.from({ length: STEPS }, (_, i) => i) as dot (dot)}
 				<span
+					data-step-dot
 					data-current={dot === step}
 					class="h-2 rounded-full {dot === step ? 'w-5 bg-primary' : 'w-2 bg-outline-strong'}"
 				></span>

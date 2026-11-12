@@ -128,3 +128,149 @@ test.describe("more contrast (prefers-contrast: more)", () => {
     });
   });
 });
+
+/** The colour a system colour keyword (Highlight, CanvasText…) resolves to on this page. */
+const sys = (page: Page, keyword: string) => resolvedIn(page.locator("body"), keyword);
+
+const bg = (el: Locator) => el.evaluate((n) => getComputedStyle(n).backgroundColor);
+/**
+ * A filled item must opt out of the forcing: otherwise the browser paints a
+ * Canvas backplate behind each run of its text, and HighlightText (or
+ * ButtonFace) on that backplate cannot be read.
+ */
+const unforced = async (el: Locator) =>
+  expect(await el.evaluate((n) => getComputedStyle(n).forcedColorAdjust)).toBe("none");
+const fg = (el: Locator) => el.evaluate((n) => getComputedStyle(n).color);
+async function border(el: Locator) {
+  return el.evaluate((n) => {
+    const s = getComputedStyle(n);
+    return { style: s.borderTopStyle, width: parseFloat(s.borderTopWidth) };
+  });
+}
+
+test.describe("forced colours (forced-colors: active)", () => {
+  // The window's theme and the system's palette are independent: check both pairs that differ.
+  for (const [theme, scheme] of [
+    ["dark", "light"],
+    ["light", "dark"],
+  ] as const) {
+    test(`${theme} app on a ${scheme} system palette: selection, current items and pressed controls are system colours`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await boot(page, theme);
+      const panel = await podsWithPanel(page);
+      const [highlight, highlightText, canvasText] = [
+        await sys(page, "Highlight"),
+        await sys(page, "HighlightText"),
+        await sys(page, "CanvasText"),
+      ];
+
+      // Selected list row: the row and every cell in it.
+      const row = page.locator('.list-row[data-selected="true"]');
+      expect(await bg(row)).toBe(highlight);
+      await unforced(row);
+      expect(await fg(row.getByText("api-0", { exact: true }))).toBe(highlightText);
+      expect(await fg(row.getByText("Running"))).toBe(highlightText);
+      // A glyph follows its text instead of keeping its state's colour.
+      expect(await fg(row.locator("[data-glyph]").first())).toBe(highlightText);
+      // An unselected row's badge keeps a shape: its fill is gone, its edge is not.
+      const pending = page.locator('.list-row:not([data-selected="true"]) [data-state="warn"]');
+      expect(await border(pending)).toEqual({ style: "solid", width: 1 });
+      expect(await fg(pending.locator("[data-glyph]"))).toBe(canvasText);
+
+      // Current nav row and the active rail avatar.
+      const nav = page.locator('[data-nav][data-active="true"]');
+      expect(await bg(nav)).toBe(highlight);
+      expect(await fg(nav.getByText("Pods", { exact: true }))).toBe(highlightText);
+      await unforced(nav);
+      const avatars = page.getByTestId("identity-avatar");
+      const active = avatars.and(page.locator('[data-active="true"]'));
+      expect(await bg(active)).toBe(highlight);
+      expect(await fg(active)).toBe(highlightText);
+      await unforced(active);
+      expect(await border(avatars.and(page.locator('[data-active="false"]')).first())).toEqual({
+        style: "solid",
+        width: 1,
+      });
+
+      // Pressed chip.
+      const chips = page.getByRole("group", { name: "Filter by status" });
+      await chips.getByRole("button", { name: /Running/ }).click();
+      expect(await bg(chips.getByRole("button", { pressed: true }))).toBe(highlight);
+      await unforced(chips.getByRole("button", { pressed: true }));
+      expect(await border(chips.getByRole("button", { pressed: false }).first())).toEqual({ style: "solid", width: 1 });
+
+      // Primary and tonal buttons differ by more than a fill: primary is inverted, tonal outlined.
+      const openLogs = panel.getByRole("button", { name: "Open logs" });
+      expect(await bg(openLogs)).toBe(await sys(page, "ButtonText"));
+      expect(await fg(openLogs)).toBe(await sys(page, "ButtonFace"));
+      await unforced(openLogs);
+      expect(await border(panel.getByRole("button", { name: "Restart" }))).toEqual({ style: "solid", width: 1 });
+
+      // Fields keep their edge.
+      expect(await border(page.getByPlaceholder("Filter pods…"))).toEqual({ style: "solid", width: 1 });
+    });
+
+    test(`${theme} app on a ${scheme} system palette: Preferences, menus, palette and meters`, async ({ page }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await boot(page, theme);
+      const highlight = await sys(page, "Highlight");
+
+      // Meters on All Clusters: the track has an edge, the fill a system colour.
+      await page.getByRole("button", { name: "All Clusters" }).click();
+      const meter = page.locator("[data-level]").first();
+      await expect(meter).toBeVisible();
+      expect(await border(meter.locator("[data-meter-track]"))).toEqual({ style: "solid", width: 1 });
+      expect(await bg(meter.getByTestId("meter-fill"))).toBe(await sys(page, "CanvasText"));
+
+      // The highlighted menu item.
+      await page.getByRole("button", { name: /^prod-aks AKS/ }).click();
+      const item = page.getByRole("menuitem", { name: "Reconnect" });
+      await item.hover();
+      expect(await bg(item)).toBe(highlight);
+      await page.keyboard.press("Escape");
+
+      // The palette's highlighted row.
+      await page.getByRole("button", { name: /Search & switch/ }).click();
+      const selected = page.getByTestId("command-palette").locator("[data-selected]").first();
+      await expect(selected).toBeVisible();
+      expect(await bg(selected)).toBe(highlight);
+      await page.keyboard.press("Escape");
+
+      // Preferences: selected segment, switch on and off, a swatch, a disabled segment.
+      await page.getByLabel("Preferences").click();
+      const prefs = page.getByRole("dialog", { name: "Preferences" });
+      const theme_ = prefs.getByRole("radiogroup", { name: "Theme" });
+      expect(await bg(theme_.getByRole("radio", { checked: true }))).toBe(highlight);
+      await unforced(theme_.getByRole("radio", { checked: true }));
+      const tls = prefs.getByRole("switch", { name: "Skip TLS verification" });
+      const hints = prefs.getByRole("switch", { name: "Show integration hints in panels" });
+      for (const sw of [tls, hints]) {
+        const on = (await sw.getAttribute("aria-checked")) === "true";
+        const knob = sw.locator("[data-knob]");
+        expect(await border(sw)).toEqual({ style: "solid", width: 1 });
+        expect(await bg(knob)).toBe(await sys(page, on ? "HighlightText" : "ButtonText"));
+        if (on) expect(await bg(sw)).toBe(highlight);
+      }
+      const swatches = prefs.getByRole("radiogroup", { name: "Color for prod-aks" });
+      expect(await border(swatches.getByRole("radio", { checked: false }).first())).toEqual({
+        style: "solid",
+        width: 1,
+      });
+      expect(await bg(swatches.getByRole("radio", { checked: true }))).toBe(highlight);
+
+      // A disabled control is grey text, whatever its role colour was. The browser
+      // does this for a native disabled control; this checks no rule above undoes it.
+      expect(await fg(prefs.getByRole("button", { name: "Move On-call up" }))).toBe(await sys(page, "GrayText"));
+    });
+
+    test(`${theme} app on a ${scheme} system palette: cards keep an edge`, async ({ page }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await boot(page, theme);
+      await eachCard(page, async (name, el) => {
+        expect((await edge(el)).style, name).toBe("solid");
+      });
+    });
+  }
+});

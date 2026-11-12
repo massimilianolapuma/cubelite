@@ -116,7 +116,7 @@
 			onpointermove={move}
 			onpointerleave={() => (hoverT = null)}
 		>
-			<line x1="0" y1={HEIGHT} x2={WIDTH} y2={HEIGHT} stroke="var(--color-outline)" vector-effect="non-scaling-stroke" />
+			<line data-chart-guide x1="0" y1={HEIGHT} x2={WIDTH} y2={HEIGHT} stroke="var(--color-outline)" vector-effect="non-scaling-stroke" />
 			{#each lines as line (line.label + (line.dashed ? '-ref' : ''))}
 				<path
 					d={linePath(line.points, box)}
@@ -128,7 +128,7 @@
 				/>
 			{/each}
 			{#if hover}
-				<line x1={hover.x} y1="0" x2={hover.x} y2={HEIGHT} stroke="var(--color-outline-strong)" vector-effect="non-scaling-stroke" />
+				<line data-chart-guide x1={hover.x} y1="0" x2={hover.x} y2={HEIGHT} stroke="var(--color-outline-strong)" vector-effect="non-scaling-stroke" />
 			{/if}
 		</svg>
 		<!-- Legend and hover values are in the text colour: the key carries the line's colour.

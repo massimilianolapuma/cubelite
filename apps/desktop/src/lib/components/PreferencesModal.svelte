@@ -209,6 +209,7 @@
 											aria-checked={current === color}
 											aria-label={color}
 											data-tint
+											data-swatch
 											style={tintStyle(color)}
 											class="focus-ring flex h-6 w-6 items-center justify-center rounded-full bg-primary text-on-primary"
 											onclick={() => clusters.setIdentityColor(ctx.name, color)}

@@ -482,3 +482,123 @@
     transition: none;
   }
 }
+
+/* Forced colours (Windows contrast themes, Tonal §9.1). The browser replaces
+   every background, border and text colour with the system palette, keeps the
+   system colours an author names, drops box-shadows and leaves SVG colours
+   alone. So no state may live in a fill or a shadow: selection, the current
+   item and pressed controls take Highlight; a control whose fill was its edge
+   gets a border; glyphs follow their text. Outside any layer, so it wins over
+   the utilities. */
+@media (forced-colors: active) {
+  /* A state glyph would otherwise keep its green or red, unreadable on some palettes. */
+  [data-glyph] {
+    color: inherit;
+  }
+
+  /* Edges that were fills. */
+  input:not([type="checkbox"], [type="radio"], [type="range"]),
+  textarea,
+  select,
+  [aria-pressed],
+  [data-variant="tonal"],
+  [data-avatar],
+  [data-swatch],
+  [data-badge],
+  [data-meter-track],
+  [data-state]:is([data-fill="warning"], [data-fill="error"]) {
+    border: 1px solid CanvasText;
+  }
+  [role="switch"] {
+    border-color: ButtonText;
+  }
+  [role="switch"] [data-knob],
+  [data-meter-fill],
+  [data-step-dot] {
+    background-color: CanvasText;
+  }
+  [data-chart-guide] {
+    stroke: CanvasText;
+  }
+
+  /* The one main action of a panel or dialog stands out from the tonal ones. */
+  :is([data-variant="primary"], [data-variant="danger-solid"]) {
+    forced-color-adjust: none;
+    border: 1px solid ButtonText;
+    background-color: ButtonText;
+    color: ButtonFace;
+  }
+  :is([data-variant="primary"], [data-variant="danger-solid"]) * {
+    color: ButtonFace;
+  }
+  :is([data-variant="primary"], [data-variant="danger-solid"]):focus-visible {
+    outline-color: ButtonText;
+  }
+  :is([data-variant="primary"], [data-variant="danger-solid"]):disabled,
+  :is([data-variant="primary"], [data-variant="danger-solid"]):disabled * {
+    border-color: GrayText;
+    background-color: Canvas;
+    color: GrayText;
+  }
+
+  /* Selection, current items, pressed and checked controls. A filled item opts
+     out of the forcing (forced-color-adjust: none, which its content inherits):
+     the browser would otherwise paint a Canvas backplate behind each run of its
+     text, and HighlightText on that backplate is invisible. Its content is then
+     coloured here, in system colours only. */
+  .list-row[data-selected="true"],
+  .palette-row[data-selected],
+  .menu-item[data-highlighted],
+  [data-nav][data-active="true"],
+  [data-avatar][data-active="true"],
+  [data-log-tab][data-active="true"],
+  [data-step-dot][data-current="true"],
+  [aria-pressed="true"],
+  [role="radio"][aria-checked="true"],
+  [role="switch"][aria-checked="true"] {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+  :is(
+      .list-row[data-selected="true"],
+      .palette-row[data-selected],
+      .menu-item[data-highlighted],
+      [data-nav][data-active="true"],
+      [data-log-tab][data-active="true"],
+      [aria-pressed="true"],
+      [role="radio"][aria-checked="true"]
+    )
+    * {
+    border-color: HighlightText;
+    outline-color: HighlightText;
+    background-color: transparent;
+    box-shadow: none;
+    color: HighlightText;
+  }
+  /* The row's sticky name cell covers the cells that scroll under it. */
+  .list-row[data-selected="true"] > .sticky {
+    background-color: Highlight;
+  }
+  .palette-row[data-selected] {
+    box-shadow: none;
+  }
+  [role="switch"][aria-checked="true"] [data-knob] {
+    background-color: HighlightText;
+  }
+  /* A focus ring around a highlighted control sits on the canvas; one inside a
+     highlighted row sits on Highlight. */
+  :is(
+      .menu-item[data-highlighted],
+      [aria-pressed="true"],
+      [role="radio"][aria-checked="true"],
+      [role="switch"][aria-checked="true"]
+    ):focus-visible {
+    outline-color: CanvasText;
+  }
+  /* A focus ring inside a highlighted row. */
+  .list-row[data-selected="true"]:focus-visible::after {
+    outline-color: HighlightText;
+  }
+}

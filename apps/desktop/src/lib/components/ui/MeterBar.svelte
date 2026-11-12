@@ -27,10 +27,11 @@
 <div class="flex flex-col gap-1" data-level={level}>
 	<div class="flex items-center gap-2.5">
 		<span class="type-label w-9 shrink-0">{label}</span>
-		<div class="h-2 flex-1 overflow-hidden rounded-full bg-outline">
+		<div class="h-2 flex-1 overflow-hidden rounded-full bg-outline" data-meter-track>
 			<div
 				class="h-full rounded-full transition-[width] motion-reduce:transition-none {style.fill}"
 				data-testid="meter-fill"
+				data-meter-fill
 				style="width: {percent ?? 0}%;"
 			></div>
 		</div>

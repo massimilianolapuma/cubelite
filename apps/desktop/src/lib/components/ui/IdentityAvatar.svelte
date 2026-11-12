@@ -43,6 +43,7 @@
 	     its corner in proportion to the size so it never rounds back into a disc. -->
 	<span
 		data-tint
+		data-avatar
 		data-testid="identity-avatar"
 		data-active={active}
 		class="type-body flex h-full w-full items-center justify-center transition-[border-radius] duration-200 motion-reduce:transition-none {active

@@ -32,6 +32,7 @@
 </script>
 
 <div
+	data-nav
 	data-active={active}
 	class="flex items-center rounded-full {active
 		? 'bg-primary-container text-on-primary-container'
@@ -66,6 +67,7 @@
 			title="{attention.label} — show them"
 			aria-label="{attention.label}: show them"
 			data-testid="nav-attention"
+			data-badge
 			data-tone={attention.tone}
 			onclick={attention.open}
 		>
