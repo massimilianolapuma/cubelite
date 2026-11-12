@@ -35,7 +35,7 @@
 		warn: 'bg-warning-container text-on-warning-container',
 		err: 'bg-error-container text-on-error-container'
 	} as const);
-	const chrome = $derived(`rounded-lg px-4 py-3 ${look[fill]}`);
+	const chrome = $derived(`card rounded-lg px-4 py-3 ${look[fill]}`);
 </script>
 
 {#snippet body()}

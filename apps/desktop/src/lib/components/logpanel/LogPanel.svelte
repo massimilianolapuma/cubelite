@@ -33,7 +33,7 @@
 	     (z-30) so the toolbar's upward menus stay clickable, below modals (z-40).
 	     Docked, nothing covers it. -->
 	<section
-		class="relative flex min-h-min shrink-0 flex-col rounded-xl bg-surface-container data-[lifted=true]:z-[35]"
+		class="card relative flex min-h-min shrink-0 flex-col rounded-xl bg-surface-container data-[lifted=true]:z-[35]"
 		style="height: {logPanel.collapsed ? PANEL_COLLAPSED : logPanel.height}px;"
 		aria-label="Pod logs panel"
 		data-lifted={layout.docked ? undefined : 'true'}

@@ -5,7 +5,7 @@
 
 /** Dropdown and context menu panel. */
 export const MENU_CONTENT =
-  "animate-popin z-50 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
+  "card animate-popin z-50 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
 
 /**
  * One row of a menu. `data-highlighted` is bits-ui's keyboard and hover state;
@@ -82,7 +82,7 @@ export const LIST_PINNED = "sticky left-0 w-[100cqw]";
 export const LIST_STICKY = "sticky left-0 z-[1] bg-inherit";
 
 /** A block inside the detail panel: one surface above the panel's own, in both its modes. */
-export const PANEL_CARD = "rounded-lg bg-surface-container-top";
+export const PANEL_CARD = "card rounded-lg bg-surface-container-top";
 
 /** Heading of a section of the detail panel. */
 export const PANEL_SECTION = "type-label mb-2 text-text-muted";
@@ -124,7 +124,7 @@ export const TOOLBAR_ICON =
  * inside the window.
  */
 export const TOOLBAR_MENU =
-  "animate-popin absolute z-20 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
+  "card animate-popin absolute z-20 rounded-lg bg-surface-overlay p-1.5 shadow-overlay";
 
 /** Opens above its control: the log panel, whose toolbar sits low in the window. */
 export const TOOLBAR_MENU_UP = "bottom-full mb-1";

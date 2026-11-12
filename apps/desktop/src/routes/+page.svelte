@@ -184,7 +184,7 @@
 		<TopBar />
 		{#if updater.status === 'available' || updater.status === 'downloading' || updater.status === 'ready'}
 			<div
-				class="flex min-h-(--chip-h) shrink-0 items-center gap-3 rounded-full bg-success-container px-4 text-on-success-container"
+				class="card flex min-h-(--chip-h) shrink-0 items-center gap-3 rounded-full bg-success-container px-4 text-on-success-container"
 				role="status"
 			>
 				<StatusGlyph state="ok" />
@@ -214,7 +214,7 @@
 		     row is narrower than 1000 px it lies over the card instead. The row's width is
 		     what decides, so the rule follows the sidebar and the rail, not the window. -->
 		<div class="relative flex min-h-0 min-w-0 flex-1" bind:clientWidth={layout.contentWidth}>
-			<main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-container">
+			<main class="card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-container">
 				<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
 					{#if app.view !== 'dashboard' && clusters.connectionState === 'unreachable'}
 						<UnreachableView />

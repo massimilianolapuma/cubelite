@@ -12,7 +12,7 @@
 		role="status"
 	>
 		<div
-			class="animate-popin flex items-center gap-3 rounded-xl bg-surface-overlay py-3 pr-3 pl-6 shadow-overlay"
+			class="card animate-popin flex items-center gap-3 rounded-xl bg-surface-overlay py-3 pr-3 pl-6 shadow-overlay"
 		>
 			<LoaderCircle class="h-4 w-4 animate-spin text-primary" aria-hidden="true" />
 			<span class="type-body text-text">Connecting to {app.connecting}…</span>

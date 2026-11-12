@@ -90,7 +90,7 @@
 	<div
 		bind:this={root}
 		bind:clientHeight={height}
-		class="flex w-[360px] max-w-full shrink-0 flex-col rounded-xl {mode === 'docked'
+		class="card flex w-[360px] max-w-full shrink-0 flex-col rounded-xl {mode === 'docked'
 			? 'ml-3 bg-surface-container'
 			: 'animate-drawer-in absolute inset-y-0 right-0 z-30 bg-surface-overlay shadow-overlay'}"
 		role="dialog"

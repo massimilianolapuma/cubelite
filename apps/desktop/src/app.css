@@ -56,7 +56,6 @@
   --color-data-5: var(--cl-color-data-5);
 
   --shadow-overlay: var(--cl-shadow-overlay);
-  --shadow-drawer: var(--cl-shadow-drawer);
 
   --spacing-1: 4px;
   --spacing-2: 8px;
@@ -119,12 +118,7 @@
     --cl-hue-indigo: 275;
 
     --cl-shadow-overlay: 0 24px 64px rgba(20,24,48,.18);
-    --cl-shadow-drawer: -16px 0 40px rgba(20,20,30,.12);
 
-    --row-pad-default: 9px;
-    --row-pad-compact: 5px;
-    --control-height: 28px;
-    --min-hit-target: 28px;
     --row-h: 46px;
     --row-h-compact: 38px;
     --nav-h: 28px;
@@ -136,14 +130,6 @@
     --chip-h: 40px;
     --chip-h-compact: 36px;
     --control-primary-h: 48px;
-
-    --icon-2xs: 7px;
-    --icon-xs: 8px;
-    --icon-sm: 10px;
-    --icon-md: 11px;
-    --icon-lg: 14px;
-    --icon-xl: 28px;
-    --icon-2xl: 40px;
 
     --motion-fadein: 100ms ease;
     --motion-popin: 140ms ease;
@@ -219,7 +205,11 @@
   }
   .dark {
     --cl-shadow-overlay: 0 24px 64px rgba(0,0,0,.5);
-    --cl-shadow-drawer: -16px 0 40px rgba(0,0,0,.45);
+  }
+  @media (prefers-contrast: more) {
+    :root, [data-tint], .dark, .dark [data-tint] {
+      --cl-color-text-subtle: var(--cl-color-text-muted);
+    }
   }
 }
 /* @generated:layer-end */
@@ -443,6 +433,19 @@
   }
 }
 
+/* Cards, tiles and overlays have no edge of their own (Tonal §4.4). With more
+   contrast, and in forced colours where their fill is replaced, each gains an
+   outline-strong edge (§9.1). An outline drawn inside: the layout does not move,
+   and a focus ring (2 px, more specific) still wins over it. */
+@layer utilities {
+  @media (prefers-contrast: more), (forced-colors: active) {
+    .card {
+      outline: 1px solid var(--color-outline-strong);
+      outline-offset: -1px;
+    }
+  }
+}
+
 /* Minimum 28×28 hit target (spec) for compact controls: an invisible
    pseudo-element grows the clickable area without changing the layout. */
 @layer utilities {
@@ -463,7 +466,6 @@
 /* Compact density (Preferences → Density); outside @layer so it wins over
    the generated :root tokens. */
 :root[data-density="compact"] {
-  --row-pad-default: var(--row-pad-compact);
   --row-h: var(--row-h-compact);
   --nav-h: var(--nav-h-compact);
   --control-h: var(--control-h-compact);

@@ -1,12 +1,19 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { buildCss, buildLayer, buildTheme, buildType, type Tokens } from "./build-css.ts";
 
 const tokens = JSON.parse(
   readFileSync(new URL("./tokens.json", import.meta.url), "utf8"),
 ) as Tokens;
 const appCss = readFileSync(new URL("../apps/desktop/src/app.css", import.meta.url), "utf8");
+
+/** Text of every Svelte and TypeScript source under `dir`, tests excluded. */
+function readTree(dir: URL): string[] {
+  return readdirSync(dir, { withFileTypes: true, recursive: true })
+    .filter((e) => e.isFile() && /\.(svelte|ts)$/.test(e.name) && !/\.test\.ts$/.test(e.name))
+    .map((e) => readFileSync(`${e.parentPath}/${e.name}`, "utf8"));
+}
 
 /** Body of the rule that starts with `selector {` inside the generated layer. */
 function rule(css: string, selector: string): string {
@@ -122,6 +129,44 @@ test("type styles use their family, tracking and colour", () => {
 test("there is one type utility per style", () => {
   const names = [...buildType(tokens).matchAll(/@utility type-([a-z-]+) \{/g)].map((m) => m[1]);
   assert.deepEqual(names, Object.keys(tokens.font.style));
+});
+
+test("more contrast swaps the roles tokens.json names, on :root and every tinted subtree, in both themes", () => {
+  const layer = buildLayer(tokens);
+  const start = layer.indexOf("  @media (prefers-contrast: more) {\n");
+  assert.notEqual(start, -1, "no prefers-contrast block");
+  const block = layer.slice(start, layer.indexOf("\n  }\n", start + 1));
+  // One rule for all four grounds, after the theme rules, so it wins over `.dark [data-tint]`.
+  assert.ok(block.includes("    :root, [data-tint], .dark, .dark [data-tint] {"));
+  assert.ok(start > layer.indexOf("  .dark, .dark [data-tint] {"));
+  assert.ok(block.includes("--cl-color-text-subtle: var(--cl-color-text-muted);"));
+});
+
+test("a contrast swap to or from an unknown role is rejected", () => {
+  const swap = (more: Record<string, string>) => ({ ...tokens, contrast: { more } }) as Tokens;
+  assert.throws(() => buildLayer(swap({ "text-subtel": "text-muted" })), /"text-subtel" in contrast/);
+  assert.throws(() => buildLayer(swap({ "text-subtle": "text-mutd" })), /"text-mutd" in contrast/);
+});
+
+test("every variable the generator declares outside the colour roles is read somewhere", () => {
+  // A token nothing reads is dead weight that still looks like a contract.
+  const handWritten = appCss.replace(/\/\* @generated:(\w+)-start \*\/[\s\S]*?\/\* @generated:\1-end \*\//g, "");
+  const sources = [handWritten, ...readTree(new URL("../apps/desktop/src/", import.meta.url))].join("\n");
+  const declared = [...buildLayer(tokens).matchAll(/^\s+--(?!cl-color-|color-|cl-hue-|cl-tint-h)([\w-]+):/gm)].map(
+    (m) => m[1],
+  );
+  const read = (name: string) => {
+    // `--cl-shadow-x` is read through the theme's `shadow-x` utility.
+    // Otherwise as `var(--x)` or Tailwind's `h-(--x)`; a declaration is not a read.
+    const used = name.startsWith("cl-shadow-")
+      ? `\\bshadow-${name.slice("cl-shadow-".length)}`
+      : `(var\\(|\\()--${name}`;
+    return new RegExp(`${used}(?![\\w-])`).test(sources);
+  };
+  assert.deepEqual(
+    declared.filter((name) => !read(name)),
+    [],
+  );
 });
 
 test("no shadcn bridge is emitted", () => {

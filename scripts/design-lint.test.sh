@@ -26,8 +26,8 @@ EOF
   cat > "$dir/apps/desktop/src/lib/ok.ts" <<'EOF'
 export const LINK = "focus-ring type-data-sm text-primary";
 export const series = ["var(--color-data-1)", "var(--color-data-5)"];
-// An accent of colour in prose is fine; so is an icon-2xl size.
-export const size = "var(--icon-2xl)";
+// An accent of colour in prose is fine; so is a control height.
+export const size = "var(--control-h)";
 EOF
   cat > "$dir/apps/desktop/src/app.css" <<'EOF'
 /* @generated:theme-start */

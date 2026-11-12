@@ -12,7 +12,7 @@
 	<div class="fixed right-4 bottom-14 z-50 flex flex-col items-end gap-2" role="status" aria-live="polite">
 		{#each toasts.items as toast (toast.id)}
 			<div
-				class="animate-toast-in flex max-w-[min(480px,90vw)] items-center gap-2.5 rounded-lg bg-surface-overlay py-2.5 pr-2.5 pl-4 shadow-overlay"
+				class="card animate-toast-in flex max-w-[min(480px,90vw)] items-center gap-2.5 rounded-lg bg-surface-overlay py-2.5 pr-2.5 pl-4 shadow-overlay"
 				data-tone={toast.tone}
 			>
 				<StatusGlyph state={toast.tone} class={tone[toast.tone]} />

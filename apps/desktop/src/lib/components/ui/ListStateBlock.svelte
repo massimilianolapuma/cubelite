@@ -39,7 +39,7 @@
 	</div>
 {:else if state.kind === 'error'}
 	<div
-		class="flex flex-col items-start gap-3 rounded-lg bg-error-container p-4 text-on-error-container"
+		class="card flex flex-col items-start gap-3 rounded-lg bg-error-container p-4 text-on-error-container"
 		role="alert"
 		data-list-state="error"
 	>

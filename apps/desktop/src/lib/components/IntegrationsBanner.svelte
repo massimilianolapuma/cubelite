@@ -15,7 +15,7 @@
 {#if banner}
 	<!-- A pill above the content card; a failure takes the error container and its square. -->
 	<div
-		class="flex min-h-(--chip-h) shrink-0 items-center gap-3 rounded-full px-4 {banner.failure
+		class="card flex min-h-(--chip-h) shrink-0 items-center gap-3 rounded-full px-4 {banner.failure
 			? 'bg-error-container text-on-error-container'
 			: 'bg-surface-container-high text-text-muted'}"
 		role="status"

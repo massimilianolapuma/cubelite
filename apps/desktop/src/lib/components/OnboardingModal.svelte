@@ -28,7 +28,7 @@
 <!-- A dialog in the Modal look (Tonal §7, §8.6). Only the step's content scrolls,
      so the progress and the actions stay in a short window. -->
 <div
-	class="animate-popin fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[480px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
+	class="card animate-popin fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[480px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
 	role="dialog"
 	aria-modal="true"
 	aria-label="Welcome to CubeLite"

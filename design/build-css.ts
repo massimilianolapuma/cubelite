@@ -8,7 +8,7 @@
  *                       shadows, spacing, radius
  *   @generated:layer  — `@layer base` custom properties: the colour values per
  *                       theme, the tint hue and the identity hues, density,
- *                       icons, motion
+ *                       motion, the more-contrast swaps
  *   @generated:type   — `@utility type-*` typography classes
  *
  * Tinted colours are `oklch(L C var(--cl-tint-h))`. They are declared on
@@ -58,8 +58,9 @@ export interface Tokens {
   shadow: Group<Token>;
   font: { family: Group<Token>; style: Group<Token> };
   density: Group<Token>;
-  icon: Group<Token>;
   motion: Group<Token>;
+  /** `more`: under `prefers-contrast: more`, each role takes another role's value. */
+  contrast?: { more?: Record<string, string> };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -152,6 +153,29 @@ const shadowBlock = (tk: Tokens, theme: Theme): string =>
     .map(([k, t]) => `    --cl-shadow-${k}: ${themed(t, theme)};`)
     .join("\n");
 
+/**
+ * `prefers-contrast: more` (spec §9.1): each role listed takes another role's
+ * value. One rule for the four grounds the colours are declared on, after the
+ * theme rules, so it wins over `.dark [data-tint]`; the value is a reference,
+ * so it resolves to each subtree's own tint and theme.
+ */
+function contrastBlock(tk: Tokens): string[] {
+  const swaps = Object.entries(tk.contrast?.more ?? {});
+  for (const [from, to] of swaps) {
+    for (const role of [from, to]) {
+      if (!tk.color[role]) throw new Error(`Unknown colour role "${role}" in contrast.more (${from} → ${to})`);
+    }
+  }
+  if (swaps.length === 0) return [];
+  return [
+    "  @media (prefers-contrast: more) {",
+    "    :root, [data-tint], .dark, .dark [data-tint] {",
+    ...swaps.map(([from, to]) => `      --cl-color-${from}: var(--cl-color-${to});`),
+    "    }",
+    "  }",
+  ];
+}
+
 export function buildLayer(tk: Tokens): string {
   const defaultHue = tk.identity.hues[tk.identity.default];
   if (defaultHue === undefined) {
@@ -170,8 +194,6 @@ export function buildLayer(tk: Tokens): string {
     "",
     plainLines(tk.density, "", "    "),
     "",
-    plainLines(tk.icon, "icon-", "    "),
-    "",
     plainLines(tk.motion, "motion-", "    ", motionValue),
     "  }",
     "  [data-tint] {",
@@ -183,6 +205,7 @@ export function buildLayer(tk: Tokens): string {
     "  .dark {",
     shadowBlock(tk, "dark"),
     "  }",
+    ...contrastBlock(tk),
     "}",
   ].join("\n");
 }

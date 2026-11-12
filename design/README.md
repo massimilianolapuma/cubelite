@@ -27,8 +27,8 @@ design/
 
 ## `tokens.json`
 
-Top-level groups: `color`, `identity`, `spacing`, `radius`, `shadow`, `font`, `density`, `icon`,
-`motion`. A key starting with `$` is metadata (`$description`, `$type`, …) and is never emitted.
+Top-level groups: `color`, `identity`, `spacing`, `radius`, `shadow`, `font`, `density`,
+`contrast`, `motion`. A key starting with `$` is metadata (`$description`, `$type`, …) and is never emitted.
 
 ### Colour roles (`color`)
 
@@ -109,7 +109,14 @@ labels are sentence case) or an unknown colour role stops it.
 - `density`: `--row-h`, `--nav-h`, `--control-h`, `--control-inline-h`, `--chip-h`,
   `--control-primary-h`; `<html data-density="compact">` swaps each for its `-compact` value (the
   rule at the end of `app.css`).
-- `icon`, `motion`: icon sizes and animation timings, emitted as `--icon-*` and `--motion-*`.
+- `motion`: animation timings, emitted as `--motion-*`.
+- `contrast.more`: under `prefers-contrast: more` each role listed takes another role's value
+  (`text-subtle` → `text-muted`), on `:root` and every `[data-tint]` subtree, in both themes.
+  Cards, tiles and overlays carry the `card` class (`app.css`), which gains an `outline-strong`
+  edge with more contrast and in forced colours.
+
+A token the generator emits must be read somewhere (`var(--x)`, `h-(--x)` or, for a shadow, its
+`shadow-x` utility): the generator tests fail on one that nothing reads.
 
 ---
 
@@ -127,7 +134,7 @@ kept:
 | Region | Content |
 |---|---|
 | `theme` | Tailwind `@theme`: fonts, `--color-<role>: var(--cl-color-<role>)` for every role, shadows, spacing, radius |
-| `layer` | `@layer base`: the `--cl-color-*` values on `:root, [data-tint]` (light) and `.dark, .dark [data-tint]` (dark); `--cl-tint-h` and `--cl-hue-*` on `:root`; the `--color-*` roles declared again on `[data-tint]`; density, icon and motion variables |
+| `layer` | `@layer base`: the `--cl-color-*` values on `:root, [data-tint]` (light) and `.dark, .dark [data-tint]` (dark); `--cl-tint-h` and `--cl-hue-*` on `:root`; the `--color-*` roles declared again on `[data-tint]`; density and motion variables; the `prefers-contrast: more` swaps |
 | `type` | one `@utility type-<style>` per typography style |
 
 `@theme` lands on `:root`, where `var(--cl-color-*)` is already resolved to the window's tint; that

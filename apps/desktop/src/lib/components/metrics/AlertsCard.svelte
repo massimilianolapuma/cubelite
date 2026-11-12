@@ -66,7 +66,7 @@
 		id="overview-alerts"
 		tabindex="-1"
 		aria-labelledby="overview-alerts-title"
-		class="focus-ring scroll-mt-4 rounded-lg bg-surface-container-high p-4"
+		class="card focus-ring scroll-mt-4 rounded-lg bg-surface-container-high p-4"
 		data-testid="alerts-card"
 	>
 		<div class="mb-2 flex items-center gap-2">

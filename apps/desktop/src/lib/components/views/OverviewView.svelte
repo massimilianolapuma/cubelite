@@ -131,7 +131,7 @@
 
 	<!-- An explicit single column below xl: an implicit one would grow to its widest line. -->
 	<div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
-		<div class="flex flex-col gap-2.5 rounded-lg bg-surface-container-high p-4">
+		<div class="card flex flex-col gap-2.5 rounded-lg bg-surface-container-high p-4">
 			<div class="type-label text-text-muted">Capacity</div>
 			<MeterBar
 				label="CPU"
@@ -151,7 +151,7 @@
 			<ClusterHistory />
 		</div>
 
-		<div class="rounded-lg bg-surface-container-high p-4">
+		<div class="card rounded-lg bg-surface-container-high p-4">
 			<div class="mb-2 flex items-center">
 				<div class="type-label flex-1 text-text-muted">Recent warnings</div>
 				<Button variant="text" size="inline" onclick={() => app.navigate('events')}>

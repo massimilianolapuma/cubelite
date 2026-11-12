@@ -174,7 +174,7 @@
 			bind:value={highlighted}
 			filter={paletteFilter}
 			onkeydowncapture={onKeydownCapture}
-			class="animate-popin flex max-h-[calc(100vh-110px-1rem)] flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
+			class="card animate-popin flex max-h-[calc(100vh-110px-1rem)] flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
 			data-testid="command-palette"
 		>
 			<div class="flex shrink-0 items-center gap-3 border-b border-outline px-5">
