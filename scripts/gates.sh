@@ -7,7 +7,8 @@
 # non-zero when any gate failed.
 #
 # Usage: scripts/gates.sh [--no-e2e] [--rust] [--only a,b,c] [repo-root]
-#   gates: lint types unit design design-lint e2e   (and, with --rust: rust)
+#   gates: lint types unit design lint-test design-lint e2e
+#          (and, with --rust: rust)
 #   --no-e2e   skip the Playwright suite (the slowest gate)
 #   --rust     also run cargo fmt --check, clippy and the workspace tests
 #   --only     run just the named gates, comma-separated
@@ -22,7 +23,7 @@ while [ $# -gt 0 ]; do
     --no-e2e) E2E=0 ;;
     --rust) RUST=1 ;;
     --only) ONLY="$2"; shift ;;
-    -h | --help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) ROOT="$1" ;;
   esac
   shift
@@ -71,7 +72,7 @@ skip() {
   wanted "$1" && printf 'skip  %-12s %s\n' "$1" "$2"
 }
 
-# design-lint.sh needs bash 4; macOS ships 3.2.
+# design-lint.sh and its self-test need bash 4; macOS ships 3.2.
 BASH4="bash"
 [ -x /opt/homebrew/bin/bash ] && BASH4=/opt/homebrew/bin/bash
 
@@ -84,6 +85,7 @@ if grep -q '"design:test"' package.json 2>/dev/null; then
 else
   skip design 'no design:test script on this branch'
 fi
+run lint-test 'grep -E "self-test:"' "$BASH4" scripts/design-lint.test.sh
 run design-lint 'grep -E "total:|design-lint:" | tr "\n" " "' "$BASH4" scripts/design-lint.sh
 if [ "$E2E" -eq 1 ]; then
   run e2e 'grep -E "^ +[0-9]+ (passed|failed|flaky)" | tr "\n" " "' \
