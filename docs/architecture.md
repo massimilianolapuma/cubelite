@@ -35,7 +35,7 @@ graph TB
 
     subgraph desktop["apps/desktop — Tauri v2 + Svelte 5"]
         TC[Tauri Commands\nkubernetes.rs]
-        FE[Svelte 5 Frontend\nshadcn-svelte · Tailwind v4]
+        FE[Svelte 5 Frontend\nbits-ui · Tailwind v4]
         FE -->|invoke| TC
         TC --> core
     end
@@ -72,7 +72,7 @@ graph TB
 |---|---|
 | `src-tauri/src/commands/kubernetes.rs` | Tauri commands: `list_pods`, `list_namespaces`, `list_deployments` |
 | `src/routes/` | Svelte page routes |
-| `src/lib/components/` | UI components (shadcn-svelte) |
+| `src/lib/components/` | UI components (bits-ui primitives, Tonal design tokens) |
 
 ## Technology Stack
 
@@ -86,7 +86,7 @@ graph TB
 | Desktop | Tauri | v2 |
 | Desktop | Svelte | 5 |
 | Desktop | Tailwind CSS | v4 |
-| Desktop | shadcn-svelte | latest |
+| Desktop | bits-ui | 2 |
 | CI/CD | GitHub Actions | — |
 
 ## Security Model
