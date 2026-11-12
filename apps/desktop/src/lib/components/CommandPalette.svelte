@@ -186,7 +186,8 @@
 				/>
 				<Kbd label="esc" />
 			</div>
-			<Command.List class="max-h-80 min-h-0 overflow-y-auto p-2">
+			<!-- A scroller is a Tab stop of its own (Chromium): it shows the ring inside. -->
+			<Command.List class="focus-ring-inset max-h-80 min-h-0 overflow-y-auto rounded-b-xl p-2">
 				<Command.Viewport>
 					<Command.Empty class="type-body-sm py-6 text-center text-text-subtle">
 						No results.

@@ -480,3 +480,72 @@ test.describe("non-text contrast (WCAG 1.4.11) of the controls the token matrix 
     });
   }
 });
+
+/**
+ * Presses Tab up to `max` times, or until the focus comes back to an element it
+ * has already visited, and returns how many elements inside `scope` took the
+ * focus and those that showed no visible ring: a solid outline of 2 px or more,
+ * on the element or, for a list row, on its ::after (drawn above the sticky cell).
+ */
+async function tabWalk(page: Page, scope: string, max = 80): Promise<{ visited: number; missing: string[] }> {
+  const missing: string[] = [];
+  let visited = 0;
+  for (let i = 0; i < max; i++) {
+    await page.keyboard.press("Tab");
+    const r = await page.evaluate((sel) => {
+      const el = document.activeElement as HTMLElement | null;
+      const root = document.querySelector(sel);
+      if (!el || !root || !root.contains(el) || el === document.body) return { inside: false, again: false, name: "", ok: true };
+      const again = el.dataset.walked === "true";
+      el.dataset.walked = "true";
+      const ring = (s: CSSStyleDeclaration) =>
+        s.outlineStyle !== "none" && parseFloat(s.outlineWidth) >= 2 && s.outlineColor !== "rgba(0, 0, 0, 0)";
+      const ok = ring(getComputedStyle(el)) || ring(getComputedStyle(el, "::after"));
+      const name =
+        el.getAttribute("aria-label") ??
+        el.getAttribute("placeholder") ??
+        (el.textContent?.trim().slice(0, 40) || el.tagName.toLowerCase());
+      return { inside: true, again, name: `${el.tagName.toLowerCase()} "${name}"`, ok };
+    }, scope);
+    if (!r.inside) continue;
+    if (r.again) break;
+    visited++;
+    if (!r.ok) missing.push(r.name);
+  }
+  return { visited, missing };
+}
+
+test.describe("focus: every control shows the ring from the keyboard", () => {
+  test("shell, list, detail panel and log panel", async ({ page }) => {
+    await boot(page);
+    await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
+    await page.getByText("api-0", { exact: true }).click();
+    await page.getByRole("button", { name: "Open logs" }).click();
+    await expect(page.getByLabel("Pod logs panel")).toBeVisible();
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    const walk = await tabWalk(page, "body", 200);
+    // The rail, the sidebar, the top bar, the list, the panel and the log toolbar.
+    expect(walk.visited).toBeGreaterThan(40);
+    expect(walk.missing).toEqual([]);
+  });
+
+  test("Preferences, the palette and a dialog", async ({ page }) => {
+    await boot(page);
+    await page.getByLabel("Preferences").click();
+    const prefs = await tabWalk(page, '[role="dialog"][aria-label="Preferences"]', 150);
+    expect(prefs.visited).toBeGreaterThan(20);
+    expect(prefs.missing, "preferences").toEqual([]);
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: /Search & switch/ }).click();
+    expect((await tabWalk(page, '[data-testid="command-palette"]', 10)).missing, "palette").toEqual([]);
+    await page.keyboard.press("Escape");
+
+    const panel = await podsWithPanel(page);
+    await panel.getByRole("button", { name: "YAML" }).click();
+    expect((await tabWalk(page, '[role="dialog"][aria-label="api-0.yaml"]', 10)).missing, "yaml").toEqual([]);
+    await page.keyboard.press("Escape");
+    await panel.getByRole("button", { name: "Delete" }).click();
+    expect((await tabWalk(page, '[role="dialog"][aria-label="Delete Pod"]', 10)).missing, "delete").toEqual([]);
+  });
+});
