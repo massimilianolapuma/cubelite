@@ -109,7 +109,8 @@ labels are sentence case) or an unknown colour role stops it.
 - `density`: `--row-h`, `--nav-h`, `--control-h`, `--control-inline-h`, `--chip-h`,
   `--control-primary-h`; `<html data-density="compact">` swaps each for its `-compact` value (the
   rule at the end of `app.css`).
-- `motion`: animation timings, emitted as `--motion-*`.
+- `motion`: animation timings, emitted as `--motion-*`. Under `prefers-reduced-motion: reduce`
+  every animation and transition is off (a rule near the end of `app.css`).
 - `contrast.more`: under `prefers-contrast: more` each role listed takes another role's value
   (`text-subtle` → `text-muted`), on `:root` and every `[data-tint]` subtree, in both themes.
   Cards, tiles and overlays carry the `card` class (`app.css`), which gains an `outline-strong`

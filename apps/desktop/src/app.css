@@ -477,9 +477,19 @@
 :root {
   transition: --cl-tint-h var(--motion-tint);
 }
+
+/* Reduced motion (Tonal §9.1): no transition and no animation anywhere: the
+   tint, panels, overlays, toasts, chevrons and meters change at once, the
+   loading placeholders and the paused pill stop pulsing, a spinner stands
+   still (its word stays: Button, Loading). Outside any layer, so it wins over
+   every utility. */
 @media (prefers-reduced-motion: reduce) {
-  :root {
+  :root,
+  *,
+  *::before,
+  *::after {
     transition: none;
+    animation: none;
   }
 }
 
@@ -491,8 +501,10 @@
    gets a border; glyphs follow their text. Outside any layer, so it wins over
    the utilities. */
 @media (forced-colors: active) {
-  /* A state glyph would otherwise keep its green or red, unreadable on some palettes. */
-  [data-glyph] {
+  /* An SVG keeps the colour an author gives it: a state glyph would stay green
+     or red, an icon its role colour, unreadable on some palettes. They follow
+     their text instead. */
+  svg {
     color: inherit;
   }
 

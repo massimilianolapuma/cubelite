@@ -99,10 +99,12 @@
 	{:else if icon}
 		{@render icon()}
 	{/if}
+	<!-- With reduced motion a spinner would stand still over a hidden label: the
+	     label stays instead, faded like a disabled one (Tonal §9.1). -->
 	{#if children}
-		<span class="inline-flex items-center gap-2 {overlaySpinner ? 'opacity-0' : ''}">{@render children()}</span>
+		<span class="inline-flex items-center gap-2 {overlaySpinner ? 'opacity-0 motion-reduce:opacity-45' : ''}">{@render children()}</span>
 	{/if}
 	{#if overlaySpinner}
-		<LoaderCircle class="absolute h-4 w-4 animate-spin" aria-hidden="true" />
+		<LoaderCircle class="absolute h-4 w-4 animate-spin motion-reduce:hidden" aria-hidden="true" />
 	{/if}
 </button>

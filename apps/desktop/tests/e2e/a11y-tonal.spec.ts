@@ -8,9 +8,23 @@ import { tauriMockScript } from "./tauri-mock";
 type Theme = "dark" | "light";
 const THEMES: Theme[] = ["dark", "light"];
 
-async function boot(page: Page, theme: Theme = "dark") {
+type HangWindow = { __hang: string[] };
+
+/**
+ * `hang`: commands that never answer, so their spinner or placeholder stays on
+ * screen. `window.__hang` can be changed later (`hangFrom`), once the app has
+ * started.
+ */
+async function boot(page: Page, theme: Theme = "dark", hang: string[] = []) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(tauriMockScript());
+  await page.addInitScript((cmds) => {
+    type Internals = { invoke: (cmd: string, args: unknown) => unknown };
+    const w = window as unknown as { __TAURI_INTERNALS__: Internals } & HangWindow;
+    w.__hang = cmds;
+    const invoke = w.__TAURI_INTERNALS__.invoke.bind(w.__TAURI_INTERNALS__);
+    w.__TAURI_INTERNALS__.invoke = (cmd, args) => (w.__hang.includes(cmd) ? new Promise(() => {}) : invoke(cmd, args));
+  }, hang);
   await page.addInitScript((t) => {
     window.localStorage.setItem("cubelite.onboardingSeen", "true");
     window.localStorage.setItem("cubelite.theme", JSON.stringify(t));
@@ -208,6 +222,10 @@ test.describe("forced colours (forced-colors: active)", () => {
       await unforced(openLogs);
       expect(await border(panel.getByRole("button", { name: "Restart" }))).toEqual({ style: "solid", width: 1 });
 
+      // An icon given a role colour of its own follows its text too.
+      const chip = page.getByRole("button", { name: /^prod-aks AKS/ });
+      expect(await fg(chip.locator("svg.lucide-chevron-down"))).toBe(canvasText);
+
       // Fields keep their edge.
       expect(await border(page.getByPlaceholder("Filter pods…"))).toEqual({ style: "solid", width: 1 });
     });
@@ -273,4 +291,122 @@ test.describe("forced colours (forced-colors: active)", () => {
       });
     });
   }
+});
+
+/** Every element of the page that animates or has a transition, by a short description. */
+async function moving(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    // A transition runs only for a property it names and with a duration above zero.
+    const list = (v: string) => v.split(",").map((x) => x.trim());
+    const busy = (s: CSSStyleDeclaration) => {
+      const props = list(s.transitionProperty);
+      const times = list(s.transitionDuration).map(parseFloat);
+      const transition = props.some((p, i) => p !== "none" && times[i % times.length] > 0);
+      return transition || list(s.animationName).some((n) => n !== "none");
+    };
+    const out: string[] = [];
+    for (const el of document.querySelectorAll("*")) {
+      for (const pseudo of [null, "::before", "::after"]) {
+        const s = getComputedStyle(el, pseudo);
+        if (busy(s)) out.push(`${el.tagName.toLowerCase()}${pseudo ?? ""}.${String(el.getAttribute("class")).slice(0, 60)}`);
+      }
+    }
+    return out;
+  });
+}
+
+test.describe("reduced motion (prefers-reduced-motion: reduce)", () => {
+  test("nothing moves: placeholders, overlays, panel, toasts, spinners, chevrons and the tint", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await boot(page);
+    expect(await moving(page), "overview").toEqual([]);
+
+    // Placeholder rows while a list loads: still, not pulsing.
+    await page.evaluate(() => ((window as unknown as HangWindow).__hang = ["list_pods"]));
+    await page.getByRole("complementary").getByText("Pods", { exact: true }).click();
+    await page.getByRole("button", { name: /^Namespace/ }).click();
+    await page.getByRole("menuitemradio", { name: /kube-system/ }).click();
+    await expect(page.locator("[data-placeholder]").first()).toBeVisible();
+    expect(await moving(page), "loading list").toEqual([]);
+
+    // A section opened in the sidebar (its chevron turns), the cluster menu and a toast.
+    await page.getByRole("complementary").getByRole("button", { name: /Workloads/ }).click();
+    await page.getByRole("button", { name: /^prod-aks AKS/ }).click();
+    await page.getByRole("menuitem", { name: "Copy server address" }).click();
+    await expect(page.getByRole("status").locator("[data-tone]").first()).toBeVisible();
+    expect(await moving(page), "menu and toast").toEqual([]);
+
+    await page.getByRole("button", { name: /Search & switch/ }).click();
+    await expect(page.getByTestId("command-palette")).toBeVisible();
+    expect(await moving(page), "palette").toEqual([]);
+    await page.keyboard.press("Escape");
+
+    await page.getByLabel("Preferences").click();
+    await expect(page.getByRole("dialog", { name: "Preferences" })).toBeVisible();
+    expect(await moving(page), "preferences").toEqual([]);
+  });
+
+  test("the detail panel, the log panel and a cluster switch do not move", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await page.addInitScript(tauriMockScript());
+    await page.addInitScript(() => window.localStorage.setItem("cubelite.onboardingSeen", "true"));
+    await page.goto("/");
+    await podsWithPanel(page);
+    await page.getByRole("button", { name: "Open logs" }).click();
+    await expect(page.getByLabel("Pod logs panel")).toBeVisible();
+    expect(await moving(page), "panel overlaid, log panel open").toEqual([]);
+    await page.getByRole("list", { name: "Contexts" }).getByRole("button", { name: /^staging,/ }).click();
+    expect(await moving(page), "cluster switch").toEqual([]);
+  });
+
+  test("a spinner stops and keeps its word", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addInitScript(() =>
+      window.localStorage.setItem(
+        "cubelite.prometheus.endpoints",
+        JSON.stringify({
+          "prod-aks": {
+            target: { kind: "in-cluster", namespace: "monitoring", service: "prometheus-operated", port: 9090, https: false },
+            cluster: null,
+            grafanaDatasource: null,
+            grafanaUrl: null,
+            skipTlsVerify: false,
+          },
+        }),
+      ),
+    );
+    await boot(page, "dark", ["apply_resource_yaml", "prometheus_metrics"]);
+    const panel = await podsWithPanel(page);
+
+    // Loading metrics: a still circle and the words, which are otherwise read out only.
+    const section = panel.getByTestId("metrics-section");
+    await section.scrollIntoViewIfNeeded();
+    await expect(section.getByText("Loading metrics", { exact: true })).toBeVisible();
+
+    // A pending button with no icon of its own keeps its label in view.
+    await panel.getByRole("button", { name: "YAML" }).click();
+    const yaml = page.getByRole("dialog", { name: "api-0.yaml" });
+    await yaml.getByRole("button", { name: "Edit" }).click();
+    const apply = yaml.getByRole("button", { name: "Apply" });
+    await apply.click();
+    await expect(apply).toHaveAttribute("aria-busy", "true");
+    const label = apply.getByText("Apply");
+    expect(Number(await label.evaluate((el) => getComputedStyle(el).opacity))).toBeGreaterThan(0.4);
+    expect(await moving(page), "pending").toEqual([]);
+  });
+
+  test("with motion allowed, the spinner turns and the label gives way to it", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await boot(page, "dark", ["apply_resource_yaml"]);
+    const panel = await podsWithPanel(page);
+    await panel.getByRole("button", { name: "YAML" }).click();
+    const yaml = page.getByRole("dialog", { name: "api-0.yaml" });
+    await yaml.getByRole("button", { name: "Edit" }).click();
+    const apply = yaml.getByRole("button", { name: "Apply" });
+    await apply.click();
+    await expect(apply).toHaveAttribute("aria-busy", "true");
+    expect(await apply.getByText("Apply").evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+    expect(await apply.locator("svg").evaluate((el) => getComputedStyle(el).animationName)).toBe("spin");
+  });
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Loading from '#lib/components/ui/Loading.svelte';
 	import HostCharts from '#lib/components/metrics/HostCharts.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
@@ -24,7 +24,7 @@
 		<div class="flex items-center gap-2">
 			<span class="type-label text-text-muted">History</span>
 			{#if promOverview.usageLoading}
-				<LoaderCircle class="h-3 w-3 animate-spin text-text-muted" aria-label="Loading cluster history" />
+				<Loading label="Loading cluster history" />
 			{/if}
 			<span class="ml-auto"></span>
 			<SegmentedControl segments={METRICS_RANGES} bind:value={promOverview.range} label="History range" />
