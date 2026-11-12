@@ -293,6 +293,22 @@ describe("PreferencesModal", () => {
     delete (Element.prototype as Partial<Element>).scrollIntoView;
   });
 
+  it("opens on the kubeconfig files when asked (All Clusters' Open Preferences)", async () => {
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    app.openPreferences("kubeconfig");
+    const { unmount } = render(PreferencesModal);
+    expect(app.preferencesOpen).toBe(true);
+    expect(app.preferencesSection).toBeNull();
+    await tick();
+    expect(scrolled).toHaveLength(1);
+    expect(within(scrolled[0] as HTMLElement).getByRole("list", { name: "Kubeconfig files" })).toBeInTheDocument();
+    unmount();
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
   it("persists density and applies it to the document", async () => {
     render(PreferencesModal);
     await fireEvent.click(screen.getByRole("radio", { name: "Compact" }));

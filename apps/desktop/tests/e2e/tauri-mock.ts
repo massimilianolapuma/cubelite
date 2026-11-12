@@ -142,6 +142,22 @@ export const FIXTURES = {
       creation_timestamp: "2026-07-01T09:00:00Z",
     },
   ],
+  /** What `list_events` answers (Overview's recent warnings, the Events list). */
+  events: [] as {
+    event_type: string | null;
+    reason: string | null;
+    object: string;
+    message: string | null;
+    namespace: string;
+    count: number;
+    last_timestamp: string | null;
+  }[],
+  /**
+   * Per-context answers of `probe_cluster`, merged over `{ context }`: a context
+   * listed here answers this instead of the default (staging unreachable,
+   * everything else reachable).
+   */
+  probes: {} as Record<string, Record<string, unknown>>,
   podContainers: [
     {
       name: "worker",
@@ -222,7 +238,7 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
       case "list_pods": return args.namespace && args.namespace !== "default" ? [] : fixtures.pods;
       case "list_namespaces": return fixtures.namespaces;
       case "list_deployments": return args.namespace === "default" ? fixtures.deployments : [];
-      case "list_events": return [];
+      case "list_events": return fixtures.events;
       case "list_pod_metrics": return [];
       case "cluster_capacity": return [];
       case "list_services":
@@ -240,6 +256,7 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
       case "list_daemonsets":
         return [{ name: "node-agent", namespace: "default" }];
       case "probe_cluster":
+        if (fixtures.probes[args.context]) return { context: args.context, ...fixtures.probes[args.context] };
         return args.context === "staging"
           ? { context: args.context, reachable: false, version: null, node_count: null, pod_count: null, issue_pod_count: null, capacity: null, error: "connection timed out" }
           : { context: args.context, reachable: true, version: "v1.30.2", node_count: 3, pod_count: 12, issue_pod_count: 0, capacity: { cpu_used_millis: 400, cpu_allocatable_millis: 4000, memory_used_bytes: 2147483648, memory_allocatable_bytes: 8589934592 }, error: null };
