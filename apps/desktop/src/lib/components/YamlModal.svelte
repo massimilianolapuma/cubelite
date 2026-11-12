@@ -95,19 +95,20 @@
 
 <!-- The code area fits the modal at any window height, so there is one scroller,
      not two. The modal is at most 80vh; its header and body padding take 6.25rem
-     (Modal.svelte), the button row 2.75rem. Editing, the column is as tall as the
-     room left (60vh of editor at most) and the editor takes what the error line,
-     when there is one, leaves. -->
+     (Modal.svelte). Editing, the button row holds Apply, the dialog's one primary
+     action at 48 px (Tonal §7): with the gap it takes 3.75rem. The column is as
+     tall as the room left (60vh of editor at most) and the editor takes what the
+     error line, when there is one, leaves. -->
 <Modal title="{name}.yaml" width={720} {onClose}>
 	<div
 		class="flex flex-col gap-3 {editing
-			? 'h-[min(calc(60vh_+_2.75rem),calc(80vh_-_6.25rem))]'
+			? 'h-[min(calc(60vh_+_3.75rem),calc(80vh_-_6.25rem))]'
 			: ''}"
 	>
-		<div class="flex justify-end gap-2">
+		<div class="flex items-center justify-end gap-2">
 			{#if editing}
 				<Button variant="text" size="inline" disabled={applying} onclick={cancelEditing}>Cancel</Button>
-				<Button variant="primary" size="inline" pending={applying} onclick={() => void apply()}>
+				<Button variant="primary" size="primary" pending={applying} onclick={() => void apply()}>
 					Apply
 				</Button>
 			{:else}

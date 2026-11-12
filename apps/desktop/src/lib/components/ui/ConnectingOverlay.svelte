@@ -6,11 +6,8 @@
 </script>
 
 {#if app.connecting !== null}
-	<div
-		class="animate-fadein fixed inset-0 z-50 flex items-center justify-center"
-		style="background: color-mix(in srgb, black 50%, transparent);"
-		role="status"
-	>
+	<!-- Backdrop: black at 50 %, as under a modal (Tonal §7). -->
+	<div class="animate-fadein fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="status">
 		<div
 			class="card animate-popin flex items-center gap-3 rounded-xl bg-surface-overlay py-3 pr-3 pl-6 shadow-overlay"
 		>

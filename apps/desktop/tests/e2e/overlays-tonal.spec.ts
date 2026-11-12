@@ -447,6 +447,13 @@ for (const compact of [false, true]) {
       return b.y + b.height / 2;
     };
     expect(Math.abs((await centre("Cancel")) - (await centre("Delete Pod")))).toBeLessThan(1);
+    await del.getByRole("button", { name: "Cancel" }).click();
+
+    // The YAML editor's Apply is that dialog's one primary action (#632).
+    await page.getByRole("dialog", { name: "api-0" }).getByRole("button", { name: "YAML" }).click();
+    const yaml = page.getByRole("dialog", { name: "api-0.yaml" });
+    await yaml.getByRole("button", { name: "Edit" }).click();
+    expect(await tall(yaml.getByRole("button", { name: "Apply" }))).toBe(48);
   });
 }
 
