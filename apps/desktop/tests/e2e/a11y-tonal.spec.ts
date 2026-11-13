@@ -890,6 +890,14 @@ test.describe("focus: every control shows the ring from the keyboard", () => {
     await boot(page);
     await page.setViewportSize({ width: 1440, height: 560 });
     const panel = await podsWithPanel(page);
+    // The walk starts once the panel has its full height. The Metrics section
+    // loads when it scrolls into view: charts that arrive after a control took
+    // the focus push it under the scroller's edge, which is a late load, not a
+    // cut ring (#641).
+    const metrics = panel.getByTestId("metrics-section");
+    await metrics.scrollIntoViewIfNeeded();
+    await expect(metrics.getByTestId("metrics-chart").first()).toBeVisible();
+    await expect(metrics.locator('[data-loading][data-active="true"]')).toHaveCount(0);
     await ringsIn(page, '[role="dialog"][aria-label="api-0"]', "panel", 10, 120);
 
     // A control half under the scroller's edge is scrolled just into view when
@@ -916,6 +924,11 @@ test.describe("focus: every control shows the ring from the keyboard", () => {
     await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: /Search & switch/ }).click();
+    // The palette takes the focus into its search field a moment after it
+    // opens. The walk starts from there: the field has no ring of its own (the
+    // highlighted row carries it), so a Tab pressed before the focus arrives
+    // would land on the field and count it (#641).
+    await expect(page.getByTestId("command-palette").locator("input")).toBeFocused();
     await ringsIn(page, '[data-testid="command-palette"]', "palette", 1, 10);
     await page.keyboard.press("Escape");
 
