@@ -6,6 +6,8 @@
 	import { formatAge } from '#lib/age.ts';
 	import { matchesSelector } from '#lib/k8s-match.ts';
 	import ReplicaStepper from '#lib/components/deployments/ReplicaStepper.svelte';
+	import ContainerResourceRows from '#lib/components/resources/ContainerResourceRows.svelte';
+	import { containerRows } from '#lib/container-usage.ts';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Drawer from '#lib/components/ui/Drawer.svelte';
 	import FactRows from '#lib/components/ui/FactRows.svelte';
@@ -51,6 +53,17 @@
 	);
 
 	const podsKnown = $derived(resources.mainLoaded && resources.listError('pods') === null);
+
+	// Requests, limits and usage per template container (#652). Usage is the
+	// highest among the deployment's pods: the one closest to its limit.
+	const resourceRows = $derived(
+		containerRows(
+			deployment.containers ?? [],
+			childPods.map((p) => resources.metricsFor(p.namespace, p.name))
+		)
+	);
+	// Only once metrics-server was asked: before that, it has not failed to answer.
+	const usageUnavailable = $derived(resources.metricsKnown && !resources.metricsAvailable);
 
 	const glyphTone = { ok: 'text-success', warn: 'text-warning', err: 'text-error', done: '', unknown: '' } as const;
 
@@ -113,6 +126,28 @@
 			<div class={PANEL_SECTION}>Replicas</div>
 			<ReplicaStepper {deployment} />
 		</div>
+
+		{#if resourceRows.length > 0}
+			<div data-section="resources">
+				<div class={PANEL_SECTION}>Resources</div>
+				<div class="flex flex-col gap-0.5">
+					{#each resourceRows as container (container.name)}
+						<div class="{PANEL_CARD} flex flex-col gap-2 px-3 py-2" data-container={container.name}>
+							<div class="flex min-w-0 items-baseline gap-2">
+								<span class="type-data-sm min-w-0 truncate text-text" title={container.name}>{container.name}</span>
+								{#if container.sidecar}
+									<span class="type-body-sm shrink-0 text-text-muted">sidecar</span>
+								{/if}
+							</div>
+							<ContainerResourceRows rows={container.rows} />
+						</div>
+					{/each}
+				</div>
+				{#if usageUnavailable}
+					<p class="type-body-sm mt-2 text-text-muted">Usage unavailable: metrics-server did not answer.</p>
+				{/if}
+			</div>
+		{/if}
 
 		<FactRows {facts} />
 

@@ -23,7 +23,17 @@ import NodeDrawer from "./nodes/NodeDrawer.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { logPanel } from "#lib/stores/logPanel.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
-import { clusterCapacity, listPods, type DeploymentInfo, type PodInfo } from "#lib/tauri.ts";
+import {
+  clusterCapacity,
+  listPodMetrics,
+  listPods,
+  type ContainerResourcesInfo,
+  type DeploymentInfo,
+  type PodInfo,
+  type PodMetricsInfo,
+  type QuantityInfo,
+  type TemplateContainerInfo,
+} from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
   return {
@@ -67,6 +77,44 @@ async function loadPods(pods: PodInfo[]) {
   await resources.load();
   app.kubeconfigPath = "";
 }
+
+/** Loads pods, then the metrics, through the store; an Error is metrics-server not answering. */
+async function loadWithMetrics(pods: PodInfo[], metrics: PodMetricsInfo[] | Error) {
+  if (metrics instanceof Error) vi.mocked(listPodMetrics).mockRejectedValueOnce(metrics);
+  else vi.mocked(listPodMetrics).mockResolvedValueOnce(metrics);
+  await loadPods(pods);
+  await vi.waitFor(() => expect(resources.metricsKnown).toBe(true));
+}
+
+const Mi = 1024 * 1024;
+const q = (text: string, amount: number | null): QuantityInfo => ({ text, amount });
+/** cpu 250m / 500m, memory 256Mi / 512Mi. */
+const API_RESOURCES: ContainerResourcesInfo = {
+  cpu: { request: q("250m", 250), limit: q("500m", 500) },
+  memory: { request: q("256Mi", 256 * Mi), limit: q("512Mi", 512 * Mi) },
+};
+/** A sidecar with a CPU request only. */
+const MESH_RESOURCES: ContainerResourcesInfo = {
+  cpu: { request: q("50m", 50), limit: null },
+  memory: { request: null, limit: null },
+};
+const TEMPLATE: TemplateContainerInfo[] = [
+  { name: "api", image: "registry.example/api:1.4", sidecar: false, resources: API_RESOURCES },
+  { name: "mesh", image: "registry.example/mesh:1.0", sidecar: true, resources: MESH_RESOURCES },
+];
+/** api uses 260m of CPU and 498Mi of memory in pod api-0. */
+const API_0_METRICS: PodMetricsInfo = {
+  name: "api-0",
+  namespace: "default",
+  cpu_millis: 260,
+  memory_bytes: 498 * Mi,
+  containers: [{ name: "api", cpu_millis: 260, memory_bytes: 498 * Mi }],
+};
+const UNAVAILABLE = "Usage unavailable: metrics-server did not answer.";
+const resourcesSection = () => document.querySelector<HTMLElement>('[data-section="resources"]');
+const resourceCard = (name: string) => resourcesSection()!.querySelector<HTMLElement>(`[data-container="${name}"]`)!;
+const resourceRow = (card: HTMLElement, resource: "cpu" | "memory") =>
+  card.querySelector<HTMLElement>(`[data-resource-row="${resource}"]`)!;
 
 const hero = () => document.querySelector("[data-hero]")!;
 const tile = (label: string) => screen.getByText(label, { selector: "[data-tone] *" }).closest("[data-tone]")!;
@@ -225,6 +273,22 @@ describe("PodDrawer", () => {
     expect(screen.getByText("Labels")).toBeInTheDocument();
     expect(screen.getAllByTitle(/=/).map((el) => el.textContent?.trim())).toEqual(["app=shop", "tier=api"]);
   });
+
+  it("shows a container's requests, limits and usage in its card; a container without resources has no rows", async () => {
+    const withResources = pod({
+      containers: [
+        { name: "api", image: "registry.example/api:1.4", ready: true, resources: API_RESOURCES },
+        { name: "legacy", image: "registry.example/legacy:1", ready: true },
+      ],
+    });
+    await loadWithMetrics([withResources], [API_0_METRICS]);
+    render(PodDrawer, { props: { pod: withResources, onClose: vi.fn() } });
+    const card = document.querySelector<HTMLElement>('[data-container="api"]')!;
+    expect(card).toHaveTextContent("260m of 500m · request 250m");
+    expect(card).toHaveTextContent("498Mi of 512Mi · request 256Mi");
+    expect(resourceRow(card, "memory").querySelector("[data-level]")).toHaveAttribute("data-level", "critical");
+    expect(document.querySelector('[data-container="legacy"] [data-resource-row]')).toBeNull();
+  });
 });
 
 describe("DeploymentDrawer", () => {
@@ -323,6 +387,72 @@ describe("DeploymentDrawer", () => {
     expect(footer.querySelectorAll('[data-variant="primary"]')).toHaveLength(1);
     expect(within(footer).getByRole("button", { name: "Rollout Restart" })).toBeInTheDocument();
     expect(within(footer).getByRole("button", { name: "YAML" })).toBeInTheDocument();
+  });
+
+  it("shows each container's requests, limits and the usage of its pods in a Resources section", async () => {
+    await loadWithMetrics([pod({ labels: { app: "api" } })], [API_0_METRICS]);
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
+    const section = resourcesSection()!;
+    expect(within(section).getByText("Resources")).toBeInTheDocument();
+    expect(section.querySelectorAll("[data-container]")).toHaveLength(2);
+
+    const api = resourceCard("api");
+    expect(api).toHaveTextContent("260m of 500m · request 250m");
+    expect(api).toHaveTextContent("498Mi of 512Mi · request 256Mi");
+    expect(resourceRow(api, "memory").querySelector("[data-level]")).toHaveAttribute("data-level", "critical");
+    expect(resourceRow(api, "cpu").querySelector("[data-level]")).toHaveAttribute("data-level", "normal");
+
+    const mesh = resourceCard("mesh");
+    expect(mesh).toHaveTextContent("sidecar");
+    expect(mesh).toHaveTextContent("request 50m · no limit");
+    expect(resourceRow(mesh, "cpu").querySelector("[data-meter-track]")).toBeNull();
+    expect(resourceRow(api, "cpu").querySelector("[data-meter-track]")).not.toBeNull();
+    expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+  });
+
+  it("says once that usage is unavailable when metrics-server did not answer", async () => {
+    await loadWithMetrics([pod({ labels: { app: "api" } })], new Error("the server could not find the requested resource"));
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
+    expect(screen.getAllByText(UNAVAILABLE)).toHaveLength(1);
+    expect(resourceCard("api")).toHaveTextContent("limit 500m · request 250m");
+    expect(resourceCard("api")).toHaveTextContent("limit 512Mi · request 256Mi");
+  });
+
+  it("does not say usage is unavailable before metrics-server was asked", () => {
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
+    expect(resourcesSection()).not.toBeNull();
+    expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+  });
+
+  it("shows requests and limits without a meter value, and no unavailable sentence, when the deployment has no pods", async () => {
+    await loadWithMetrics([], []);
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
+    const api = resourceCard("api");
+    expect(api).toHaveTextContent("limit 500m · request 250m");
+    expect(resourceRow(api, "cpu").querySelector('[data-testid="meter-value"]')).toHaveTextContent("–");
+    expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+  });
+
+  it("has no Resources section for a payload without containers", () => {
+    render(DeploymentDrawer, { props: { deployment: dep(), onClose: vi.fn() } });
+    expect(resourcesSection()).toBeNull();
+    expect(screen.queryByText("Resources")).toBeNull();
+  });
+
+  it("shows a limit it cannot read as the cluster wrote it, with no percent", async () => {
+    const unreadable: TemplateContainerInfo[] = [
+      {
+        name: "api",
+        image: null,
+        sidecar: false,
+        resources: { ...API_RESOURCES, memory: { request: q("256Mi", 256 * Mi), limit: q("1Xi", null) } },
+      },
+    ];
+    await loadWithMetrics([pod({ labels: { app: "api" } })], [API_0_METRICS]);
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: unreadable }), onClose: vi.fn() } });
+    const memory = resourceRow(resourceCard("api"), "memory");
+    expect(memory).toHaveTextContent("498Mi of 1Xi · request 256Mi");
+    expect(memory.querySelector('[data-testid="meter-value"]')).toHaveTextContent("–");
   });
 });
 
