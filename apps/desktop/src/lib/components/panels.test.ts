@@ -12,6 +12,10 @@ vi.mock("#lib/tauri.ts", () => ({
   restartDeployment: vi.fn(async () => undefined),
   scaleDeployment: vi.fn(async () => undefined),
   listPodMetrics: vi.fn(async () => []),
+  resourceFacts: vi.fn(() => new Promise(() => {})),
+  evaluateResources: vi.fn(),
+  applyResources: vi.fn(),
+  clearResourcesOverride: vi.fn(async () => undefined),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
 }));
@@ -23,8 +27,10 @@ import NodeDrawer from "./nodes/NodeDrawer.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { logPanel } from "#lib/stores/logPanel.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
+import { resourceEditor } from "#lib/stores/resourceEditor.svelte.ts";
 import {
   clusterCapacity,
+  listDeployments,
   listPodMetrics,
   listPods,
   type ContainerResourcesInfo,
@@ -565,5 +571,146 @@ describe("NodeDrawer", () => {
     render(NodeDrawer, { props: { name: "node-9", info: null, onClose: vi.fn() } });
     expect(screen.getByRole("dialog", { name: "node-9" })).toBeInTheDocument();
     expect(document.querySelector("[data-hero]")).toBeNull();
+  });
+});
+
+/** An override of api's memory limit, 512Mi to 768Mi, at 11:20 UTC. */
+const OVERRIDE = {
+  at: "2026-11-13T11:20:00Z",
+  containers: [
+    {
+      name: "api",
+      original: { cpu: { request: "250m", limit: "500m" }, memory: { request: "256Mi", limit: "512Mi" } },
+      applied: { cpu: { request: "250m", limit: "500m" }, memory: { request: "256Mi", limit: "768Mi" } },
+    },
+  ],
+};
+const banner = () => document.querySelector<HTMLElement>("[data-override-banner]");
+
+describe("DeploymentDrawer: the way into the resources editor (#650 §3.1, §6.2)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    resources.clear();
+  });
+
+  it("Adjust, at the end of the Resources title row, opens the editor on this deployment", async () => {
+    const open = vi.spyOn(resourceEditor, "open").mockResolvedValue();
+    const deployment = dep({ containers: TEMPLATE });
+    render(DeploymentDrawer, { props: { deployment, onClose: vi.fn() } });
+    const adjust = within(resourcesSection()!).getByRole("button", { name: "Adjust" });
+    expect(adjust).toHaveAttribute("data-variant", "tonal");
+    await fireEvent.click(adjust);
+    expect(open).toHaveBeenCalledWith(deployment);
+  });
+
+  it("shows Adjust as pending while an apply of this deployment runs", () => {
+    vi.spyOn(resourceEditor, "isApplying").mockImplementation((ns, name) => ns === "default" && name === "api");
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
+    expect(within(resourcesSection()!).getByRole("button", { name: "Adjust" })).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("has no banner without an override", () => {
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE, resources_override: null }), onClose: vi.fn() } });
+    expect(banner()).toBeNull();
+    expect(screen.queryByText(/Resources overridden from CubeLite/)).toBeNull();
+  });
+
+  it("shows the override above Resources: when, with a triangle, and each changed field", () => {
+    render(DeploymentDrawer, {
+      props: { deployment: dep({ containers: TEMPLATE, resources_override: OVERRIDE }), onClose: vi.fn() },
+    });
+    const b = banner()!;
+    expect(b).toHaveClass("card");
+    expect(within(b).getByText(/^Resources overridden from CubeLite · /)).toBeInTheDocument();
+    expect(b.querySelector('[data-glyph="warn"]')).not.toBeNull();
+    const date = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(
+      new Date(OVERRIDE.at),
+    );
+    expect(b).toHaveTextContent(`Resources overridden from CubeLite · ${date}`);
+    const rows = within(within(b).getByRole("list", { name: "Overridden values" })).getAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent(/^api\s*Memory limit\s*512Mi → 768Mi$/);
+    // Above the Resources section.
+    expect(b.compareDocumentPosition(resourcesSection()!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("Keep these values asks first; Cancel puts the two buttons back", async () => {
+    const keep = vi.spyOn(resourceEditor, "keepValues").mockResolvedValue(true);
+    render(DeploymentDrawer, {
+      props: { deployment: dep({ containers: TEMPLATE, resources_override: OVERRIDE }), onClose: vi.fn() },
+    });
+    const b = banner()!;
+    await fireEvent.click(within(b).getByRole("button", { name: "Keep these values" }));
+    expect(within(b).getByText("Remove the override mark? The values stay as they are.")).toBeInTheDocument();
+    expect(within(b).queryByRole("button", { name: "Restore" })).toBeNull();
+    expect(keep).not.toHaveBeenCalled();
+    await fireEvent.click(within(b).getByRole("button", { name: "Cancel" }));
+    expect(within(b).getByRole("button", { name: "Keep these values" })).toBeInTheDocument();
+    expect(within(b).getByRole("button", { name: "Restore" })).toBeInTheDocument();
+    expect(within(b).queryByText(/Remove the override mark\?/)).toBeNull();
+  });
+
+  it("Remove mark removes the mark through the store", async () => {
+    const keep = vi.spyOn(resourceEditor, "keepValues").mockResolvedValue(true);
+    const deployment = dep({ containers: TEMPLATE, resources_override: OVERRIDE });
+    render(DeploymentDrawer, { props: { deployment, onClose: vi.fn() } });
+    const b = banner()!;
+    await fireEvent.click(within(b).getByRole("button", { name: "Keep these values" }));
+    await fireEvent.click(within(b).getByRole("button", { name: "Remove mark" }));
+    expect(keep).toHaveBeenCalledWith(deployment);
+  });
+
+  it("Restore opens the editor on the restore", async () => {
+    const open = vi.spyOn(resourceEditor, "open").mockResolvedValue();
+    const deployment = dep({ containers: TEMPLATE, resources_override: OVERRIDE });
+    render(DeploymentDrawer, { props: { deployment, onClose: vi.fn() } });
+    await fireEvent.click(within(banner()!).getByRole("button", { name: "Restore" }));
+    expect(open).toHaveBeenCalledWith(deployment, "restore");
+  });
+});
+
+describe("PodDrawer: Adjust on deployment (#650 §3.1)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    resources.clear();
+    app.view = "pods";
+  });
+
+  async function withDeployments(deployments: DeploymentInfo[]) {
+    app.kubeconfigPath = "/k";
+    app.activeCluster = "prod";
+    app.namespace = "default";
+    vi.mocked(listDeployments).mockResolvedValue(deployments);
+    await resources.load();
+  }
+
+  it("offers the deployment of a pod it belongs to, and opens that deployment's editor", async () => {
+    const api = dep();
+    await withDeployments([api]);
+    const open = vi.spyOn(resourceEditor, "open").mockResolvedValue();
+    const onClose = vi.fn();
+    const p = pod({ deployment: "api" });
+    app.selectedPod = p;
+    render(PodDrawer, { props: { pod: p, onClose } });
+    await fireEvent.click(screen.getByRole("button", { name: "Adjust on deployment api" }));
+    expect(onClose).toHaveBeenCalled();
+    expect(app.view).toBe("deployments");
+    expect(app.selectedDeployment).toEqual(api);
+    expect(open).toHaveBeenCalledWith(api);
+  });
+
+  it("offers nothing for a pod with no deployment, or one the list does not have", async () => {
+    await withDeployments([dep({ name: "web" })]);
+    const first = render(PodDrawer, { props: { pod: pod({ deployment: null }), onClose: vi.fn() } });
+    expect(screen.queryByRole("button", { name: /^Adjust on deployment/ })).toBeNull();
+    first.unmount();
+    render(PodDrawer, { props: { pod: pod({ deployment: "api" }), onClose: vi.fn() } });
+    expect(screen.queryByRole("button", { name: /^Adjust on deployment/ })).toBeNull();
+  });
+
+  it("offers nothing for a deployment of the same name in another namespace", async () => {
+    await withDeployments([dep({ namespace: "staging" })]);
+    render(PodDrawer, { props: { pod: pod({ deployment: "api" }), onClose: vi.fn() } });
+    expect(screen.queryByRole("button", { name: /^Adjust on deployment/ })).toBeNull();
   });
 });

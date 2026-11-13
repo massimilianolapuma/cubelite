@@ -13,6 +13,7 @@ import {
   needsConfirmation,
   nodeRows,
   overrideChanges,
+  overrideDate,
   quickStep,
   requestHint,
   rolloutSentence,
@@ -565,5 +566,16 @@ describe("overrideChanges", () => {
       { container: "api", label: "Memory limit", before: "512Mi", after: "768Mi" },
       { container: "envoy", label: "Memory limit", before: null, after: "128Mi" },
     ]);
+  });
+});
+
+describe("overrideDate", () => {
+  it("is the day, the short month, the hour and the minute, in the user's locale", () => {
+    expect(overrideDate("2026-11-13T11:20:00Z", "en-GB", "UTC")).toBe("13 Nov, 11:20");
+    expect(overrideDate("2026-11-13T11:20:00Z", "en-GB", "Europe/Rome")).toBe("13 Nov, 12:20");
+  });
+
+  it("is an empty value for a time it cannot read", () => {
+    expect(overrideDate("not a date", "en-GB", "UTC")).toBe("–");
   });
 });

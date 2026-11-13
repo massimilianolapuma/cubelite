@@ -25,6 +25,8 @@
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { portforward } from '#lib/stores/portforward.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { resourceEditor } from '#lib/stores/resourceEditor.svelte.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
 	import { parsePort, resolveLocalPort } from '#lib/ports.ts';
 	import { formatBytes, formatCpu, percentOf } from '#lib/units.ts';
 	import type { PodInfo } from '#lib/tauri.ts';
@@ -102,6 +104,23 @@
 		['QoS', pod.qos_class]
 	]);
 
+	// The Deployment the pod belongs to, when the list has it (#650 §3.1): its
+	// editor is where the pod's requests and limits change.
+	const ownerDeployment = $derived(
+		pod.deployment
+			? (resources.deployments.find((d) => d.namespace === pod.namespace && d.name === pod.deployment) ?? null)
+			: null
+	);
+
+	function adjustOnDeployment() {
+		const deployment = ownerDeployment;
+		if (deployment === null) return;
+		onClose();
+		app.navigate('deployments');
+		app.selectedDeployment = deployment;
+		void resourceEditor.open(deployment);
+	}
+
 	const labelEntries = $derived(
 		Object.entries(pod.labels ?? {}).sort(([a], [b]) => a.localeCompare(b))
 	);
@@ -151,6 +170,11 @@
 						</div>
 					{/each}
 				</div>
+				{#if ownerDeployment}
+					<Button variant="text" size="inline" class="mt-1.5 -ml-3.5" onclick={adjustOnDeployment}>
+						Adjust on deployment <span class="type-data-sm">{ownerDeployment.name}</span>
+					</Button>
+				{/if}
 			</div>
 		{/if}
 

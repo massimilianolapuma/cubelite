@@ -119,6 +119,13 @@
 		{/if}
 	{/snippet}
 
+	{#snippet nameSuffix(dep)}
+		<!-- An override made from CubeLite shows wherever the workload does (#650 §3.3). -->
+		{#if dep.resources_override}
+			<StatusBadge state="warn" label="Override" />
+		{/if}
+	{/snippet}
+
 	{#snippet cells(dep)}
 		{@const status = deploymentStatus(dep)}
 		{@const restarting = mutations.isRestarting(dep.namespace, dep.name)}

@@ -40,7 +40,8 @@
 		notice,
 		head: kindHead,
 		cells,
-		below
+		below,
+		nameSuffix
 	}: {
 		/** List id: sort and status chips. */
 		list: string;
@@ -89,6 +90,8 @@
 		cells: Snippet<[T]>;
 		/** A block under a row (a secret's keys). */
 		below?: Snippet<[T]>;
+		/** Beside the name, inside its sticky cell (a deployment's "Override" badge); the name keeps some room. */
+		nameSuffix?: Snippet<[T]>;
 	} = $props();
 
 	const grouped = $derived(namespaced && app.groupedLists);
@@ -138,7 +141,10 @@
 	{@const name = accessors.name(item)}
 	<!-- As tall as the row: a badge passing under it while the columns scroll must not show above or below the name. -->
 	<span class="{LIST_STICKY} flex min-w-0 items-center self-stretch {inGroup ? 'pl-4.5' : ''}">
-		<span class="type-data truncate text-text" title={name}>{name}</span>
+		<span class="type-data truncate text-text {nameSuffix ? 'min-w-12' : ''}" title={name}>{name}</span>
+		{#if nameSuffix}
+			<span class="ml-2 flex min-w-0 shrink-[4] items-center">{@render nameSuffix(item)}</span>
+		{/if}
 	</span>
 	{#if withNamespace}
 		<span class="type-data-sm truncate text-text-muted">{accessors.namespace(item)}</span>

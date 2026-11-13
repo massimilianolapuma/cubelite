@@ -22,6 +22,7 @@ import type {
   ResourceTexts,
   WorkloadFacts,
 } from "#lib/tauri.ts";
+import { EMPTY } from "#lib/empty.ts";
 import { formatBytes, formatCpu } from "#lib/units.ts";
 
 export type FieldKey = `${"cpu" | "memory"}.${"request" | "limit"}`;
@@ -332,4 +333,21 @@ export function overrideChanges(
     }
   }
   return out;
+}
+
+/**
+ * When an override was applied, for its banner: the day, the short month, the
+ * hour and the minute in the user's locale ("13 Nov, 12:20"); an empty value
+ * for a time that cannot be read. `locale` and `timeZone` are for tests.
+ */
+export function overrideDate(at: string, locale?: string, timeZone?: string): string {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) return EMPTY;
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+  }).format(date);
 }
