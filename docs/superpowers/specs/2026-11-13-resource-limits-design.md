@@ -191,11 +191,19 @@ Only what the cluster itself would refuse, at once or when it creates the pods.
 | B4 | A LimitRange of the namespace is violated (container min, max, max limit/request ratio; pod max) | The Deployment would accept the change and its pods would then fail to be created, silently |
 | B5 | With all replicas on the new values, a ResourceQuota of the namespace is exceeded (`requests.cpu`, `requests.memory`, `limits.cpu`, `limits.memory`, and the bare `cpu` / `memory` forms) | Same silent failure |
 
+A B4 or B5 condition that already held before the change, and that the change does not move
+further past its bound, is not blocked: it is shown as a warning, with "It was already so before
+this change." Blocking it would refuse a change that helps (a request lowered in a namespace whose
+quota was already exceeded). A value that is missing where a rule needs one stays blocked.
+
+In an edit, emptying a field that has a value on the cluster is blocked too: only Restore removes
+a value. A quota with scopes is not evaluated; it is reported as not checked (§4.3).
+
 ### 4.2 Warnings (shown with numbers, the user decides)
 
 | # | Condition | Sentence says |
 |---|---|---|
-| W0 | The pod's request, or a container's limit, is above the allocatable of every node the cluster has now (cordoned ones included) | "No node in this cluster can hold 24Gi (largest: 16Gi). The pods stay Pending unless a larger node is added." Always first in the list |
+| W0 | The pod's request, or a limit the change sets, is above the allocatable of every node the cluster has now (cordoned ones included) | For a request: "No node in this cluster can hold 24Gi (largest: 16Gi). The pods stay Pending unless a larger node is added." For a limit alone the pods are not Pending: "No node in this cluster has 24Gi (largest: 16Gi): the container can never use this limit." Always first in the list |
 | W1 | By requests, fewer replicas fit than the deployment wants: per schedulable node, room = allocatable − requests of the pods there (this workload's own pods left out); replicas that fit = sum over nodes of how many pods fit in both CPU and memory | "Only 2 of 3 replicas have room by their requests; the rest stay Pending unless nodes are added." |
 | W1r | The end state fits (W1 is clear) but the rollout does not: with the strategy's resolved surge and unavailable counts, a new pod has to start while the old ones still hold their room, and no schedulable node has that room | "The rollout may stall: no node has room for a new pod while the old ones still run." |
 | W2 | On a node that hosts this workload's pods, memory limits after the change add up to more than its allocatable | the node, the percent before and after |
@@ -210,6 +218,12 @@ Only what the cluster itself would refuse, at once or when it creates the pods.
 Notes (shown, never ask for anything): CPU limits adding up to more than a node's CPU (CPU is
 shared, it slows down, it does not kill); the pod's QoS class changing (for example Guaranteed to
 Burstable); a successful W1 ("3 of 3 replicas have room").
+
+W2, W3 and the CPU note are reported only when the change makes the figure worse: an overcommit
+that was there before and does not grow is not held against this change. Sums of limits on a node
+count the limits that are set (as `kubectl describe node` does); a container with no memory limit
+adds a "not checked" line that names it. A value typed for memory with the suffix `m` (`512m` is
+0.512 bytes) gets a warning of its own that suggests `512Mi`.
 
 W2 and W3 assume the new pods come back to the nodes the old ones are on, in the same numbers. It
 is the likeliest placement and the only one that can be worked out without simulating the
@@ -230,6 +244,8 @@ itself as not checked, with the reason in the user's terms:
 - metrics-server is not installed or does not answer → W3, W4, W5, and usage in §3.1
 - LimitRange, ResourceQuota, HPA cannot be read (403) → B4, B5/W6, W7
 - the VPA API is not installed → nothing to report (no VPA can exist)
+- a ResourceQuota has scopes → that quota is not evaluated
+- the hosting node has no usage sample → W3 for that node
 
 Node allocatable must not depend on metrics-server (today `cluster_capacity` fails as a whole
 without it).
@@ -340,10 +356,12 @@ which the app removes a request or a limit.
 
 ### 7.2 Tauri and desktop
 
-- Three commands: read facts, evaluate (facts are held by the frontend and sent back with the
-  proposal, so typing costs no cluster call), apply (with `dry_run`).
+- Four commands: read facts, evaluate (facts are held by the frontend and sent back with the
+  proposal, so typing costs no cluster call), apply (with `dry_run`), and remove the override mark
+  ("Keep these values").
 - Errors: the API's `status.message` reaches the user without the `kubernetes client error:`
-  prefix, as YAML apply does today; a 403 gets the sentence in §3.2, a change underneath the
+  prefix, as YAML apply does today; a 403 from RBAC gets the sentence in §3.2 (a 403 from an
+  admission webhook, as Gatekeeper answers, keeps the webhook's own message), a change underneath the
   editor the one in §6.1, and a 409 that survives the one retry reads "The deployment is changing
   too fast to update. Try again."
 - The editor is a new component under `components/deployments/`, the section and the banner are
@@ -435,6 +453,19 @@ Calls made here, not yet confirmed:
 14. "Keep these values" on the banner, to close an override whose values became the real ones.
 15. The Resources section uses `MeterBar` with its existing thresholds (60% and 75%).
 16. A rollout-time room check (W1r) beside the end-state one.
+
+Calls made while building the core (delivery 2, #655), accepted by the user on 2026-11-13 except
+the last two, which came from the review of that delivery:
+
+17. A fourth command removes the override mark.
+18. W0 has a sentence of its own for a limit alone.
+19. W2, W3 and the CPU note only when the change makes the figure worse.
+20. A quota with scopes is not evaluated.
+21. A warning for memory typed with the suffix `m`.
+22. Emptying a field in an edit is blocked.
+23. A B4 or B5 violation that was already there and is not made worse is a warning, not a block.
+24. A pod counts as the deployment's own only when one of its ReplicaSets controls it; a pod of
+    another workload with the same labels counts with the others on its node.
 
 ## 12. Left to the builder
 
