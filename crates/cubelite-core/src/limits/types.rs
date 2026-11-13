@@ -91,11 +91,17 @@ pub fn fmt_amount(resource: ResourceName, amount: f64) -> String {
 }
 
 /// Rounded percent of `total`; 0 when total <= 0; a value above 100 never reads 100 (it reads 101).
+/// Always finite: a quotient too large for an `f64` is clamped to the largest one.
 pub fn percent(part: f64, total: f64) -> f64 {
     if total <= 0.0 || !part.is_finite() || !total.is_finite() {
         return 0.0;
     }
     let exact = part * 100.0 / total;
+    let exact = if exact.is_finite() {
+        exact
+    } else {
+        ((part / total) * 100.0).clamp(-f64::MAX, f64::MAX)
+    };
     let rounded = exact.round();
     if exact > 100.0 && rounded <= 100.0 {
         101.0
@@ -713,5 +719,18 @@ mod tests {
         assert_eq!(percent(f64::NAN, 100.0), 0.0);
         assert_eq!(percent(1.0, f64::NAN), 0.0);
         assert_eq!(percent(50.0, -1.0), 0.0);
+        // A part near the largest number must not overflow to infinity,
+        // which a payload would carry as null.
+        for (part, total) in [(f64::MAX, 1.0), (f64::MAX, 0.5), (1e300, 1e-300)] {
+            let p = percent(part, total);
+            assert!(p.is_finite() && p > 100.0, "{part} / {total}: {p}");
+            let json = serde_json::to_string(&BeforeAfter {
+                before: 0.0,
+                after: p,
+            })
+            .expect("serialises");
+            let back: BeforeAfter = serde_json::from_str(&json).expect("round-trips");
+            assert_eq!(back.after, p);
+        }
     }
 }

@@ -711,6 +711,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_quota_already_exceeded_that_the_change_does_not_worsen_does_not_stop_it() {
+        // The three pods hold 960Mi of a 900Mi quota already; a lower
+        // request helps, though they still do not fit.
+        let mut c = cluster();
+        c.quotas = vec![json!({
+            "metadata": { "name": "team", "namespace": "default" },
+            "spec": { "hard": { "requests.memory": "900Mi" } },
+            "status": {
+                "hard": { "requests.memory": "900Mi" },
+                "used": { "requests.memory": "960Mi" },
+            },
+        })];
+        let (result, seen) = apply(
+            c.clone(),
+            &set("api", Memory, Request, Some("250Mi")),
+            &facts().seen,
+            false,
+        )
+        .await;
+        let evaluation = result.expect("applied");
+        let b5 = evaluation
+            .findings
+            .iter()
+            .find(|f| f.code == FindingCode::B5)
+            .expect("B5");
+        assert_eq!(b5.level, Level::Warning);
+        assert!(
+            b5.message
+                .ends_with(" It was already so before this change."),
+            "{}",
+            b5.message
+        );
+        the_patch(&seen);
+        // Raised, it is refused.
+        let (result, seen) = apply(
+            c,
+            &set("api", Memory, Request, Some("300Mi")),
+            &facts().seen,
+            false,
+        )
+        .await;
+        assert_eq!(
+            result.expect_err("refused"),
+            "Quota `team`: 3 replicas need 1.1Gi of requests.memory; 900Mi is free of 900Mi."
+        );
+        assert!(patches(&seen).is_empty());
+    }
+
+    #[tokio::test]
     async fn nothing_to_change_is_refused() {
         // 512Mi typed as 0.5Gi, 500m typed as 0.5: the same amounts.
         let proposal = crate::limits::fixtures::and(

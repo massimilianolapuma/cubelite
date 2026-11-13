@@ -153,13 +153,22 @@ pub fn evaluate(facts: &ResourceFacts, proposal: &Proposal) -> Evaluation {
                     .iter()
                     .any(|f| f.container.as_deref() == Some(c.name.as_str()))
                 {
+                    let plain_init = facts
+                        .workload
+                        .init_containers
+                        .iter()
+                        .any(|i| i.name == c.name && !i.sidecar);
+                    let message = if plain_init {
+                        format!(
+                            "`{}` is an init container: it cannot be changed here.",
+                            c.name
+                        )
+                    } else {
+                        format!("Container `{}` is not in this deployment.", c.name)
+                    };
                     out.findings.push(Finding {
                         container: Some(c.name.clone()),
-                        ..finding(
-                            FindingCode::UnknownContainer,
-                            Level::Blocked,
-                            format!("Container `{}` is not in this deployment.", c.name),
-                        )
+                        ..finding(FindingCode::UnknownContainer, Level::Blocked, message)
                     });
                 }
             }
@@ -260,9 +269,9 @@ pub fn evaluate(facts: &ResourceFacts, proposal: &Proposal) -> Evaluation {
         let new = after.figures(facts);
         check_limit_under_request(&mut out, &after, &zero_limits);
         if let Some(limit_ranges) = facts.limit_ranges.known() {
-            check_limit_ranges(&mut out, &after, limit_ranges);
+            check_limit_ranges(&mut out, &before, &after, limit_ranges);
         }
-        check_quotas(&mut out, facts, &new);
+        check_quotas(&mut out, facts, &before, &after);
         if let Some(nodes) = facts.nodes.known() {
             check_nodes(&mut out, facts, nodes, &after, &new);
             out.nodes = project_nodes(facts, nodes, &new);
@@ -285,7 +294,7 @@ pub fn evaluate(facts: &ResourceFacts, proposal: &Proposal) -> Evaluation {
             }
         }
         check_usage(&mut out, facts);
-        check_autoscalers_on_requests(&mut out, facts, &before.figures(facts), &new);
+        check_autoscalers_on_requests(&mut out, facts, &before, &after);
         let qos = |t: &Template| qos_class(&t.all().cloned().collect::<Vec<_>>());
         let (qos_before, qos_after) = (qos(&before), qos(&after));
         if qos_before != qos_after {
@@ -743,13 +752,31 @@ fn check_usage(out: &mut Evaluation, facts: &ResourceFacts) {
     }
 }
 
-/// W7: an HPA on utilisation of a resource whose pod request moves.
+/// The requests of the containers that run, an unset one 0: the regular
+/// containers and the native sidecars. The HPA's utilisation is a share of
+/// this sum, not of the scheduler's pod request (which a large plain init
+/// container can hold still).
+fn running_requests(t: &Template) -> Amounts {
+    let running = t.regular.iter().chain(
+        t.init
+            .iter()
+            .filter(|(_, sidecar)| *sidecar)
+            .map(|(c, _)| c),
+    );
+    running.fold(Amounts::default(), |sum, c| Amounts {
+        cpu_millis: sum.cpu_millis + c.cpu.request.unwrap_or(0.0),
+        memory_bytes: sum.memory_bytes + c.memory.request.unwrap_or(0.0),
+    })
+}
+
+/// W7: an HPA on utilisation of a resource whose running containers' requests move.
 fn check_autoscalers_on_requests(
     out: &mut Evaluation,
     facts: &ResourceFacts,
-    before: &PodFigures,
-    new: &PodFigures,
+    before: &Template,
+    after: &Template,
 ) {
+    let (before, new) = (running_requests(before), running_requests(after));
     let Some(hpas) = facts.hpas.known() else {
         return;
     };
@@ -761,7 +788,7 @@ fn check_autoscalers_on_requests(
                 ResourceName::Cpu => hpa.cpu_utilization,
                 ResourceName::Memory => hpa.memory_utilization,
             };
-            if on && !same_amount(new.request.get(resource), before.request.get(resource)) {
+            if on && !same_amount(new.get(resource), before.get(resource)) {
                 out.findings.push(Finding {
                     resource: Some(resource),
                     ..finding(
@@ -896,48 +923,132 @@ fn check_limit_under_request(
     }
 }
 
+/// Which way a figure goes past the rule it breaks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Bound {
+    /// A maximum (or a ratio, or a quota): higher is further past it.
+    Max,
+    /// A minimum: lower is further past it.
+    Min,
+    /// A value the rule needs and the template does not set: no figure.
+    Missing,
+}
+
+/// A B4 or B5 rule a template breaks. `key` names the rule and what it is
+/// about, so the same rule can be looked up on the template before the change.
+struct Violation {
+    key: String,
+    bound: Bound,
+    /// The figure past the bound; 0 for a missing value.
+    figure: f64,
+    /// The finding, blocked.
+    finding: Finding,
+}
+
+impl Violation {
+    /// The same rule was broken before the change, and the change does not
+    /// move the figure further past its bound. A missing value has no
+    /// figure: it is never "already so".
+    fn already_so(&self, before: &[Violation]) -> bool {
+        before.iter().any(|b| {
+            b.key == self.key
+                && b.bound == self.bound
+                && match self.bound {
+                    Bound::Max => !above(self.figure, b.figure),
+                    Bound::Min => !above(b.figure, self.figure),
+                    Bound::Missing => false,
+                }
+        })
+    }
+}
+
+/// Appended to a B4 or B5 sentence the change did not cause and does not worsen.
+const ALREADY_SO: &str = " It was already so before this change.";
+
+/// Each violation of the template after the change: blocked, or a warning
+/// when it was already so before and the change does not make it worse.
+fn report(out: &mut Evaluation, after: Vec<Violation>, before: &[Violation]) {
+    for v in after {
+        let already = v.already_so(before);
+        let mut found = v.finding;
+        if already {
+            found.level = Level::Warning;
+            found.message.push_str(ALREADY_SO);
+        }
+        out.findings.push(found);
+    }
+}
+
 /// B4: the LimitRange admission's rules, over every container of the
-/// template and over the pod.
-fn check_limit_ranges(out: &mut Evaluation, after: &Template, limit_ranges: &[LimitRangeFacts]) {
+/// template and over the pod, on the template before and after the change.
+fn check_limit_ranges(
+    out: &mut Evaluation,
+    before: &Template,
+    after: &Template,
+    limit_ranges: &[LimitRangeFacts],
+) {
+    let was = limit_range_violations(before, limit_ranges);
+    report(out, limit_range_violations(after, limit_ranges), &was);
+}
+
+/// What the LimitRanges refuse in a template, LimitRanges by name.
+fn limit_range_violations(t: &Template, limit_ranges: &[LimitRangeFacts]) -> Vec<Violation> {
+    let mut found = Vec::new();
     let mut by_name: Vec<&LimitRangeFacts> = limit_ranges.iter().collect();
     by_name.sort_by(|a, b| a.name.cmp(&b.name));
     for lr in by_name {
-        let mut push = |what: String,
-                        container: Option<&str>,
-                        resource: ResourceName,
-                        field: ResourceField| {
-            out.findings.push(Finding {
-                container: container.map(str::to_string),
-                resource: Some(resource),
-                field: Some(field),
-                ..finding(
-                    FindingCode::B4,
-                    Level::Blocked,
-                    format!("LimitRange `{}`: {what}.", lr.name),
-                )
-            });
-        };
-        for item in &lr.items {
+        for (index, item) in lr.items.iter().enumerate() {
             for resource in RESOURCES {
                 let word = resource.word();
                 let fmt = |v: f64| fmt_amount(resource, v);
+                let mut push = |rule: &str,
+                                bound: Bound,
+                                figure: f64,
+                                what: String,
+                                container: Option<&str>,
+                                field: ResourceField| {
+                    found.push(Violation {
+                        key: format!(
+                            "{}/{index}/{}/{}/{rule}",
+                            lr.name,
+                            container.unwrap_or(""),
+                            word
+                        ),
+                        bound,
+                        figure,
+                        finding: Finding {
+                            container: container.map(str::to_string),
+                            resource: Some(resource),
+                            field: Some(field),
+                            ..finding(
+                                FindingCode::B4,
+                                Level::Blocked,
+                                format!("LimitRange `{}`: {what}.", lr.name),
+                            )
+                        },
+                    });
+                };
                 match item.kind.as_str() {
                     "Container" => {
-                        for c in after.all() {
+                        for c in t.all() {
                             let e = c.get(resource);
                             let name = c.name.as_str();
                             if let Some(min) = item.min.get(resource) {
                                 match e.request {
                                     None => push(
+                                        "min",
+                                        Bound::Missing,
+                                        0.0,
                                         format!("needs a {word} request on every container; `{name}` has none"),
                                         Some(name),
-                                        resource,
                                         ResourceField::Request,
                                     ),
                                     Some(v) if above(min, v) => push(
+                                        "min",
+                                        Bound::Min,
+                                        v,
                                         format!("{word} request {} of `{name}` is under the minimum {}", fmt(v), fmt(min)),
                                         Some(name),
-                                        resource,
                                         ResourceField::Request,
                                     ),
                                     Some(_) => {}
@@ -946,15 +1057,19 @@ fn check_limit_ranges(out: &mut Evaluation, after: &Template, limit_ranges: &[Li
                             if let Some(max) = item.max.get(resource) {
                                 match e.limit {
                                     None => push(
+                                        "max",
+                                        Bound::Missing,
+                                        0.0,
                                         format!("needs a {word} limit on every container; `{name}` has none"),
                                         Some(name),
-                                        resource,
                                         ResourceField::Limit,
                                     ),
                                     Some(v) if above(v, max) => push(
+                                        "max",
+                                        Bound::Max,
+                                        v,
                                         format!("{word} limit {} of `{name}` is above the maximum {}", fmt(v), fmt(max)),
                                         Some(name),
-                                        resource,
                                         ResourceField::Limit,
                                     ),
                                     Some(_) => {}
@@ -965,24 +1080,28 @@ fn check_limit_ranges(out: &mut Evaluation, after: &Template, limit_ranges: &[Li
                                     (Some(request), Some(limit)) if request > 0.0 => {
                                         if above(limit / request, ratio) {
                                             push(
+                                                "ratio",
+                                                Bound::Max,
+                                                limit / request,
                                                 format!(
                                                     "{word} limit of `{name}` is {} times its request; the maximum ratio is {}",
                                                     fmt_ratio(limit / request),
                                                     fmt_ratio(ratio)
                                                 ),
                                                 Some(name),
-                                                resource,
                                                 ResourceField::Limit,
                                             );
                                         }
                                     }
                                     _ => push(
+                                        "ratio",
+                                        Bound::Missing,
+                                        0.0,
                                         format!(
                                             "`{name}` needs both a {word} request and a {word} limit; the maximum ratio is {}",
                                             fmt_ratio(ratio)
                                         ),
                                         Some(name),
-                                        resource,
                                         ResourceField::Limit,
                                     ),
                                 }
@@ -991,21 +1110,24 @@ fn check_limit_ranges(out: &mut Evaluation, after: &Template, limit_ranges: &[Li
                     }
                     "Pod" => {
                         let requests =
-                            admission_sum(&after.regular, &after.init, |c| c.get(resource).request);
-                        let limits =
-                            admission_sum(&after.regular, &after.init, |c| c.get(resource).limit);
+                            admission_sum(&t.regular, &t.init, |c| c.get(resource).request);
+                        let limits = admission_sum(&t.regular, &t.init, |c| c.get(resource).limit);
                         if let Some(min) = item.min.get(resource) {
                             match requests {
                                 None => push(
+                                    "min",
+                                    Bound::Missing,
+                                    0.0,
                                     format!("the pod has no {word} request; the pod minimum is {}", fmt(min)),
                                     None,
-                                    resource,
                                     ResourceField::Request,
                                 ),
                                 Some(v) if above(min, v) => push(
+                                    "min",
+                                    Bound::Min,
+                                    v,
                                     format!("the pod's {word} requests ({}) are under the pod minimum {}", fmt(v), fmt(min)),
                                     None,
-                                    resource,
                                     ResourceField::Request,
                                 ),
                                 Some(_) => {}
@@ -1014,22 +1136,26 @@ fn check_limit_ranges(out: &mut Evaluation, after: &Template, limit_ranges: &[Li
                         if let Some(max) = item.max.get(resource) {
                             match limits {
                                 None => push(
+                                    "max",
+                                    Bound::Missing,
+                                    0.0,
                                     format!(
                                         "the pod has no {word} limit; the pod maximum is {}",
                                         fmt(max)
                                     ),
                                     None,
-                                    resource,
                                     ResourceField::Limit,
                                 ),
                                 Some(v) if above(v, max) => push(
+                                    "max",
+                                    Bound::Max,
+                                    v,
                                     format!(
                                         "the pod's {word} limits ({}) are above the pod maximum {}",
                                         fmt(v),
                                         fmt(max)
                                     ),
                                     None,
-                                    resource,
                                     ResourceField::Limit,
                                 ),
                                 Some(_) => {}
@@ -1040,24 +1166,28 @@ fn check_limit_ranges(out: &mut Evaluation, after: &Template, limit_ranges: &[Li
                                 (Some(request), Some(limit)) if request > 0.0 => {
                                     if above(limit / request, ratio) {
                                         push(
+                                            "ratio",
+                                            Bound::Max,
+                                            limit / request,
                                             format!(
                                                 "the pod's {word} limits are {} times its requests; the maximum ratio is {}",
                                                 fmt_ratio(limit / request),
                                                 fmt_ratio(ratio)
                                             ),
                                             None,
-                                            resource,
                                             ResourceField::Limit,
                                         );
                                     }
                                 }
                                 _ => push(
+                                    "ratio",
+                                    Bound::Missing,
+                                    0.0,
                                     format!(
                                         "the pod needs both a {word} request and a {word} limit; the maximum ratio is {}",
                                         fmt_ratio(ratio)
                                     ),
                                     None,
-                                    resource,
                                     ResourceField::Limit,
                                 ),
                             }
@@ -1068,6 +1198,7 @@ fn check_limit_ranges(out: &mut Evaluation, after: &Template, limit_ranges: &[Li
             }
         }
     }
+    found
 }
 
 /// The quota keys spec B5 reads, and which figure of the pod each counts.
@@ -1119,53 +1250,112 @@ fn quota_room(
     })
 }
 
-/// B5: with every replica on the new values, an unscoped quota is exceeded.
-fn check_quotas(out: &mut Evaluation, facts: &ResourceFacts, new: &PodFigures) {
+/// B5: with every replica on the new values, an unscoped quota is exceeded,
+/// or a container lacks a value a quota key needs; on the template before
+/// and after the change. W6 for a key that passes.
+fn check_quotas(out: &mut Evaluation, facts: &ResourceFacts, before: &Template, after: &Template) {
     let Some(quotas) = facts.quotas.known() else {
         return;
     };
     let mut by_name: Vec<_> = quotas.iter().filter(|q| !q.scoped).collect();
     by_name.sort_by(|a, b| a.name.cmp(&b.name));
+    let (was_figures, new) = (before.figures(facts), after.figures(facts));
     let replicas = f64::from(facts.workload.replicas.max(0));
     for quota in by_name {
+        let was = quota_violations(facts, quota, before, &was_figures);
+        report(out, quota_violations(facts, quota, after, &new), &was);
         let mut rollout_warned = false;
         for (key, resource, field) in QUOTA_KEYS {
             let Some(room) = quota_room(facts, quota, key, resource, field) else {
                 continue;
             };
-            let Some(per_pod) = quota_figure(new, resource, field) else {
+            if unset_somewhere(after, resource, field) {
+                continue;
+            }
+            let per_pod = quota_figure(&new, resource, field).unwrap_or(0.0);
+            if above(replicas * per_pod, room.free) {
+                continue;
+            }
+            if !rollout_warned && rollout_stalls(facts, &room, per_pod, resource, field) {
+                rollout_warned = true;
                 out.findings.push(Finding {
                     resource: Some(resource),
                     ..finding(
-                        FindingCode::B5,
-                        Level::Blocked,
+                        FindingCode::W6,
+                        Level::Warning,
                         format!(
-                            "Quota `{}` needs a {} limit on every container.",
-                            quota.name,
-                            resource.word()
+                            "The rollout may stall until old pods are gone: quota `{}` has no room for old and new pods together.",
+                            quota.name
                         ),
                     )
                 });
-                continue;
-            };
-            let need = replicas * per_pod;
-            if !above(need, room.free) {
-                if !rollout_warned && rollout_stalls(facts, &room, per_pod, resource, field) {
-                    rollout_warned = true;
-                    out.findings.push(Finding {
+            }
+        }
+    }
+}
+
+/// A container of `t` has no effective value of that field: the quota
+/// admission refuses a pod without a request (or a limit) of a resource
+/// one of its keys tracks.
+fn unset_somewhere(t: &Template, resource: ResourceName, field: ResourceField) -> bool {
+    t.all().any(|c| {
+        let e = c.get(resource);
+        match field {
+            ResourceField::Request => e.request.is_none(),
+            ResourceField::Limit => e.limit.is_none(),
+        }
+    })
+}
+
+/// What one quota refuses with every replica on the values of `t`.
+fn quota_violations(
+    facts: &ResourceFacts,
+    quota: &super::types::QuotaFacts,
+    t: &Template,
+    figures: &PodFigures,
+) -> Vec<Violation> {
+    let replicas = f64::from(facts.workload.replicas.max(0));
+    let mut found = Vec::new();
+    let mut needs: Vec<(ResourceName, ResourceField)> = Vec::new();
+    for (key, resource, field) in QUOTA_KEYS {
+        let Some(room) = quota_room(facts, quota, key, resource, field) else {
+            continue;
+        };
+        if unset_somewhere(t, resource, field) {
+            // `requests.cpu` and `cpu` need the same thing: say it once.
+            if !needs.contains(&(resource, field)) {
+                needs.push((resource, field));
+                let what = match field {
+                    ResourceField::Request => "request",
+                    ResourceField::Limit => "limit",
+                };
+                found.push(Violation {
+                    key: format!("{}/{what}", resource.word()),
+                    bound: Bound::Missing,
+                    figure: 0.0,
+                    finding: Finding {
                         resource: Some(resource),
                         ..finding(
-                            FindingCode::W6,
-                            Level::Warning,
+                            FindingCode::B5,
+                            Level::Blocked,
                             format!(
-                                "The rollout may stall until old pods are gone: quota `{}` has no room for old and new pods together.",
-                                quota.name
+                                "Quota `{}` needs a {} {what} on every container.",
+                                quota.name,
+                                resource.word()
                             ),
                         )
-                    });
-                }
-            } else {
-                out.findings.push(Finding {
+                    },
+                });
+            }
+            continue;
+        }
+        let need = replicas * quota_figure(figures, resource, field).unwrap_or(0.0);
+        if above(need, room.free) {
+            found.push(Violation {
+                key: key.to_string(),
+                bound: Bound::Max,
+                figure: need,
+                finding: Finding {
                     resource: Some(resource),
                     ..finding(
                         FindingCode::B5,
@@ -1179,10 +1369,11 @@ fn check_quotas(out: &mut Evaluation, facts: &ResourceFacts, new: &PodFigures) {
                             fmt_amount(resource, room.hard)
                         ),
                     )
-                });
-            }
+                },
+            });
         }
     }
+    found
 }
 
 /// W6: during a rolling update, with up to `max_unavailable` old pods
@@ -1212,11 +1403,12 @@ fn rollout_stalls(
     })
 }
 
-/// Worst first: by level, then by code as declared, then by node, then by container.
+/// Worst first: by level, then W0 (always the first warning, even before a
+/// B4 or B5 that is a warning), then by code as declared, then by node,
+/// then by container.
 fn sort_findings(findings: &mut [Finding]) {
-    findings.sort_by(|a, b| {
-        (a.level, a.code, &a.node, &a.container).cmp(&(b.level, b.code, &b.node, &b.container))
-    });
+    let key = |f: &Finding| (f.level, f.code != FindingCode::W0, f.code);
+    findings.sort_by(|a, b| (key(a), &a.node, &a.container).cmp(&(key(b), &b.node, &b.container)));
 }
 
 #[cfg(test)]
@@ -1516,7 +1708,13 @@ mod tests {
             container("migrate", false, (Some("10m"), None), (None, None)),
             container("mesh", true, (Some("50m"), None), (None, None)),
         ];
-        for name in ["worker", "migrate"] {
+        for (name, message) in [
+            ("worker", "Container `worker` is not in this deployment."),
+            (
+                "migrate",
+                "`migrate` is an init container: it cannot be changed here.",
+            ),
+        ] {
             let p = Proposal {
                 kind: ProposalKind::Adjust,
                 containers: vec![crate::limits::types::ContainerProposal {
@@ -1530,7 +1728,7 @@ mod tests {
                 Finding {
                     code: FindingCode::UnknownContainer,
                     level: Level::Blocked,
-                    message: format!("Container `{name}` is not in this deployment."),
+                    message: message.into(),
                     container: Some(name.into()),
                     resource: None,
                     field: None,
@@ -1734,10 +1932,25 @@ mod tests {
                 ..Default::default()
             },
         );
+        // The pod is at 500m before any change: a memory change leaves it
+        // there, a warning; a CPU limit raised is refused.
         let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        let b4 = only(&e, FindingCode::B4);
         assert_eq!(
-            only(&e, FindingCode::B4).message,
-            "LimitRange `pod-limits`: the pod's CPU limits (500m) are above the pod maximum 400m."
+            (b4.level, b4.message.as_str()),
+            (
+                Level::Warning,
+                "LimitRange `pod-limits`: the pod's CPU limits (500m) are above the pod maximum 400m. It was already so before this change."
+            )
+        );
+        let e = evaluate(&f, &set_on(&f, "api", Cpu, Limit, Some("600m")));
+        let b4 = only(&e, FindingCode::B4);
+        assert_eq!(
+            (b4.level, b4.message.as_str()),
+            (
+                Level::Blocked,
+                "LimitRange `pod-limits`: the pod's CPU limits (600m) are above the pod maximum 400m."
+            )
         );
         // And a pod minimum on requests.
         f.limit_ranges = limit_range(
@@ -1856,6 +2069,186 @@ mod tests {
         // With a CPU limit on envoy it fits.
         let p = set_on(&f, "envoy", Cpu, Limit, Some("200m"));
         assert!(!codes(&evaluate(&f, &p)).contains(&FindingCode::B5));
+    }
+
+    #[test]
+    fn b5_a_requests_quota_needs_a_request_on_every_container() {
+        let mut f = facts();
+        f.workload.containers[1] =
+            container("envoy", false, (None, None), (Some("64Mi"), Some("128Mi")));
+        let needs_cpu = Finding {
+            resource: Some(Cpu),
+            ..plain(
+                FindingCode::B5,
+                Level::Blocked,
+                "Quota `team` needs a CPU request on every container.",
+            )
+        };
+        for key in ["requests.cpu", "cpu"] {
+            f.quotas = quota("team", &[(key, 10000.0)], &[]);
+            let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+            assert_eq!(only(&e, FindingCode::B5), needs_cpu, "{key}");
+        }
+        // Both keys in one quota: said once.
+        f.quotas = quota("team", &[("requests.cpu", 10000.0), ("cpu", 10000.0)], &[]);
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert_eq!(only(&e, FindingCode::B5), needs_cpu);
+        // Every container has a memory request: a memory quota is fine.
+        f.quotas = quota("team", &[("memory", 10.0 * GI)], &[]);
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert!(!has(&e, FindingCode::B5));
+        // A request that follows the limit, or a LimitRange default, is one.
+        f.quotas = quota("team", &[("requests.cpu", 10000.0)], &[]);
+        f.workload.containers[1] = container(
+            "envoy",
+            false,
+            (None, Some("200m")),
+            (Some("64Mi"), Some("128Mi")),
+        );
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert!(!has(&e, FindingCode::B5));
+    }
+
+    /// A quota on requests.memory that the baseline's three pods (960Mi)
+    /// already do not fit: 900Mi hard, 960Mi used by them.
+    fn quota_already_short(f: &mut ResourceFacts) {
+        f.quotas = quota(
+            "team",
+            &[("requests.memory", 900.0 * MI)],
+            &[("requests.memory", 960.0 * MI)],
+        );
+    }
+
+    #[test]
+    fn b5_already_exceeded_and_not_made_worse_is_a_warning() {
+        let mut f = facts();
+        quota_already_short(&mut f);
+        // A lower request helps, though 3 replicas still do not fit.
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Request, Some("250Mi")));
+        assert_eq!(
+            only(&e, FindingCode::B5),
+            Finding {
+                resource: Some(Memory),
+                ..plain(
+                    FindingCode::B5,
+                    Level::Warning,
+                    "Quota `team`: 3 replicas need 942Mi of requests.memory; 900Mi is free of 900Mi. It was already so before this change."
+                )
+            }
+        );
+        assert!(blocked(&e).is_empty());
+        // A change that leaves the figure where it is, the same.
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert_eq!(only(&e, FindingCode::B5).level, Level::Warning);
+        // Raised: blocked.
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Request, Some("300Mi")));
+        assert_eq!(
+            only(&e, FindingCode::B5),
+            Finding {
+                resource: Some(Memory),
+                ..plain(
+                    FindingCode::B5,
+                    Level::Blocked,
+                    "Quota `team`: 3 replicas need 1.1Gi of requests.memory; 900Mi is free of 900Mi."
+                )
+            }
+        );
+        // W0 stays the first warning.
+        let p = and(
+            set_on(&f, "api", Memory, Request, Some("250Mi")),
+            "api",
+            Memory,
+            Limit,
+            Some("24Gi"),
+        );
+        let e = evaluate(&f, &p);
+        let warnings: Vec<_> = e
+            .findings
+            .iter()
+            .filter(|x| x.level == Level::Warning)
+            .map(|x| x.code)
+            .collect();
+        assert_eq!(warnings[..2], [FindingCode::W0, FindingCode::B5]);
+    }
+
+    #[test]
+    fn b4_already_violated_by_an_untouched_container_is_a_warning() {
+        let mut f = facts();
+        // api's 512Mi is above the maximum before any change.
+        f.limit_ranges = limit_range(
+            "limits",
+            LimitRangeItemFacts {
+                kind: "Container".into(),
+                max: PerResource {
+                    cpu: None,
+                    memory: Some(256.0 * MI),
+                },
+                ..Default::default()
+            },
+        );
+        let e = evaluate(&f, &set_on(&f, "envoy", Memory, Limit, Some("200Mi")));
+        assert_eq!(
+            only(&e, FindingCode::B4),
+            about(
+                FindingCode::B4,
+                Level::Warning,
+                "LimitRange `limits`: memory limit 512Mi of `api` is above the maximum 256Mi. It was already so before this change.",
+                "api",
+                Memory,
+                Some(Limit)
+            )
+        );
+        assert!(blocked(&e).is_empty());
+        // Lowered, still above: the same warning, with the new figure.
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("400Mi")));
+        assert_eq!(only(&e, FindingCode::B4).level, Level::Warning);
+        // The changed container made worse: blocked.
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert_eq!(
+            only(&e, FindingCode::B4),
+            about(
+                FindingCode::B4,
+                Level::Blocked,
+                "LimitRange `limits`: memory limit 768Mi of `api` is above the maximum 256Mi.",
+                "api",
+                Memory,
+                Some(Limit)
+            )
+        );
+        // The changed container newly above: blocked, next to api's warning.
+        let e = evaluate(&f, &set_on(&f, "envoy", Memory, Limit, Some("300Mi")));
+        let b4: Vec<_> = e
+            .findings
+            .iter()
+            .filter(|x| x.code == FindingCode::B4)
+            .map(|x| (x.container.as_deref(), x.level))
+            .collect();
+        assert_eq!(
+            b4,
+            [
+                (Some("envoy"), Level::Blocked),
+                (Some("api"), Level::Warning)
+            ]
+        );
+        // A pod minimum not met before: lowering it further is blocked.
+        f.limit_ranges = limit_range(
+            "pod-limits",
+            LimitRangeItemFacts {
+                kind: "Pod".into(),
+                min: PerResource {
+                    cpu: Some(400.0),
+                    memory: None,
+                },
+                ..Default::default()
+            },
+        );
+        let e = evaluate(&f, &set_on(&f, "api", Cpu, Request, Some("200m")));
+        assert_eq!(only(&e, FindingCode::B4).level, Level::Blocked);
+        let e = evaluate(&f, &set_on(&f, "api", Cpu, Request, Some("280m")));
+        assert_eq!(
+            only(&e, FindingCode::B4).message,
+            "LimitRange `pod-limits`: the pod's CPU requests (380m) are under the pod minimum 400m. It was already so before this change."
+        );
     }
 
     #[test]
@@ -2478,6 +2871,31 @@ mod tests {
     }
 
     #[test]
+    fn w7_counts_the_requests_of_the_running_containers() {
+        // A plain init container of 1 CPU sets the pod's CPU request before
+        // and after; the HPA divides by the running containers' requests.
+        let mut f = facts();
+        hpa(&mut f, true, false);
+        f.workload.init_containers = vec![container(
+            "migrate",
+            false,
+            (Some("1"), Some("1")),
+            (Some("16Mi"), Some("16Mi")),
+        )];
+        let e = evaluate(&f, &set_on(&f, "api", Cpu, Request, Some("400m")));
+        assert_eq!(only(&e, FindingCode::W7).resource, Some(Cpu));
+        // A native sidecar runs: its request counts.
+        f.workload.init_containers = vec![container(
+            "mesh",
+            true,
+            (Some("50m"), Some("100m")),
+            (Some("16Mi"), Some("16Mi")),
+        )];
+        let e = evaluate(&f, &set_on(&f, "mesh", Cpu, Request, Some("80m")));
+        assert_eq!(only(&e, FindingCode::W7).resource, Some(Cpu));
+    }
+
+    #[test]
     fn w8_vpa_unless_off() {
         let mut f = facts();
         let vpa = |mode: &str| Fact::Known {
@@ -2799,7 +3217,20 @@ mod tests {
             .message
             .contains("(largest: 16Gi)"));
         let json = serde_json::to_string(&e).expect("serialises");
-        assert!(!json.contains("null,\"after\"") && !json.contains("NaN"));
+        // A non-finite percent would be written as null, on either side.
+        let value: serde_json::Value = serde_json::from_str(&json).expect("json");
+        for row in value["nodes"].as_array().expect("nodes") {
+            for pair in [
+                "cpu_requests",
+                "memory_requests",
+                "cpu_limits",
+                "memory_limits",
+            ] {
+                for side in ["before", "after"] {
+                    assert!(row[pair][side].is_number(), "{pair}.{side} in {row}");
+                }
+            }
+        }
         let back: Evaluation = serde_json::from_str(&json).expect("round-trips");
         assert_eq!(back, e);
         // No node that can be counted: no W0 against a largest of nothing.
