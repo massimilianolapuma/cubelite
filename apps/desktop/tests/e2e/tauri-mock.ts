@@ -5,6 +5,7 @@
  * backend.
  */
 import type { Page } from "@playwright/test";
+import type { DeploymentInfo, Finding, ResourceFacts } from "../../src/lib/tauri.ts";
 
 declare global {
   interface Window {
@@ -26,6 +27,12 @@ declare global {
     __grafanaForwards?: Record<string, unknown>[];
     /** Test hook: arguments of the last `apply_resource_yaml` call. */
     __lastApply?: Record<string, unknown>;
+    /** Test hook: arguments of the last `apply_resources` call, dry run or not. */
+    __lastResourcesApply?: Record<string, unknown>;
+    /** Test hook: the arguments of every `apply_resources` call, in order. */
+    __resourcesApplies?: Record<string, unknown>[];
+    /** Test hook: arguments of the last `clear_resources_override` call. */
+    __lastClearOverride?: Record<string, unknown>;
     /** Test hook: what `integrations_detect` finds (#527); null = nothing. */
     __detectedIntegrations?: Record<string, unknown>;
     /** Test hook: every integration command the banner's Enable sent, in order. */
@@ -34,6 +41,7 @@ declare global {
 }
 
 const Mi = 1024 * 1024;
+const Gi = 1024 * Mi;
 const quantity = (text: string, amount: number | null) => ({ text, amount });
 
 /** Requests and limits of the worker container: cpu 250m / 500m, memory 256Mi / 512Mi. */
@@ -70,6 +78,135 @@ export const API_0_METRICS: PodMetricsFixture = {
   containers: [
     { name: "worker", cpu_millis: 260, memory_bytes: 498 * Mi },
     { name: "envoy", cpu_millis: 38, memory_bytes: 41 * Mi },
+  ],
+};
+
+/** No requests, no limits: the plain init container of the pod. */
+const NO_RESOURCES = {
+  cpu: { request: null, limit: null },
+  memory: { request: null, limit: null },
+};
+
+/** One pod of `default/api` as the scheduler counts it: worker plus the envoy sidecar. */
+const API_POD_FIGURES = {
+  request: { cpu_millis: 350, memory_bytes: 320 * Mi },
+  // envoy has no limit: the pod has none.
+  cpu_limit: null,
+  memory_limit: null,
+  set_limits: { cpu_millis: 500, memory_bytes: 512 * Mi },
+};
+
+/**
+ * What `resource_facts` reads for `default/api`: the deployment fixture's
+ * containers with the same texts (worker, then envoy as a native sidecar, and
+ * the pod's plain init container), 2 replicas rolling 1 / 0, both pods on
+ * node-1 (api-0 with the usage of API_0_METRICS, so the editor's "Now" agrees
+ * with the panel), node-2 with none of them, and no LimitRange, quota, HPA or
+ * VPA. Memory limits on node-1 are at 91%: 768Mi for the worker still fits
+ * (97%), 1Gi does not (103%).
+ */
+const API_RESOURCE_FACTS: ResourceFacts = {
+  workload: {
+    namespace: "default",
+    name: "api",
+    resource_version: "812",
+    generation: 4,
+    replicas: 2,
+    rollout: { recreate: false, max_surge: 1, max_unavailable: 0 },
+    containers: [{ name: "worker", image: "ghcr.io/x/worker:2.1", sidecar: false, resources: WORKER_RESOURCES }],
+    init_containers: [
+      { name: "envoy", image: "ghcr.io/x/envoy:1.29", sidecar: true, resources: ENVOY_RESOURCES },
+      { name: "init-migrate", image: "ghcr.io/x/init-migrate:1.0", sidecar: false, resources: NO_RESOURCES },
+    ],
+    overhead: { cpu_millis: 0, memory_bytes: 0 },
+    manager: { kind: "none", release: null },
+    override_annotation: null,
+  },
+  seen: {
+    generation: 4,
+    resources: { worker: WORKER_RESOURCES, envoy: ENVOY_RESOURCES, "init-migrate": NO_RESOURCES },
+    override_annotation: null,
+  },
+  pods: [
+    { name: "api-0", node: "node-1", figures: API_POD_FIGURES, usage: API_0_METRICS.containers ?? [] },
+    {
+      name: "api-1",
+      node: "node-1",
+      figures: API_POD_FIGURES,
+      usage: [
+        { name: "worker", cpu_millis: 180, memory_bytes: 300 * Mi },
+        { name: "envoy", cpu_millis: 30, memory_bytes: 30 * Mi },
+      ],
+    },
+  ],
+  usage: { state: "known", value: null },
+  nodes: {
+    state: "known",
+    value: [
+      {
+        name: "node-1",
+        schedulable: true,
+        allocatable: { cpu_millis: 4000, memory_bytes: 8 * Gi },
+        others_requests: { cpu_millis: 1800, memory_bytes: 4 * Gi },
+        others_cpu_limits: 2500,
+        others_memory_limits: 6400 * Mi,
+        memory_used: 5 * Gi,
+      },
+      {
+        name: "node-2",
+        schedulable: true,
+        allocatable: { cpu_millis: 4000, memory_bytes: 8 * Gi },
+        others_requests: { cpu_millis: 1000, memory_bytes: 2 * Gi },
+        others_cpu_limits: 2000,
+        others_memory_limits: 3 * Gi,
+        memory_used: 3 * Gi,
+      },
+    ],
+  },
+  limit_ranges: { state: "known", value: [] },
+  quotas: { state: "known", value: [] },
+  hpas: { state: "known", value: [] },
+  vpas: { state: "known", value: [] },
+};
+
+const ABOUT_NOTHING = { container: null, resource: null, field: null, node: null };
+
+/**
+ * The findings `evaluate_resources` answers for a typed value, keyed
+ * "{container}/{resource}.{field}={text}": a blocked value, a warning (the
+ * x2 quick step on the worker's memory limit) and a not-checked finding (the
+ * +50% quick step on its CPU limit). Any other change only fits.
+ */
+const RESOURCE_FINDINGS: Record<string, Finding[]> = {
+  "worker/memory.limit=128Mi": [
+    {
+      code: "b3",
+      level: "blocked",
+      message: "The limit (128Mi) is under the request (256Mi).",
+      ...ABOUT_NOTHING,
+      container: "worker",
+      resource: "memory",
+      field: "limit",
+    },
+  ],
+  "worker/memory.limit=1Gi": [
+    {
+      code: "w2",
+      level: "warning",
+      message:
+        "Memory limits on node-1 add up to 103% of what the node has (was 91%). Under memory pressure the node evicts pods.",
+      ...ABOUT_NOTHING,
+      resource: "memory",
+      node: "node-1",
+    },
+  ],
+  "worker/cpu.limit=750m": [
+    {
+      code: "w9",
+      level: "not_checked",
+      message: "Not checked: namespace quota (not allowed to read ResourceQuota).",
+      ...ABOUT_NOTHING,
+    },
   ],
 };
 
@@ -187,7 +324,7 @@ export const FIXTURES = {
         { name: "envoy", image: "ghcr.io/x/envoy:1.29", sidecar: true, resources: ENVOY_RESOURCES },
       ],
     },
-  ],
+  ] as DeploymentInfo[],
   /**
    * What `list_pod_metrics` answers: by default metrics-server answers with no
    * sample; null is metrics-server not answering (the command fails).
@@ -246,6 +383,18 @@ export const FIXTURES = {
       last_terminated_at: null,
     },
   ],
+  /**
+   * What `resource_facts` answers for `default/api`; null makes it fail as a
+   * user who may not list pods. `apply_resources` writes into it, so the
+   * editor reopened after an apply reads the new values.
+   */
+  resourceFacts: API_RESOURCE_FACTS as ResourceFacts | null,
+  /** Findings of `evaluate_resources` per typed value; see RESOURCE_FINDINGS. */
+  resourceFindings: RESOURCE_FINDINGS,
+  /** When set, `apply_resources` with `dryRun` fails with this message. */
+  dryRunError: null as string | null,
+  /** When set, the real `apply_resources` fails with this message. */
+  applyError: null as string | null,
 };
 
 /** Serializable init script installing the IPC mock; `overrides` replace fixtures by key. */
@@ -263,6 +412,151 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
   const streamIdsByContainer = {};
   // Last custom kubeconfig list handed to kubeconfig_sources (null = defaults).
   let customSpec = null;
+
+  // --- The resources commands (resource_facts, evaluate_resources,
+  // apply_resources, clear_resources_override): a stand-in for the core's
+  // check, driven by fixtures.resourceFindings, and an apply that writes into
+  // the deployment and facts fixtures so later reads show the outcome.
+  const FIELDS = [["cpu", "request"], ["cpu", "limit"], ["memory", "request"], ["memory", "limit"]];
+  const LEVELS = ["blocked", "warning", "not_checked", "note"];
+  const UNITS = { "": 1, k: 1e3, M: 1e6, G: 1e9, T: 1e12, Ki: 1024, Mi: 1024 ** 2, Gi: 1024 ** 3, Ti: 1024 ** 4 };
+  // The amount of the plain quantities the e2e types (millicores, bytes); null otherwise.
+  const amountOf = (resource, text) => {
+    if (text === null || text === undefined) return null;
+    if (resource === "cpu") {
+      const m = /^(\\d+(?:\\.\\d+)?)(m?)$/.exec(text.trim());
+      return m ? Number(m[1]) * (m[2] ? 1 : 1000) : null;
+    }
+    const m = /^(\\d+(?:\\.\\d+)?)(Ki|Mi|Gi|Ti|k|M|G|T)?$/.exec(text.trim());
+    return m ? Number(m[1]) * UNITS[m[2] ?? ""] : null;
+  };
+  const textsOf = (r) => ({
+    cpu: { request: r.cpu.request?.text ?? null, limit: r.cpu.limit?.text ?? null },
+    memory: { request: r.memory.request?.text ?? null, limit: r.memory.limit?.text ?? null },
+  });
+  const infoOf = (t) => {
+    const one = (resource, text) => (text === null ? null : { text, amount: amountOf(resource, text) });
+    return {
+      cpu: { request: one("cpu", t.cpu.request), limit: one("cpu", t.cpu.limit) },
+      memory: { request: one("memory", t.memory.request), limit: one("memory", t.memory.limit) },
+    };
+  };
+  const editable = (facts) => [
+    ...facts.workload.containers,
+    ...facts.workload.init_containers.filter((c) => c.sidecar),
+  ];
+  const markOf = (facts) => (facts.workload.override_annotation ? JSON.parse(facts.workload.override_annotation) : null);
+  // Container name -> the texts the proposal wants: the typed ones, or the mark's originals for a restore.
+  const wanted = (facts, proposal) => {
+    const want = {};
+    if (proposal.kind === "restore") {
+      const mark = markOf(facts);
+      for (const [name, entry] of Object.entries(mark ? mark.containers : {})) want[name] = entry.original;
+    } else {
+      for (const c of proposal.containers) want[c.name] = c.resources;
+    }
+    return want;
+  };
+  const percent = (part, total) => (total > 0 ? Math.round((part * 100) / total) : 0);
+  const project = (facts, want, changes) => {
+    if (facts.nodes.state !== "known") return [];
+    // A pod's memory limits as a node adds them up after the change (an unset limit counts 0).
+    let readable = true;
+    const podLimit = editable(facts).reduce((sum, c) => {
+      const text = want[c.name] ? want[c.name].memory.limit : c.resources.memory.limit?.text ?? null;
+      const amount = amountOf("memory", text);
+      if (text !== null && amount === null) readable = false;
+      return sum + (amount ?? 0);
+    }, 0);
+    const moved = readable && changes.some((ch) => ch.resource === "memory" && ch.field === "limit");
+    const same = (value) => ({ before: value, after: value });
+    const rows = facts.nodes.value.map((n) => {
+      const own = facts.pods.filter((p) => p.node === n.name);
+      const sum = (pick) => own.reduce((s, p) => s + pick(p), 0);
+      const cpu = n.allocatable.cpu_millis;
+      const memory = n.allocatable.memory_bytes;
+      const limitsBefore = n.others_memory_limits + sum((p) => p.figures.set_limits.memory_bytes);
+      const limitsAfter = moved ? n.others_memory_limits + own.length * podLimit : limitsBefore;
+      let ifFull = null;
+      if (facts.usage.state === "known" && n.memory_used !== null) {
+        const inUse = sum((p) => p.usage.reduce((s, u) => s + u.memory_bytes, 0));
+        const full = moved ? n.memory_used - inUse + own.length * podLimit : n.memory_used;
+        ifFull = { before: percent(n.memory_used, memory), after: percent(full, memory) };
+      }
+      return {
+        name: n.name,
+        schedulable: n.schedulable,
+        own_pods: own.length,
+        cpu_requests: same(percent(n.others_requests.cpu_millis + sum((p) => p.figures.request.cpu_millis), cpu)),
+        memory_requests: same(percent(n.others_requests.memory_bytes + sum((p) => p.figures.request.memory_bytes), memory)),
+        cpu_limits: same(percent(n.others_cpu_limits + sum((p) => p.figures.set_limits.cpu_millis), cpu)),
+        memory_limits: { before: percent(limitsBefore, memory), after: percent(limitsAfter, memory) },
+        memory_if_full: ifFull,
+      };
+    });
+    return [...rows.filter((r) => r.own_pods > 0), ...rows.filter((r) => r.own_pods === 0)];
+  };
+  const evaluate = (facts, proposal) => {
+    const want = wanted(facts, proposal);
+    const changes = [];
+    const findings = [];
+    for (const c of editable(facts)) {
+      const after = want[c.name];
+      if (!after) continue;
+      const before = textsOf(c.resources);
+      for (const [resource, field] of FIELDS) {
+        if (before[resource][field] === after[resource][field]) continue;
+        changes.push({ container: c.name, sidecar: c.sidecar, resource, field, before: before[resource][field], after: after[resource][field] });
+        const key = c.name + "/" + resource + "." + field + "=" + after[resource][field];
+        findings.push(...(fixtures.resourceFindings[key] ?? []));
+      }
+    }
+    if (!findings.length) {
+      const r = facts.workload.replicas;
+      findings.push({ code: "note_fits", level: "note", message: "Fits: " + r + " of " + r + " replicas have room by their requests.", container: null, resource: null, field: null, node: null });
+    }
+    findings.sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level));
+    return { findings, changes, nodes: project(facts, want, changes) };
+  };
+  const deploymentOf = (namespace, name) => fixtures.deployments.find((d) => d.namespace === namespace && d.name === name);
+  const factsOf = (namespace, name) => {
+    const facts = fixtures.resourceFacts;
+    if (facts === null) throw new Error("pods is forbidden: User cannot list resource pods");
+    if (facts.workload.namespace !== namespace || facts.workload.name !== name) {
+      throw new Error('deployments.apps "' + name + '" not found');
+    }
+    return facts;
+  };
+  // The apply itself: new texts in the facts and the deployment, and the override mark
+  // (the first original kept, applied replaced); a restore puts the originals back and drops it.
+  const commit = (facts, proposal) => {
+    const deployment = deploymentOf(facts.workload.namespace, facts.workload.name);
+    const want = wanted(facts, proposal);
+    const mark = markOf(facts);
+    const marked = mark && proposal.kind === "adjust" ? mark.containers : {};
+    for (const c of editable(facts)) {
+      const texts = want[c.name];
+      if (!texts) continue;
+      const now = textsOf(c.resources);
+      if (JSON.stringify(now) === JSON.stringify(texts)) continue;
+      if (proposal.kind === "adjust") marked[c.name] = { original: marked[c.name]?.original ?? now, applied: texts };
+      c.resources = infoOf(texts);
+      facts.seen.resources[c.name] = c.resources;
+      const shown = deployment?.containers?.find((d) => d.name === c.name);
+      if (shown) shown.resources = c.resources;
+    }
+    const names = Object.keys(marked).sort();
+    const at = new Date().toISOString();
+    facts.workload.override_annotation = names.length ? JSON.stringify({ v: 1, at, containers: marked }) : null;
+    facts.seen.override_annotation = facts.workload.override_annotation;
+    facts.workload.generation += 1;
+    facts.seen.generation = facts.workload.generation;
+    if (deployment) {
+      deployment.resources_override = names.length
+        ? { at, containers: names.map((name) => ({ name, original: marked[name].original, applied: marked[name].applied })) }
+        : null;
+    }
+  };
 
   const responses = (cmd, args) => {
     switch (cmd) {
@@ -436,6 +730,34 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
         return "apiVersion: apps/v1\\nkind: DaemonSet\\nmetadata:\\n  name: " + args.name + "\\n";
       case "apply_resource_yaml": {
         window.__lastApply = args;
+        return null;
+      }
+      case "resource_facts":
+        return JSON.parse(JSON.stringify(factsOf(args.namespace, args.name)));
+      case "evaluate_resources":
+        return evaluate(args.facts, args.proposal);
+      case "apply_resources": {
+        window.__lastResourcesApply = args;
+        window.__resourcesApplies = [...(window.__resourcesApplies ?? []), args];
+        if (args.dryRun && fixtures.dryRunError) throw new Error(fixtures.dryRunError);
+        if (!args.dryRun && fixtures.applyError) throw new Error(fixtures.applyError);
+        const facts = factsOf(args.namespace, args.name);
+        const evaluation = evaluate(facts, args.proposal);
+        // The core refuses a blocked change even when the caller sends it.
+        const blocked = evaluation.findings.find((f) => f.level === "blocked");
+        if (blocked) throw new Error(blocked.message);
+        if (!args.dryRun) commit(facts, args.proposal);
+        return evaluation;
+      }
+      case "clear_resources_override": {
+        window.__lastClearOverride = args;
+        const deployment = deploymentOf(args.namespace, args.name);
+        if (deployment) deployment.resources_override = null;
+        const facts = fixtures.resourceFacts;
+        if (facts && facts.workload.namespace === args.namespace && facts.workload.name === args.name) {
+          facts.workload.override_annotation = null;
+          facts.seen.override_annotation = null;
+        }
         return null;
       }
       default: return null;
