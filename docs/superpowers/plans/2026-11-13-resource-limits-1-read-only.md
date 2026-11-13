@@ -221,12 +221,19 @@ export type ResourceRow = {
 };
 export type ContainerRows = { name: string; sidecar: boolean; rows: readonly [ResourceRow, ResourceRow] };
 
-/** Rows for each container that has a `resources` field; usage is the highest of the given pods. */
+/** One pod: what its containers run with, and its metrics. */
+export type PodUsage = {
+  containers?: readonly { name: string; resources?: ContainerResourcesInfo }[];
+  metrics: PodMetricsInfo | null;
+};
+/** Rows for each container that has a `resources` field; usage is the highest of the counted pods. */
 export function containerRows(
   containers: readonly { name: string; sidecar?: boolean; resources?: ContainerResourcesInfo }[],
-  podMetrics: readonly (PodMetricsInfo | null)[],
+  pods: readonly PodUsage[],
 ): ContainerRows[];
 ```
+
+A pod's sample counts for a container and a resource only when that pod's own container has the same limit for that resource as the template (compared by `amount`; both without a limit is the same). A pod without such a container, or whose container has no `resources`, does not count: a pod of the previous ReplicaSet, or of another workload the selector also matches, is measured against another limit (review of #652).
 
 `detail`, exact (used values through `formatCpu` / `formatBytes` of `lib/units.ts`, request and limit as the cluster's `text`):
 
@@ -292,7 +299,7 @@ it("keeps the sidecar flag", () => { /* sidecar: true → ContainerRows.sidecar 
 - Produces: `ContainerResourceRows.svelte` with props `{ rows: readonly ResourceRow[] }`. A row with `meter` is `<MeterBar label percent detail />`; a row without is one line, the label in the same `type-label w-9` column and `detail` in `type-data-sm text-text-muted`, marked `data-resource-row={row.resource}` (the meter row carries the same attribute on a wrapper).
 
 Layout decisions:
-- **Deployment panel:** `<div data-section="resources">` with the `PANEL_SECTION` heading `Resources`, then one `PANEL_CARD` per container: the name (`type-data-sm text-text`, the word `sidecar` after it in `type-body-sm text-text-muted` for a native sidecar), then `ContainerResourceRows`. Rendered only when `containerRows(...)` is not empty. Usage: `childPods.map((p) => resources.metricsFor(p.namespace, p.name))`.
+- **Deployment panel:** `<div data-section="resources">` with the `PANEL_SECTION` heading `Resources`, then one `PANEL_CARD` per container: the name (`type-data-sm text-text`, the word `sidecar` after it in `type-body-sm text-text-muted` for a native sidecar), then `ContainerResourceRows`. Rendered only when `containerRows(...)` is not empty. Usage: `childPods.map((p) => ({ containers: p.containers, metrics: resources.metricsFor(p.namespace, p.name) }))`.
 - Under the cards, when `!resources.metricsAvailable`: `<p class="type-body-sm text-text-muted">Usage unavailable: metrics-server did not answer.</p>`, once. Not shown when metrics are available and there is simply no sample.
 - **Pod panel:** `ContainerResourceRows` inside each existing container card, under the image, for containers that have rows. Usage is that pod's `resources.metricsFor`. No extra sentence: the card below already says when metrics are unavailable.
 

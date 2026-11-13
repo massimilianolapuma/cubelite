@@ -110,6 +110,9 @@ const API_0_METRICS: PodMetricsInfo = {
   memory_bytes: 498 * Mi,
   containers: [{ name: "api", cpu_millis: 260, memory_bytes: 498 * Mi }],
 };
+/** api-0 of the deployment: its api container runs with the template's resources. */
+const apiPod = (resources: ContainerResourcesInfo = API_RESOURCES) =>
+  pod({ labels: { app: "api" }, containers: [{ name: "api", image: "registry.example/api:1.4", ready: true, resources }] });
 const UNAVAILABLE = "Usage unavailable: metrics-server did not answer.";
 const resourcesSection = () => document.querySelector<HTMLElement>('[data-section="resources"]');
 const resourceCard = (name: string) => resourcesSection()!.querySelector<HTMLElement>(`[data-container="${name}"]`)!;
@@ -390,7 +393,7 @@ describe("DeploymentDrawer", () => {
   });
 
   it("shows each container's requests, limits and the usage of its pods in a Resources section", async () => {
-    await loadWithMetrics([pod({ labels: { app: "api" } })], [API_0_METRICS]);
+    await loadWithMetrics([apiPod()], [API_0_METRICS]);
     render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
     const section = resourcesSection()!;
     expect(within(section).getByText("Resources")).toBeInTheDocument();
@@ -411,7 +414,7 @@ describe("DeploymentDrawer", () => {
   });
 
   it("says once that usage is unavailable when metrics-server did not answer", async () => {
-    await loadWithMetrics([pod({ labels: { app: "api" } })], new Error("the server could not find the requested resource"));
+    await loadWithMetrics([apiPod()], new Error("the server could not find the requested resource"));
     render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
     expect(screen.getAllByText(UNAVAILABLE)).toHaveLength(1);
     expect(resourceCard("api")).toHaveTextContent("limit 500m · request 250m");
@@ -448,7 +451,7 @@ describe("DeploymentDrawer", () => {
         resources: { ...API_RESOURCES, memory: { request: q("256Mi", 256 * Mi), limit: q("1Xi", null) } },
       },
     ];
-    await loadWithMetrics([pod({ labels: { app: "api" } })], [API_0_METRICS]);
+    await loadWithMetrics([apiPod(unreadable[0].resources)], [API_0_METRICS]);
     render(DeploymentDrawer, { props: { deployment: dep({ containers: unreadable }), onClose: vi.fn() } });
     const memory = resourceRow(resourceCard("api"), "memory");
     expect(memory).toHaveTextContent("498Mi of 1Xi · request 256Mi");

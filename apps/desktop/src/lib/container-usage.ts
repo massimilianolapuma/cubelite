@@ -6,6 +6,7 @@ import type {
   ContainerResourcesInfo,
   ContainerUsageInfo,
   PodMetricsInfo,
+  QuantityInfo,
   ResourcePairInfo,
 } from "#lib/tauri.ts";
 import { formatBytes, formatCpu, percentOf } from "#lib/units.ts";
@@ -30,6 +31,12 @@ export type ContainerRows = {
 
 type ContainerLike = { name: string; sidecar?: boolean; resources?: ContainerResourcesInfo };
 
+/** One pod: what its containers run with, and its metrics (null without a sample). */
+export type PodUsage = {
+  containers?: readonly { name: string; resources?: ContainerResourcesInfo }[];
+  metrics: PodMetricsInfo | null;
+};
+
 const RESOURCES = [
   { resource: "cpu", label: "CPU", used: (c: ContainerUsageInfo) => c.cpu_millis, format: formatCpu },
   {
@@ -40,15 +47,39 @@ const RESOURCES = [
   },
 ] as const;
 
+/** Same limit: both without one, or both with the same amount (the same text when unreadable). */
+function sameLimit(a: QuantityInfo | null, b: QuantityInfo | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.amount !== null && b.amount !== null) return a.amount === b.amount;
+  return a.amount === b.amount && a.text === b.text;
+}
+
+/**
+ * The pods whose own container `name` runs with the template's limit for
+ * `resource`: a pod of an older ReplicaSet, or of another workload the
+ * selector also matches, measures against another limit and does not count.
+ */
+function countedPods(
+  name: string,
+  resource: "cpu" | "memory",
+  limit: QuantityInfo | null,
+  pods: readonly PodUsage[],
+): PodUsage[] {
+  return pods.filter((pod) => {
+    const own = pod.containers?.find((c) => c.name === name)?.resources;
+    return own !== undefined && sameLimit(own[resource].limit, limit);
+  });
+}
+
 /** The highest sample of one container across the given pods, or null when none has one. */
 function highest(
   name: string,
-  podMetrics: readonly (PodMetricsInfo | null)[],
+  pods: readonly PodUsage[],
   used: (c: ContainerUsageInfo) => number,
 ): number | null {
   let max: number | null = null;
-  for (const pod of podMetrics) {
-    for (const sample of pod?.containers ?? []) {
+  for (const pod of pods) {
+    for (const sample of pod.metrics?.containers ?? []) {
       if (sample.name !== name) continue;
       const value = used(sample);
       if (max === null || value > max) max = value;
@@ -79,18 +110,23 @@ function row(
   return { resource: spec.resource, label: spec.label, percent, meter: limit !== null, detail };
 }
 
-/** Rows for each container that has a `resources` field; usage is the highest of the given pods. */
+/**
+ * Rows for each container that has a `resources` field. Usage is the highest
+ * among the given pods that run the container with the template's limit.
+ */
 export function containerRows(
   containers: readonly ContainerLike[],
-  podMetrics: readonly (PodMetricsInfo | null)[],
+  pods: readonly PodUsage[],
 ): ContainerRows[] {
   const out: ContainerRows[] = [];
   for (const c of containers) {
     const resources = c.resources;
     if (!resources) continue;
-    const [cpu, memory] = RESOURCES.map((spec) =>
-      row(spec, resources[spec.resource], highest(c.name, podMetrics, spec.used)),
-    );
+    const [cpu, memory] = RESOURCES.map((spec) => {
+      const pair = resources[spec.resource];
+      const counted = countedPods(c.name, spec.resource, pair.limit, pods);
+      return row(spec, pair, highest(c.name, counted, spec.used));
+    });
     out.push({ name: c.name, sidecar: c.sidecar === true, rows: [cpu, memory] });
   }
   return out;

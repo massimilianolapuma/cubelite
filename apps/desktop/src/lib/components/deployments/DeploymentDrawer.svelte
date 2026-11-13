@@ -55,11 +55,12 @@
 	const podsKnown = $derived(resources.mainLoaded && resources.listError('pods') === null);
 
 	// Requests, limits and usage per template container (#652). Usage is the
-	// highest among the deployment's pods: the one closest to its limit.
+	// highest among the deployment's pods that run the template's limits: the
+	// one closest to its limit.
 	const resourceRows = $derived(
 		containerRows(
 			deployment.containers ?? [],
-			childPods.map((p) => resources.metricsFor(p.namespace, p.name))
+			childPods.map((p) => ({ containers: p.containers, metrics: resources.metricsFor(p.namespace, p.name) }))
 		)
 	);
 	// Only once metrics-server was asked: before that, it has not failed to answer.

@@ -83,7 +83,7 @@
 	const usage = $derived(resources.metricsFor(pod.namespace, pod.name));
 	// Requests, limits and this pod's usage per container (#652), by name.
 	const resourceRows = $derived(
-		new Map(containerRows(pod.containers, [usage]).map((c) => [c.name, c.rows]))
+		new Map(containerRows(pod.containers, [{ containers: pod.containers, metrics: usage }]).map((c) => [c.name, c.rows]))
 	);
 	// Bars are relative to the allocatable capacity of the pod's node.
 	const nodeCapacity = $derived(resources.nodes.find((n) => n.name === pod.node) ?? null);
