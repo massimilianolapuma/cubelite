@@ -95,7 +95,7 @@ pub fn percent(part: f64, total: f64) -> f64 {
     if total <= 0.0 || !part.is_finite() || !total.is_finite() {
         return 0.0;
     }
-    let exact = part / total * 100.0;
+    let exact = part * 100.0 / total;
     let rounded = exact.round();
     if exact > 100.0 && rounded <= 100.0 {
         101.0

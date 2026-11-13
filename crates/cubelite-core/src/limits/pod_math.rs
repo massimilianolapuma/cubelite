@@ -367,7 +367,7 @@ mod tests {
         let sidecar = set("mesh", (100.0, Some(100.0)), (50.0, Some(50.0)));
         let plain = set("migrate", (300.0, Some(300.0)), (10.0, Some(10.0)));
         let p = pod_figures(
-            &[regular.clone()],
+            std::slice::from_ref(&regular),
             &[(sidecar.clone(), true), (plain.clone(), false)],
             &Amounts::default(),
         );
@@ -394,7 +394,7 @@ mod tests {
             cpu_millis: 250.0,
             memory_bytes: 120.0 * MI,
         };
-        let p = pod_figures(&[api.clone()], &[(migrate, false)], &overhead);
+        let p = pod_figures(std::slice::from_ref(&api), &[(migrate, false)], &overhead);
         assert_eq!(
             p.request,
             Amounts {

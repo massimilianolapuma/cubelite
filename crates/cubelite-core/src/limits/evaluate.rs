@@ -4,11 +4,12 @@
 use std::collections::BTreeMap;
 
 use super::mark::active_override;
-use super::pod_math::{admission_sum, effective, pod_figures, EffectiveContainer};
+use super::pod_math::{admission_sum, effective, pod_figures, qos_class, EffectiveContainer};
 use super::types::{
-    fmt_amount, same_amount, same_value, Change, Evaluation, Finding, FindingCode, Level,
-    LimitRangeFacts, PodFigures, Proposal, ProposalKind, ResourceFacts, ResourceField,
-    ResourceName, ResourceTexts, FIELDS,
+    fmt_amount, percent, same_amount, same_value, Amounts, BeforeAfter, Change, Evaluation, Fact,
+    Finding, FindingCode, Level, LimitRangeFacts, NodeFacts, NodeProjection, OwnPodFacts,
+    PodFigures, Proposal, ProposalKind, ResourceFacts, ResourceField, ResourceName, ResourceTexts,
+    FIELDS,
 };
 use crate::resources::TemplateContainerInfo;
 
@@ -255,16 +256,546 @@ pub fn evaluate(facts: &ResourceFacts, proposal: &Proposal) -> Evaluation {
             },
             limit_ranges,
         );
+        let before = Template::new(facts, |c| ResourceTexts::from(&c.resources), limit_ranges);
         let new = after.figures(facts);
         check_limit_under_request(&mut out, &after, &zero_limits);
         if let Some(limit_ranges) = facts.limit_ranges.known() {
             check_limit_ranges(&mut out, &after, limit_ranges);
         }
         check_quotas(&mut out, facts, &new);
+        if let Some(nodes) = facts.nodes.known() {
+            check_nodes(&mut out, facts, nodes, &after, &new);
+            out.nodes = project_nodes(facts, nodes, &new);
+        }
+        check_usage(&mut out, facts);
+        check_autoscalers_on_requests(&mut out, facts, &before.figures(facts), &new);
+        let qos = |t: &Template| qos_class(&t.all().cloned().collect::<Vec<_>>());
+        let (qos_before, qos_after) = (qos(&before), qos(&after));
+        if qos_before != qos_after {
+            out.findings.push(finding(
+                FindingCode::NoteQos,
+                Level::Note,
+                format!("The pod's QoS class changes from {qos_before} to {qos_after}."),
+            ));
+        }
+    }
+    check_vpas(&mut out, facts);
+    not_checked(&mut out, facts);
+    if facts.pods.is_empty() {
+        out.findings.push(finding(
+            FindingCode::NoteNoPods,
+            Level::Note,
+            "No pod is running: the checks on current usage do not apply.".to_string(),
+        ));
     }
 
     sort_findings(&mut out.findings);
     out
+}
+
+/// A node that can be counted: both its allocatable amounts are above 0
+/// (a node that reports none, or one the parser could not read, is left out).
+fn usable(node: &NodeFacts) -> bool {
+    node.allocatable.cpu_millis > 0.0 && node.allocatable.memory_bytes > 0.0
+}
+
+/// The workload's pods on `node`.
+fn own_pods_on<'a>(facts: &'a ResourceFacts, node: &str) -> Vec<&'a OwnPodFacts> {
+    facts
+        .pods
+        .iter()
+        .filter(|p| p.node.as_deref() == Some(node))
+        .collect()
+}
+
+/// The sum of one figure over pods.
+fn sum_of(pods: &[&OwnPodFacts], figure: impl Fn(&PodFigures) -> f64) -> f64 {
+    pods.iter().map(|p| figure(&p.figures)).sum()
+}
+
+/// What the workload's pods on a node use of memory now, by their samples.
+fn memory_in_use(pods: &[&OwnPodFacts]) -> f64 {
+    pods.iter()
+        .flat_map(|p| p.usage.iter())
+        .map(|u| u.memory_bytes as f64)
+        .sum()
+}
+
+/// How many pods of `need` fit in `room`, at most `cap`. A request of 0
+/// never limits.
+fn how_many_fit(room: Amounts, need: &Amounts, cap: i64) -> i64 {
+    let mut count = cap;
+    for resource in RESOURCES {
+        let need = need.get(resource);
+        if need > 0.0 {
+            let fit = (room.get(resource).max(0.0) / need + 1e-9).floor();
+            // `fit` is finite and at least 0; past `cap` it does not matter.
+            let fit = if fit >= cap as f64 { cap } else { fit as i64 };
+            count = count.min(fit);
+        }
+    }
+    count
+}
+
+/// `room` holds one pod of `need`.
+fn holds(room: Amounts, need: &Amounts) -> bool {
+    RESOURCES.iter().all(|&r| {
+        let need = need.get(r);
+        need <= 0.0 || need <= room.get(r) || same_amount(need, room.get(r))
+    })
+}
+
+fn minus(a: Amounts, b: Amounts) -> Amounts {
+    Amounts {
+        cpu_millis: a.cpu_millis - b.cpu_millis,
+        memory_bytes: a.memory_bytes - b.memory_bytes,
+    }
+}
+
+fn plus(a: Amounts, b: Amounts) -> Amounts {
+    Amounts {
+        cpu_millis: a.cpu_millis + b.cpu_millis,
+        memory_bytes: a.memory_bytes + b.memory_bytes,
+    }
+}
+
+/// W0, W1, W1r, W2, W3 and the CPU note: the nodes against the new pod.
+fn check_nodes(
+    out: &mut Evaluation,
+    facts: &ResourceFacts,
+    nodes: &[NodeFacts],
+    after: &Template,
+    new: &PodFigures,
+) {
+    let mut counted: Vec<&NodeFacts> = nodes.iter().filter(|n| usable(n)).collect();
+    counted.sort_by(|a, b| a.name.cmp(&b.name));
+
+    // W0: above every node, cordoned ones included.
+    let mut pending = false;
+    if !counted.is_empty() {
+        for resource in RESOURCES {
+            let largest = counted
+                .iter()
+                .map(|n| n.allocatable.get(resource))
+                .fold(0.0, f64::max);
+            let fmt = |v: f64| fmt_amount(resource, v);
+            let request = new.request.get(resource);
+            if above(request, largest) {
+                pending = true;
+                out.findings.push(Finding {
+                    resource: Some(resource),
+                    field: Some(ResourceField::Request),
+                    ..finding(
+                        FindingCode::W0,
+                        Level::Warning,
+                        format!(
+                            "No node in this cluster can hold {} (largest: {}). The pods stay Pending unless a larger node is added.",
+                            fmt(request),
+                            fmt(largest)
+                        ),
+                    )
+                });
+                continue;
+            }
+            for c in after.all() {
+                if let Some(limit) = c.get(resource).limit.filter(|&l| above(l, largest)) {
+                    out.findings.push(on_field(
+                        FindingCode::W0,
+                        Level::Warning,
+                        format!(
+                            "No node in this cluster has {} (largest: {}): the container can never use this limit.",
+                            fmt(limit),
+                            fmt(largest)
+                        ),
+                        &c.name,
+                        resource,
+                        ResourceField::Limit,
+                    ));
+                }
+            }
+        }
+    }
+
+    // W1, its note, and W1r: room by requests on the schedulable nodes.
+    let replicas = i64::from(facts.workload.replicas);
+    let schedulable: Vec<&&NodeFacts> = counted.iter().filter(|n| n.schedulable).collect();
+    if !pending && replicas > 0 {
+        let fit = schedulable
+            .iter()
+            .map(|n| {
+                how_many_fit(
+                    minus(n.allocatable, n.others_requests),
+                    &new.request,
+                    replicas,
+                )
+            })
+            .fold(0i64, |sum, n| sum.saturating_add(n))
+            .min(replicas);
+        if fit < replicas {
+            out.findings.push(finding(
+                FindingCode::W1,
+                Level::Warning,
+                format!(
+                    "Only {fit} of {replicas} replicas have room by their requests; the rest stay Pending unless nodes are added."
+                ),
+            ));
+        } else {
+            out.findings.push(finding(
+                FindingCode::NoteFits,
+                Level::Note,
+                format!("Fits: {replicas} of {replicas} replicas have room by their requests."),
+            ));
+            let rollout = &facts.workload.rollout;
+            if !rollout.recreate {
+                let may_stop = usize::try_from(rollout.max_unavailable.max(0)).unwrap_or(0);
+                let room_somewhere = schedulable.iter().any(|n| {
+                    let own = own_pods_on(facts, &n.name);
+                    let held = own
+                        .iter()
+                        .fold(Amounts::default(), |sum, p| plus(sum, p.figures.request));
+                    let freed = own
+                        .iter()
+                        .take(may_stop)
+                        .fold(Amounts::default(), |sum, p| plus(sum, p.figures.request));
+                    let room = plus(minus(minus(n.allocatable, n.others_requests), held), freed);
+                    holds(room, &new.request)
+                });
+                if !room_somewhere {
+                    out.findings.push(finding(
+                        FindingCode::W1r,
+                        Level::Warning,
+                        "The rollout may stall: no node has room for a new pod while the old ones still run.".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    // W2, W3 and the CPU note: the nodes the workload's pods are on now.
+    let usage_known = facts.usage.known().is_some();
+    for n in &counted {
+        let own = own_pods_on(facts, &n.name);
+        if own.is_empty() {
+            continue;
+        }
+        let count = own.len() as f64;
+        let alloc = n.allocatable;
+        if let Some(limit) = new.memory_limit {
+            let before = n.others_memory_limits + sum_of(&own, |f| f.memory_limit.unwrap_or(0.0));
+            let after = n.others_memory_limits + count * limit;
+            if above(after, alloc.memory_bytes) && above(after, before) {
+                out.findings.push(on_node(
+                    FindingCode::W2,
+                    Level::Warning,
+                    format!(
+                        "Memory limits on {} add up to {}% of what the node has (was {}%). Under memory pressure the node evicts pods.",
+                        n.name,
+                        percent(after, alloc.memory_bytes),
+                        percent(before, alloc.memory_bytes)
+                    ),
+                    &n.name,
+                    ResourceName::Memory,
+                ));
+            }
+            if let (true, Some(used)) = (usage_known, n.memory_used) {
+                let full = used - memory_in_use(&own) + count * limit;
+                if above(full, alloc.memory_bytes) && above(full, used) {
+                    out.findings.push(on_node(
+                        FindingCode::W3,
+                        Level::Warning,
+                        format!(
+                            "If these pods use their full limit, {} runs out of memory ({}% → {}%).",
+                            n.name,
+                            percent(used, alloc.memory_bytes),
+                            percent(full, alloc.memory_bytes)
+                        ),
+                        &n.name,
+                        ResourceName::Memory,
+                    ));
+                }
+            }
+        }
+        if let Some(limit) = new.cpu_limit {
+            let before = n.others_cpu_limits + sum_of(&own, |f| f.cpu_limit.unwrap_or(0.0));
+            let after = n.others_cpu_limits + count * limit;
+            if above(after, alloc.cpu_millis) && above(after, before) {
+                out.findings.push(on_node(
+                    FindingCode::NoteCpuLimits,
+                    Level::Note,
+                    format!(
+                        "CPU limits on {} add up to {}% of its CPU (was {}%). CPU is shared: the pods slow down, they are not killed.",
+                        n.name,
+                        percent(after, alloc.cpu_millis),
+                        percent(before, alloc.cpu_millis)
+                    ),
+                    &n.name,
+                    ResourceName::Cpu,
+                ));
+            }
+        }
+    }
+}
+
+/// A finding about a node.
+fn on_node(
+    code: FindingCode,
+    level: Level,
+    message: String,
+    node: &str,
+    resource: ResourceName,
+) -> Finding {
+    Finding {
+        node: Some(node.to_string()),
+        resource: Some(resource),
+        ..finding(code, level, message)
+    }
+}
+
+/// One row per counted node: the nodes with the workload's pods first, by
+/// name, then the others, by name.
+fn project_nodes(
+    facts: &ResourceFacts,
+    nodes: &[NodeFacts],
+    new: &PodFigures,
+) -> Vec<NodeProjection> {
+    let usage_known = facts.usage.known().is_some();
+    let mut rows: Vec<(bool, NodeProjection)> = nodes
+        .iter()
+        .filter(|n| usable(n))
+        .map(|n| {
+            let own = own_pods_on(facts, &n.name);
+            let count = own.len() as f64;
+            let alloc = n.allocatable;
+            let pair = |before: f64, after: f64, total: f64| BeforeAfter {
+                before: percent(before, total),
+                after: percent(after, total),
+            };
+            let requests = |r: ResourceName| {
+                pair(
+                    n.others_requests.get(r) + sum_of(&own, |f| f.request.get(r)),
+                    n.others_requests.get(r) + count * new.request.get(r),
+                    alloc.get(r),
+                )
+            };
+            let limits = |r: ResourceName, others: f64| {
+                pair(
+                    others + sum_of(&own, |f| f.limit(r).unwrap_or(0.0)),
+                    others + count * new.limit(r).unwrap_or(0.0),
+                    alloc.get(r),
+                )
+            };
+            let memory_if_full =
+                match (own.is_empty(), usage_known, n.memory_used, new.memory_limit) {
+                    (false, true, Some(used), Some(limit)) => Some(pair(
+                        used,
+                        used - memory_in_use(&own) + count * limit,
+                        alloc.memory_bytes,
+                    )),
+                    _ => None,
+                };
+            let row = NodeProjection {
+                name: n.name.clone(),
+                schedulable: n.schedulable,
+                own_pods: i32::try_from(own.len()).unwrap_or(i32::MAX),
+                cpu_requests: requests(ResourceName::Cpu),
+                memory_requests: requests(ResourceName::Memory),
+                cpu_limits: limits(ResourceName::Cpu, n.others_cpu_limits),
+                memory_limits: limits(ResourceName::Memory, n.others_memory_limits),
+                memory_if_full,
+            };
+            (own.is_empty(), row)
+        })
+        .collect();
+    rows.sort_by(|a, b| (a.0, &a.1.name).cmp(&(b.0, &b.1.name)));
+    rows.into_iter().map(|(_, row)| row).collect()
+}
+
+/// W4, W5 and the containers without a sample: a changed limit against
+/// what the container uses now, on the pod where it uses the most.
+fn check_usage(out: &mut Evaluation, facts: &ResourceFacts) {
+    if facts.usage.known().is_none() || facts.pods.is_empty() {
+        return;
+    }
+    let mut unsampled: Vec<String> = Vec::new();
+    let mut found = Vec::new();
+    for change in out
+        .changes
+        .iter()
+        .filter(|c| c.field == ResourceField::Limit)
+    {
+        let Some(limit) = change
+            .after
+            .as_deref()
+            .and_then(|t| change.resource.parse(t))
+        else {
+            continue;
+        };
+        let highest = facts
+            .pods
+            .iter()
+            .flat_map(|p| p.usage.iter())
+            .filter(|u| u.name == change.container)
+            .map(|u| match change.resource {
+                ResourceName::Cpu => u.cpu_millis,
+                ResourceName::Memory => u.memory_bytes as f64,
+            })
+            .fold(None, |max: Option<f64>, v| {
+                Some(max.map_or(v, |m| m.max(v)))
+            });
+        let Some(usage) = highest else {
+            if !unsampled.contains(&change.container) {
+                unsampled.push(change.container.clone());
+            }
+            continue;
+        };
+        if !above(usage, limit) {
+            continue;
+        }
+        let fmt = |v: f64| fmt_amount(change.resource, v);
+        let (code, message) = match change.resource {
+            ResourceName::Memory => (
+                FindingCode::W4,
+                format!(
+                    "The container would be OOMKilled as soon as it starts using what it uses now ({}).",
+                    fmt(usage)
+                ),
+            ),
+            ResourceName::Cpu => (
+                FindingCode::W5,
+                format!(
+                    "The container would be throttled: it uses {} now and the new CPU limit is {}.",
+                    fmt(usage),
+                    fmt(limit)
+                ),
+            ),
+        };
+        found.push(on_field(
+            code,
+            Level::Warning,
+            message,
+            &change.container,
+            change.resource,
+            ResourceField::Limit,
+        ));
+    }
+    out.findings.extend(found);
+    for container in unsampled {
+        out.findings.push(Finding {
+            container: Some(container.clone()),
+            ..finding(
+                FindingCode::W9,
+                Level::NotChecked,
+                format!("Not checked: usage of `{container}` (no sample from metrics-server)."),
+            )
+        });
+    }
+}
+
+/// W7: an HPA on utilisation of a resource whose pod request moves.
+fn check_autoscalers_on_requests(
+    out: &mut Evaluation,
+    facts: &ResourceFacts,
+    before: &PodFigures,
+    new: &PodFigures,
+) {
+    let Some(hpas) = facts.hpas.known() else {
+        return;
+    };
+    let mut by_name: Vec<_> = hpas.iter().collect();
+    by_name.sort_by(|a, b| a.name.cmp(&b.name));
+    for hpa in by_name {
+        for resource in RESOURCES {
+            let on = match resource {
+                ResourceName::Cpu => hpa.cpu_utilization,
+                ResourceName::Memory => hpa.memory_utilization,
+            };
+            if on && !same_amount(new.request.get(resource), before.request.get(resource)) {
+                out.findings.push(Finding {
+                    resource: Some(resource),
+                    ..finding(
+                        FindingCode::W7,
+                        Level::Warning,
+                        format!(
+                            "HorizontalPodAutoscaler `{}` scales on {} utilisation, which is a share of the request: the replica count may move.",
+                            hpa.name,
+                            resource.word()
+                        ),
+                    )
+                });
+            }
+        }
+    }
+}
+
+/// W8: a VPA that rewrites the values.
+fn check_vpas(out: &mut Evaluation, facts: &ResourceFacts) {
+    let Some(vpas) = facts.vpas.known() else {
+        return;
+    };
+    let mut by_name: Vec<_> = vpas.iter().collect();
+    by_name.sort_by(|a, b| a.name.cmp(&b.name));
+    for vpa in by_name.into_iter().filter(|v| v.update_mode != "Off") {
+        out.findings.push(finding(
+            FindingCode::W8,
+            Level::Warning,
+            format!(
+                "VerticalPodAutoscaler `{}` (mode {}) will rewrite these values.",
+                vpa.name, vpa.update_mode
+            ),
+        ));
+    }
+}
+
+/// W9 for each part of the facts that could not be read, and for each
+/// quota with scopes.
+fn not_checked(out: &mut Evaluation, facts: &ResourceFacts) {
+    let mut push = |what: &str, reason: &str| {
+        out.findings.push(finding(
+            FindingCode::W9,
+            Level::NotChecked,
+            format!("Not checked: {what} ({reason})."),
+        ));
+    };
+    let reason = |missing: Option<&str>| missing.map(str::to_string);
+    let parts = [
+        ("room on the nodes", reason(missing_reason(&facts.nodes))),
+        (
+            "current usage against the new limits",
+            // With no pod there is no usage to compare: the note says so.
+            reason(missing_reason(&facts.usage)).filter(|_| !facts.pods.is_empty()),
+        ),
+        (
+            "namespace limit ranges",
+            reason(missing_reason(&facts.limit_ranges)),
+        ),
+        ("namespace quota", reason(missing_reason(&facts.quotas))),
+        ("autoscalers", reason(missing_reason(&facts.hpas))),
+        ("vertical autoscalers", reason(missing_reason(&facts.vpas))),
+    ];
+    for (what, reason) in parts {
+        if let Some(reason) = reason {
+            push(what, &reason);
+        }
+    }
+    if let Some(quotas) = facts.quotas.known() {
+        let mut scoped: Vec<_> = quotas.iter().filter(|q| q.scoped).collect();
+        scoped.sort_by(|a, b| a.name.cmp(&b.name));
+        for quota in scoped {
+            out.findings.push(finding(
+                FindingCode::W9,
+                Level::NotChecked,
+                format!("Not checked: quota `{}` (it has scopes).", quota.name),
+            ));
+        }
+    }
+}
+
+/// The reason a fact is missing.
+fn missing_reason<T>(fact: &Fact<T>) -> Option<&str> {
+    match fact {
+        Fact::Known { .. } => None,
+        Fact::Missing { reason } => Some(reason),
+    }
 }
 
 /// The amount in bytes of `number` thousandths of a byte, as a plain number.
@@ -545,6 +1076,7 @@ fn check_quotas(out: &mut Evaluation, facts: &ResourceFacts, new: &PodFigures) {
     by_name.sort_by(|a, b| a.name.cmp(&b.name));
     let replicas = f64::from(facts.workload.replicas.max(0));
     for quota in by_name {
+        let mut rollout_warned = false;
         for (key, resource, field) in QUOTA_KEYS {
             let Some(room) = quota_room(facts, quota, key, resource, field) else {
                 continue;
@@ -565,7 +1097,22 @@ fn check_quotas(out: &mut Evaluation, facts: &ResourceFacts, new: &PodFigures) {
                 continue;
             };
             let need = replicas * per_pod;
-            if above(need, room.free) {
+            if !above(need, room.free) {
+                if !rollout_warned && rollout_stalls(facts, &room, per_pod, resource, field) {
+                    rollout_warned = true;
+                    out.findings.push(Finding {
+                        resource: Some(resource),
+                        ..finding(
+                            FindingCode::W6,
+                            Level::Warning,
+                            format!(
+                                "The rollout may stall until old pods are gone: quota `{}` has no room for old and new pods together.",
+                                quota.name
+                            ),
+                        )
+                    });
+                }
+            } else {
                 out.findings.push(Finding {
                     resource: Some(resource),
                     ..finding(
@@ -584,6 +1131,33 @@ fn check_quotas(out: &mut Evaluation, facts: &ResourceFacts, new: &PodFigures) {
             }
         }
     }
+}
+
+/// W6: during a rolling update, with up to `max_unavailable` old pods
+/// stopped, old and new pods together pass what the quota leaves.
+fn rollout_stalls(
+    facts: &ResourceFacts,
+    room: &QuotaRoom,
+    per_pod: f64,
+    resource: ResourceName,
+    field: ResourceField,
+) -> bool {
+    let rollout = &facts.workload.rollout;
+    if rollout.recreate || facts.pods.is_empty() {
+        return false;
+    }
+    let old = facts
+        .pods
+        .iter()
+        .map(|p| quota_figure(&p.figures, resource, field).unwrap_or(0.0))
+        .fold(0.0, f64::max);
+    let replicas = i64::from(facts.workload.replicas.max(0));
+    let unavailable = i64::from(rollout.max_unavailable.max(0));
+    (0..replicas).any(|k| {
+        let old_pods = (replicas - unavailable - k).max(0) as f64;
+        let new_pods = (k + 1) as f64;
+        above(old_pods * old + new_pods * per_pod, room.free)
+    })
 }
 
 /// Worst first: by level, then by code as declared, then by node, then by container.
@@ -1141,6 +1715,14 @@ mod tests {
         let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("2Gi")));
         assert!(!codes(&e).contains(&FindingCode::B4));
         assert!(blocked(&e).is_empty());
+        let w9 = only(&e, FindingCode::W9);
+        assert_eq!(
+            (w9.level, w9.message.as_str()),
+            (
+                Level::NotChecked,
+                "Not checked: namespace limit ranges (not allowed to read LimitRange)."
+            )
+        );
     }
 
     #[test]
@@ -1236,7 +1818,7 @@ mod tests {
             node: None,
         };
         let e = evaluate(&facts(), &restore());
-        assert_eq!(e.findings, [refused.clone()]);
+        assert_eq!(e.findings, std::slice::from_ref(&refused));
         assert_eq!(e.changes, []);
         // A stale mark (the cluster moved on to 1Gi) is no mark.
         let mut f = facts();
@@ -1311,13 +1893,876 @@ mod tests {
         let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("512m")));
         let order: Vec<_> = e.findings.iter().map(|x| (x.level, x.code)).collect();
         assert_eq!(
-            order[..3],
+            order[..4],
             [
                 (Level::Blocked, FindingCode::B3),
                 (Level::Blocked, FindingCode::B5),
+                (Level::Warning, FindingCode::W4),
                 (Level::Warning, FindingCode::MilliMemory)
             ]
         );
-        assert!(e.findings[3..].iter().all(|x| x.level != Level::Blocked));
+        assert!(e.findings[4..].iter().all(|x| x.level != Level::Blocked));
+    }
+    // ---------------------------------------------------------------
+    // Warnings, notes, "not checked" and the node projection (Task 4)
+    // ---------------------------------------------------------------
+
+    use crate::limits::fixtures::{node, pod};
+    use crate::limits::types::{
+        Amounts, BeforeAfter, HpaFacts, NodeFacts, NodeProjection, OwnPodFacts, PodFigures,
+        VpaFacts,
+    };
+
+    /// A finding with nothing but its code, level and message.
+    fn plain(code: FindingCode, level: Level, message: &str) -> Finding {
+        Finding {
+            code,
+            level,
+            message: message.into(),
+            container: None,
+            resource: None,
+            field: None,
+            node: None,
+        }
+    }
+
+    /// A finding about a node.
+    fn on_node(
+        code: FindingCode,
+        level: Level,
+        message: &str,
+        node: &str,
+        resource: crate::limits::types::ResourceName,
+    ) -> Finding {
+        Finding {
+            node: Some(node.into()),
+            resource: Some(resource),
+            ..plain(code, level, message)
+        }
+    }
+
+    fn has(e: &Evaluation, code: FindingCode) -> bool {
+        e.findings.iter().any(|f| f.code == code)
+    }
+
+    fn nodes_mut(f: &mut ResourceFacts) -> &mut Vec<NodeFacts> {
+        match &mut f.nodes {
+            Fact::Known { value } => value,
+            Fact::Missing { .. } => panic!("nodes are missing"),
+        }
+    }
+
+    fn request_and_limit(
+        container: &str,
+        resource: crate::limits::types::ResourceName,
+        text: &str,
+    ) -> Proposal {
+        and(
+            set(container, resource, Request, Some(text)),
+            container,
+            resource,
+            Limit,
+            Some(text),
+        )
+    }
+
+    #[test]
+    fn w0_request_above_every_node() {
+        let e = evaluate(&facts(), &request_and_limit("api", Memory, "24Gi"));
+        let w0 = Finding {
+            resource: Some(Memory),
+            field: Some(Request),
+            ..plain(
+                FindingCode::W0,
+                Level::Warning,
+                "No node in this cluster can hold 24Gi (largest: 16Gi). The pods stay Pending unless a larger node is added.",
+            )
+        };
+        assert_eq!(only(&e, FindingCode::W0), w0);
+        let first_warning = e.findings.iter().find(|f| f.level == Level::Warning);
+        assert_eq!(first_warning, Some(&w0));
+        assert!(!has(&e, FindingCode::W1));
+        assert!(!has(&e, FindingCode::W1r));
+        assert!(!has(&e, FindingCode::NoteFits));
+    }
+
+    #[test]
+    fn w0_limit_alone_has_its_own_sentence() {
+        let e = evaluate(&facts(), &set("api", Memory, Limit, Some("24Gi")));
+        assert_eq!(
+            only(&e, FindingCode::W0),
+            about(
+                FindingCode::W0,
+                Level::Warning,
+                "No node in this cluster has 24Gi (largest: 16Gi): the container can never use this limit.",
+                "api",
+                Memory,
+                Some(Limit)
+            )
+        );
+        // The pods still schedule by their requests: the room check runs.
+        assert!(has(&e, FindingCode::NoteFits));
+    }
+
+    #[test]
+    fn w0_counts_cordoned_nodes() {
+        let mut f = facts();
+        let mut big = node("aks-big", (0.0, 0.0), 0.0, 0.0, 0.0);
+        big.schedulable = false;
+        big.allocatable.memory_bytes = 32.0 * GI;
+        nodes_mut(&mut f).push(big);
+        let p = and(
+            set_on(&f, "api", Memory, Request, Some("24Gi")),
+            "api",
+            Memory,
+            Limit,
+            Some("24Gi"),
+        );
+        let e = evaluate(&f, &p);
+        assert!(!has(&e, FindingCode::W0));
+        // The cordoned node takes no pod: none has room.
+        assert_eq!(
+            only(&e, FindingCode::W1).message,
+            "Only 0 of 3 replicas have room by their requests; the rest stay Pending unless nodes are added."
+        );
+    }
+
+    #[test]
+    fn w1_fewer_replicas_fit_than_wanted() {
+        let e = evaluate(&facts(), &request_and_limit("api", Cpu, "1500m"));
+        assert_eq!(
+            only(&e, FindingCode::W1),
+            plain(
+                FindingCode::W1,
+                Level::Warning,
+                "Only 2 of 3 replicas have room by their requests; the rest stay Pending unless nodes are added."
+            )
+        );
+        assert!(!has(&e, FindingCode::NoteFits));
+        assert!(!has(&e, FindingCode::W1r));
+    }
+
+    #[test]
+    fn note_fits_when_every_replica_has_room() {
+        let e = evaluate(&facts(), &set("api", Memory, Limit, Some("768Mi")));
+        assert_eq!(
+            only(&e, FindingCode::NoteFits),
+            plain(
+                FindingCode::NoteFits,
+                Level::Note,
+                "Fits: 3 of 3 replicas have room by their requests."
+            )
+        );
+        assert!(!has(&e, FindingCode::W1));
+    }
+
+    /// One node of 4000m with nothing else on it, three own pods of 1000m.
+    fn tight() -> ResourceFacts {
+        let mut f = facts();
+        f.workload.containers[0] = container(
+            "api",
+            false,
+            (Some("900m"), Some("900m")),
+            (Some("256Mi"), Some("512Mi")),
+        );
+        f.nodes = Fact::Known {
+            value: vec![node("solo", (0.0, 0.0), 0.0, 0.0, 4.0 * GI)],
+        };
+        f.pods = ["api-1", "api-2", "api-3"]
+            .iter()
+            .map(|name| {
+                let mut p = pod(name, "solo");
+                p.figures.request.cpu_millis = 1000.0;
+                p
+            })
+            .collect();
+        f
+    }
+
+    #[test]
+    fn w1r_the_end_state_fits_and_the_rollout_does_not() {
+        let f = tight();
+        let p = |f: &ResourceFacts| {
+            and(
+                set_on(f, "api", Cpu, Request, Some("1200m")),
+                "api",
+                Cpu,
+                Limit,
+                Some("1200m"),
+            )
+        };
+        let e = evaluate(&f, &p(&f));
+        assert_eq!(
+            only(&e, FindingCode::W1r),
+            plain(
+                FindingCode::W1r,
+                Level::Warning,
+                "The rollout may stall: no node has room for a new pod while the old ones still run."
+            )
+        );
+        assert!(has(&e, FindingCode::NoteFits));
+        // One old pod may stop first: room for the new one.
+        let mut one_down = tight();
+        one_down.workload.rollout.max_unavailable = 1;
+        assert!(!has(&evaluate(&one_down, &p(&one_down)), FindingCode::W1r));
+        // Recreate stops every old pod first.
+        let mut recreate = tight();
+        recreate.workload.rollout.recreate = true;
+        assert!(!has(&evaluate(&recreate, &p(&recreate)), FindingCode::W1r));
+    }
+
+    /// The baseline with aks-pool-1's other pods holding 15Gi of memory limits.
+    fn crowded() -> ResourceFacts {
+        let mut f = facts();
+        nodes_mut(&mut f)[0].others_memory_limits = 15.0 * GI;
+        f
+    }
+
+    #[test]
+    fn w2_memory_limits_above_the_node() {
+        let f = crowded();
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert_eq!(
+            only(&e, FindingCode::W2),
+            on_node(
+                FindingCode::W2,
+                Level::Warning,
+                "Memory limits on aks-pool-1 add up to 110% of what the node has (was 105%). Under memory pressure the node evicts pods.",
+                "aks-pool-1",
+                Memory
+            )
+        );
+    }
+
+    #[test]
+    fn w2_silent_when_the_change_does_not_make_it_worse() {
+        let f = crowded();
+        // Over the node already, and the change does not add to it.
+        let e = evaluate(&f, &set_on(&f, "api", Cpu, Request, Some("300m")));
+        assert!(!has(&e, FindingCode::W2));
+        // Lowered: still over, but less.
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("400Mi")));
+        assert!(!has(&e, FindingCode::W2));
+    }
+
+    #[test]
+    fn w3_full_limits_run_the_node_out_of_memory() {
+        let mut f = facts();
+        nodes_mut(&mut f)[0].memory_used = Some(15.0 * GI);
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("1Gi")));
+        assert_eq!(
+            only(&e, FindingCode::W3),
+            on_node(
+                FindingCode::W3,
+                Level::Warning,
+                "If these pods use their full limit, aks-pool-1 runs out of memory (94% → 105%).",
+                "aks-pool-1",
+                Memory
+            )
+        );
+        // The same node, a change that leaves the full limits under it.
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("640Mi")));
+        assert!(!has(&e, FindingCode::W3));
+        // Without a sample of the node's memory there is nothing to project.
+        nodes_mut(&mut f)[0].memory_used = None;
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("1Gi")));
+        assert!(!has(&e, FindingCode::W3));
+    }
+
+    #[test]
+    fn w4_memory_limit_under_current_usage() {
+        let e = evaluate(&facts(), &set("api", Memory, Limit, Some("400Mi")));
+        assert_eq!(
+            only(&e, FindingCode::W4),
+            about(
+                FindingCode::W4,
+                Level::Warning,
+                "The container would be OOMKilled as soon as it starts using what it uses now (498Mi).",
+                "api",
+                Memory,
+                Some(Limit)
+            )
+        );
+        // The highest usage over the pods counts.
+        let mut f = facts();
+        f.pods[1].usage[0].memory_bytes = 600 * 1024 * 1024;
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("512Mi")));
+        // 512Mi is the cluster's value: no change, nothing to report.
+        assert!(!has(&e, FindingCode::W4));
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("550Mi")));
+        assert!(only(&e, FindingCode::W4).message.ends_with("(600Mi)."));
+    }
+
+    #[test]
+    fn w5_cpu_limit_under_current_usage() {
+        let e = evaluate(&facts(), &set("api", Cpu, Limit, Some("300m")));
+        assert_eq!(
+            only(&e, FindingCode::W5),
+            about(
+                FindingCode::W5,
+                Level::Warning,
+                "The container would be throttled: it uses 412m now and the new CPU limit is 300m.",
+                "api",
+                Cpu,
+                Some(Limit)
+            )
+        );
+        let e = evaluate(&facts(), &set("api", Cpu, Limit, Some("450m")));
+        assert!(!has(&e, FindingCode::W5));
+    }
+
+    fn rollout_quota(f: &mut ResourceFacts) {
+        f.quotas = quota(
+            "team",
+            &[("requests.memory", 1300.0 * MI)],
+            &[("requests.memory", 960.0 * MI)],
+        );
+    }
+
+    #[test]
+    fn w6_quota_fits_at_the_end_and_not_during_the_rollout() {
+        let mut f = facts();
+        rollout_quota(&mut f);
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Request, Some("336Mi")));
+        assert_eq!(
+            only(&e, FindingCode::W6),
+            Finding {
+                resource: Some(Memory),
+                ..plain(
+                    FindingCode::W6,
+                    Level::Warning,
+                    "The rollout may stall until old pods are gone: quota `team` has no room for old and new pods together."
+                )
+            }
+        );
+        assert!(!has(&e, FindingCode::B5));
+        // One old pod may stop first: old and new fit together.
+        let mut one_down = f.clone();
+        one_down.workload.rollout.max_unavailable = 1;
+        let e = evaluate(
+            &one_down,
+            &set_on(&one_down, "api", Memory, Request, Some("336Mi")),
+        );
+        assert!(!has(&e, FindingCode::W6));
+        // Recreate never has both.
+        let mut recreate = f.clone();
+        recreate.workload.rollout.recreate = true;
+        let e = evaluate(
+            &recreate,
+            &set_on(&recreate, "api", Memory, Request, Some("336Mi")),
+        );
+        assert!(!has(&e, FindingCode::W6));
+        // A quota B5 already refuses is not warned about again.
+        let p = and(
+            set_on(&f, "api", Memory, Request, Some("512Mi")),
+            "api",
+            Memory,
+            Limit,
+            Some("512Mi"),
+        );
+        let e = evaluate(&f, &p);
+        assert!(has(&e, FindingCode::B5) && !has(&e, FindingCode::W6));
+    }
+
+    fn hpa(f: &mut ResourceFacts, cpu: bool, memory: bool) {
+        f.hpas = Fact::Known {
+            value: vec![HpaFacts {
+                name: "api".into(),
+                cpu_utilization: cpu,
+                memory_utilization: memory,
+            }],
+        };
+    }
+
+    #[test]
+    fn w7_hpa_on_cpu_and_a_cpu_request_change() {
+        let mut f = facts();
+        hpa(&mut f, true, false);
+        let e = evaluate(&f, &set_on(&f, "api", Cpu, Request, Some("300m")));
+        assert_eq!(
+            only(&e, FindingCode::W7),
+            Finding {
+                resource: Some(Cpu),
+                ..plain(
+                    FindingCode::W7,
+                    Level::Warning,
+                    "HorizontalPodAutoscaler `api` scales on CPU utilisation, which is a share of the request: the replica count may move."
+                )
+            }
+        );
+        // A memory-only change leaves the CPU request where it is.
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert!(!has(&e, FindingCode::W7));
+        // And an HPA on memory with a memory request change.
+        hpa(&mut f, false, true);
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Request, Some("300Mi")));
+        assert_eq!(
+            only(&e, FindingCode::W7).message,
+            "HorizontalPodAutoscaler `api` scales on memory utilisation, which is a share of the request: the replica count may move."
+        );
+    }
+
+    #[test]
+    fn w7_an_unset_request_that_follows_its_limit_counts() {
+        let mut f = facts();
+        hpa(&mut f, true, false);
+        f.workload.containers[0] = container(
+            "api",
+            false,
+            (None, Some("500m")),
+            (Some("256Mi"), Some("512Mi")),
+        );
+        let e = evaluate(&f, &set_on(&f, "api", Cpu, Limit, Some("600m")));
+        assert_eq!(only(&e, FindingCode::W7).resource, Some(Cpu));
+    }
+
+    #[test]
+    fn w8_vpa_unless_off() {
+        let mut f = facts();
+        let vpa = |mode: &str| Fact::Known {
+            value: vec![VpaFacts {
+                name: "api-vpa".into(),
+                update_mode: mode.into(),
+            }],
+        };
+        f.vpas = vpa("Auto");
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert_eq!(
+            only(&e, FindingCode::W8),
+            plain(
+                FindingCode::W8,
+                Level::Warning,
+                "VerticalPodAutoscaler `api-vpa` (mode Auto) will rewrite these values."
+            )
+        );
+        f.vpas = vpa("Off");
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert!(!has(&e, FindingCode::W8));
+    }
+
+    fn missing<T>(reason: &str) -> Fact<T> {
+        Fact::Missing {
+            reason: reason.into(),
+        }
+    }
+
+    #[test]
+    fn w9_one_finding_per_missing_fact_with_its_reason() {
+        let mut f = facts();
+        f.quotas = missing("not allowed to read ResourceQuota");
+        let e = evaluate(&f, &request_and_limit("api", Memory, "1Gi"));
+        assert_eq!(
+            only(&e, FindingCode::W9),
+            plain(
+                FindingCode::W9,
+                Level::NotChecked,
+                "Not checked: namespace quota (not allowed to read ResourceQuota)."
+            )
+        );
+        assert!(!has(&e, FindingCode::B5) && !has(&e, FindingCode::W6));
+
+        let mut f = facts();
+        f.nodes = missing("not allowed to list nodes");
+        f.usage = missing("metrics-server is not installed or did not answer");
+        f.limit_ranges = missing("not allowed to read LimitRange");
+        f.quotas = missing("not allowed to read ResourceQuota");
+        f.hpas = missing("not allowed to read HorizontalPodAutoscaler");
+        f.vpas = missing("not allowed to read VerticalPodAutoscaler");
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        let not_checked: Vec<_> = e
+            .findings
+            .iter()
+            .filter(|x| x.level == Level::NotChecked)
+            .map(|x| x.message.as_str())
+            .collect();
+        assert_eq!(
+            not_checked,
+            [
+                "Not checked: room on the nodes (not allowed to list nodes).",
+                "Not checked: current usage against the new limits (metrics-server is not installed or did not answer).",
+                "Not checked: namespace limit ranges (not allowed to read LimitRange).",
+                "Not checked: namespace quota (not allowed to read ResourceQuota).",
+                "Not checked: autoscalers (not allowed to read HorizontalPodAutoscaler).",
+                "Not checked: vertical autoscalers (not allowed to read VerticalPodAutoscaler).",
+            ]
+        );
+        assert!(e
+            .findings
+            .iter()
+            .filter(|x| x.level == Level::NotChecked)
+            .all(|x| x.code == FindingCode::W9));
+    }
+
+    #[test]
+    fn w9_nodes_missing_stops_w0_to_w3() {
+        let mut f = crowded();
+        nodes_mut(&mut f)[0].memory_used = Some(15.0 * GI);
+        f.nodes = missing("not allowed to list nodes");
+        let e = evaluate(&f, &request_and_limit("api", Memory, "24Gi"));
+        for code in [
+            FindingCode::W0,
+            FindingCode::W1,
+            FindingCode::W1r,
+            FindingCode::W2,
+            FindingCode::W3,
+            FindingCode::NoteFits,
+            FindingCode::NoteCpuLimits,
+        ] {
+            assert!(!has(&e, code), "{code:?} in {:#?}", e.findings);
+        }
+        assert_eq!(
+            only(&e, FindingCode::W9).message,
+            "Not checked: room on the nodes (not allowed to list nodes)."
+        );
+        assert_eq!(e.nodes, []);
+    }
+
+    #[test]
+    fn w9_usage_missing_stops_w3_w4_w5() {
+        let mut f = facts();
+        nodes_mut(&mut f)[0].memory_used = Some(15.0 * GI);
+        f.usage = missing("metrics-server is not installed or did not answer");
+        let p = and(
+            set_on(&f, "api", Memory, Limit, Some("1Gi")),
+            "api",
+            Cpu,
+            Limit,
+            Some("300m"),
+        );
+        let e = evaluate(&f, &p);
+        let p = set_on(&f, "api", Memory, Limit, Some("400Mi"));
+        let e2 = evaluate(&f, &p);
+        for code in [FindingCode::W3, FindingCode::W4, FindingCode::W5] {
+            assert!(!has(&e, code) && !has(&e2, code), "{code:?}");
+        }
+        assert_eq!(
+            only(&e, FindingCode::W9).message,
+            "Not checked: current usage against the new limits (metrics-server is not installed or did not answer)."
+        );
+        assert!(e.nodes.iter().all(|n| n.memory_if_full.is_none()));
+    }
+
+    #[test]
+    fn w9_scoped_quota() {
+        let mut f = facts();
+        f.quotas = Fact::Known {
+            value: vec![QuotaFacts {
+                name: "team".into(),
+                scoped: true,
+                hard: [("requests.memory".to_string(), 1.0 * MI)].into(),
+                used: Default::default(),
+            }],
+        };
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Request, Some("300Mi")));
+        assert_eq!(
+            only(&e, FindingCode::W9),
+            plain(
+                FindingCode::W9,
+                Level::NotChecked,
+                "Not checked: quota `team` (it has scopes)."
+            )
+        );
+        assert!(!has(&e, FindingCode::B5) && !has(&e, FindingCode::W6));
+    }
+
+    #[test]
+    fn w9_a_container_without_a_sample() {
+        let mut f = facts();
+        for p in &mut f.pods {
+            p.usage.retain(|u| u.name == "api");
+        }
+        let e = evaluate(&f, &set_on(&f, "envoy", Memory, Limit, Some("256Mi")));
+        assert_eq!(
+            only(&e, FindingCode::W9),
+            Finding {
+                container: Some("envoy".into()),
+                ..plain(
+                    FindingCode::W9,
+                    Level::NotChecked,
+                    "Not checked: usage of `envoy` (no sample from metrics-server)."
+                )
+            }
+        );
+        // api has its samples; a request change needs none.
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert!(!has(&e, FindingCode::W9));
+        let e = evaluate(&f, &set_on(&f, "envoy", Memory, Request, Some("100Mi")));
+        assert!(!has(&e, FindingCode::W9));
+    }
+
+    #[test]
+    fn no_pods_says_so_once_and_skips_the_usage_checks() {
+        let mut f = facts();
+        f.pods = Vec::new();
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("400Mi")));
+        assert_eq!(
+            only(&e, FindingCode::NoteNoPods),
+            plain(
+                FindingCode::NoteNoPods,
+                Level::Note,
+                "No pod is running: the checks on current usage do not apply."
+            )
+        );
+        assert!(!has(&e, FindingCode::W4) && !has(&e, FindingCode::W9));
+        // The room check still runs with the wanted replicas.
+        assert!(has(&e, FindingCode::NoteFits));
+        // Usage not read says nothing either: there is nothing to compare.
+        f.usage = missing("metrics-server is not installed or did not answer");
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("400Mi")));
+        assert!(!has(&e, FindingCode::W9));
+    }
+
+    #[test]
+    fn zero_replicas_runs_no_room_check() {
+        let mut f = facts();
+        f.workload.replicas = 0;
+        let e = evaluate(&f, &request_and_limit("api", Cpu, "1500m"));
+        for code in [FindingCode::W1, FindingCode::W1r, FindingCode::NoteFits] {
+            assert!(!has(&e, code), "{code:?}");
+        }
+    }
+
+    #[test]
+    fn note_cpu_limits_and_note_qos() {
+        // envoy gets a CPU limit: the pod has one (700m) and three of them
+        // on aks-pool-1 with 2000m of other limits pass its 4000m.
+        let e = evaluate(&facts(), &set("envoy", Cpu, Limit, Some("200m")));
+        assert_eq!(
+            only(&e, FindingCode::NoteCpuLimits),
+            on_node(
+                FindingCode::NoteCpuLimits,
+                Level::Note,
+                "CPU limits on aks-pool-1 add up to 103% of its CPU (was 50%). CPU is shared: the pods slow down, they are not killed.",
+                "aks-pool-1",
+                Cpu
+            )
+        );
+        // Less from the others: under the node, no note.
+        let mut f = facts();
+        nodes_mut(&mut f)[0].others_cpu_limits = 0.0;
+        assert!(!has(
+            &evaluate(&f, &set_on(&f, "envoy", Cpu, Limit, Some("200m"))),
+            FindingCode::NoteCpuLimits
+        ));
+        // Over the node already, and a change that does not add to it.
+        let mut f = facts();
+        f.workload.containers[1] = container(
+            "envoy",
+            false,
+            (Some("100m"), Some("200m")),
+            (Some("64Mi"), Some("128Mi")),
+        );
+        for p in &mut f.pods {
+            p.figures.cpu_limit = Some(700.0);
+        }
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert!(!has(&e, FindingCode::NoteCpuLimits));
+
+        let mut f = facts();
+        f.workload.containers = vec![
+            container(
+                "api",
+                false,
+                (Some("500m"), Some("500m")),
+                (Some("512Mi"), Some("512Mi")),
+            ),
+            container(
+                "envoy",
+                false,
+                (Some("100m"), Some("100m")),
+                (Some("128Mi"), Some("128Mi")),
+            ),
+        ];
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Request, Some("256Mi")));
+        assert_eq!(
+            only(&e, FindingCode::NoteQos),
+            plain(
+                FindingCode::NoteQos,
+                Level::Note,
+                "The pod's QoS class changes from Guaranteed to Burstable."
+            )
+        );
+        let e = evaluate(&f, &request_and_limit_on(&f, "api", Memory, "768Mi"));
+        assert!(!has(&e, FindingCode::NoteQos));
+    }
+
+    fn request_and_limit_on(
+        f: &ResourceFacts,
+        container: &str,
+        resource: crate::limits::types::ResourceName,
+        text: &str,
+    ) -> Proposal {
+        and(
+            set_on(f, container, resource, Request, Some(text)),
+            container,
+            resource,
+            Limit,
+            Some(text),
+        )
+    }
+
+    fn all_finite(n: &NodeProjection) -> bool {
+        let pairs = [
+            Some(n.cpu_requests),
+            Some(n.memory_requests),
+            Some(n.cpu_limits),
+            Some(n.memory_limits),
+            n.memory_if_full,
+        ];
+        pairs
+            .iter()
+            .flatten()
+            .all(|p| p.before.is_finite() && p.after.is_finite())
+    }
+
+    #[test]
+    fn a_node_without_allocatable_is_left_out_and_nothing_is_nan() {
+        let mut f = crowded();
+        let mut empty = node("aks-empty", (0.0, 0.0), 0.0, 0.0, 0.0);
+        empty.allocatable = Amounts::default();
+        let mut unreadable = node("aks-odd", (0.0, 0.0), 0.0, 0.0, 0.0);
+        unreadable.allocatable.cpu_millis = f64::NAN;
+        nodes_mut(&mut f).extend([empty, unreadable]);
+        f.pods[2].node = Some("aks-empty".into());
+        let e = evaluate(&f, &request_and_limit_on(&f, "api", Memory, "24Gi"));
+        let names: Vec<_> = e.nodes.iter().map(|n| n.name.as_str()).collect();
+        assert_eq!(names, ["aks-pool-1", "aks-pool-2"]);
+        assert!(e.nodes.iter().all(all_finite));
+        assert!(e.findings.iter().all(
+            |x| x.node.as_deref() != Some("aks-empty") && x.node.as_deref() != Some("aks-odd")
+        ));
+        // The largest node is a real one.
+        assert!(only(&e, FindingCode::W0)
+            .message
+            .contains("(largest: 16Gi)"));
+        let json = serde_json::to_string(&e).expect("serialises");
+        assert!(!json.contains("null,\"after\"") && !json.contains("NaN"));
+        let back: Evaluation = serde_json::from_str(&json).expect("round-trips");
+        assert_eq!(back, e);
+        // No node that can be counted: no W0 against a largest of nothing.
+        let mut f = facts();
+        let mut empty = node("aks-empty", (0.0, 0.0), 0.0, 0.0, 0.0);
+        empty.allocatable = Amounts::default();
+        f.nodes = Fact::Known { value: vec![empty] };
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert!(!has(&e, FindingCode::W0));
+        assert_eq!(e.nodes, []);
+    }
+
+    #[test]
+    fn before_figures_come_from_the_pods_not_the_template() {
+        let mut f = crowded();
+        // api-1 still runs an older template with a 320Mi memory limit.
+        f.pods[0].figures = PodFigures {
+            memory_limit: Some(320.0 * MI),
+            ..f.pods[0].figures.clone()
+        };
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        assert_eq!(
+            only(&e, FindingCode::W2).message,
+            "Memory limits on aks-pool-1 add up to 110% of what the node has (was 104%). Under memory pressure the node evicts pods."
+        );
+    }
+
+    #[test]
+    fn node_projection_lists_hosting_nodes_first_with_before_and_after() {
+        let ba = |before: f64, after: f64| BeforeAfter { before, after };
+        let e = evaluate(&facts(), &set("api", Memory, Limit, Some("768Mi")));
+        assert_eq!(
+            e.nodes,
+            [
+                NodeProjection {
+                    name: "aks-pool-1".into(),
+                    schedulable: true,
+                    own_pods: 3,
+                    cpu_requests: ba(51.0, 51.0),
+                    memory_requests: ba(56.0, 56.0),
+                    cpu_limits: ba(50.0, 50.0),
+                    memory_limits: ba(80.0, 85.0),
+                    memory_if_full: Some(ba(81.0, 88.0)),
+                },
+                NodeProjection {
+                    name: "aks-pool-2".into(),
+                    schedulable: true,
+                    own_pods: 0,
+                    cpu_requests: ba(50.0, 50.0),
+                    memory_requests: ba(50.0, 50.0),
+                    cpu_limits: ba(50.0, 50.0),
+                    memory_limits: ba(50.0, 50.0),
+                    memory_if_full: None,
+                },
+            ]
+        );
+        // A hosting node comes before the others whatever its name.
+        let mut f = facts();
+        for p in &mut f.pods {
+            p.node = Some("aks-pool-2".into());
+        }
+        let mut cordoned = node("aks-pool-0", (0.0, 0.0), 0.0, 0.0, 0.0);
+        cordoned.schedulable = false;
+        nodes_mut(&mut f).push(cordoned);
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
+        let rows: Vec<_> = e
+            .nodes
+            .iter()
+            .map(|n| (n.name.as_str(), n.own_pods, n.schedulable))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                ("aks-pool-2", 3, true),
+                ("aks-pool-0", 0, false),
+                ("aks-pool-1", 0, true)
+            ]
+        );
+    }
+
+    #[test]
+    fn warnings_are_sorted_w0_first_then_by_code() {
+        let mut f = crowded();
+        f.vpas = Fact::Known {
+            value: vec![VpaFacts {
+                name: "api-vpa".into(),
+                update_mode: "Auto".into(),
+            }],
+        };
+        hpa(&mut f, false, true);
+        f.hpas = missing("not allowed to read HorizontalPodAutoscaler");
+        let p = and(
+            request_and_limit_on(&f, "api", Memory, "24Gi"),
+            "api",
+            Cpu,
+            Limit,
+            Some("300m"),
+        );
+        let e = evaluate(&f, &p);
+        let order: Vec<_> = e.findings.iter().map(|x| (x.level, x.code)).collect();
+        assert_eq!(
+            order,
+            [
+                (Level::Warning, FindingCode::W0),
+                (Level::Warning, FindingCode::W2),
+                (Level::Warning, FindingCode::W3),
+                (Level::Warning, FindingCode::W5),
+                (Level::Warning, FindingCode::W8),
+                (Level::NotChecked, FindingCode::W9),
+            ]
+        );
+    }
+
+    #[test]
+    fn own_pod_facts_are_what_the_figures_say() {
+        // A guard on the fixture the pinned numbers rest on.
+        let f = facts();
+        let p: &OwnPodFacts = &f.pods[0];
+        assert_eq!(
+            p.figures.request,
+            Amounts {
+                cpu_millis: 350.0,
+                memory_bytes: 320.0 * MI
+            }
+        );
+        assert_eq!(p.figures.memory_limit, Some(640.0 * MI));
+        assert_eq!(p.figures.cpu_limit, None);
     }
 }
