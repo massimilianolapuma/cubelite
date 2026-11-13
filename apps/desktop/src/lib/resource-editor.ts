@@ -208,18 +208,21 @@ export function managerLabel(manager: ManagerInfo): string | null {
 
 export type FindingLook = { glyph: GlyphState; lead: string | null; strong: boolean };
 
-/** Level to look: a glyph and a weight, never colour alone. */
+/**
+ * Level to look: a glyph and a weight, never colour alone; `lead` is said
+ * first by a screen reader (the glyph is hidden from it), visually hidden.
+ */
 export function findingLook(finding: Finding): FindingLook {
   switch (finding.level) {
     case "blocked":
-      return { glyph: "err", lead: null, strong: true };
+      return { glyph: "err", lead: "Blocked:", strong: true };
     case "warning":
-      return { glyph: "warn", lead: null, strong: true };
+      return { glyph: "warn", lead: "Warning:", strong: true };
     case "not_checked":
       // Its message already starts with "Not checked:".
       return { glyph: "unknown", lead: null, strong: false };
     case "note":
-      return { glyph: finding.code === "note_fits" ? "ok" : "done", lead: null, strong: false };
+      return { glyph: finding.code === "note_fits" ? "ok" : "done", lead: "Note:", strong: false };
   }
 }
 

@@ -90,6 +90,7 @@
 	);
 
 	const messageId = (key: FieldKey) => `${uid}-${key.replace('.', '-')}-message`;
+	const wasId = (key: FieldKey) => `${uid}-${key.replace('.', '-')}-was`;
 	const nameId = `${uid}-name`;
 </script>
 
@@ -127,7 +128,9 @@
 						autocomplete="off"
 						aria-label="{container.name} {row.name} {column}"
 						aria-invalid={invalid ? 'true' : undefined}
-						aria-describedby={invalid ? messageId(key) : undefined}
+						aria-describedby={[changed ? wasId(key) : null, invalid ? messageId(key) : null]
+							.filter((id) => id !== null)
+							.join(' ') || undefined}
 						placeholder={column === 'request'
 							? requestHint(facts, resourceEditor.drafts, container.name, row.resource) || EMPTY
 							: EMPTY}
@@ -145,7 +148,7 @@
 							<StatusGlyph state="warn" size={8} class="text-warning" />
 						{/if}
 						{#if changed}
-							<span class="truncate" title="was {before || EMPTY}">was {before || EMPTY}</span>
+							<span id={wasId(key)} class="truncate" title="was {before || EMPTY}">was {before || EMPTY}</span>
 						{/if}
 					</span>
 				</div>
@@ -207,7 +210,7 @@
 		{#each blocked as b (b.key)}
 			<p id={messageId(b.key)} class="type-body-sm flex items-start gap-2 text-text">
 				<StatusGlyph state="err" class="mt-1 text-error" />
-				<span class="min-w-0 break-words">{b.finding?.message}</span>
+				<span class="min-w-0 break-words"><span class="sr-only">Blocked:</span>{' '}{b.finding?.message}</span>
 			</p>
 		{/each}
 	</div>

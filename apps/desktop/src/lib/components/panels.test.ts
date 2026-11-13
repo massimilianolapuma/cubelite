@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, within } from "@testing-library/svelte";
+import { tick } from "svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   listPods: vi.fn(async () => []),
@@ -658,6 +659,41 @@ describe("DeploymentDrawer: the way into the resources editor (#650 §3.1, §6.2
     await fireEvent.click(within(b).getByRole("button", { name: "Keep these values" }));
     await fireEvent.click(within(b).getByRole("button", { name: "Remove mark" }));
     expect(keep).toHaveBeenCalledWith(deployment);
+  });
+
+  it("Remove mark sends one call per confirm, even pressed again while the list reloads", async () => {
+    const keep = vi.spyOn(resourceEditor, "keepValues").mockResolvedValue(true);
+    render(DeploymentDrawer, {
+      props: { deployment: dep({ containers: TEMPLATE, resources_override: OVERRIDE }), onClose: vi.fn() },
+    });
+    const b = banner()!;
+    await fireEvent.click(within(b).getByRole("button", { name: "Keep these values" }));
+    await fireEvent.click(within(b).getByRole("button", { name: "Remove mark" }));
+    await Promise.resolve();
+    await tick();
+    // The mark is removed; the banner stays until the reload drops it.
+    const remove = within(b).getByRole("button", { name: "Remove mark" });
+    expect(remove).toHaveAttribute("aria-busy", "true");
+    await fireEvent.click(remove);
+    await tick();
+    expect(keep).toHaveBeenCalledTimes(1);
+  });
+
+  it("a refused Remove mark brings back the two buttons, with the focus on Keep these values", async () => {
+    vi.spyOn(resourceEditor, "keepValues").mockResolvedValue(false);
+    render(DeploymentDrawer, {
+      props: { deployment: dep({ containers: TEMPLATE, resources_override: OVERRIDE }), onClose: vi.fn() },
+    });
+    const b = banner()!;
+    await fireEvent.click(within(b).getByRole("button", { name: "Keep these values" }));
+    const remove = within(b).getByRole("button", { name: "Remove mark" });
+    remove.focus();
+    await fireEvent.click(remove);
+    await Promise.resolve();
+    await tick();
+    await tick();
+    expect(within(b).getByRole("button", { name: "Restore" })).toBeInTheDocument();
+    expect(within(b).getByRole("button", { name: "Keep these values" })).toHaveFocus();
   });
 
   it("Restore opens the editor on the restore", async () => {

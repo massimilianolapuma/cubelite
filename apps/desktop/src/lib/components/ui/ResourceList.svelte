@@ -90,7 +90,7 @@
 		cells: Snippet<[T]>;
 		/** A block under a row (a secret's keys). */
 		below?: Snippet<[T]>;
-		/** Beside the name, inside its sticky cell (a deployment's "Override" badge); the name keeps some room. */
+		/** Beside the name, inside its sticky cell (a deployment's "Override" badge): it never shrinks; the name truncates and keeps some room. */
 		nameSuffix?: Snippet<[T]>;
 	} = $props();
 
@@ -142,8 +142,10 @@
 	<!-- As tall as the row: a badge passing under it while the columns scroll must not show above or below the name. -->
 	<span class="{LIST_STICKY} flex min-w-0 items-center self-stretch {inGroup ? 'pl-4.5' : ''}">
 		<span class="type-data truncate text-text {nameSuffix ? 'min-w-12' : ''}" title={name}>{name}</span>
+		<!-- The suffix keeps its whole width (a badge's word is its state); the name
+		     truncates, its full text in the title. -->
 		{#if nameSuffix}
-			<span class="ml-2 flex min-w-0 shrink-[4] items-center">{@render nameSuffix(item)}</span>
+			<span class="ml-2 flex shrink-0 items-center">{@render nameSuffix(item)}</span>
 		{/if}
 	</span>
 	{#if withNamespace}

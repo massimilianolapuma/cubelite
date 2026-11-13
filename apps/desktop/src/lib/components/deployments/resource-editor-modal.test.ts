@@ -335,7 +335,8 @@ describe("ResourceEditor, step 1 (Edit)", () => {
     expect(input).toHaveAttribute("aria-invalid", "true");
     const describedBy = input.getAttribute("aria-describedby");
     expect(describedBy).toBeTruthy();
-    const message = document.getElementById(describedBy!);
+    // The value it had, then why it is refused.
+    const message = document.getElementById(describedBy!.split(" ").at(-1)!);
     expect(message).toHaveTextContent("The limit (128Mi) is under the request (256Mi).");
     expect(message!.querySelector('[data-glyph="err"]')).not.toBeNull();
     expect(card("worker")).toContainElement(message);
@@ -346,6 +347,31 @@ describe("ResourceEditor, step 1 (Edit)", () => {
     expect(screen.getByRole("button", { name: "Review" })).toBeDisabled();
     // The other fields are not invalid.
     expect(field("worker memory request")).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("leads each finding with its level for a screen reader, the glyph being hidden", async () => {
+    vi.mocked(evaluateResources).mockImplementation(async (_facts, proposal) =>
+      proposal.containers.length > 0 ? evaluation([BLOCKED, WARNING, NOT_CHECKED, finding()]) : evaluation(),
+    );
+    await openEditor();
+    await typeInto("worker memory limit", "128Mi");
+    const items = within(screen.getByRole("list", { name: "Findings" })).getAllByRole("listitem");
+    expect(items.map((li) => li.textContent?.replace(/\s+/g, " ").trim())).toEqual([
+      `Blocked: ${BLOCKED.message}`,
+      `Warning: ${WARNING.message}`,
+      NOT_CHECKED.message,
+      `Note: ${finding().message}`,
+    ]);
+    expect(items[0].querySelector(".sr-only")).toHaveTextContent("Blocked:");
+    // The field's own message says it too.
+    expect(field("worker memory limit")).toHaveAccessibleDescription(/^was 512Mi Blocked: The limit \(128Mi\)/);
+  });
+
+  it("ties the value a changed field had to the field", async () => {
+    await openEditor();
+    await typeInto("worker memory limit", "768Mi");
+    expect(field("worker memory limit")).toHaveAccessibleDescription("was 512Mi");
+    expect(field("worker memory request")).not.toHaveAttribute("aria-describedby");
   });
 
   it("enables Review once a change is checked and nothing blocks it", async () => {

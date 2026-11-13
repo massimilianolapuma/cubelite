@@ -402,19 +402,20 @@ describe("managerLabel", () => {
 });
 
 describe("findingLook", () => {
-  it("gives each level its glyph and weight", () => {
-    expect(findingLook(finding("b3", "blocked"))).toEqual({ glyph: "err", lead: null, strong: true });
-    expect(findingLook(finding("w2", "warning"))).toEqual({ glyph: "warn", lead: null, strong: true });
+  it("gives each level its glyph, its weight and a lead a screen reader says first", () => {
+    expect(findingLook(finding("b3", "blocked"))).toEqual({ glyph: "err", lead: "Blocked:", strong: true });
+    expect(findingLook(finding("w2", "warning"))).toEqual({ glyph: "warn", lead: "Warning:", strong: true });
+    // Its message already starts with "Not checked:".
     expect(findingLook(finding("w9", "not_checked"))).toEqual({
       glyph: "unknown",
       lead: null,
       strong: false,
     });
-    expect(findingLook(finding("note_fits", "note"))).toEqual({ glyph: "ok", lead: null, strong: false });
-    expect(findingLook(finding("note_qos", "note"))).toEqual({ glyph: "done", lead: null, strong: false });
+    expect(findingLook(finding("note_fits", "note"))).toEqual({ glyph: "ok", lead: "Note:", strong: false });
+    expect(findingLook(finding("note_qos", "note"))).toEqual({ glyph: "done", lead: "Note:", strong: false });
     expect(findingLook(finding("note_cpu_limits", "note"))).toEqual({
       glyph: "done",
-      lead: null,
+      lead: "Note:",
       strong: false,
     });
   });

@@ -204,15 +204,21 @@
 			{:else if ed.facts !== null && ed.step === 'review'}
 				{#if ed.evaluation !== null}
 					<div class="{PANEL_CARD} flex flex-col gap-1.5 px-3 py-2.5">
-						<ul role="list" aria-label="Changes" class="flex flex-col gap-1">
+						<!-- One grid for the list (each row a subgrid): container, label and values
+						     each start on one line down the list. -->
+						<ul
+							role="list"
+							aria-label="Changes"
+							class="grid grid-cols-[minmax(0,1fr)_max-content_max-content] gap-x-3 gap-y-1"
+						>
 							{#each ed.evaluation.changes as change (`${change.container}/${change.resource}.${change.field}`)}
 								<li
-									class="grid grid-cols-[minmax(0,1fr)_7.5rem_auto] items-baseline gap-x-3"
+									class="col-span-3 grid grid-cols-subgrid items-baseline"
 									data-change="{change.container}/{change.resource}.{change.field}"
 								>
 									<span class="type-data-sm min-w-0 break-words text-text">{change.container}</span>
 									<span class="type-body-sm text-text-muted">{changeLabel(change)}</span>
-									<span class="type-data-sm text-right whitespace-nowrap text-text">
+									<span class="type-data-sm whitespace-nowrap text-text">
 										{change.before ?? EMPTY} → <span class="font-semibold">{change.after ?? EMPTY}</span>
 									</span>
 								</li>

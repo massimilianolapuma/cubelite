@@ -33,7 +33,9 @@
 		{@const look = findingLook(finding)}
 		<li class="type-body-sm flex items-start gap-2" data-level={finding.level}>
 			<StatusGlyph state={look.glyph} class="mt-1 {tone[look.glyph]}" />
-			<span class="min-w-0 break-words {look.strong ? 'font-semibold' : ''}">{finding.message}</span>
+			<span class="min-w-0 break-words {look.strong ? 'font-semibold' : ''}"
+				>{#if look.lead}<span class="sr-only">{look.lead}</span>{' '}{/if}{finding.message}</span
+			>
 		</li>
 	{/each}
 </ul>

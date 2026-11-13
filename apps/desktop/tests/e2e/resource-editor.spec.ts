@@ -473,3 +473,90 @@ test("the pod panel's Adjust on deployment api opens that deployment's editor", 
   await expect(page.getByRole("dialog", { name: "api", exact: true })).toBeVisible();
   await expect(pod).toHaveCount(0);
 });
+
+/** Overridden deployments named with 19, 30 and 40 characters, beside the fixtures. */
+function longOverrides(): { overrides: Overrides; names: string[] } {
+  const api = FIXTURES.deployments[0];
+  const mark = {
+    at: "2026-11-13T12:20:00Z",
+    containers: [
+      {
+        name: "worker",
+        original: { cpu: { request: "250m", limit: "500m" }, memory: { request: "256Mi", limit: "512Mi" } },
+        applied: { cpu: { request: "250m", limit: "500m" }, memory: { request: "256Mi", limit: "768Mi" } },
+      },
+    ],
+  };
+  const names = ["payments-gateway-v2", "checkout-frontend-canary-rel01", "notification-dispatcher-worker-blue-eu01"];
+  return {
+    names,
+    overrides: {
+      deployments: [
+        ...FIXTURES.deployments,
+        ...names.map((name) => ({ ...structuredClone(api), name, resources_override: mark })),
+      ] as typeof FIXTURES.deployments,
+    },
+  };
+}
+
+for (const size of [
+  { width: 1440, height: 900 },
+  { width: 800, height: 600 },
+]) {
+  test(`at ${size.width} px the Override badge keeps its word beside a long name, the name truncates`, async ({ page }) => {
+    const { overrides, names } = longOverrides();
+    expect(names.map((n) => n.length)).toEqual([19, 30, 40]);
+    await boot(page, overrides, size);
+    await page.getByRole("complementary").getByText("Deployments", { exact: true }).click();
+    for (const name of names) {
+      const row = page.getByRole("button", { name: new RegExp(`^${name}`) }).first();
+      await expect(row).toBeVisible();
+      const seen = await row.evaluate((el) => {
+        const badge = el.querySelector<HTMLElement>('[data-state="warn"]')!;
+        const word = badge.querySelector<HTMLElement>("span.truncate")!;
+        const next = el.children[1] as HTMLElement;
+        const nameEl = el.querySelector<HTMLElement>("[title]")!;
+        return {
+          word: word.textContent,
+          cut: word.scrollWidth - word.clientWidth,
+          badgeRight: badge.getBoundingClientRect().right,
+          nextLeft: next.getBoundingClientRect().left,
+          title: nameEl.getAttribute("title"),
+        };
+      });
+      expect(seen.word, name).toBe("Override");
+      expect(seen.cut, `${name}: the word is whole`).toBeLessThanOrEqual(0);
+      expect(seen.badgeRight, `${name}: no overlap with the next column`).toBeLessThanOrEqual(seen.nextLeft);
+      expect(seen.title).toBe(name);
+    }
+  });
+}
+
+/** The left edge of each cell of each row of a list: rows of columns. */
+const columnsOf = (list: Locator) =>
+  list.evaluate((ul) =>
+    [...ul.querySelectorAll(":scope > li")].map((li) => [...li.children].map((c) => Math.round(c.getBoundingClientRect().left))),
+  );
+
+test("the rows of changes line up, in Review and in the banner", async ({ page }) => {
+  await boot(page);
+  const { panel, editor } = await openEditor(page);
+  await editor.getByRole("button", { name: "Raise memory limit of worker by 50%" }).click();
+  await editor.getByLabel("envoy CPU request").fill("150m");
+  await expect(editor.getByRole("button", { name: "Review" })).toBeEnabled();
+  await editor.getByRole("button", { name: "Review" }).click();
+  const review = page.getByRole("dialog", { name: "Review · api" });
+  const changes = review.getByRole("list", { name: "Changes" });
+  await expect(changes.getByRole("listitem")).toHaveCount(2);
+  const rows = await columnsOf(changes);
+  expect(rows[0], "container, label, values").toHaveLength(3);
+  expect(rows[1]).toEqual(rows[0]);
+
+  await review.getByRole("button", { name: "Apply", exact: true }).click();
+  const banner = panel.locator("[data-override-banner]");
+  const overridden = banner.getByRole("list", { name: "Overridden values" });
+  await expect(overridden.getByRole("listitem")).toHaveCount(2);
+  const bannerRows = await columnsOf(overridden);
+  expect(bannerRows[0]).toHaveLength(3);
+  expect(bannerRows[1]).toEqual(bannerRows[0]);
+});

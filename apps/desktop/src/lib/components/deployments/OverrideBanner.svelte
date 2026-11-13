@@ -28,15 +28,16 @@
 		(value ? cancelButton : keepButton)?.querySelector('button')?.focus();
 	}
 
+	// One call per confirm: once the mark is removed the button stays pending
+	// until the reload drops the banner. A refusal (its toast says why) puts the
+	// two buttons back, the focus on the one that asked.
 	async function removeMark() {
 		if (removing) return;
 		removing = true;
-		try {
-			const ok = await resourceEditor.keepValues(deployment);
-			if (!ok) asking = false;
-		} finally {
-			removing = false;
-		}
+		const ok = await resourceEditor.keepValues(deployment);
+		if (ok) return;
+		removing = false;
+		await ask(false);
 	}
 
 	// When the banner goes with the focus in it (the mark removed, the values
@@ -71,12 +72,17 @@
 		<StatusGlyph state="warn" class="text-warning" />
 		<span>Resources overridden from CubeLite · {when}</span>
 	</p>
-	<ul role="list" aria-label="Overridden values" class="flex flex-col gap-0.5 pl-[17px]">
+	<!-- One grid for the list (each row a subgrid), so the columns line up. -->
+	<ul
+		role="list"
+		aria-label="Overridden values"
+		class="grid grid-cols-[minmax(0,1fr)_max-content_max-content] gap-x-3 gap-y-0.5 pl-[17px]"
+	>
 		{#each changes as change, i (i)}
-			<li class="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-baseline gap-x-3">
+			<li class="col-span-3 grid grid-cols-subgrid items-baseline">
 				<span class="type-data-sm min-w-0 truncate text-text" title={change.container}>{change.container}</span>
 				<span class="type-body-sm text-text-muted">{change.label}</span>
-				<span class="type-data-sm text-right whitespace-nowrap text-text">
+				<span class="type-data-sm whitespace-nowrap text-text">
 					{change.before ?? EMPTY} → {change.after ?? EMPTY}
 				</span>
 			</li>
