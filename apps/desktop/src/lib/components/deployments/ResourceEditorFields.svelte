@@ -210,7 +210,7 @@
 		{#each blocked as b (b.key)}
 			<p id={messageId(b.key)} class="type-body-sm flex items-start gap-2 text-text">
 				<StatusGlyph state="err" class="mt-1 text-error" />
-				<span class="min-w-0 break-words"><span class="sr-only">Blocked:</span>{' '}{b.finding?.message}</span>
+				<span class="min-w-0 break-words"><span class="sr-only">Blocked:</span>{` ${b.finding?.message ?? ''}`}</span>
 			</p>
 		{/each}
 	</div>
