@@ -1,6 +1,47 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// A Kubernetes quantity as the cluster writes it, with its amount:
+/// millicores for CPU, bytes for memory. `amount` is None when `text` cannot be parsed.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct QuantityInfo {
+    /// The quantity exactly as the cluster returned it (e.g. `"512Mi"`).
+    pub text: String,
+    /// Millicores (CPU) or bytes (memory); `None` when `text` is unreadable.
+    pub amount: Option<f64>,
+}
+
+/// The request and the limit of one resource of one container.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ResourcePairInfo {
+    /// `resources.requests.<resource>`, when set.
+    pub request: Option<QuantityInfo>,
+    /// `resources.limits.<resource>`, when set.
+    pub limit: Option<QuantityInfo>,
+}
+
+/// CPU and memory requests and limits of one container.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ContainerResourcesInfo {
+    /// CPU, amounts in millicores.
+    pub cpu: ResourcePairInfo,
+    /// Memory, amounts in bytes.
+    pub memory: ResourcePairInfo,
+}
+
+/// A container of a workload's pod template.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TemplateContainerInfo {
+    /// Container name.
+    pub name: String,
+    /// Container image reference.
+    pub image: Option<String>,
+    /// Native sidecar: an init container with `restartPolicy: Always`.
+    pub sidecar: bool,
+    /// Requests and limits of the container.
+    pub resources: ContainerResourcesInfo,
+}
+
 /// Per-container readiness and image for the pod detail drawer.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ContainerInfo {
@@ -10,6 +51,9 @@ pub struct ContainerInfo {
     pub image: Option<String>,
     /// `true` when the container reports ready.
     pub ready: bool,
+    /// Requests and limits of the container.
+    #[serde(default)]
+    pub resources: ContainerResourcesInfo,
 }
 
 /// Full per-container detail for the log-panel container picker.
@@ -131,6 +175,10 @@ pub struct DeploymentInfo {
     /// RFC 3339 creation timestamp, when reported by the API server.
     #[serde(default)]
     pub creation_timestamp: Option<String>,
+    /// Containers of the pod template with their requests and limits: the
+    /// regular containers in spec order, then the native sidecars.
+    #[serde(default)]
+    pub containers: Vec<TemplateContainerInfo>,
 }
 
 /// Lightweight representation of a Kubernetes Service.
@@ -360,6 +408,19 @@ mod tests {
         assert!(dep.selector.is_empty());
         assert!(dep.strategy.is_none());
         assert!(dep.conditions.is_empty());
+        assert!(dep.containers.is_empty());
+    }
+
+    #[test]
+    fn container_info_accepts_a_payload_without_resources() {
+        // Shape sent before requests and limits were added (#652).
+        let c: ContainerInfo = serde_json::from_value(json!({
+            "name": "api",
+            "image": "nginx:1.27",
+            "ready": true
+        }))
+        .expect("ContainerInfo without resources must deserialize");
+        assert_eq!(c.resources, ContainerResourcesInfo::default());
     }
 
     #[test]
@@ -379,6 +440,7 @@ mod tests {
                 name: "app".into(),
                 image: None,
                 ready: true,
+                ..ContainerInfo::default()
             }],
             ..PodInfo::default()
         };

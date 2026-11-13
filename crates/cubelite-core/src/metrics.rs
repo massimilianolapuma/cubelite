@@ -35,45 +35,108 @@ pub struct NodeCapacityInfo {
     pub memory_allocatable_bytes: u64,
 }
 
+/// A parsed Kubernetes quantity: `digits * 10^exp10 * 2^exp2`.
+///
+/// The number's digits are kept apart from its decimal point so that
+/// `1.5`, `250m` or `128974848000m` scale without a rounding error.
+struct Quantity {
+    digits: f64,
+    exp10: i32,
+    exp2: i32,
+}
+
+impl Quantity {
+    /// The amount in units of `10^unit_exp10` (0 for base units, -3 for
+    /// milli-units). `None` when the result is not a finite number.
+    fn in_units(&self, unit_exp10: i32) -> Option<f64> {
+        let exp = self.exp10 - unit_exp10;
+        let scaled = if exp >= 0 {
+            self.digits * 10f64.powi(exp)
+        } else {
+            self.digits / 10f64.powi(-exp)
+        };
+        let value = scaled * 2f64.powi(self.exp2);
+        value.is_finite().then_some(value)
+    }
+}
+
+/// Parse a Kubernetes quantity (`<number><suffix>`) as the API server
+/// writes it.
+///
+/// Suffixes: binary `Ki` to `Ei`; decimal `n`, `u`, `m`, none, `k`, `M`,
+/// `G`, `T`, `P`, `E`; or a decimal exponent (`e3`, `E-2`). A trailing `E`
+/// alone is exa. A negative number is `None`: no request, limit or usage
+/// this app reads can be below zero.
+fn parse_quantity(quantity: &str) -> Option<Quantity> {
+    let q = quantity.trim();
+    let unsigned = q.strip_prefix('+').unwrap_or(q);
+    if unsigned.starts_with('-') {
+        return None;
+    }
+    let number_len = unsigned
+        .find(|ch: char| !(ch.is_ascii_digit() || ch == '.'))
+        .unwrap_or(unsigned.len());
+    let (number, suffix) = unsigned.split_at(number_len);
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+    if (whole.is_empty() && fraction.is_empty()) || fraction.contains('.') {
+        return None;
+    }
+    let digits = format!("{whole}{fraction}").parse::<f64>().ok()?;
+    let fraction_len = i32::try_from(fraction.len()).ok()?;
+    let (exp10, exp2) = match suffix {
+        "" => (0, 0),
+        "n" => (-9, 0),
+        "u" => (-6, 0),
+        "m" => (-3, 0),
+        "k" => (3, 0),
+        "M" => (6, 0),
+        "G" => (9, 0),
+        "T" => (12, 0),
+        "P" => (15, 0),
+        "E" => (18, 0),
+        "Ki" => (0, 10),
+        "Mi" => (0, 20),
+        "Gi" => (0, 30),
+        "Ti" => (0, 40),
+        "Pi" => (0, 50),
+        "Ei" => (0, 60),
+        _ => {
+            let exponent = suffix
+                .strip_prefix('e')
+                .or_else(|| suffix.strip_prefix('E'))?;
+            let digits_only = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+            if digits_only.is_empty() || !digits_only.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            (exponent.parse::<i32>().ok()?, 0)
+        }
+    };
+    Some(Quantity {
+        digits,
+        exp10: exp10 - fraction_len,
+        exp2,
+    })
+}
+
 /// Parse a Kubernetes CPU quantity into millicores.
 ///
-/// Accepts nano (`n`), micro (`u`), milli (`m`) suffixes and plain cores.
+/// Accepts the full quantity grammar (see [`parse_quantity`]): `250m`,
+/// `2`, `1500000n`, `0.5`, `1e3`. Negative or unreadable is `None`.
 pub fn parse_cpu_millis(quantity: &str) -> Option<f64> {
-    let q = quantity.trim();
-    if let Some(v) = q.strip_suffix('n') {
-        return v.parse::<f64>().ok().map(|n| n / 1_000_000.0);
-    }
-    if let Some(v) = q.strip_suffix('u') {
-        return v.parse::<f64>().ok().map(|n| n / 1_000.0);
-    }
-    if let Some(v) = q.strip_suffix('m') {
-        return v.parse::<f64>().ok();
-    }
-    q.parse::<f64>().ok().map(|cores| cores * 1000.0)
+    parse_quantity(quantity)?.in_units(-3)
 }
 
 /// Parse a Kubernetes memory quantity into bytes.
 ///
-/// Accepts binary (`Ki`, `Mi`, `Gi`, `Ti`) and decimal (`k`, `M`, `G`, `T`)
-/// suffixes and plain bytes.
+/// Accepts the full quantity grammar (see [`parse_quantity`]): binary
+/// (`Ki` to `Ei`), decimal (`k` to `E`, and `m` for milli-bytes, which
+/// the API server writes for some computed values), exponents (`12e6`)
+/// and plain bytes. A fraction of a byte is rounded to the nearest byte.
+/// Negative, unreadable or above `u64::MAX` is `None`.
 pub fn parse_memory_bytes(quantity: &str) -> Option<u64> {
-    let q = quantity.trim();
-    let table: [(&str, f64); 8] = [
-        ("Ki", 1024.0),
-        ("Mi", 1024.0 * 1024.0),
-        ("Gi", 1024.0 * 1024.0 * 1024.0),
-        ("Ti", 1024.0 * 1024.0 * 1024.0 * 1024.0),
-        ("k", 1e3),
-        ("M", 1e6),
-        ("G", 1e9),
-        ("T", 1e12),
-    ];
-    for (suffix, factor) in table {
-        if let Some(v) = q.strip_suffix(suffix) {
-            return v.parse::<f64>().ok().map(|n| (n * factor) as u64);
-        }
-    }
-    q.parse::<u64>().ok()
+    let bytes = parse_quantity(quantity)?.in_units(0)?.round();
+    // 2^64 is exactly representable; anything at or above it does not fit.
+    (bytes < 18_446_744_073_709_551_616.0).then_some(bytes as u64)
 }
 
 /// Sum the container usage entries of one PodMetrics item.
@@ -126,6 +189,28 @@ mod tests {
         assert_eq!(parse_memory_bytes("5M"), Some(5000000));
         assert_eq!(parse_memory_bytes("1024"), Some(1024));
         assert_eq!(parse_memory_bytes("x"), None);
+    }
+
+    #[test]
+    fn parse_memory_bytes_full_grammar() {
+        assert_eq!(parse_memory_bytes("1Pi"), Some(1_125_899_906_842_624));
+        assert_eq!(parse_memory_bytes("1Ei"), Some(1_152_921_504_606_846_976));
+        assert_eq!(parse_memory_bytes("1P"), Some(1_000_000_000_000_000));
+        assert_eq!(parse_memory_bytes("1E"), Some(1_000_000_000_000_000_000));
+        assert_eq!(parse_memory_bytes("1e3"), Some(1_000));
+        assert_eq!(parse_memory_bytes("12E6"), Some(12_000_000));
+        assert_eq!(parse_memory_bytes("128974848000m"), Some(128_974_848));
+        assert_eq!(parse_memory_bytes("1.5Gi"), Some(1_610_612_736));
+    }
+
+    #[test]
+    fn parse_quantities_reject_what_is_not_a_quantity() {
+        for bad in ["", " ", "abc", "-1Gi", "-5", "1Xi", "Gi"] {
+            assert_eq!(parse_memory_bytes(bad), None, "{bad:?}");
+        }
+        for bad in ["", "abc", "-100m", "m"] {
+            assert_eq!(parse_cpu_millis(bad), None, "{bad:?}");
+        }
     }
 
     #[test]
