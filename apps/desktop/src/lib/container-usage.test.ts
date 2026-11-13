@@ -195,6 +195,35 @@ describe("containerRows", () => {
     expect(over.rows[0].detail).toBe("650m of 500m · request 250m");
   });
 
+  it.each([
+    // [what, resource, request, limit, used, detail]
+    ["CPU limit 1", "cpu", q("1", 1000), q("1", 1000), 999.6, "1 of 1 · request 1"],
+    ["CPU limit 0.5", "cpu", q("0.25", 250), q("0.5", 500), 260, "260m of 500m · request 250m"],
+    ["CPU limit 16", "cpu", q("15500m", 15500), q("16", 16000), 15999.7, "16 of 16 · request 15.50"],
+    ["memory limit 1G", "memory", q("1G", 1e9), q("1G", 1e9), 1e9, "954Mi of 954Mi · request 954Mi"],
+    ["memory limit 536870912", "memory", q("268435456", 256 * Mi), q("536870912", 512 * Mi), 498 * Mi, "498Mi of 512Mi · request 256Mi"],
+    ["memory limit 12e6", "memory", q("128974848000m", 128974848), q("12e6", 12e6), 11.9e6, "11Mi of 11Mi · request 123Mi"],
+  ] as const)("writes the request and the limit in the used value's unit: %s", (_, resource, request, limit, used, detail) => {
+    const resources: ContainerResourcesInfo = {
+      cpu: { request: null, limit: null },
+      memory: { request: null, limit: null },
+      [resource]: { request, limit },
+    };
+    const sample = { name: "api", cpu_millis: resource === "cpu" ? used : 0, memory_bytes: resource === "memory" ? used : 0 };
+    const [api] = containerRows([{ name: "api", resources }], [pod("api-0", [sample], { api: resources })]);
+    expect(api.rows[resource === "cpu" ? 0 : 1].detail).toBe(detail);
+  });
+
+  it("writes a request and a limit without a sample in the same units", () => {
+    const resources: ContainerResourcesInfo = {
+      cpu: { request: q("0.25", 250), limit: q("0.5", 500) },
+      memory: { request: q("268435456", 256 * Mi), limit: null },
+    };
+    const [api] = containerRows([{ name: "api", resources }], []);
+    expect(api.rows[0].detail).toBe("limit 500m · request 250m");
+    expect(api.rows[1].detail).toBe("request 256Mi · no limit");
+  });
+
   it("ignores metrics of a container the spec does not have, and pods without metrics", () => {
     const rows = containerRows(
       [{ name: "api", resources: API }],

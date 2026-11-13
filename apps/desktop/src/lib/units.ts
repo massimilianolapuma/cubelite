@@ -1,9 +1,13 @@
 /** Human-readable CPU/memory formatting for metrics values. */
 
-/** Millicores → "250m" below 1 core, "1.25" cores above. */
+/**
+ * Millicores → "250m" below 1 core, "1.25" cores above. The unit and the
+ * decimals follow the value shown: 999.6m is "1", 15999.7m is "16".
+ */
 export function formatCpu(millis: number): string {
-  if (millis < 1000) return `${Math.round(millis)}m`;
-  const cores = millis / 1000;
+  const rounded = Math.round(millis);
+  if (rounded < 1000) return `${rounded}m`;
+  const cores = Math.round(millis / 10) / 100;
   return Number.isInteger(cores) ? String(cores) : cores.toFixed(2);
 }
 

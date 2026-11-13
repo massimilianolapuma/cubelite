@@ -93,14 +93,18 @@ function row(
   pair: ResourcePairInfo,
   used: number | null,
 ): ResourceRow {
-  const request = pair.request ? `request ${pair.request.text}` : "no request";
+  // A request or a limit is written in the used value's unit, so the three
+  // numbers read together ("954Mi of 954Mi", not "954Mi of 1G"); the
+  // cluster's own text only when it could not be read.
+  const shown = (q: QuantityInfo) => (q.amount === null ? q.text : spec.format(q.amount));
+  const request = pair.request ? `request ${shown(pair.request)}` : "no request";
   const limit = pair.limit;
   let detail: string;
   if (limit) {
     detail =
       used === null
-        ? `limit ${limit.text} · ${request}`
-        : `${spec.format(used)} of ${limit.text} · ${request}`;
+        ? `limit ${shown(limit)} · ${request}`
+        : `${spec.format(used)} of ${shown(limit)} · ${request}`;
   } else {
     detail =
       used === null ? `${request} · no limit` : `${spec.format(used)} used · ${request} · no limit`;

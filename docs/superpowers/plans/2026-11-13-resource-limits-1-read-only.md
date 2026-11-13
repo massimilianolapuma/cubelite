@@ -14,7 +14,7 @@
 
 - Read-only delivery: no Adjust button, no editor, no override banner, no manager detection, no new Tauri command.
 - `ui/MeterBar.svelte` is used as it is: thresholds high from 60%, critical from 75%. Do not change the component.
-- Quantities are compared and computed as numbers, never as text. What is shown for a request or a limit is the cluster's own text.
+- Quantities are compared and computed as numbers, never as text. A request or a limit with an `amount` is shown through the same formatter as the used value (`formatCpu` / `formatBytes`), so the three numbers of a row are in one unit family (`954Mi of 954Mi · request 954Mi`, not `954Mi of 1G`); the cluster's own text is shown only when `amount` is null (`498Mi of 1Xi`). (Changed after review: the first version showed the cluster's text, which read as contradictions such as `260m of 0.5`.)
 - Every new field of a payload struct carries `#[serde(default)]`; the frontend must not break on a payload without it.
 - No `unwrap()` or `expect()` outside tests in Rust.
 - An unknown value is `EMPTY` from `lib/empty.ts`; no em dash in anything a user reads; colours and type from the Tonal tokens only; a state is never shown by colour alone.
@@ -235,7 +235,7 @@ export function containerRows(
 
 A pod's sample counts for a container and a resource only when that pod's own container has the same limit for that resource as the template (compared by `amount`; both without a limit is the same). A pod without such a container, or whose container has no `resources`, does not count: a pod of the previous ReplicaSet, or of another workload the selector also matches, is measured against another limit (review of #652).
 
-`detail`, exact (used values through `formatCpu` / `formatBytes` of `lib/units.ts`, request and limit as the cluster's `text`):
+`detail`, exact (used values, requests and limits through `formatCpu` / `formatBytes` of `lib/units.ts`; a request or a limit whose `amount` is null as the cluster's `text`):
 
 | limit | usage sample | detail |
 |---|---|---|
@@ -244,7 +244,7 @@ A pod's sample counts for a container and a resource only when that pod's own co
 | not set | yes | `38m used · request 100m · no limit` |
 | not set | no | `request 100m · no limit` |
 
-A request that is not set reads `no request` in place of `request …`.
+A request that is not set reads `no request` in place of `request …`. Examples of the units rule: limit `0.5` and request `0.25` with 260m used read `260m of 500m · request 250m`; limit `536870912` reads `512Mi`; limit `1G` with 1G used reads `954Mi of 954Mi · request 954Mi`; limit `16` with 15999.7m used reads `16 of 16 · request 15.50`; limit `1Xi` (unreadable) reads `498Mi of 1Xi`.
 
 - [ ] **Step 1: Write the failing tests** in `container-usage.test.ts` (helper `q(text, amount)` builds a `QuantityInfo`; `Mi = 1024 * 1024`):
 

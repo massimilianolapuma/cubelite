@@ -330,28 +330,32 @@ test("a long container name and long sentences wrap inside the panel instead of 
   const Gi = 1024 ** 3;
   const q = (text: string, amount: number) => ({ text, amount });
   const name = "opentelemetry-collector-contrib-agent";
+  const otelResources = { cpu: { request: q("1500m", 1500), limit: null }, memory: { request: q("1536Mi", 1.5 * Gi), limit: null } };
+  const workerResources = {
+    cpu: { request: q("1500m", 1500), limit: q("2500m", 2500) },
+    memory: { request: q("1536Mi", 1.5 * Gi), limit: q("3584Mi", 3.5 * Gi) },
+  };
+  const [api0, ...otherPods] = FIXTURES.pods;
   await boot(page, 1440, 900, {
     deployments: [
       {
         ...FIXTURES.deployments[0],
         containers: [
-          {
-            name,
-            image: "ghcr.io/x/otel:0.98",
-            sidecar: true,
-            resources: { cpu: { request: q("1500m", 1500), limit: null }, memory: { request: q("1536Mi", 1.5 * Gi), limit: null } },
-          },
-          {
-            name: "worker",
-            image: "ghcr.io/x/worker:2.1",
-            sidecar: false,
-            resources: {
-              cpu: { request: q("1500m", 1500), limit: q("2500m", 2500) },
-              memory: { request: q("1536Mi", 1.5 * Gi), limit: q("3584Mi", 3.5 * Gi) },
-            },
-          },
+          { name, image: "ghcr.io/x/otel:0.98", sidecar: true, resources: otelResources },
+          { name: "worker", image: "ghcr.io/x/worker:2.1", sidecar: false, resources: workerResources },
         ],
       },
+    ],
+    // The pod runs the template: its samples count.
+    pods: [
+      {
+        ...api0,
+        containers: [
+          { name, image: "ghcr.io/x/otel:0.98", ready: true, resources: otelResources },
+          { name: "worker", image: "ghcr.io/x/worker:2.1", ready: true, resources: workerResources },
+        ],
+      },
+      ...otherPods,
     ],
     podMetrics: [
       {
@@ -366,7 +370,7 @@ test("a long container name and long sentences wrap inside the panel instead of 
   const panel = await openDeployment(page);
   const section = panel.locator('[data-section="resources"]');
   const otel = section.locator(`[data-container="${name}"]`);
-  await expect(otel.locator('[data-resource-row="memory"]')).toContainText("1.3Gi used · request 1536Mi · no limit");
+  await expect(otel.locator('[data-resource-row="memory"]')).toContainText("1.3Gi used · request 1.5Gi · no limit");
   await expect(otel).toContainText("sidecar");
   expect(await fits(section)).toBe(true);
   for (const card of await section.locator("[data-container]").all()) {
