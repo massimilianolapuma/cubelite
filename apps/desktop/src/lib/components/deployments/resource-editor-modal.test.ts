@@ -25,6 +25,7 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn(async () => () => {}) })
 
 import ResourceEditor from "./ResourceEditor.svelte";
 import {
+  applyResources,
   evaluateResources,
   resourceFacts,
   type ContainerResourcesInfo,
@@ -158,6 +159,32 @@ const BLOCKED = finding({
   field: "limit",
 });
 
+const MEMORY_LIMIT_CHANGE = {
+  container: "worker",
+  sidecar: false,
+  resource: "memory" as const,
+  field: "limit" as const,
+  before: "512Mi",
+  after: "768Mi",
+};
+const WARNING = finding({
+  code: "w2",
+  level: "warning",
+  message: "Memory limits on node-1 add up to 103% of what the node has (was 91%). Under memory pressure the node evicts pods.",
+  resource: "memory",
+  node: "node-1",
+});
+const NOT_CHECKED = finding({
+  code: "w9",
+  level: "not_checked",
+  message: "Not checked: namespace quota (not allowed to read ResourceQuota).",
+});
+
+/** What the dry run answers: the memory limit of worker raised, with these findings. */
+function reviewed(findings: Finding[] = [finding()]): ResourceEvaluation {
+  return { findings, changes: [MEMORY_LIMIT_CHANGE], nodes: NODES };
+}
+
 /** Lets every settled promise run its continuation. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 10; i++) await Promise.resolve();
@@ -192,6 +219,7 @@ beforeEach(() => {
   app.namespace = "default";
   vi.mocked(resourceFacts).mockImplementation(async () => facts());
   vi.mocked(evaluateResources).mockImplementation(async () => evaluation());
+  vi.mocked(applyResources).mockImplementation(async () => reviewed());
 });
 
 afterEach(() => {
@@ -438,5 +466,210 @@ describe("ResourceEditor, step 1 (Edit)", () => {
     await settle();
     expect(opener).toHaveFocus();
     opener.remove();
+  });
+});
+
+/** Open the editor, change worker's memory limit to 768Mi and go to Review. */
+async function toReview(): Promise<void> {
+  await openEditor();
+  await typeInto("worker memory limit", "768Mi");
+  await fireEvent.click(screen.getByRole("button", { name: "Review" }));
+  await settle();
+}
+
+const dryRuns = (dryRun: boolean) => vi.mocked(applyResources).mock.calls.filter((call) => call[5] === dryRun);
+
+describe("ResourceEditor, step 2 (Review)", () => {
+  it("is titled Review, lists only what changes and says nothing else does", async () => {
+    await toReview();
+    expect(screen.getByRole("dialog", { name: "Review · api" })).toBeInTheDocument();
+    const changes = screen.getByRole("list", { name: "Changes" });
+    const rows = within(changes).getAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent(/^worker\s*Memory limit\s*512Mi → 768Mi$/);
+    expect(screen.getByText("(nothing else changes)")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("writes an unset value as an empty one", async () => {
+    vi.mocked(applyResources).mockImplementation(async () => ({
+      findings: [finding()],
+      changes: [{ ...MEMORY_LIMIT_CHANGE, container: "envoy", sidecar: true, resource: "cpu", before: null, after: "200m" }],
+      nodes: [],
+    }));
+    await toReview();
+    expect(within(screen.getByRole("list", { name: "Changes" })).getByRole("listitem")).toHaveTextContent(
+      `envoy CPU limit ${EMPTY} → 200m`,
+    );
+  });
+
+  it("says what happens: the rollout, the manager and the override mark", async () => {
+    vi.mocked(resourceFacts).mockImplementation(async () => facts({ kind: "argo_cd", release: null }));
+    await toReview();
+    const happens = screen.getByRole("list", { name: "What happens" });
+    expect(within(happens).getAllByRole("listitem").map((li) => li.textContent?.trim())).toEqual([
+      "The deployment rolls out: 2 pods are replaced (RollingUpdate, 1 at a time).",
+      "Argo CD manages this workload. If self-heal is on, it will undo this change at its next sync.",
+      "CubeLite marks the deployment as overridden, so the change stays visible and can be restored.",
+    ]);
+  });
+
+  it("runs the dry run of the exact change and says so while it runs", async () => {
+    let answer!: (e: ResourceEvaluation) => void;
+    vi.mocked(applyResources).mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    await openEditor();
+    await typeInto("worker memory limit", "768Mi");
+    await fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Checking with the cluster…");
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(dryRuns(true)).toHaveLength(1);
+    expect(dryRuns(true)[0][3]).toEqual({
+      kind: "adjust",
+      containers: [{ name: "worker", resources: { cpu: { request: "250m", limit: "500m" }, memory: { request: "256Mi", limit: "768Mi" } } }],
+    });
+    answer(reviewed());
+    await settle();
+    expect(screen.queryByText("Checking with the cluster…")).toBeNull();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+  });
+
+  it("offers Apply when nothing needs a decision", async () => {
+    await toReview();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+    expect(screen.queryByRole("heading", { name: /^Warnings/ })).toBeNull();
+    // The notes still show, without a count.
+    expect(within(screen.getByRole("list", { name: "Notes" })).getByText(/^Fits:/)).toBeInTheDocument();
+  });
+
+  it("offers Apply anyway with a warning, shown again in full under its count", async () => {
+    vi.mocked(applyResources).mockImplementation(async () => reviewed([WARNING, finding()]));
+    await toReview();
+    expect(screen.getByRole("button", { name: "Apply anyway" })).toBeEnabled();
+    expect(screen.getByRole("heading", { name: "Warnings (1)" })).toBeInTheDocument();
+    const warnings = screen.getByRole("list", { name: "Warnings" });
+    expect(within(warnings).getByText(WARNING.message)).toBeInTheDocument();
+    expect(within(warnings).queryByText(/^Fits:/)).toBeNull();
+  });
+
+  it("offers Apply anyway for a lone not-checked finding, counted as a warning", async () => {
+    vi.mocked(applyResources).mockImplementation(async () => reviewed([NOT_CHECKED]));
+    await toReview();
+    expect(screen.getByRole("button", { name: "Apply anyway" })).toBeEnabled();
+    expect(screen.getByRole("heading", { name: "Warnings (1)" })).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Warnings" })).getByText(NOT_CHECKED.message)).toBeInTheDocument();
+  });
+
+  it("shows a refused dry run inline, and offers nothing to apply", async () => {
+    vi.mocked(applyResources).mockRejectedValueOnce(new Error("You are not allowed to change this deployment."));
+    await toReview();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("You are not allowed to change this deployment.");
+    expect(alert.querySelector('[data-glyph="err"]')).not.toBeNull();
+    const apply = screen.getByRole("button", { name: "Apply" });
+    expect(apply).toBeDisabled();
+    await fireEvent.click(apply);
+    await settle();
+    expect(dryRuns(false)).toHaveLength(0);
+  });
+
+  it("applies once, closes, and says the rollout started", async () => {
+    await toReview();
+    const apply = screen.getByRole("button", { name: "Apply" });
+    await fireEvent.click(apply);
+    await fireEvent.click(apply);
+    await settle();
+    expect(dryRuns(false)).toHaveLength(1);
+    expect(resourceEditor.target).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(toasts.items.map((t) => t.message)).toContain("Resources of api updated, rollout started");
+  });
+
+  it("shows the apply as pending while it runs, and Esc does not close it", async () => {
+    let done!: (e: ResourceEvaluation) => void;
+    await toReview();
+    vi.mocked(applyResources).mockImplementationOnce(() => new Promise((resolve) => (done = resolve)));
+    await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(screen.getByRole("button", { name: "Apply" })).toHaveAttribute("aria-busy", "true");
+    expect(app.closeTopOverlay()).toBe(true);
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Review · api" })).toBeInTheDocument();
+    done(reviewed());
+    await settle();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps a failed apply inline, still on Review", async () => {
+    await toReview();
+    vi.mocked(applyResources).mockRejectedValueOnce(
+      new Error("The deployment's resources changed since you opened this. Reopen and try again."),
+    );
+    await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Review · api" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The deployment's resources changed since you opened this. Reopen and try again.",
+    );
+  });
+
+  it("Back returns to the fields with what was typed", async () => {
+    await toReview();
+    await fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Adjust resources · api" })).toBeInTheDocument();
+    expect(field("worker memory limit")).toHaveValue("768Mi");
+    expect(within(card("worker")).getByText("was 512Mi")).toBeInTheDocument();
+  });
+
+  it("moves focus to the step's heading on Review and on Back", async () => {
+    await openEditor();
+    await typeInto("worker memory limit", "768Mi");
+    // A click or a key press leaves focus on the button: it is the step that moves it.
+    const review = screen.getByRole("button", { name: "Review" });
+    review.focus();
+    await fireEvent.click(review);
+    await settle();
+    expect(screen.getByRole("heading", { name: "Review · api" })).toHaveFocus();
+    const back = screen.getByRole("button", { name: "Back" });
+    back.focus();
+    await fireEvent.click(back);
+    await settle();
+    expect(screen.getByRole("heading", { name: "Adjust resources · api" })).toHaveFocus();
+  });
+
+  it("a restore opens on Review: Restore, Cancel instead of Back, and the mark is removed", async () => {
+    vi.mocked(applyResources).mockImplementation(async () => ({
+      findings: [finding()],
+      changes: [{ ...MEMORY_LIMIT_CHANGE, before: "768Mi", after: "512Mi" }],
+      nodes: [],
+    }));
+    render(ResourceEditor);
+    await resourceEditor.open(DEPLOYMENT, "restore");
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Restore · api" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Restore · api" })).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Changes" })).getByRole("listitem")).toHaveTextContent(
+      "worker Memory limit 768Mi → 512Mi",
+    );
+    expect(within(screen.getByRole("list", { name: "What happens" })).getByText("The override mark is removed.")).toBeInTheDocument();
+    const restore = screen.getByRole("button", { name: "Restore" });
+    expect(restore).toBeEnabled();
+    await fireEvent.click(restore);
+    await settle();
+    expect(dryRuns(false)[0][3]).toEqual({ kind: "restore", containers: [] });
+    expect(toasts.items.map((t) => t.message)).toContain("Resources of api restored, rollout started");
+  });
+
+  it("a restore with a warning offers Restore anyway", async () => {
+    vi.mocked(applyResources).mockImplementation(async () => ({
+      findings: [WARNING],
+      changes: [{ ...MEMORY_LIMIT_CHANGE, before: "768Mi", after: "512Mi" }],
+      nodes: [],
+    }));
+    render(ResourceEditor);
+    await resourceEditor.open(DEPLOYMENT, "restore");
+    await settle();
+    expect(screen.getByRole("button", { name: "Restore anyway" })).toBeEnabled();
   });
 });
