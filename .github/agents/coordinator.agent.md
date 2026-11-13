@@ -447,11 +447,11 @@ Before delegating ANY task to a sub-agent, remind it to read:
 
 When a task introduces a **new UI section or view** (not a tweak to an existing one):
 
-1. **First** → delegate to `design-agent` to create Penpot board(s)
+1. **First** → delegate to `design-agent` to write the design spec (`docs/superpowers/specs/`, mockups in the Tonal design system)
 2. **Then** → present the design to the user for review and approval
 3. **Only after approval** → delegate implementation to the owning agent (desktop-agent)
 
-Never skip straight to code for new UI. Penpot designs are cheap to iterate;
+Never skip straight to code for new UI. A design spec is cheap to iterate;
 code rework is expensive.
 
 ## Inter-Agent Protocol
