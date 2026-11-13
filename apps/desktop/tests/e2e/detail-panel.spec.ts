@@ -1,11 +1,11 @@
 import { type Locator, type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { FIXTURES, tauriMockScript } from "./tauri-mock";
+import { API_0_METRICS, FIXTURES, tauriMockScript } from "./tauri-mock";
 
 // The detail panel: docked beside the list from 1000 px of content, over it below (Tonal §5, §8.3).
-async function boot(page: Page, width: number, height: number) {
+async function boot(page: Page, width: number, height: number, overrides: Parameters<typeof tauriMockScript>[0] = {}) {
   await page.setViewportSize({ width, height });
-  await page.addInitScript(tauriMockScript());
+  await page.addInitScript(tauriMockScript(overrides));
   await page.addInitScript(() => {
     window.localStorage.setItem("cubelite.onboardingSeen", "true");
     window.localStorage.setItem("cubelite.theme", '"dark"');
@@ -224,4 +224,152 @@ test("a deployment panel shows each long image on its own line with its whole na
   await expectWhole(panel, refs.nth(1), "name", "envoy");
   const [a, b] = [(await refs.nth(0).boundingBox())!, (await refs.nth(1).boundingBox())!];
   expect(b.y).toBeGreaterThanOrEqual(a.y + a.height - 1);
+});
+
+// #652: requests, limits and usage per container, in the narrowest (docked, 360 px) panel.
+const UNAVAILABLE = "Usage unavailable: metrics-server did not answer.";
+
+/** Nothing in `el` scrolls sideways: no text is cut. */
+const fits = (el: Locator) => el.evaluate((e) => e.scrollWidth <= e.clientWidth);
+
+/** Every line of every row of `card` lies inside the card and the panel. */
+async function expectRowsInside(panel: Locator, card: Locator) {
+  const box = (await panel.boundingBox())!;
+  const own = (await card.boundingBox())!;
+  const rows = card.locator("[data-resource-row]");
+  await expect(rows).toHaveCount(2);
+  for (const row of await rows.all()) {
+    const rects = await row.evaluate((e) =>
+      [...e.querySelectorAll("span")].flatMap((s) => [...s.getClientRects()].map((r) => ({ left: r.left, right: r.right }))),
+    );
+    for (const r of rects) {
+      expect(r.left).toBeGreaterThanOrEqual(Math.floor(own.x));
+      expect(r.right).toBeLessThanOrEqual(Math.ceil(own.x + own.width));
+      expect(r.right).toBeLessThanOrEqual(box.x + box.width);
+    }
+  }
+}
+
+async function openDeployment(page: Page) {
+  await open(page, "Deployments");
+  await page.getByText("api", { exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "api" });
+  await expect(panel).toHaveAttribute("data-mode", "docked");
+  expect(Math.round((await panel.boundingBox())!.width)).toBe(360);
+  return panel;
+}
+
+test("a deployment panel shows each container's requests, limits and usage inside its 360 px", async ({ page }) => {
+  await boot(page, 1440, 900, { podMetrics: [API_0_METRICS] });
+  const panel = await openDeployment(page);
+  const section = panel.locator('[data-section="resources"]');
+  await expect(section).toBeVisible();
+  await expect(section.getByText("Resources", { exact: true })).toBeVisible();
+
+  const worker = section.locator('[data-container="worker"]');
+  await expect(worker.locator('[data-resource-row="memory"]')).toContainText("498Mi of 512Mi · request 256Mi");
+  await expect(worker.locator('[data-resource-row="cpu"]')).toContainText("260m of 500m · request 250m");
+  const envoy = section.locator('[data-container="envoy"]');
+  await expect(envoy).toContainText("sidecar");
+  await expect(envoy.locator('[data-resource-row="cpu"]')).toContainText("38m used · request 100m · no limit");
+  await expect(panel.getByText(UNAVAILABLE)).toHaveCount(0);
+
+  expect(await fits(section)).toBe(true);
+  for (const card of await section.locator("[data-container]").all()) {
+    expect(await fits(card)).toBe(true);
+    await expectRowsInside(panel, card);
+  }
+
+  // A row without a limit keeps the meter rows' columns: its label where theirs is,
+  // its sentence where their sentence starts.
+  const label = (row: Locator) => row.locator(".type-label").first().boundingBox();
+  const [meterLabel, lineLabel] = [
+    (await label(worker.locator('[data-resource-row="cpu"]')))!,
+    (await label(envoy.locator('[data-resource-row="cpu"]')))!,
+  ];
+  expect(Math.abs(meterLabel.x - lineLabel.x)).toBeLessThan(1);
+  expect(Math.abs(meterLabel.width - lineLabel.width)).toBeLessThan(1);
+  // Where the text itself starts (the meter's sentence is a padded box).
+  const textLeft = (el: Locator) =>
+    el.evaluate((e) => {
+      const range = document.createRange();
+      range.selectNodeContents(e);
+      return range.getClientRects()[0].left;
+    });
+  const meterDetail = await textLeft(worker.locator('[data-resource-row="cpu"]').getByText("260m of 500m", { exact: false }));
+  const lineDetail = await textLeft(envoy.locator('[data-resource-row="cpu"] .type-data-sm'));
+  expect(Math.abs(meterDetail - lineDetail)).toBeLessThan(1);
+});
+
+test("a deployment panel says once that usage is unavailable when metrics-server does not answer", async ({ page }) => {
+  await boot(page, 1440, 900, { podMetrics: null });
+  const panel = await openDeployment(page);
+  const section = panel.locator('[data-section="resources"]');
+  await expect(section.getByText(UNAVAILABLE)).toBeVisible();
+  await expect(panel.getByText(UNAVAILABLE)).toHaveCount(1);
+  await expect(section.locator('[data-container="worker"] [data-resource-row="cpu"]')).toContainText("limit 500m · request 250m");
+  expect(await fits(section)).toBe(true);
+});
+
+test("a pod panel shows the resource rows in its container card, inside the panel's width", async ({ page }) => {
+  await boot(page, 1440, 900, { podMetrics: [API_0_METRICS] });
+  await open(page, "Pods");
+  await page.getByText("api-0").click();
+  const panel = page.getByRole("dialog", { name: "api-0" });
+  await expect(panel).toHaveAttribute("data-mode", "docked");
+  const worker = panel.locator('[data-container="worker"]');
+  await expect(worker.locator('[data-resource-row="cpu"]')).toContainText("260m of 500m · request 250m");
+  await expect(worker.locator('[data-resource-row="memory"]')).toContainText("498Mi of 512Mi · request 256Mi");
+  expect(await fits(worker)).toBe(true);
+  await expectRowsInside(panel, worker);
+  // A container without requests or limits in the payload has no rows.
+  await expect(panel.locator('[data-container="init-migrate"] [data-resource-row]')).toHaveCount(0);
+});
+
+test("a long container name and long sentences wrap inside the panel instead of being cut", async ({ page }) => {
+  const Gi = 1024 ** 3;
+  const q = (text: string, amount: number) => ({ text, amount });
+  const name = "opentelemetry-collector-contrib-agent";
+  await boot(page, 1440, 900, {
+    deployments: [
+      {
+        ...FIXTURES.deployments[0],
+        containers: [
+          {
+            name,
+            image: "ghcr.io/x/otel:0.98",
+            sidecar: true,
+            resources: { cpu: { request: q("1500m", 1500), limit: null }, memory: { request: q("1536Mi", 1.5 * Gi), limit: null } },
+          },
+          {
+            name: "worker",
+            image: "ghcr.io/x/worker:2.1",
+            sidecar: false,
+            resources: {
+              cpu: { request: q("1500m", 1500), limit: q("2500m", 2500) },
+              memory: { request: q("1536Mi", 1.5 * Gi), limit: q("3584Mi", 3.5 * Gi) },
+            },
+          },
+        ],
+      },
+    ],
+    podMetrics: [
+      {
+        ...API_0_METRICS,
+        containers: [
+          { name, cpu_millis: 1234, memory_bytes: 1.25 * Gi },
+          { name: "worker", cpu_millis: 2345, memory_bytes: 3.4 * Gi },
+        ],
+      },
+    ],
+  });
+  const panel = await openDeployment(page);
+  const section = panel.locator('[data-section="resources"]');
+  const otel = section.locator(`[data-container="${name}"]`);
+  await expect(otel.locator('[data-resource-row="memory"]')).toContainText("1.3Gi used · request 1536Mi · no limit");
+  await expect(otel).toContainText("sidecar");
+  expect(await fits(section)).toBe(true);
+  for (const card of await section.locator("[data-container]").all()) {
+    await expectRowsInside(panel, card);
+  }
 });

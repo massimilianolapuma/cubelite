@@ -33,6 +33,41 @@ declare global {
   }
 }
 
+const Mi = 1024 * 1024;
+const quantity = (text: string, amount: number | null) => ({ text, amount });
+
+/** Requests and limits of the worker container: cpu 250m / 500m, memory 256Mi / 512Mi. */
+const WORKER_RESOURCES = {
+  cpu: { request: quantity("250m", 250), limit: quantity("500m", 500) },
+  memory: { request: quantity("256Mi", 256 * Mi), limit: quantity("512Mi", 512 * Mi) },
+};
+
+/** Requests only, no limit: envoy, the sidecar. */
+const ENVOY_RESOURCES = {
+  cpu: { request: quantity("100m", 100), limit: null },
+  memory: { request: quantity("64Mi", 64 * Mi), limit: null },
+};
+
+type PodMetricsFixture = {
+  name: string;
+  namespace: string;
+  cpu_millis: number;
+  memory_bytes: number;
+  containers?: { name: string; cpu_millis: number; memory_bytes: number }[];
+};
+
+/** Usage of api-0 with its worker close to its memory limit (498Mi of 512Mi). */
+export const API_0_METRICS: PodMetricsFixture = {
+  name: "api-0",
+  namespace: "default",
+  cpu_millis: 298,
+  memory_bytes: 539 * Mi,
+  containers: [
+    { name: "worker", cpu_millis: 260, memory_bytes: 498 * Mi },
+    { name: "envoy", cpu_millis: 38, memory_bytes: 41 * Mi },
+  ],
+};
+
 export const FIXTURES = {
   // Discovery (resource-kinds phase 2): every registry kind except Storage Classes.
   resourceKinds: [
@@ -102,8 +137,8 @@ export const FIXTURES = {
       pod_ip: "10.0.0.5",
       qos_class: "Burstable",
       containers: [
-        { name: "worker", image: "ghcr.io/x/worker:2.1", ready: true },
-        { name: "envoy", image: "ghcr.io/x/envoy:1.29", ready: true },
+        { name: "worker", image: "ghcr.io/x/worker:2.1", ready: true, resources: WORKER_RESOURCES },
+        { name: "envoy", image: "ghcr.io/x/envoy:1.29", ready: true, resources: ENVOY_RESOURCES },
         { name: "init-migrate", image: "ghcr.io/x/init-migrate:1.0", ready: true },
       ],
       labels: { app: "api" },
@@ -140,8 +175,19 @@ export const FIXTURES = {
       strategy: "RollingUpdate",
       conditions: [{ condition_type: "Available", status: "True", reason: "MinimumReplicasAvailable" }],
       creation_timestamp: "2026-07-01T09:00:00Z",
+      // The template's containers with their requests and limits (#652): the
+      // worker the pods run, then envoy as a native sidecar.
+      containers: [
+        { name: "worker", image: "ghcr.io/x/worker:2.1", sidecar: false, resources: WORKER_RESOURCES },
+        { name: "envoy", image: "ghcr.io/x/envoy:1.29", sidecar: true, resources: ENVOY_RESOURCES },
+      ],
     },
   ],
+  /**
+   * What `list_pod_metrics` answers: by default metrics-server answers with no
+   * sample; null is metrics-server not answering (the command fails).
+   */
+  podMetrics: [] as PodMetricsFixture[] | null,
   /** What `list_events` answers (Overview's recent warnings, the Events list). */
   events: [] as {
     event_type: string | null;
@@ -239,7 +285,9 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
       case "list_namespaces": return fixtures.namespaces;
       case "list_deployments": return args.namespace === "default" ? fixtures.deployments : [];
       case "list_events": return fixtures.events;
-      case "list_pod_metrics": return [];
+      case "list_pod_metrics":
+        if (fixtures.podMetrics === null) throw new Error("the server could not find the requested resource");
+        return fixtures.podMetrics;
       case "cluster_capacity": return [];
       case "list_services":
       case "list_ingresses":
