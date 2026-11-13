@@ -63,7 +63,7 @@ impl Quantity {
     /// The amount in units of `10^unit_exp10` (0 for base units, -3 for
     /// milli-units). `None` when the result is not a finite number.
     fn in_units(&self, unit_exp10: i32) -> Option<f64> {
-        let exp = self.exp10 - unit_exp10;
+        let exp = self.exp10.checked_sub(unit_exp10)?;
         let scaled = if exp >= 0 {
             self.digits * 10f64.powi(exp)
         } else {
@@ -73,6 +73,9 @@ impl Quantity {
         value.is_finite().then_some(value)
     }
 }
+
+/// Largest decimal exponent (`e100`, `e-100`) a quantity may carry.
+const MAX_EXPONENT: i32 = 100;
 
 /// Parse a Kubernetes quantity (`<number><suffix>`) as the API server
 /// writes it.
@@ -122,12 +125,18 @@ fn parse_quantity(quantity: &str) -> Option<Quantity> {
             if digits_only.is_empty() || !digits_only.bytes().all(|b| b.is_ascii_digit()) {
                 return None;
             }
-            (exponent.parse::<i32>().ok()?, 0)
+            let exp = exponent.parse::<i32>().ok()?;
+            // No quantity a cluster writes is anywhere near 10^±100; past
+            // that, an exponent is not a value but an overflow waiting.
+            if !(-MAX_EXPONENT..=MAX_EXPONENT).contains(&exp) {
+                return None;
+            }
+            (exp, 0)
         }
     };
     Some(Quantity {
         digits,
-        exp10: exp10 - fraction_len,
+        exp10: exp10.checked_sub(fraction_len)?,
         exp2,
     })
 }
@@ -232,6 +241,16 @@ mod tests {
         }
         for bad in ["", "abc", "-100m", "m"] {
             assert_eq!(parse_cpu_millis(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn parse_quantities_reject_an_exponent_out_of_range() {
+        // Cluster-provided text: an extreme exponent must not overflow (a
+        // panic in a debug build) nor wrap round to a small value.
+        for bad in ["1e2147483647", "1e-2147483648", "1.5e-2147483648"] {
+            assert_eq!(parse_cpu_millis(bad), None, "cpu {bad:?}");
+            assert_eq!(parse_memory_bytes(bad), None, "memory {bad:?}");
         }
     }
 
