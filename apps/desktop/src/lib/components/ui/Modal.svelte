@@ -11,7 +11,8 @@
 		children,
 		footer,
 		heading = $bindable(null),
-		focusableTitle = false
+		focusableTitle = false,
+		placement = 'center'
 	}: {
 		title: string;
 		width?: number;
@@ -22,6 +23,12 @@
 		heading?: HTMLElement | null;
 		/** The title takes focus from script (`tabindex="-1"`); off by default. */
 		focusableTitle?: boolean;
+		/**
+		 * `top` holds the dialog's top edge at 10% of the window, so a body that grows
+		 * (content arriving, a step changing) grows downwards and the title stays put.
+		 * Centred, the whole dialog would move.
+		 */
+		placement?: 'center' | 'top';
 	} = $props();
 
 	// Esc closes the topmost overlay: register so app.closeTopOverlay() reaches
@@ -32,7 +39,11 @@
 <!-- Backdrop: black at 50 % (Tonal §7). -->
 <div class="animate-fadein fixed inset-0 z-40 bg-black/50" role="presentation" onclick={onClose}></div>
 <div
-	class="card animate-popin fixed top-1/2 left-1/2 z-50 flex max-h-[80vh] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
+	class="card animate-popin fixed left-1/2 z-50 flex max-h-[80vh] max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay {placement ===
+	'top'
+		? 'top-[10vh]'
+		: 'top-1/2 -translate-y-1/2'}"
+	data-placement={placement}
 	style="width: {width}px;"
 	role="dialog"
 	aria-modal="true"

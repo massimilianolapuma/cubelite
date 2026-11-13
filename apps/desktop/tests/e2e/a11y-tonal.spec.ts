@@ -940,6 +940,18 @@ test.describe("focus: every control shows the ring from the keyboard", () => {
     await ringsIn(page, '[role="dialog"][aria-label="Delete Pod"]', "delete", 1, 80);
   });
 
+  test("the resources editor, at 800 × 600 where its body scrolls", async ({ page }) => {
+    await boot(page);
+    await page.setViewportSize({ width: 800, height: 600 });
+    await page.getByRole("complementary").getByText("Deployments", { exact: true }).click();
+    await page.getByRole("button", { name: /^api/ }).first().click();
+    await page.getByRole("dialog", { name: "api" }).getByRole("button", { name: "Adjust" }).click();
+    const editor = '[role="dialog"][aria-label="Adjust resources · api"]';
+    await expect(page.locator(editor).getByRole("list", { name: "Findings" })).toBeVisible();
+    // Close, eight fields, three quick steps, the node disclosure, Cancel.
+    await ringsIn(page, editor, "resources editor", 13, 80);
+  });
+
   test("Overview, All Clusters and the Logs view", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 700 });
     await withPrometheus(page);
@@ -972,4 +984,168 @@ test.describe("focus: every control shows the ring from the keyboard", () => {
       if (step < 2) await page.locator(dialog).getByRole("button", { name: "Continue" }).click();
     }
   });
+});
+
+// The resources editor (#650 §3.2, §6.2) and the override banner in the three
+// system settings. State is a shape and a word or a weight, never colour alone.
+test.describe("the resources editor and the override banner", () => {
+  /** api's panel, Adjust, and the editor once the cluster's values are checked. */
+  async function editor(page: Page) {
+    await page.getByRole("complementary").getByText("Deployments", { exact: true }).click();
+    await page.getByRole("button", { name: /^api/ }).first().click();
+    const panel = page.getByRole("dialog", { name: "api" });
+    await panel.getByRole("button", { name: "Adjust" }).click();
+    const dialog = page.getByRole("dialog", { name: "Adjust resources · api" });
+    await expect(dialog.getByRole("list", { name: "Findings" })).toBeVisible();
+    return { panel, dialog };
+  }
+
+  /** Raise the memory limit by half, review and apply: the panel then has its banner. */
+  async function withBanner(page: Page) {
+    const { panel, dialog } = await editor(page);
+    await dialog.getByRole("button", { name: "Raise memory limit of worker by 50%" }).click();
+    await dialog.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("dialog", { name: "Review · api" }).getByRole("button", { name: "Apply", exact: true }).click();
+    const banner = panel.locator("[data-override-banner]");
+    await expect(banner).toBeVisible();
+    return banner;
+  }
+
+  for (const theme of THEMES) {
+    test(`${theme}, more contrast: the editor's blocks, both steps and the banner keep their edge`, async ({ page }) => {
+      await page.emulateMedia({ contrast: "more" });
+      await boot(page, theme);
+      const outlined = async (el: Locator, name: string) =>
+        expect(await edge(el), name).toEqual({
+          style: "solid",
+          width: "1px",
+          color: await resolvedIn(el, "var(--color-outline-strong)"),
+        });
+      const { dialog } = await editor(page);
+      await outlined(dialog, "editor");
+      for (const name of ["worker", "envoy"]) {
+        await outlined(dialog.locator(`[data-editor-container="${name}"]`), `${name} block`);
+      }
+      await dialog.getByRole("button", { name: "Double memory limit of worker" }).click();
+      await dialog.getByRole("button", { name: "Review" }).click();
+      const review = page.getByRole("dialog", { name: "Review · api" });
+      await outlined(review.getByRole("list", { name: "Changes" }).locator(".."), "changes");
+      await page.keyboard.press("Escape");
+      await expect(review).toHaveCount(0);
+      await page.getByRole("dialog", { name: "api" }).getByRole("button", { name: "Adjust" }).click();
+      const again = page.getByRole("dialog", { name: "Adjust resources · api" });
+      await again.getByRole("button", { name: "Raise memory limit of worker by 50%" }).click();
+      await again.getByRole("button", { name: "Review" }).click();
+      await page.getByRole("dialog", { name: "Review · api" }).getByRole("button", { name: "Apply", exact: true }).click();
+      await outlined(page.locator("[data-override-banner]"), "banner");
+    });
+  }
+
+  for (const [theme, scheme] of [
+    ["dark", "light"],
+    ["light", "dark"],
+  ] as const) {
+    test(`${theme} app on a ${scheme} system palette: marks, glyphs and both node bars are system colours, buttons have an edge`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await boot(page, theme);
+      const canvasText = await sys(page, "CanvasText");
+      const system = [canvasText, await sys(page, "ButtonText")];
+      const edged = async (el: Locator, name: string) => {
+        await expect(el, name).toBeVisible();
+        expect(system, `${name} has a system-colour edge`).toContain(await systemEdge(el));
+      };
+      const { dialog } = await editor(page);
+
+      // A blocked value: the field keeps its edge and its square, the message its square.
+      const memory = dialog.getByLabel("worker memory limit");
+      await memory.fill("128Mi");
+      await expect(memory).toHaveAttribute("aria-invalid", "true");
+      expect(await border(memory)).toEqual({ style: "solid", width: 1 });
+      const fieldMark = dialog.locator('[data-field="memory.limit"]').first().locator('[data-glyph="err"]');
+      expect(await fg(fieldMark), "invalid mark").toBe(canvasText);
+      // A changed value: its triangle and "was …".
+      const cpu = dialog.getByLabel("worker CPU limit");
+      await cpu.fill("750m");
+      const changed = dialog.locator('[data-field="cpu.limit"][data-changed="true"]').first();
+      expect(await fg(changed.locator('[data-glyph="warn"]')), "changed mark").toBe(canvasText);
+      await expect(changed.getByText("was 500m")).toBeVisible();
+      // Every finding's glyph.
+      const glyphs = dialog.getByRole("list", { name: "Findings" }).locator("[data-glyph]");
+      await expect(glyphs).toHaveCount(2);
+      for (const glyph of await glyphs.all()) expect(await fg(glyph), "finding glyph").toBe(canvasText);
+
+      // Both bars of the hosting node, filled in a system colour.
+      await memory.fill("768Mi");
+      await cpu.fill("500m");
+      const node = dialog.getByTestId("node-node-1");
+      await expect(node.locator("[data-meter-fill]")).toHaveCount(2);
+      for (const fill of await node.locator("[data-meter-fill]").all()) expect(await bg(fill), "node bar").toBe(canvasText);
+
+      // Quick steps (tonal), reset and the disclosure (text) and Cancel have an edge;
+      // Review is the inverted primary.
+      await edged(dialog.getByRole("button", { name: /^Raise .* of worker by 25%$/ }), "quick step");
+      await edged(dialog.getByRole("button", { name: "Reset worker to the cluster's values" }), "reset");
+      await edged(dialog.getByRole("button", { name: "1 other node" }), "disclosure");
+      await edged(dialog.getByRole("button", { name: "Cancel" }), "cancel");
+      const review = dialog.getByRole("button", { name: "Review" });
+      await expect(review).toBeEnabled();
+      expect(await bg(review)).toBe(await sys(page, "ButtonText"));
+
+      // The banner: its triangle and its two buttons.
+      await page.keyboard.press("Escape");
+      const banner = await withBanner(page);
+      expect(await fg(banner.locator('[data-glyph="warn"]')), "banner glyph").toBe(canvasText);
+      await edged(banner.getByRole("button", { name: "Keep these values" }), "keep");
+      await edged(banner.getByRole("button", { name: "Restore" }), "restore");
+    });
+  }
+
+  test("reduced motion: nothing moves between reading the cluster and the fields", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await boot(page, "dark", ["resource_facts"]);
+    await page.getByRole("complementary").getByText("Deployments", { exact: true }).click();
+    await page.getByRole("button", { name: /^api/ }).first().click();
+    await page.getByRole("dialog", { name: "api" }).getByRole("button", { name: "Adjust" }).click();
+    const dialog = page.getByRole("dialog", { name: "Adjust resources · api" });
+    await expect(dialog.getByText("Reading the cluster…")).toBeVisible();
+    const context = dialog.getByTestId("editor-context");
+    const before = await context.boundingBox();
+    expect(await moving(page), "reading").toEqual([]);
+    await page.evaluate(() => ((window as unknown as HangWindow).__hang = []));
+    await expect(dialog.getByLabel("worker memory limit")).toHaveValue("512Mi");
+    expect(await context.boundingBox(), "the header line stays").toEqual(before);
+    expect(await moving(page), "loaded").toEqual([]);
+    // Nor between the steps.
+    await dialog.getByRole("button", { name: "Raise memory limit of worker by 50%" }).click();
+    await dialog.getByRole("button", { name: "Review" }).click();
+    const review = page.getByRole("dialog", { name: "Review · api" });
+    await expect(review.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
+    expect(await review.getByTestId("editor-context").boundingBox(), "on Review").toEqual(before);
+    expect(await moving(page), "review").toEqual([]);
+  });
+
+  // Whatever the motion preference: the check answering must not move a field.
+  for (const typed of ["128Mi", "1Gi"]) {
+    test(`the fields hold still when the check of ${typed} answers`, async ({ page }) => {
+      await boot(page);
+      const { dialog } = await editor(page);
+      await dialog.getByRole("button", { name: "1 other node" }).click();
+      const boxes = () => dialog.locator("input").evaluateAll((els) => els.map((e) => JSON.stringify(e.getBoundingClientRect())));
+      const nodeBox = () => dialog.getByTestId("node-node-1").boundingBox();
+      const fields = await boxes();
+      const node = await nodeBox();
+      await page.evaluate(() => ((window as unknown as HangWindow).__hang = ["evaluate_resources"]));
+      await dialog.getByLabel("worker memory limit").fill(typed);
+      await expect(dialog.getByRole("list", { name: "Findings" })).toHaveAttribute("data-stale", "true");
+      expect(await boxes(), "typed, the check pending").toEqual(fields);
+      await page.evaluate(() => ((window as unknown as HangWindow).__hang = []));
+      await expect(dialog.getByRole("list", { name: "Findings" })).toHaveAttribute("data-stale", "false");
+      await expect(dialog.getByRole("list", { name: "Findings" })).not.toContainText("Fits:");
+      expect(await boxes(), "the check answered").toEqual(fields);
+      // The node rows stay where they were: the check moves their bars, not them.
+      expect((await nodeBox())?.y).toBe(node?.y);
+    });
+  }
 });

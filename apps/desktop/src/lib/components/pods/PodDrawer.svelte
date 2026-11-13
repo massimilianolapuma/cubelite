@@ -171,8 +171,9 @@
 					{/each}
 				</div>
 				{#if ownerDeployment}
-					<Button variant="text" size="inline" class="mt-1.5 -ml-3.5" onclick={adjustOnDeployment}>
-						Adjust on deployment <span class="type-data-sm">{ownerDeployment.name}</span>
+					<Button variant="text" size="inline" class="mt-1.5" onclick={adjustOnDeployment}>
+						<!-- One label: the button spaces its parts apart, the name is part of the sentence. -->
+						<span>Adjust on deployment <span class="type-data-sm">{ownerDeployment.name}</span></span>
 					</Button>
 				{/if}
 			</div>

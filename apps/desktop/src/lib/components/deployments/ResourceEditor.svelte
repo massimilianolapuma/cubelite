@@ -124,7 +124,9 @@
 {/snippet}
 
 {#if target !== null}
-	<Modal {title} width={640} onClose={() => ed.close()} focusableTitle bind:heading>
+	<!-- Held at the top: the body grows as the facts and the check arrive, and changes
+	     with the step; the title and the header line must not move with it. -->
+	<Modal {title} width={640} onClose={() => ed.close()} focusableTitle placement="top" bind:heading>
 		<div class="flex flex-col gap-4" data-editor-step={ed.step}>
 			<p class="type-body-sm text-text-muted" data-testid="editor-context">
 				{#each context as part, i (i)}{#if i > 0}{SEPARATOR}{/if}{@render sentence(part)}{/each}
@@ -185,7 +187,8 @@
 					<ul role="list" aria-label="What happens" class="type-body-sm flex flex-col gap-1.5 text-text">
 						{#each happens as line, i (i)}
 							<li class="flex items-start gap-2">
-								<span class="mt-2 h-1 w-1 shrink-0 rounded-full bg-text-muted" aria-hidden="true"></span>
+								<!-- A character, not a filled dot: forced colours keep it. -->
+								<span class="shrink-0 text-text-muted" aria-hidden="true">•</span>
 								<span>{@render sentence(line)}</span>
 							</li>
 						{/each}

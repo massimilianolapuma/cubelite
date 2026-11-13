@@ -507,7 +507,8 @@ describe("ResourceEditor, step 2 (Review)", () => {
     vi.mocked(resourceFacts).mockImplementation(async () => facts({ kind: "argo_cd", release: null }));
     await toReview();
     const happens = screen.getByRole("list", { name: "What happens" });
-    expect(within(happens).getAllByRole("listitem").map((li) => li.textContent?.trim())).toEqual([
+    // Each item: a bullet (decorative, hidden from assistive technology) and the sentence.
+    expect(within(happens).getAllByRole("listitem").map((li) => li.lastElementChild?.textContent?.trim())).toEqual([
       "The deployment rolls out: 2 pods are replaced (RollingUpdate, 1 at a time).",
       "Argo CD manages this workload. If self-heal is on, it will undo this change at its next sync.",
       "CubeLite marks the deployment as overridden, so the change stays visible and can be restored.",

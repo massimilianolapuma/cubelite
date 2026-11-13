@@ -285,6 +285,8 @@ export const FIXTURES = {
       ] as ContainerFixture[],
       labels: { app: "api" },
       creation_timestamp: "2026-07-10T09:00:00Z",
+      // Controlled by a ReplicaSet of the api deployment.
+      deployment: "api",
     },
     {
       name: "worker-0",
