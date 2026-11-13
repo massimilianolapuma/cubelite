@@ -454,6 +454,24 @@ Calls made here, not yet confirmed:
 15. The Resources section uses `MeterBar` with its existing thresholds (60% and 75%).
 16. A rollout-time room check (W1r) beside the end-state one.
 
+Calls made while building the editor (delivery 3, #657), the first five shown to the user on
+2026-11-13, the rest from the review of that delivery:
+
+25. Quick steps are buttons, not `Chip` (a chip is a toggle). The field they raise is an explicit
+    choice per container (CPU request, CPU limit, memory request, memory limit; memory limit by
+    default) that also follows the field that takes focus, so the keyboard reaches every field.
+26. A quick step rounds up: to 10m for CPU; to 16Mi under 1Gi and to 128Mi from 1Gi for memory.
+27. The pod to deployment link is a field of the pod payload (`deployment`), by the ReplicaSet rule.
+28. The node rows show one measure for all nodes, chosen by the worst finding about the nodes.
+29. "At a time" in the rollout sentence is the surge plus the unavailable count, at least 1 and at
+    most the replicas.
+30. The findings of step 1, and the dry run's status and refusal in step 2, sit in a region above
+    the footer that does not scroll with the body: the check stays in view at any window size.
+31. The same amount typed in another unit is not a change: Review stays off and the editor says
+    "Nothing changes: these are the same amounts as on the cluster."
+32. Once the dry run passes, step 2 says "The cluster accepts this change."
+33. The editor closes when the view or the cluster is no longer its own.
+
 Calls made while building the core (delivery 2, #655), accepted by the user on 2026-11-13 except
 the last two, which came from the review of that delivery:
 

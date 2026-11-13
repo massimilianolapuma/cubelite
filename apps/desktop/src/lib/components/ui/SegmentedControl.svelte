@@ -12,7 +12,8 @@
 		onChange,
 		label,
 		dense = false,
-		outlined = false
+		outlined = false,
+		arrowKeys = false
 	}: {
 		segments: Segment<T>[];
 		value: T;
@@ -27,7 +28,55 @@
 		 * no visible edge.
 		 */
 		outlined?: boolean;
+		/**
+		 * The radio group pattern: one Tab stop (the selected segment), the arrow
+		 * keys (and Home, End) move the selection and the focus, skipping disabled
+		 * segments. Off by default: every segment is its own Tab stop.
+		 */
+		arrowKeys?: boolean;
 	} = $props();
+
+	let group = $state<HTMLElement | null>(null);
+
+	// Without a selected enabled segment, the first enabled one takes the Tab stop.
+	const stop = $derived(
+		segments.find((s) => s.value === value && !s.disabled)?.value ?? segments.find((s) => !s.disabled)?.value
+	);
+
+	function choose(next: T) {
+		value = next;
+		onChange?.(next);
+	}
+
+	function key(e: KeyboardEvent, index: number) {
+		if (!arrowKeys) return;
+		const enabled = segments.map((s, i) => ({ s, i })).filter(({ s }) => !s.disabled);
+		if (enabled.length === 0) return;
+		const at = enabled.findIndex(({ i }) => i === index);
+		let to: number;
+		switch (e.key) {
+			case 'ArrowRight':
+			case 'ArrowDown':
+				to = (at + 1) % enabled.length;
+				break;
+			case 'ArrowLeft':
+			case 'ArrowUp':
+				to = (at - 1 + enabled.length) % enabled.length;
+				break;
+			case 'Home':
+				to = 0;
+				break;
+			case 'End':
+				to = enabled.length - 1;
+				break;
+			default:
+				return;
+		}
+		e.preventDefault();
+		const target = enabled[to];
+		choose(target.s.value);
+		group?.querySelectorAll<HTMLElement>('[role="radio"]')[target.i]?.focus();
+	}
 </script>
 
 <!-- One pill group; the selected segment is the tonal fill (Tonal §7) inside a
@@ -40,13 +89,16 @@
 	role="radiogroup"
 	aria-label={label}
 	data-outlined={outlined}
+	bind:this={group}
 >
-	{#each segments as segment (segment.value)}
+	{#each segments as segment, index (segment.value)}
 		{@const active = value === segment.value}
 		<button
 			type="button"
 			role="radio"
 			aria-checked={active}
+			tabindex={arrowKeys ? (segment.value === stop ? 0 : -1) : undefined}
+			onkeydown={(e) => key(e, index)}
 			disabled={segment.disabled}
 			title={segment.title}
 			data-selected={active}
@@ -55,10 +107,7 @@
 				: active
 					? 'bg-primary-container font-semibold text-on-primary-container inset-ring-[1.5px] inset-ring-primary'
 					: 'text-text-muted ' + (outlined ? 'hover-layer' : 'hover:bg-surface-container-top')}"
-			onclick={() => {
-				value = segment.value;
-				onChange?.(segment.value);
-			}}
+			onclick={() => choose(segment.value)}
 		>
 			{segment.label}
 		</button>

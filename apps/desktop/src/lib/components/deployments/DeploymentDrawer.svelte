@@ -6,6 +6,7 @@
 	import { formatAge } from '#lib/age.ts';
 	import { matchesSelector } from '#lib/k8s-match.ts';
 	import ReplicaStepper from '#lib/components/deployments/ReplicaStepper.svelte';
+	import OverrideBanner from '#lib/components/deployments/OverrideBanner.svelte';
 	import ContainerResourceRows from '#lib/components/resources/ContainerResourceRows.svelte';
 	import { containerRows } from '#lib/container-usage.ts';
 	import Button from '#lib/components/ui/Button.svelte';
@@ -22,6 +23,7 @@
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { logs } from '#lib/stores/logs.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
+	import { resourceEditor } from '#lib/stores/resourceEditor.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import type { DeploymentInfo } from '#lib/tauri.ts';
 	import type { Snippet } from 'svelte';
@@ -131,9 +133,26 @@
 			<ReplicaStepper {deployment} />
 		</div>
 
+		{#if deployment.resources_override}
+			<OverrideBanner {deployment} override={deployment.resources_override} />
+		{/if}
+
 		{#if resourceRows.length > 0}
 			<div data-section="resources">
-				<div class={PANEL_SECTION}>Resources</div>
+				<!-- The section's title row: Adjust at its end opens the editor (#650 §3.1). -->
+				<div class="mb-2 flex items-center justify-between gap-2">
+					<div class="{PANEL_SECTION} mb-0!">Resources</div>
+					<Button
+						variant="tonal"
+						size="inline"
+						data-resource-adjust
+						title="Adjust requests and limits"
+						pending={resourceEditor.isApplying(deployment.namespace, deployment.name)}
+						onclick={() => void resourceEditor.open(deployment)}
+					>
+						Adjust
+					</Button>
+				</div>
 				<div class="flex flex-col gap-0.5">
 					{#each resourceRows as container (container.name)}
 						<div class="{PANEL_CARD} flex flex-col gap-2 px-3 py-2" data-container={container.name}>

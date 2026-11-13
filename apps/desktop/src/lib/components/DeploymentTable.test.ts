@@ -178,6 +178,33 @@ describe("DeploymentTable", () => {
   });
 });
 
+describe("DeploymentTable: the override badge (#650 §3.3)", () => {
+  const OVERRIDE = {
+    at: "2026-11-13T11:20:00Z",
+    containers: [
+      {
+        name: "api",
+        original: { cpu: { request: "250m", limit: "500m" }, memory: { request: "256Mi", limit: "512Mi" } },
+        applied: { cpu: { request: "250m", limit: "500m" }, memory: { request: "256Mi", limit: "768Mi" } },
+      },
+    ],
+  };
+
+  it("marks a row whose resources were overridden from CubeLite, after the name, and no other", () => {
+    render(DeploymentTable, {
+      props: { deployments: [dep({ resources_override: OVERRIDE }), dep({ name: "web", resources_override: null })] },
+    });
+    const override = badge("Override");
+    expect(override).toHaveAttribute("data-state", "warn");
+    const row = override.closest('[role="button"]')!;
+    expect(row).toHaveTextContent(/^api/);
+    // In the name cell, after the name.
+    const nameCell = screen.getByTitle("api").parentElement!;
+    expect(nameCell).toContainElement(override as HTMLElement);
+    expect(screen.getAllByText("Override")).toHaveLength(1);
+  });
+});
+
 describe("DeploymentTable beside a docked detail panel (Tonal §3 #2 #11)", () => {
   it("keeps the identifying columns and leaves scale and restart to the panel", () => {
     layout.contentWidth = 1200;

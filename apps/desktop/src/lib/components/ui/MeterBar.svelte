@@ -3,12 +3,13 @@
 	import StatusGlyph from './StatusGlyph.svelte';
 
 	let {
-		label,
+		/** The row's name in the meter's label column; null leaves the column out. */
+		label = null,
 		/** 0–100; null renders an empty track (no data source). */
 		percent,
 		/** Absolute sub-label, e.g. "1.2 / 4.0 cores" (parity v2 §4). */
 		detail = null
-	}: { label: string; percent: number | null; detail?: string | null } = $props();
+	}: { label?: string | null; percent: number | null; detail?: string | null } = $props();
 
 	// Unified thresholds (parity v2 §4): high from 60%, critical from 75%. A
 	// threshold is a shape and a bold value as well as a colour (Tonal §7).
@@ -27,7 +28,9 @@
 
 <div class="flex flex-col gap-1" data-level={level}>
 	<div class="flex items-center gap-2.5">
-		<span class="type-label w-9 shrink-0">{label}</span>
+		{#if label !== null}
+			<span class="type-label w-9 shrink-0">{label}</span>
+		{/if}
 		<!-- The track's own fill is 1.3–1.9:1 from the card under it; its outline-strong
 		     edge is 3:1, so the meter's extent reads (WCAG 1.4.11). -->
 		<div class="h-2 flex-1 overflow-hidden rounded-full border border-outline-strong bg-outline" data-meter-track>
@@ -48,6 +51,6 @@
 		</span>
 	</div>
 	{#if detail}
-		<span class="type-data-sm pl-[46px] text-text-subtle">{detail}</span>
+		<span class="type-data-sm text-text-subtle {label !== null ? 'pl-[46px]' : ''}">{detail}</span>
 	{/if}
 </div>

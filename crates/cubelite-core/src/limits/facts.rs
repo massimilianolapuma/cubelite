@@ -26,7 +26,7 @@ use crate::metrics::{
     parse_cpu_millis, parse_memory_bytes, pod_metrics_from_item, ContainerUsageInfo,
 };
 use crate::resources::TemplateContainerInfo;
-use crate::watcher::container_resources;
+use crate::watcher::{container_resources, pod_deployment};
 use crate::{KubeClient, KubeconfigError};
 
 /// Why `usage` is missing, whichever of the two metrics calls failed.
@@ -274,24 +274,9 @@ fn finished(pod: &Pod) -> bool {
     )
 }
 
-/// A pod of the Deployment `deployment`: its controller is the ReplicaSet
-/// `{deployment}-{pod-template-hash}`, the name the Deployment controller
-/// gives the ReplicaSet of each template.
+/// A pod of the Deployment `deployment` (see [`pod_deployment`]).
 fn owned_by(pod: &Pod, deployment: &str) -> bool {
-    let Some(hash) = pod
-        .metadata
-        .labels
-        .as_ref()
-        .and_then(|l| l.get("pod-template-hash"))
-    else {
-        return false;
-    };
-    let replica_set = format!("{deployment}-{hash}");
-    pod.metadata
-        .owner_references
-        .iter()
-        .flatten()
-        .any(|o| o.controller == Some(true) && o.kind == "ReplicaSet" && o.name == replica_set)
+    pod_deployment(pod).as_deref() == Some(deployment)
 }
 
 fn cpu(q: &Quantity) -> Option<f64> {
