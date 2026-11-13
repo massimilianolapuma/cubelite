@@ -155,7 +155,8 @@ class ResourceEditorStore {
   setField(container: string, key: FieldKey, text: string): void;
   step(container: string, key: FieldKey, factor: 1.25 | 1.5 | 2): void;
   reset(container: string): void;
-  readonly changed: boolean; readonly canReview: boolean;   // changed, evaluated, not blocked
+  readonly changed: boolean; readonly canReview: boolean;   // changed, evaluated with at least one change, not blocked
+  readonly sameAmounts: boolean;                            // texts differ, the check finds no change (`0.5` for `500m`)
   review(): Promise<void>;                                  // to step 2, runs the dry run
   back(): void;
   apply(): Promise<boolean>;
@@ -167,11 +168,11 @@ export const resourceEditor: ResourceEditorStore;
 
 Behaviour:
 
-- `open` reads the facts with the active kubeconfig and cluster; `setField` schedules one `evaluateResources(facts, buildProposal(...))` after `EVALUATE_DEBOUNCE_MS`; each call carries a sequence number and an answer older than the latest request is dropped. `canReview` is false while `evaluating`.
+- `open` reads the facts with the active kubeconfig and cluster; `setField` schedules one `evaluateResources(facts, buildProposal(...))` after `EVALUATE_DEBOUNCE_MS`; each call carries a sequence number and an answer older than the latest request is dropped. `canReview` is false while `evaluating`, and while the check of the latest text carries no change: the core compares amounts, the drafts texts, so `0.5` for `500m` is no change; the findings region then says "Nothing changes: these are the same amounts as on the cluster." (review of #657).
 - `review` sets the step, then `applyResources(..., proposal, facts.seen, true)`: on success `dryRun = "ok"` and the returned evaluation replaces `evaluation`; on failure `dryRun = "failed"` and `dryRunError` is the message. `apply` is refused unless `dryRun === "ok"`.
-- `apply`: `applyResources(..., false)`. Success: close, toast "Resources of {name} updated, rollout started" (restore: "Resources of {name} restored, rollout started"), `resources.load()`. Failure: `applyError`, the modal stays on step 2.
+- `apply`: `applyResources(..., false)`. Success: close, toast "Resources of {name} updated, rollout started" (restore: "Resources of {name} restored, rollout started"), `resources.load()`. Failure: `applyError`, the modal stays on step 2; when the editor is about to close because its cluster or its view went meanwhile, the message goes to an error toast instead ("Could not update the resources of {name}: {message}").
 - `keepValues`: `clearResourcesOverride`, toast "Override mark removed from {name}", `resources.load()`; failure toast "Could not remove the mark: {message}".
-- While `target` is set and the deployment is no longer in `resources.deployments` (after a load that succeeded), the editor closes with the toast "Deployment {name} is gone" unless an apply is running.
+- While `target` is set and the deployment is no longer in `resources.deployments` (after a load that succeeded), the editor closes with the toast "Deployment {name} is gone" unless an apply is running. It also closes, without a toast, when the active cluster changes or the view is no longer the Deployments list, unless an apply is running (the pod panel's "Adjust on deployment" navigates before it opens).
 
 - [ ] **Step 1: Failing tests** with the Tauri wrappers mocked and fake timers: facts loaded on open; a facts failure sets `factsError` and `retry` reads again; three quick `setField` calls give one `evaluateResources` call after 300 ms; an answer that resolves after a newer request is ignored; `canReview` false when unchanged, while evaluating, and with a blocked finding; `review` sends `dryRun: true` with `facts.seen` and keeps the returned evaluation; a rejected dry run sets `dryRunError` and `apply` then sends nothing; `apply` sends `dryRun: false` once even when called twice; `close` during an apply does nothing; success closes, toasts and reloads; failure keeps step 2 with `applyError`; restore opens on review with `RESTORE_PROPOSAL`; `keepValues` success and failure; the deployment leaving the list closes the editor.
 - [ ] **Step 2:** `pnpm --filter desktop test -- resourceEditor` fails.

@@ -85,7 +85,22 @@ class ResourceEditorStore {
     return facts !== null && buildProposal(facts, this.drafts).containers.length > 0;
   }
 
-  /** Review can open: something changed, the check of the latest text answered, nothing is blocked. */
+  /**
+   * The drafts differ from the cluster as texts, but the check of the latest
+   * text finds no change: the same amounts written another way (`0.5` for
+   * `500m`). The core compares amounts; there is nothing to review.
+   */
+  get sameAmounts(): boolean {
+    return (
+      this.mode === "adjust" &&
+      this.changed &&
+      !this.evaluating &&
+      this.evaluation !== null &&
+      this.evaluation.changes.length === 0
+    );
+  }
+
+  /** Review can open: something changed, the check of the latest text answered with a change, nothing is blocked. */
   get canReview(): boolean {
     return (
       this.target !== null &&
@@ -95,6 +110,7 @@ class ResourceEditorStore {
       this.changed &&
       !this.evaluating &&
       this.evaluation !== null &&
+      this.evaluation.changes.length > 0 &&
       !isBlocked(this.evaluation)
     );
   }
@@ -234,6 +250,14 @@ class ResourceEditorStore {
       return true;
     } catch (e) {
       this.applyError = errorMessage(e);
+      // The editor goes as soon as the apply ends when its cluster or its view
+      // went meanwhile (#watch): the message would go with it.
+      if (!this.#inPlace()) {
+        toasts.push(
+          `Could not ${restore ? "restore" : "update"} the resources of ${target.name}: ${this.applyError}`,
+          "err",
+        );
+      }
       return false;
     } finally {
       this.applying = false;
@@ -257,6 +281,11 @@ class ResourceEditorStore {
       toasts.push(`Could not remove the mark: ${errorMessage(e)}`, "err");
       return false;
     }
+  }
+
+  /** The editor's cluster is the active one and the Deployments list is the view. */
+  #inPlace(): boolean {
+    return app.activeCluster === this.#cluster && app.view === "deployments";
   }
 
   /** Fields take typing on step 1 of an adjust whose facts are read. */
@@ -327,14 +356,16 @@ class ResourceEditorStore {
   /**
    * Close the editor when its deployment leaves a list that answered (deleted
    * elsewhere), with a toast, unless an apply runs; and without one when the
-   * active cluster changes.
+   * active cluster changes or the view is no longer the Deployments list (the
+   * editor would come back, drafts and all, with no panel behind it). The pod
+   * panel's "Adjust on deployment" navigates before it opens, so it stays.
    */
   #watch(): void {
     this.#stopWatch = $effect.root(() => {
       $effect(() => {
         const target = this.target;
         if (target === null || this.applying) return;
-        if (app.activeCluster !== this.#cluster) {
+        if (!this.#inPlace()) {
           this.close();
           return;
         }

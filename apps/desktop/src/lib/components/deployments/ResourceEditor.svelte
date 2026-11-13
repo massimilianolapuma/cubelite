@@ -152,7 +152,16 @@
 	{:else if ed.evaluateError !== null}
 		{@render problem(ed.evaluateError)}
 	{:else if ed.evaluation !== null}
-		<ResourceFindings findings={ed.evaluation.findings} stale={ed.evaluating} />
+		<div class="flex flex-col gap-1.5">
+			<!-- Why Review stays off when the fields read as changed: the core compares amounts. -->
+			{#if ed.sameAmounts}
+				<p class="type-body-sm flex items-start gap-2 text-text" role="status">
+					<StatusGlyph state="done" class="mt-1 shrink-0 text-text-muted" />
+					<span>Nothing changes: these are the same amounts as on the cluster.</span>
+				</p>
+			{/if}
+			<ResourceFindings findings={ed.evaluation.findings} stale={ed.evaluating} />
+		</div>
 	{/if}
 {/snippet}
 

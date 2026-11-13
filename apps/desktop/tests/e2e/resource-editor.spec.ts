@@ -207,6 +207,40 @@ test("an API message with a long unbreakable token wraps inside the editor", asy
   expect(fit.right).toBeLessThanOrEqual(fit.dialogRight);
 });
 
+test("the same amount in another text: nothing to review, and the editor says why", async ({ page }) => {
+  await boot(page, { compareAmounts: true });
+  const { editor } = await openEditor(page);
+  await editor.getByLabel("worker CPU limit").fill("0.5");
+  const why = editor.getByText("Nothing changes: these are the same amounts as on the cluster.");
+  await expect(why).toBeVisible();
+  await expectInView(why, "the reason");
+  await expect(editor.getByRole("button", { name: "Review" })).toBeDisabled();
+  await editor.getByLabel("worker memory limit").fill("1Gi");
+  await expect(why).toHaveCount(0);
+  await expect(editor.getByRole("button", { name: "Review" })).toBeEnabled();
+});
+
+test("the editor does not survive leaving the Deployments list", async ({ page }) => {
+  await boot(page);
+  const { editor } = await openEditor(page);
+  await editor.getByLabel("worker memory limit").fill("768Mi");
+  const mac = await page.evaluate(() => navigator.userAgent.includes("Mac"));
+  await page.keyboard.press(`${mac ? "Meta" : "Control"}+KeyK`);
+  const input = page.getByPlaceholder("Search clusters, resources, actions…");
+  await expect(input).toBeVisible();
+  await input.fill("pods");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { level: 1, name: "Pods" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: /Adjust resources/ })).toHaveCount(0);
+  await page.getByRole("complementary").getByText("Deployments", { exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Deployments" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: /Adjust resources/ })).toHaveCount(0);
+  // Opened again, it starts from the cluster's values.
+  await page.getByRole("button", { name: /^api/ }).first().click();
+  await page.getByRole("dialog", { name: "api" }).getByRole("button", { name: "Adjust" }).click();
+  await expect(page.getByRole("dialog", { name: "Adjust resources · api" }).getByLabel("worker memory limit")).toHaveValue("512Mi");
+});
+
 /** Apply +50% on the worker's memory limit and wait for the banner. */
 async function override(page: Page) {
   const { panel, editor } = await openEditor(page);

@@ -115,6 +115,22 @@ function evaluation(findings: Finding[] = [finding()]): ResourceEvaluation {
   return { findings, changes: [], nodes: [] };
 }
 
+/** The core's check of a proposal: a change for each container it lists (as amounts, they differ). */
+function checked(proposal: { containers: { name: string }[] }, findings: Finding[] = [finding()]): ResourceEvaluation {
+  return {
+    findings,
+    changes: proposal.containers.map((c) => ({
+      container: c.name,
+      sidecar: false,
+      resource: "memory" as const,
+      field: "limit" as const,
+      before: "512Mi",
+      after: "768Mi",
+    })),
+    nodes: [],
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason: unknown) => void;
@@ -159,7 +175,7 @@ beforeEach(() => {
   app.namespace = "default";
   app.view = "deployments";
   vi.mocked(resourceFacts).mockImplementation(async () => facts());
-  vi.mocked(evaluateResources).mockImplementation(async () => evaluation());
+  vi.mocked(evaluateResources).mockImplementation(async (_facts, proposal) => checked(proposal));
   vi.mocked(applyResources).mockImplementation(async () => evaluation());
   vi.mocked(listDeployments).mockResolvedValue([DEPLOYMENT]);
 });
@@ -326,6 +342,19 @@ describe("canReview", () => {
     expect(resourceEditor.canReview).toBe(true);
   });
 
+  it("is false when the check finds no change: the same amounts in another text", async () => {
+    await openApi();
+    vi.mocked(evaluateResources).mockResolvedValueOnce(evaluation());
+    await type("api", "cpu.limit", "0.5");
+    expect(resourceEditor.changed).toBe(true);
+    expect(resourceEditor.evaluating).toBe(false);
+    expect(resourceEditor.sameAmounts).toBe(true);
+    expect(resourceEditor.canReview).toBe(false);
+    await type("api", "cpu.limit", "750m");
+    expect(resourceEditor.sameAmounts).toBe(false);
+    expect(resourceEditor.canReview).toBe(true);
+  });
+
   it("is false with a blocked finding", async () => {
     await openApi();
     vi.mocked(evaluateResources).mockResolvedValueOnce(
@@ -481,6 +510,32 @@ describe("apply", () => {
     expect(listDeployments).toHaveBeenCalled();
   });
 
+  it("a failure after the user switched cluster says so in a toast, as the editor goes", async () => {
+    await reviewed();
+    const real = deferred<ResourceEvaluation>();
+    vi.mocked(applyResources).mockReturnValueOnce(real.promise);
+    const pending = resourceEditor.apply();
+    app.activeCluster = "staging";
+    flushSync();
+    real.reject(new Error("The deployment is changing too fast to update. Try again."));
+    expect(await pending).toBe(false);
+    flushSync();
+    expect(resourceEditor.target).toBeNull();
+    expect(toasts.items.at(-1)).toMatchObject({
+      message: "Could not update the resources of api: The deployment is changing too fast to update. Try again.",
+      tone: "err",
+    });
+  });
+
+  it("a failure with the editor still in view stays inline, without a toast", async () => {
+    await reviewed();
+    vi.mocked(applyResources).mockRejectedValueOnce(new Error("conflict"));
+    await resourceEditor.apply();
+    flushSync();
+    expect(resourceEditor.applyError).toBe("conflict");
+    expect(toasts.items).toHaveLength(0);
+  });
+
   it("on failure stays on step 2 with the message", async () => {
     await reviewed();
     vi.mocked(applyResources).mockRejectedValueOnce(
@@ -584,6 +639,34 @@ describe("the deployment leaves the list", () => {
     expect(resources.deployments).toEqual([]);
     flushSync();
     expect(resourceEditor.target).not.toBeNull();
+  });
+
+  it("closes when the view is no longer the Deployments list", async () => {
+    await openApi();
+    flushSync();
+    app.navigate("pods");
+    flushSync();
+    expect(resourceEditor.target).toBeNull();
+    app.navigate("deployments");
+    flushSync();
+    expect(resourceEditor.target).toBeNull();
+    expect(toasts.items).toHaveLength(0);
+  });
+
+  it("stays open on another view while an apply runs, and closes once it is over", async () => {
+    await openApi();
+    await type("api", "memory.limit", "768Mi");
+    await resourceEditor.review();
+    const real = deferred<ResourceEvaluation>();
+    vi.mocked(applyResources).mockReturnValueOnce(real.promise);
+    const pending = resourceEditor.apply();
+    app.navigate("pods");
+    flushSync();
+    expect(resourceEditor.target).not.toBeNull();
+    real.resolve(evaluation());
+    await pending;
+    flushSync();
+    expect(resourceEditor.target).toBeNull();
   });
 
   it("closes without a toast when the active cluster changes", async () => {

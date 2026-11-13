@@ -399,6 +399,11 @@ export const FIXTURES = {
   applyError: null as string | null,
   /** When set, `clear_resources_override` fails with this message. */
   clearOverrideError: null as string | null,
+  /**
+   * When true, `evaluate_resources` compares amounts as the core does (`0.5`
+   * is `500m`, `1024Mi` is `1Gi`); otherwise texts, which is enough elsewhere.
+   */
+  compareAmounts: false,
 };
 
 /** Serializable init script installing the IPC mock; `overrides` replace fixtures by key. */
@@ -510,6 +515,10 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
       const before = textsOf(c.resources);
       for (const [resource, field] of FIELDS) {
         if (before[resource][field] === after[resource][field]) continue;
+        if (fixtures.compareAmounts) {
+          const a = amountOf(resource, before[resource][field]);
+          if (a !== null && a === amountOf(resource, after[resource][field])) continue;
+        }
         changes.push({ container: c.name, sidecar: c.sidecar, resource, field, before: before[resource][field], after: after[resource][field] });
         const key = c.name + "/" + resource + "." + field + "=" + after[resource][field];
         findings.push(...(fixtures.resourceFindings[key] ?? []));

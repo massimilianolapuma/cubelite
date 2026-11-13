@@ -219,8 +219,13 @@ beforeEach(() => {
   app.kubeconfigPath = "/home/u/.kube/config";
   app.activeCluster = "prod-aks";
   app.namespace = "default";
+  app.view = "deployments";
   vi.mocked(resourceFacts).mockImplementation(async () => facts());
-  vi.mocked(evaluateResources).mockImplementation(async () => evaluation());
+  // As the core: a change for each container the proposal lists.
+  vi.mocked(evaluateResources).mockImplementation(async (_facts, proposal) => ({
+    ...evaluation(),
+    changes: proposal.containers.map((c) => ({ ...MEMORY_LIMIT_CHANGE, container: c.name })),
+  }));
   vi.mocked(applyResources).mockImplementation(async () => reviewed());
 });
 
@@ -353,6 +358,16 @@ describe("ResourceEditor, step 1 (Edit)", () => {
     await vi.advanceTimersByTimeAsync(EVALUATE_DEBOUNCE_MS);
     await settle();
     expect(review).toBeEnabled();
+  });
+
+  it("says nothing changes when the text differs but the amount is the same, and Review stays off", async () => {
+    vi.mocked(evaluateResources).mockImplementation(async () => evaluation());
+    await openEditor();
+    await typeInto("worker CPU limit", "0.5");
+    expect(within(pinned()).getByText("Nothing changes: these are the same amounts as on the cluster.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Review" })).toBeDisabled();
+    await typeInto("worker CPU limit", "500m");
+    expect(screen.queryByText(/^Nothing changes:/)).toBeNull();
   });
 
   it("keeps the last findings, quieter, while the check runs", async () => {
