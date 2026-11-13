@@ -207,6 +207,91 @@ pub(crate) fn same_value(resource: ResourceName, a: Option<&str>, b: Option<&str
     }
 }
 
+/// A CPU amount and a memory amount.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Amounts {
+    /// Millicores.
+    pub cpu_millis: f64,
+    /// Bytes.
+    pub memory_bytes: f64,
+}
+
+impl Amounts {
+    /// The amount of one resource.
+    pub fn get(&self, resource: ResourceName) -> f64 {
+        match resource {
+            ResourceName::Cpu => self.cpu_millis,
+            ResourceName::Memory => self.memory_bytes,
+        }
+    }
+}
+
+/// A pod's figures as the scheduler computes them.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PodFigures {
+    /// The pod's requests (an unset request counts 0).
+    pub request: Amounts,
+    /// The pod's CPU limit; `None` when a container has no CPU limit.
+    pub cpu_limit: Option<f64>,
+    /// The pod's memory limit; `None` when a container has no memory limit.
+    pub memory_limit: Option<f64>,
+}
+
+impl PodFigures {
+    /// The pod's limit of one resource.
+    pub fn limit(&self, resource: ResourceName) -> Option<f64> {
+        match resource {
+            ResourceName::Cpu => self.cpu_limit,
+            ResourceName::Memory => self.memory_limit,
+        }
+    }
+}
+
+/// An optional amount per resource.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PerResource {
+    /// Millicores (or, for a ratio, the plain number).
+    pub cpu: Option<f64>,
+    /// Bytes (or, for a ratio, the plain number).
+    pub memory: Option<f64>,
+}
+
+impl PerResource {
+    /// The value of one resource.
+    pub fn get(&self, resource: ResourceName) -> Option<f64> {
+        match resource {
+            ResourceName::Cpu => self.cpu,
+            ResourceName::Memory => self.memory,
+        }
+    }
+}
+
+/// One item of a LimitRange, its amounts parsed.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LimitRangeItemFacts {
+    /// `"Container"` or `"Pod"` (the item's `type`).
+    pub kind: String,
+    /// Minimum request (and limit).
+    pub min: PerResource,
+    /// Maximum limit (and request).
+    pub max: PerResource,
+    /// Default limit.
+    pub default: PerResource,
+    /// Default request.
+    pub default_request: PerResource,
+    /// Maximum limit / request ratio, a plain number.
+    pub max_ratio: PerResource,
+}
+
+/// A LimitRange of the namespace.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LimitRangeFacts {
+    /// Its name.
+    pub name: String,
+    /// Its items, in spec order.
+    pub items: Vec<LimitRangeItemFacts>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
