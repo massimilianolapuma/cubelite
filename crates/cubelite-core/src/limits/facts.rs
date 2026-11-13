@@ -96,11 +96,14 @@ impl KubeClient {
             hpas_api.list(&all),
             get_json(&client, &vpas_path),
         );
+        // The selector may match pods of other workloads (a canary, a Job):
+        // only the ones its own ReplicaSets control are this Deployment's.
+        // The others are in the all-namespaces list and count there.
         let own: Vec<Pod> = own
             .map_err(client_error)?
             .items
             .into_iter()
-            .filter(|p| !finished(p))
+            .filter(|p| !finished(p) && owned_by(p, name))
             .collect();
 
         // Usage: both metrics calls, or none.
@@ -271,6 +274,26 @@ fn finished(pod: &Pod) -> bool {
     )
 }
 
+/// A pod of the Deployment `deployment`: its controller is the ReplicaSet
+/// `{deployment}-{pod-template-hash}`, the name the Deployment controller
+/// gives the ReplicaSet of each template.
+fn owned_by(pod: &Pod, deployment: &str) -> bool {
+    let Some(hash) = pod
+        .metadata
+        .labels
+        .as_ref()
+        .and_then(|l| l.get("pod-template-hash"))
+    else {
+        return false;
+    };
+    let replica_set = format!("{deployment}-{hash}");
+    pod.metadata
+        .owner_references
+        .iter()
+        .flatten()
+        .any(|o| o.controller == Some(true) && o.kind == "ReplicaSet" && o.name == replica_set)
+}
+
 fn cpu(q: &Quantity) -> Option<f64> {
     parse_cpu_millis(&q.0)
 }
@@ -395,9 +418,10 @@ fn node_facts(
 /// A count or a percentage of `replicas`, as Kubernetes resolves it.
 fn scaled(value: Option<&IntOrString>, replicas: i32, round_up: bool) -> i32 {
     let percent = |p: i64| {
-        let total = p * i64::from(replicas.max(0));
+        // A percentage the API would never hold must not overflow: saturate.
+        let total = p.saturating_mul(i64::from(replicas.max(0)));
         let count = if round_up {
-            (total + 99) / 100
+            total.saturating_add(99) / 100
         } else {
             total / 100
         };
@@ -645,9 +669,10 @@ mod tests {
 
     use super::*;
     use crate::limits::fixtures::{
-        cluster, container, container_json, facts, forbidden_json, node_json, pod_json,
-        status_json, Cluster, ALL_PODS, DEPLOYMENT, GI, HPAS, LIMIT_RANGES, MI, NODES,
-        NODE_METRICS, OWN_PODS, POD_METRICS, QUOTAS, VPAS,
+        baseline_containers_json, cluster, container, container_json, facts, forbidden_json,
+        node_json, own_pod_json, owned_pod_json, pod_json, pod_metrics_json, status_json, Cluster,
+        ALL_PODS, DEPLOYMENT, GI, HPAS, LIMIT_RANGES, MI, NODES, NODE_METRICS, OWN_PODS,
+        POD_METRICS, QUOTAS, TEMPLATE_HASH, VPAS,
     };
     use crate::limits::types::{
         Amounts, Fact, HpaFacts, LimitRangeFacts, LimitRangeItemFacts, PerResource, QuotaFacts,
@@ -874,8 +899,7 @@ mod tests {
             (Some("3"), Some("3")),
             (Some("8Gi"), Some("8Gi"))
         )]);
-        c.own_pods.push(pod_json(
-            "default",
+        c.own_pods.push(own_pod_json(
             "api-old",
             "aks-pool-1",
             "Failed",
@@ -930,6 +954,104 @@ mod tests {
         assert_eq!(pool2.others_requests.memory_bytes, 9.0 * GI);
         assert_eq!(pool2.others_cpu_limits, 3000.0);
         assert_eq!(pool2.others_memory_limits, 10.0 * GI);
+    }
+
+    #[tokio::test]
+    async fn a_pod_of_another_workload_with_the_same_labels_is_not_an_own_pod() {
+        // A canary Deployment's pod carries `app: api` too: the selector
+        // lists it, its controller is another ReplicaSet.
+        let mut c = cluster();
+        let canary_hash = "7f9c6d5b8";
+        let canary = format!("api-canary-{canary_hash}-x2k4p");
+        c.own_pods.push(owned_pod_json(
+            &canary,
+            "aks-pool-2",
+            "Running",
+            json!([container_json(
+                "api",
+                (Some("100m"), Some("100m")),
+                (Some("1Gi"), Some("1Gi"))
+            )]),
+            &format!("api-canary-{canary_hash}"),
+            canary_hash,
+        ));
+        // A ReplicaSet named like this Deployment's, but not for the pod's hash.
+        c.own_pods.push(owned_pod_json(
+            "api-old-hash",
+            "aks-pool-2",
+            "Running",
+            baseline_containers_json(),
+            &format!("api-{TEMPLATE_HASH}"),
+            "0000000000",
+        ));
+        // A bare pod with the labels and no owner.
+        c.own_pods.push(pod_json(
+            "default",
+            "api-debug",
+            "aks-pool-2",
+            "Running",
+            baseline_containers_json(),
+        ));
+        let mut busy = pod_metrics_json(&canary);
+        busy["containers"][0]["usage"]["memory"] = json!("3Gi");
+        c.pod_metrics.push(busy);
+        c.quotas = vec![json!({
+            "metadata": { "name": "team", "namespace": "default" },
+            "spec": { "hard": { "requests.memory": "3Gi" } },
+            "status": {
+                "hard": { "requests.memory": "3Gi" },
+                // The three own pods (3 x 320Mi), the canary (1Gi), the two others (2 x 320Mi).
+                "used": { "requests.memory": "2624Mi" },
+            },
+        })];
+        let (f, _) = read(c).await;
+        let names: Vec<&str> = f.pods.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["api-1", "api-2", "api-3"]);
+        // They count where they run, with the other workloads' pods.
+        let pool2 = &f.nodes.known().expect("nodes")[1];
+        assert_eq!(pool2.others_requests.memory_bytes, 9.0 * GI + 640.0 * MI);
+        assert_eq!(pool2.others_requests.cpu_millis, 2000.0 + 100.0 + 700.0);
+        // And in the quota they are not this workload's to free: 3Gi less
+        // what the others hold (2624Mi - 960Mi) leaves 1408Mi for 3 replicas.
+        let e = crate::limits::evaluate(
+            &f,
+            &crate::limits::fixtures::set_on(
+                &f,
+                "api",
+                crate::limits::ResourceName::Memory,
+                crate::limits::ResourceField::Request,
+                Some("448Mi"),
+            ),
+        );
+        let b5: Vec<_> = e
+            .findings
+            .iter()
+            .filter(|x| x.code == crate::limits::FindingCode::B5)
+            .collect();
+        assert_eq!(b5.len(), 1, "{:#?}", e.findings);
+        assert_eq!(b5[0].level, crate::limits::Level::Blocked);
+        assert_eq!(
+            b5[0].message,
+            "Quota `team`: 3 replicas need 1.5Gi of requests.memory; 1.4Gi is free of 3Gi."
+        );
+        // The canary's 3Gi of usage does not count as this workload's.
+        let e = crate::limits::evaluate(
+            &f,
+            &crate::limits::fixtures::set_on(
+                &f,
+                "api",
+                crate::limits::ResourceName::Memory,
+                crate::limits::ResourceField::Limit,
+                Some("1Gi"),
+            ),
+        );
+        assert!(
+            e.findings
+                .iter()
+                .all(|x| x.code != crate::limits::FindingCode::W4),
+            "{:#?}",
+            e.findings
+        );
     }
 
     #[tokio::test]
@@ -1029,6 +1151,11 @@ mod tests {
         );
         assert_eq!(rollout_of(percent("10%", "10%"), 3).await, rolling(1, 0));
         assert_eq!(rollout_of(percent("0%", "10%"), 3).await, rolling(0, 1));
+        // A percentage too large to multiply saturates instead of overflowing.
+        assert_eq!(
+            rollout_of(percent("9223372036854775807%", "9223372036854775807%"), 3).await,
+            rolling(i32::MAX, i32::MAX)
+        );
         assert_eq!(
             rollout_of(json!({ "type": "Recreate" }), 3).await,
             RolloutFacts {

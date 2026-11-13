@@ -342,6 +342,44 @@ pub(crate) fn pod_json(
     })
 }
 
+/// The `pod-template-hash` of the baseline's ReplicaSet.
+pub(crate) const TEMPLATE_HASH: &str = "5d8f7c9b4";
+
+/// [`pod_json`] with the `pod-template-hash` label `hash` and a controller
+/// owner reference to the ReplicaSet `replica_set`.
+pub(crate) fn owned_pod_json(
+    name: &str,
+    node: &str,
+    phase: &str,
+    containers: Value,
+    replica_set: &str,
+    hash: &str,
+) -> Value {
+    let mut pod = pod_json("default", name, node, phase, containers);
+    pod["metadata"]["labels"]["pod-template-hash"] = json!(hash);
+    pod["metadata"]["ownerReferences"] = json!([{
+        "apiVersion": "apps/v1",
+        "kind": "ReplicaSet",
+        "name": replica_set,
+        "uid": format!("uid-{replica_set}"),
+        "controller": true,
+        "blockOwnerDeletion": true,
+    }]);
+    pod
+}
+
+/// A pod of the baseline Deployment: owned by its ReplicaSet `api-5d8f7c9b4`.
+pub(crate) fn own_pod_json(name: &str, node: &str, phase: &str, containers: Value) -> Value {
+    owned_pod_json(
+        name,
+        node,
+        phase,
+        containers,
+        &format!("api-{TEMPLATE_HASH}"),
+        TEMPLATE_HASH,
+    )
+}
+
 /// A Ready node with `cpu` and `memory` allocatable.
 pub(crate) fn node_json(name: &str, cpu: &str, memory: &str) -> Value {
     json!({
@@ -425,15 +463,7 @@ pub(crate) fn cluster() -> Cluster {
         },
         "status": { "replicas": 3, "readyReplicas": 3 },
     });
-    let own = |name: &str| {
-        pod_json(
-            "default",
-            name,
-            "aks-pool-1",
-            "Running",
-            baseline_containers_json(),
-        )
-    };
+    let own = |name: &str| own_pod_json(name, "aks-pool-1", "Running", baseline_containers_json());
     let other = |ns: &str, name: &str, node: &str, requests: (&str, &str), limits: (&str, &str)| {
         pod_json(
             ns,
