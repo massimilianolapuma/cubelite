@@ -108,7 +108,7 @@
 
 	<!-- Four fields and what is used now. Every track has a fixed or shared width, so a
 	     changed mark, "was …" or an invalid field never moves a field. -->
-	<div class="grid grid-cols-[4.25rem_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5">
+	<div class="grid grid-cols-[3.75rem_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5">
 		<span aria-hidden="true"></span>
 		<span class="type-label text-text-muted">Request</span>
 		<span class="type-label text-text-muted">Limit</span>

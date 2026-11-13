@@ -76,11 +76,16 @@
 	);
 	const stepError = $derived(ed.applyError ?? ed.dryRunError);
 
-	// Focus: each step starts at its heading; closing returns it to what opened the editor.
+	// Focus: each step starts at its heading, and at the top of its body (the body
+	// is the same element across the steps and would keep step 1's scroll);
+	// closing returns the focus to what opened the editor.
 	let heading = $state<HTMLElement | null>(null);
+	let stepRoot = $state<HTMLElement | null>(null);
 	$effect(() => {
 		void ed.step;
 		const h = heading;
+		const body = stepRoot?.parentElement;
+		if (body) body.scrollTop = 0;
 		if (h !== null) queueMicrotask(() => h.focus());
 	});
 
@@ -179,7 +184,7 @@
 		pinned={ed.facts !== null && !ed.loading && ed.factsError === null ? check : undefined}
 		pinnedLabel={ed.step === 'review' ? 'Dry run' : 'Check'}
 	>
-		<div class="flex flex-col gap-4" data-editor-step={ed.step}>
+		<div class="flex flex-col gap-4" data-editor-step={ed.step} bind:this={stepRoot}>
 			<p class="type-body-sm text-text-muted" data-testid="editor-context">
 				{#each context as part, i (i)}{#if i > 0}{SEPARATOR}{/if}{@render sentence(part)}{/each}
 			</p>

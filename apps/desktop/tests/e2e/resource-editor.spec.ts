@@ -188,6 +188,21 @@ test("at 800 × 600 a refused dry run says why in view, under a warning", async 
   await expectInView(alert, "the refusal");
 });
 
+test("each step opens at the top of its body, however far step 1 was scrolled", async ({ page }) => {
+  await boot(page, {}, { width: 800, height: 600 });
+  const { editor } = await openEditor(page);
+  await editor.getByLabel("worker memory limit").fill("768Mi");
+  await editor.getByLabel("envoy CPU request").fill("150m");
+  await expect(editor.getByRole("button", { name: "Review" })).toBeEnabled();
+  expect(await scrollBody(editor).evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  await editor.getByRole("button", { name: "Review" }).click();
+  const review = page.getByRole("dialog", { name: "Review · api" });
+  await expect(review.getByRole("heading", { name: "Review · api" })).toBeFocused();
+  await expect(review.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
+  expect(await scrollBody(review).evaluate((el) => el.scrollTop)).toBe(0);
+  await expectInView(review.getByTestId("editor-context"), "the header line");
+});
+
 test("an API message with a long unbreakable token wraps inside the editor", async ({ page }) => {
   // No slash, no hyphen: nothing a line may break at.
   const token = "[azurepolicyk8sazurev3containerlimits" + "5fb2d0b8c1a2".repeat(8) + "]";
@@ -394,6 +409,11 @@ test("a quantity of ten characters shows whole, and the fields keep their column
   await boot(page, {}, { width: 800, height: 600 });
   const { editor } = await openEditor(page);
   const field = editor.getByLabel("worker memory limit");
+  // The value a field had shows whole beside it.
+  await field.fill("768Mi");
+  const was = editor.getByText("was 512Mi");
+  await expect(was).toBeVisible();
+  expect(await was.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
   await field.fill("1073741824");
   await expect(field).toHaveValue("1073741824");
   expect(await field.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
