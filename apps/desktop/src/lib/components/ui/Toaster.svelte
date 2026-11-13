@@ -16,7 +16,7 @@
 				data-tone={toast.tone}
 			>
 				<StatusGlyph state={toast.tone} class={tone[toast.tone]} />
-				<span class="type-body-sm text-text">{toast.message}</span>
+				<span class="type-body-sm min-w-0 break-words text-text">{toast.message}</span>
 				<button
 					type="button"
 					aria-label="Dismiss"

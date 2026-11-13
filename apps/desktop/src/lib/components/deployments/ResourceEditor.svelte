@@ -123,10 +123,53 @@
 	{#each parts(text) as part, i (i)}{#if part.code}<span class="type-data-sm">{part.text}</span>{:else}{part.text}{/if}{/each}
 {/snippet}
 
+<!-- A message from the cluster or the check: a long token in it (a URL, a policy
+     id) wraps instead of running out of the card. -->
+{#snippet problem(text: string)}
+	<p class="type-body-sm flex items-start gap-2 text-text" role="alert">
+		<StatusGlyph state="err" class="mt-1 shrink-0 text-error" />
+		<span class="min-w-0 break-words">{text}</span>
+	</p>
+{/snippet}
+
+<!-- What decides the primary button, kept in view under the scrolling body: on
+     step 1 the check's findings, on step 2 the dry run's answer. -->
+{#snippet check()}
+	{#if ed.step === 'review'}
+		<!-- One line is kept, so the answer arriving moves nothing. -->
+		<div class="min-h-5">
+			{#if ed.dryRun === 'running'}
+				<p class="type-body-sm text-text-muted" role="status">Checking with the cluster…</p>
+			{:else if stepError !== null}
+				{@render problem(stepError)}
+			{:else if ed.dryRun === 'ok'}
+				<p class="type-body-sm flex items-start gap-2 text-text-muted" role="status">
+					<StatusGlyph state="ok" class="mt-1 shrink-0 text-success" />
+					<span>The cluster accepts this change.</span>
+				</p>
+			{/if}
+		</div>
+	{:else if ed.evaluateError !== null}
+		{@render problem(ed.evaluateError)}
+	{:else if ed.evaluation !== null}
+		<ResourceFindings findings={ed.evaluation.findings} stale={ed.evaluating} />
+	{/if}
+{/snippet}
+
 {#if target !== null}
 	<!-- Held at the top: the body grows as the facts and the check arrive, and changes
 	     with the step; the title and the header line must not move with it. -->
-	<Modal {title} width={640} onClose={() => ed.close()} focusableTitle placement="top" bind:heading>
+	<Modal
+		{title}
+		width={640}
+		onClose={() => ed.close()}
+		focusableTitle
+		placement="top"
+		bind:heading
+		scrollLabel={ed.step === 'review' ? 'The change and what happens' : 'Containers and nodes'}
+		pinned={ed.facts !== null && !ed.loading && ed.factsError === null ? check : undefined}
+		pinnedLabel={ed.step === 'review' ? 'Dry run' : 'Check'}
+	>
 		<div class="flex flex-col gap-4" data-editor-step={ed.step}>
 			<p class="type-body-sm text-text-muted" data-testid="editor-context">
 				{#each context as part, i (i)}{#if i > 0}{SEPARATOR}{/if}{@render sentence(part)}{/each}
@@ -136,10 +179,7 @@
 				<p class="type-body-sm text-text-muted" role="status">Reading the cluster…</p>
 			{:else if ed.factsError !== null}
 				<div class="flex flex-col items-start gap-3">
-					<p class="type-body-sm flex items-start gap-2 text-text" role="alert">
-						<StatusGlyph state="err" class="mt-1 text-error" />
-						<span>{ed.factsError}</span>
-					</p>
+					{@render problem(ed.factsError)}
 					<Button variant="tonal" size="inline" onclick={() => void ed.retry()}>Try again</Button>
 				</div>
 			{:else if ed.facts !== null && ed.step === 'edit'}
@@ -151,15 +191,6 @@
 
 				{#if nodes !== null}
 					<ResourceNodes rows={nodes} />
-				{/if}
-
-				{#if ed.evaluateError !== null}
-					<p class="type-body-sm flex items-start gap-2 text-text" role="alert">
-						<StatusGlyph state="err" class="mt-1 text-error" />
-						<span>{ed.evaluateError}</span>
-					</p>
-				{:else if ed.evaluation !== null}
-					<ResourceFindings findings={ed.evaluation.findings} stale={ed.evaluating} />
 				{/if}
 			{:else if ed.facts !== null && ed.step === 'review'}
 				{#if ed.evaluation !== null}
@@ -207,19 +238,6 @@
 				{#if notes.length > 0}
 					<ResourceFindings findings={notes} label="Notes" />
 				{/if}
-
-				<!-- The dry run's answer, close to the button it decides. One line is kept, so
-				     the answer arriving moves nothing. -->
-				<div class="min-h-5">
-					{#if ed.dryRun === 'running'}
-						<p class="type-body-sm text-text-muted" role="status">Checking with the cluster…</p>
-					{:else if stepError !== null}
-						<p class="type-body-sm flex items-start gap-2 text-text" role="alert">
-							<StatusGlyph state="err" class="mt-1 text-error" />
-							<span>{stepError}</span>
-						</p>
-					{/if}
-				</div>
 			{/if}
 		</div>
 

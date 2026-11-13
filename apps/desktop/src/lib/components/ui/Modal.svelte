@@ -12,7 +12,10 @@
 		footer,
 		heading = $bindable(null),
 		focusableTitle = false,
-		placement = 'center'
+		placement = 'center',
+		pinned,
+		pinnedLabel,
+		scrollLabel
 	}: {
 		title: string;
 		width?: number;
@@ -29,11 +32,47 @@
 		 * Centred, the whole dialog would move.
 		 */
 		placement?: 'center' | 'top';
+		/**
+		 * What must stay in view while the body scrolls (a check's findings, the
+		 * answer of a request): between the body and the footer, outside the body's
+		 * scroll. Its height is capped; past the cap it scrolls on its own.
+		 */
+		pinned?: Snippet;
+		/** Names the pinned region; it is then a keyboard stop while its content overflows. */
+		pinnedLabel?: string;
+		/**
+		 * Makes the scrolling body a keyboard stop, a region with this name. Chromium
+		 * focuses a scroller by itself, WebKit may not: without it a keyboard user
+		 * could not scroll a body whose controls are all out of view or disabled.
+		 */
+		scrollLabel?: string;
 	} = $props();
 
 	// Esc closes the topmost overlay: register so app.closeTopOverlay() reaches
 	// this modal before any drawer underneath it.
 	onMount(() => app.pushModal(() => onClose()));
+
+	// The pinned region takes the keyboard only when there is something to scroll.
+	let pinnedEl = $state<HTMLElement | null>(null);
+	let pinnedOverflows = $state(false);
+	$effect(() => {
+		const el = pinnedEl;
+		if (el === null || pinnedLabel === undefined) return;
+		const measure = () => (pinnedOverflows = el.scrollHeight > el.clientHeight + 1);
+		const observer = new ResizeObserver(measure);
+		observer.observe(el);
+		for (const child of el.children) observer.observe(child);
+		const mutations = new MutationObserver(() => {
+			for (const child of el.children) observer.observe(child);
+			measure();
+		});
+		mutations.observe(el, { childList: true, subtree: true, characterData: true });
+		measure();
+		return () => {
+			observer.disconnect();
+			mutations.disconnect();
+		};
+	});
 </script>
 
 <!-- Backdrop: black at 50 % (Tonal §7). -->
@@ -72,10 +111,35 @@
 	<!-- Without a footer the body owns the bottom gutter. Only the body scrolls: the
 	     title and the actions stay in the window however short it is. Scroll padding
 	     keeps a control the focus scrolls into view clear of the edge, so its 4 px
-	     ring is not cut. -->
-	<div class="min-h-0 flex-1 scroll-py-2 overflow-y-auto px-6 pt-2 {footer ? 'pb-2' : 'pb-6'}">
+	     ring is not cut. `relative`: what is positioned inside (a visually hidden
+	     label) is placed against the body, not the card, so the card never scrolls. -->
+	<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+	<div
+		class="relative min-h-0 flex-1 scroll-py-2 overflow-y-auto px-6 pt-2 {footer || pinned ? 'pb-2' : 'pb-6'} {scrollLabel
+			? 'focus-ring-inset'
+			: ''}"
+		role={scrollLabel ? 'region' : undefined}
+		aria-label={scrollLabel}
+		tabindex={scrollLabel ? 0 : undefined}
+	>
 		{@render children()}
 	</div>
+	{#if pinned}
+		<!-- A rule above it: the body scrolls behind this line, the pinned part does not. -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<div
+			bind:this={pinnedEl}
+			class="relative max-h-[min(30vh,12rem)] shrink-0 overflow-y-auto border-t border-outline px-6 pt-3 {footer
+				? 'pb-1'
+				: 'pb-6'} {pinnedLabel ? 'focus-ring-inset' : ''}"
+			data-modal-pinned
+			role={pinnedLabel ? 'region' : undefined}
+			aria-label={pinnedLabel}
+			tabindex={pinnedLabel && pinnedOverflows ? 0 : undefined}
+		>
+			{@render pinned()}
+		</div>
+	{/if}
 	{#if footer}
 		<footer class="flex shrink-0 items-center justify-end gap-2 px-6 pt-3 pb-5">
 			{@render footer()}

@@ -397,6 +397,8 @@ export const FIXTURES = {
   dryRunError: null as string | null,
   /** When set, the real `apply_resources` fails with this message. */
   applyError: null as string | null,
+  /** When set, `clear_resources_override` fails with this message. */
+  clearOverrideError: null as string | null,
 };
 
 /** Serializable init script installing the IPC mock; `overrides` replace fixtures by key. */
@@ -753,6 +755,7 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
       }
       case "clear_resources_override": {
         window.__lastClearOverride = args;
+        if (fixtures.clearOverrideError) throw new Error(fixtures.clearOverrideError);
         const deployment = deploymentOf(args.namespace, args.name);
         if (deployment) deployment.resources_override = null;
         const facts = fixtures.resourceFacts;

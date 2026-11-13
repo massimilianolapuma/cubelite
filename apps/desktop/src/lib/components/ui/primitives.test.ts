@@ -177,6 +177,48 @@ describe("SegmentedControl", () => {
     expect(onChange).toHaveBeenCalledWith("b");
     expect(screen.getByRole("radio", { name: "ECS" })).toBeDisabled();
   });
+
+  it("by default every segment is its own Tab stop and arrow keys change nothing", async () => {
+    const onChange = vi.fn();
+    render(SegmentedControl, { props: { segments, value: "a", onChange, label: "View" } });
+    for (const radio of screen.getAllByRole("radio")) expect(radio).not.toHaveAttribute("tabindex");
+    await fireEvent.keyDown(screen.getByRole("radio", { name: "Raw" }), { key: "ArrowRight" });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: "Raw" })).toBeChecked();
+  });
+
+  describe("with arrowKeys (the radio group pattern)", () => {
+    const four = [
+      { value: "a", label: "A" },
+      { value: "b", label: "B", disabled: true },
+      { value: "c", label: "C" },
+      { value: "d", label: "D" },
+    ];
+
+    it("is one Tab stop, the selected segment", () => {
+      render(SegmentedControl, { props: { segments: four, value: "c", label: "Pick", arrowKeys: true } });
+      expect(screen.getAllByRole("radio").map((r) => r.getAttribute("tabindex"))).toEqual(["-1", "-1", "0", "-1"]);
+    });
+
+    it("moves the selection and the focus with the arrows, skipping a disabled segment and wrapping", async () => {
+      const onChange = vi.fn();
+      render(SegmentedControl, { props: { segments: four, value: "a", onChange, label: "Pick", arrowKeys: true } });
+      await fireEvent.keyDown(screen.getByRole("radio", { name: "A" }), { key: "ArrowRight" });
+      expect(onChange).toHaveBeenLastCalledWith("c");
+      expect(screen.getByRole("radio", { name: "C" })).toBeChecked();
+      expect(screen.getByRole("radio", { name: "C" })).toHaveFocus();
+      await fireEvent.keyDown(screen.getByRole("radio", { name: "C" }), { key: "ArrowDown" });
+      expect(screen.getByRole("radio", { name: "D" })).toHaveFocus();
+      await fireEvent.keyDown(screen.getByRole("radio", { name: "D" }), { key: "ArrowRight" });
+      expect(screen.getByRole("radio", { name: "A" })).toHaveFocus();
+      await fireEvent.keyDown(screen.getByRole("radio", { name: "A" }), { key: "ArrowLeft" });
+      expect(screen.getByRole("radio", { name: "D" })).toBeChecked();
+      await fireEvent.keyDown(screen.getByRole("radio", { name: "D" }), { key: "Home" });
+      expect(screen.getByRole("radio", { name: "A" })).toBeChecked();
+      await fireEvent.keyDown(screen.getByRole("radio", { name: "A" }), { key: "End" });
+      expect(screen.getByRole("radio", { name: "D" })).toBeChecked();
+    });
+  });
 });
 
 describe("StatCard", () => {

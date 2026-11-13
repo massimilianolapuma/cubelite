@@ -207,6 +207,8 @@ async function typeInto(label: string, text: string): Promise<void> {
 
 const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
 const card = (container: string) => screen.getByRole("group", { name: container });
+/** The part of the modal between the scrolling body and the footer. */
+const pinned = () => document.querySelector<HTMLElement>("[data-modal-pinned]")!;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -370,27 +372,62 @@ describe("ResourceEditor, step 1 (Edit)", () => {
     expect(screen.queryByRole("list", { name: "Findings" })).toBeNull();
   });
 
-  it("a quick step raises the memory limit when no field had focus", async () => {
+  it("the quick steps act on a chosen field of the container, the memory limit by default", async () => {
     await openEditor();
     const worker = card("worker");
-    expect(within(worker).getByText("on memory limit")).toBeInTheDocument();
+    const choice = within(worker).getByRole("radiogroup", { name: "Field the steps raise, worker" });
+    expect(within(choice).getAllByRole("radio").map((r) => r.textContent?.trim())).toEqual([
+      "CPU request",
+      "CPU limit",
+      "Memory request",
+      "Memory limit",
+    ]);
+    expect(within(choice).getByRole("radio", { name: "Memory limit" })).toBeChecked();
+    expect(within(worker).queryByText(/^on /)).toBeNull();
     await fireEvent.click(within(worker).getByRole("button", { name: "Raise memory limit of worker by 50%" }));
     expect(field("worker memory limit")).toHaveValue("768Mi");
   });
 
-  it("a quick step raises the field of that container that had focus last", async () => {
+  it("choosing a field names the steps after it, and they raise that field only", async () => {
+    await openEditor();
+    const worker = card("worker");
+    await fireEvent.click(within(worker).getByRole("radio", { name: "CPU limit" }));
+    expect(within(worker).getByRole("radio", { name: "CPU limit" })).toBeChecked();
+    await fireEvent.click(within(worker).getByRole("button", { name: "Raise CPU limit of worker by 25%" }));
+    expect(field("worker CPU limit")).toHaveValue("630m");
+    expect(within(worker).queryByRole("button", { name: /memory limit/ })).toBeNull();
+    expect(field("worker memory limit")).toHaveValue("512Mi");
+  });
+
+  it("focusing a field moves the choice to it", async () => {
     await openEditor();
     const worker = card("worker");
     await fireEvent.focus(field("worker CPU request"));
-    expect(within(worker).getByText("on CPU request")).toBeInTheDocument();
+    expect(within(worker).getByRole("radio", { name: "CPU request" })).toBeChecked();
     await fireEvent.click(within(worker).getByRole("button", { name: "Raise CPU request of worker by 25%" }));
     expect(field("worker CPU request")).toHaveValue("320m");
     await fireEvent.click(within(worker).getByRole("button", { name: "Double CPU request of worker" }));
     expect(field("worker CPU request")).toHaveValue("500m");
-    expect(field("worker memory limit")).toHaveValue("512Mi");
+    // The other container keeps its own choice.
+    expect(within(card("envoy")).getByRole("radio", { name: "Memory limit" })).toBeChecked();
   });
 
-  it("a quick step is disabled for a field the cluster has no value for", async () => {
+  it("the choice comes before the step buttons, one Tab stop, arrows move it", async () => {
+    await openEditor();
+    const worker = card("worker");
+    const radios = within(worker).getAllByRole("radio");
+    const step = within(worker).getByRole("button", { name: "Raise memory limit of worker by 25%" });
+    for (const radio of radios) {
+      expect(radio.compareDocumentPosition(step) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(radios.map((r) => r.getAttribute("tabindex"))).toEqual(["-1", "-1", "-1", "0"]);
+    await fireEvent.keyDown(within(worker).getByRole("radio", { name: "Memory limit" }), { key: "ArrowLeft" });
+    expect(within(worker).getByRole("radio", { name: "Memory request" })).toBeChecked();
+    expect(within(worker).getByRole("radio", { name: "Memory request" })).toHaveFocus();
+    expect(within(worker).getByRole("button", { name: "Raise memory request of worker by 25%" })).toBeEnabled();
+  });
+
+  it("a quick step is disabled for a field the cluster has no value for, and says why", async () => {
     await openEditor();
     const envoy = card("envoy");
     await fireEvent.focus(field("envoy CPU limit"));
@@ -401,8 +438,11 @@ describe("ResourceEditor, step 1 (Edit)", () => {
     ]) {
       expect(within(envoy).getByRole("button", { name })).toBeDisabled();
     }
+    expect(within(envoy).getByText("no value on the cluster to step from")).toBeInTheDocument();
     await fireEvent.focus(field("envoy memory limit"));
     expect(within(envoy).getByRole("button", { name: "Raise memory limit of envoy by 25%" })).toBeEnabled();
+    expect(within(envoy).queryByText("no value on the cluster to step from")).toBeNull();
+    expect(within(card("worker")).queryByText("no value on the cluster to step from")).toBeNull();
   });
 
   it("reset puts a container back to the cluster's values", async () => {
@@ -662,6 +702,12 @@ describe("ResourceEditor, step 2 (Review)", () => {
     expect(toasts.items.map((t) => t.message)).toContain("Resources of api restored, rollout started");
   });
 
+  it("says the cluster accepts the change once the dry run answered", async () => {
+    await toReview();
+    expect(pinned()).toHaveTextContent("The cluster accepts this change.");
+    expect(within(pinned()).getByRole("status").querySelector('[data-glyph="ok"]')).not.toBeNull();
+  });
+
   it("a restore with a warning offers Restore anyway", async () => {
     vi.mocked(applyResources).mockImplementation(async () => ({
       findings: [WARNING],
@@ -672,5 +718,43 @@ describe("ResourceEditor, step 2 (Review)", () => {
     await resourceEditor.open(DEPLOYMENT, "restore");
     await settle();
     expect(screen.getByRole("button", { name: "Restore anyway" })).toBeEnabled();
+  });
+});
+
+describe("ResourceEditor: what decides the primary button stays in view", () => {
+  it("step 1: the findings and a check that could not run sit outside the scrolling body", async () => {
+    await openEditor();
+    const body = screen.getByRole("region", { name: "Containers and nodes" });
+    expect(body).toHaveAttribute("tabindex", "0");
+    expect(within(pinned()).getByRole("list", { name: "Findings" })).toBeInTheDocument();
+    expect(body).not.toContainElement(pinned());
+    expect(within(body).queryByRole("list", { name: "Findings" })).toBeNull();
+  });
+
+  it("step 1: a check that could not run is said there too", async () => {
+    vi.mocked(evaluateResources).mockRejectedValue(new Error("the check failed: bad facts"));
+    await openEditor();
+    expect(within(pinned()).getByRole("alert")).toHaveTextContent("the check failed: bad facts");
+  });
+
+  it("step 2: the dry run running, its refusal and a failed apply are said there", async () => {
+    let answer!: (e: ResourceEvaluation) => void;
+    vi.mocked(applyResources).mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    await toReview();
+    expect(screen.getByRole("region", { name: "The change and what happens" })).toBeInTheDocument();
+    expect(within(pinned()).getByRole("status")).toHaveTextContent("Checking with the cluster…");
+    answer(reviewed());
+    await settle();
+    vi.mocked(applyResources).mockRejectedValueOnce(new Error("The deployment is changing too fast to update. Try again."));
+    await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await settle();
+    expect(within(pinned()).getByRole("alert")).toHaveTextContent("The deployment is changing too fast to update. Try again.");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    await settle();
+    vi.mocked(applyResources).mockRejectedValueOnce(new Error("You are not allowed to change this deployment."));
+    await fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await settle();
+    expect(within(pinned()).getByRole("alert")).toHaveTextContent("You are not allowed to change this deployment.");
   });
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Button from '#lib/components/ui/Button.svelte';
+	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { EMPTY } from '#lib/empty.ts';
 	import {
@@ -31,9 +32,18 @@
 		{ factor: 2, text: '×2', verb: (f) => `Double ${f} of ${container.name}` }
 	];
 
-	/** The field of this container that had focus last: the quick steps act on it (plan, call 2). */
-	let lastField = $state<FieldKey | null>(null);
-	const stepField = $derived<FieldKey>(lastField ?? 'memory.limit');
+	/**
+	 * The field the quick steps act on (plan, call 2): chosen in the control
+	 * before the steps, and moved to a field that takes focus; the memory limit
+	 * until then.
+	 */
+	let stepField = $state<FieldKey>('memory.limit');
+	const TARGETS: { value: FieldKey; label: string }[] = [
+		{ value: 'cpu.request', label: 'CPU request' },
+		{ value: 'cpu.limit', label: 'CPU limit' },
+		{ value: 'memory.request', label: 'Memory request' },
+		{ value: 'memory.limit', label: 'Memory limit' }
+	];
 	const stepParts = $derived(stepField.split('.') as [ResourceName, ResourceField]);
 	const stepLabel = $derived(`${stepParts[0] === 'cpu' ? 'CPU' : 'memory'} ${stepParts[1]}`);
 	// A step is worked out from the cluster's value; without one there is nothing to raise.
@@ -124,8 +134,8 @@
 						value={draft?.[key] ?? ''}
 						disabled={!editable}
 						oninput={(e) => resourceEditor.setField(container.name, key, e.currentTarget.value)}
-						onfocus={() => (lastField = key)}
-						class="{FIELD_BASE} w-20 shrink-0 font-mono aria-invalid:border-error {changed ? 'font-semibold' : ''}"
+						onfocus={() => (stepField = key)}
+						class="{FIELD_BASE} w-26 shrink-0 font-mono aria-invalid:border-error {changed ? 'font-semibold' : ''}"
 					/>
 					<!-- The mark: a square for a value the check refuses, a triangle for a changed one. -->
 					<span class="type-body-sm flex min-w-0 items-center gap-1 text-text-muted">
@@ -150,30 +160,45 @@
 		{/each}
 	</div>
 
-	<div class="flex flex-wrap items-center gap-1.5">
-		{#each STEPS as step (step.factor)}
+	<!-- The choice on its own line (one Tab stop, arrows move it), then the steps
+	     that act on it and reset: the two never share a line, so neither breaks up
+	     at any width. Without a value on the cluster the steps say why they are off. -->
+	<div class="flex flex-col items-start gap-2">
+		<SegmentedControl
+			segments={TARGETS.map((t) => ({ ...t, disabled: !editable }))}
+			bind:value={stepField}
+			label="Field the steps raise, {container.name}"
+			dense
+			outlined
+			arrowKeys
+		/>
+		<div class="flex w-full flex-wrap items-center gap-1.5">
+			{#each STEPS as step (step.factor)}
+				<Button
+					variant="tonal"
+					size="inline"
+					aria-label={step.verb(stepLabel)}
+					disabled={!editable || stepDisabled}
+					onclick={() => resourceEditor.quickStep(container.name, stepField, step.factor)}
+				>
+					{step.text}
+				</Button>
+			{/each}
+			{#if stepDisabled}
+				<span class="type-body-sm ml-1 min-w-0 text-text-muted">no value on the cluster to step from</span>
+			{/if}
 			<Button
-				variant="tonal"
+				variant="text"
 				size="inline"
-				aria-label={step.verb(stepLabel)}
-				disabled={!editable || stepDisabled}
-				onclick={() => resourceEditor.quickStep(container.name, stepField, step.factor)}
+				class="ml-auto"
+				aria-label="Reset {container.name} to the cluster's values"
+				disabled={!editable || !anyChanged}
+				onclick={() => resourceEditor.reset(container.name)}
 			>
-				{step.text}
+				{#snippet icon()}<RotateCcw class="h-3.5 w-3.5" aria-hidden="true" />{/snippet}
+				reset
 			</Button>
-		{/each}
-		<span class="type-body-sm ml-1 text-text-muted">on {stepLabel}</span>
-		<Button
-			variant="text"
-			size="inline"
-			class="ml-auto"
-			aria-label="Reset {container.name} to the cluster's values"
-			disabled={!editable || !anyChanged}
-			onclick={() => resourceEditor.reset(container.name)}
-		>
-			{#snippet icon()}<RotateCcw class="h-3.5 w-3.5" aria-hidden="true" />{/snippet}
-			reset
-		</Button>
+		</div>
 	</div>
 
 	<!-- What the check refuses about a field of this container. One line is always
@@ -182,7 +207,7 @@
 		{#each blocked as b (b.key)}
 			<p id={messageId(b.key)} class="type-body-sm flex items-start gap-2 text-text">
 				<StatusGlyph state="err" class="mt-1 text-error" />
-				<span>{b.finding?.message}</span>
+				<span class="min-w-0 break-words">{b.finding?.message}</span>
 			</p>
 		{/each}
 	</div>

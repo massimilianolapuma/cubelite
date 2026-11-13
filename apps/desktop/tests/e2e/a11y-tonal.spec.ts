@@ -1134,6 +1134,9 @@ test.describe("the resources editor and the override banner", () => {
       await dialog.getByRole("button", { name: "1 other node" }).click();
       const boxes = () => dialog.locator("input").evaluateAll((els) => els.map((e) => JSON.stringify(e.getBoundingClientRect())));
       const nodeBox = () => dialog.getByTestId("node-node-1").boundingBox();
+      // The body scrolls (the check sits under it): bring the field into view first,
+      // so only a move of the layout shows below, not the scroll the typing makes.
+      await dialog.getByLabel("worker memory limit").focus();
       const fields = await boxes();
       const node = await nodeBox();
       await page.evaluate(() => ((window as unknown as HangWindow).__hang = ["evaluate_resources"]));
