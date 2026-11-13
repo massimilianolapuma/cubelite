@@ -38,6 +38,8 @@ export type PodInfo = {
   containers: ContainerInfo[];
   labels: Record<string, string>;
   creation_timestamp: string | null;
+  /** The Deployment whose ReplicaSet controls the pod; null for any other owner or none, absent from an older core. */
+  deployment?: string | null;
 };
 
 export type NamespaceInfo = {

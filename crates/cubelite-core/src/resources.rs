@@ -126,6 +126,10 @@ pub struct PodInfo {
     /// RFC 3339 creation timestamp, when reported by the API server.
     #[serde(default)]
     pub creation_timestamp: Option<String>,
+    /// The Deployment this pod belongs to: the one whose ReplicaSet controls
+    /// it. `None` for a pod of any other owner, or of none.
+    #[serde(default)]
+    pub deployment: Option<String>,
 }
 
 /// Lightweight representation of a Kubernetes Namespace.

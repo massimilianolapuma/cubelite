@@ -233,6 +233,7 @@ pub(crate) fn pod_to_info(pod: Pod) -> Option<PodInfo> {
     let namespace = pod.metadata.namespace.clone().unwrap_or_default();
     let labels = pod.metadata.labels.clone().unwrap_or_default();
     let creation = creation_timestamp(&pod.metadata);
+    let deployment = pod_deployment(&pod);
 
     let spec = pod.spec.unwrap_or_default();
     let status = pod.status.unwrap_or_default();
@@ -267,7 +268,25 @@ pub(crate) fn pod_to_info(pod: Pod) -> Option<PodInfo> {
         containers,
         labels,
         creation_timestamp: creation,
+        deployment,
     })
+}
+
+/// The Deployment a pod belongs to: its controller is the ReplicaSet
+/// `{deployment}-{pod-template-hash}`, the name the Deployment controller
+/// gives the ReplicaSet of each template. `None` for any other owner, for
+/// no owner, and for a ReplicaSet that is not named after the pod's hash.
+pub(crate) fn pod_deployment(pod: &Pod) -> Option<String> {
+    let hash = pod.metadata.labels.as_ref()?.get("pod-template-hash")?;
+    let suffix = format!("-{hash}");
+    pod.metadata
+        .owner_references
+        .iter()
+        .flatten()
+        .filter(|o| o.controller == Some(true) && o.kind == "ReplicaSet")
+        .find_map(|o| o.name.strip_suffix(&suffix))
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 /// CPU and memory requests and limits of one container, with the text the
@@ -885,6 +904,103 @@ mod tests {
     fn pod_to_info_no_name_returns_none() {
         let pod = k8s_openapi::api::core::v1::Pod::default();
         assert!(pod_to_info(pod).is_none());
+    }
+
+    /// A pod named `name`, with the `pod-template-hash` label when `hash` is
+    /// set, controlled by `owner` (`(kind, name)`) when it is set.
+    fn owned_pod(
+        name: &str,
+        hash: Option<&str>,
+        owner: Option<(&str, &str)>,
+    ) -> k8s_openapi::api::core::v1::Pod {
+        let mut metadata = serde_json::json!({ "name": name, "namespace": "default" });
+        if let Some(hash) = hash {
+            metadata["labels"] = serde_json::json!({ "app": "api", "pod-template-hash": hash });
+        }
+        if let Some((kind, owner)) = owner {
+            metadata["ownerReferences"] = serde_json::json!([{
+                "apiVersion": "apps/v1",
+                "kind": kind,
+                "name": owner,
+                "uid": "00000000-0000-0000-0000-000000000001",
+                "controller": true
+            }]);
+        }
+        serde_json::from_value(serde_json::json!({
+            "metadata": metadata,
+            "spec": { "containers": [{ "name": "api" }] }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn pod_info_names_the_deployment_its_replicaset_belongs_to() {
+        let pod = owned_pod(
+            "api-6d4cf56db6-x2k4p",
+            Some("6d4cf56db6"),
+            Some(("ReplicaSet", "api-6d4cf56db6")),
+        );
+        let info = pod_to_info(pod).unwrap();
+        assert_eq!(info.deployment.as_deref(), Some("api"));
+
+        // A deployment name with dashes of its own keeps them.
+        let pod = owned_pod(
+            "orders-api-v2-7f9c6d5b8-abcde",
+            Some("7f9c6d5b8"),
+            Some(("ReplicaSet", "orders-api-v2-7f9c6d5b8")),
+        );
+        let info = pod_to_info(pod).unwrap();
+        assert_eq!(info.deployment.as_deref(), Some("orders-api-v2"));
+        let v = serde_json::to_value(&info).unwrap();
+        assert_eq!(v["deployment"], "orders-api-v2");
+    }
+
+    #[test]
+    fn a_pod_of_a_statefulset_a_job_or_no_owner_has_no_deployment() {
+        for pod in [
+            // Named like a ReplicaSet of the hash: the kind still decides.
+            owned_pod(
+                "db-0",
+                Some("6d4cf56db6"),
+                Some(("StatefulSet", "db-6d4cf56db6")),
+            ),
+            owned_pod("migrate-x2k4p", None, Some(("Job", "migrate"))),
+            owned_pod("debug", None, None),
+            // A ReplicaSet controller but no hash label: not a Deployment's.
+            owned_pod("api-x2k4p", None, Some(("ReplicaSet", "api-6d4cf56db6"))),
+        ] {
+            let name = pod.metadata.name.clone();
+            let info = pod_to_info(pod).unwrap();
+            assert_eq!(info.deployment, None, "{name:?}");
+        }
+    }
+
+    #[test]
+    fn a_replicaset_name_that_does_not_end_with_the_hash_gives_none() {
+        for (hash, replica_set) in [
+            ("0000000000", "api-6d4cf56db6"),
+            ("6d4cf56db6", "api6d4cf56db6"),
+            // Nothing before the hash: no deployment name.
+            ("6d4cf56db6", "-6d4cf56db6"),
+        ] {
+            let pod = owned_pod("api-x2k4p", Some(hash), Some(("ReplicaSet", replica_set)));
+            let info = pod_to_info(pod).unwrap();
+            assert_eq!(info.deployment, None, "{replica_set} / {hash}");
+        }
+    }
+
+    #[test]
+    fn an_owner_that_is_not_the_controller_names_no_deployment() {
+        let mut pod = owned_pod(
+            "api-6d4cf56db6-x2k4p",
+            Some("6d4cf56db6"),
+            Some(("ReplicaSet", "api-6d4cf56db6")),
+        );
+        if let Some(refs) = pod.metadata.owner_references.as_mut() {
+            refs[0].controller = None;
+        }
+        let info = pod_to_info(pod).unwrap();
+        assert_eq!(info.deployment, None);
     }
 
     #[test]
