@@ -48,6 +48,11 @@ const ENVOY_RESOURCES = {
   memory: { request: quantity("64Mi", 64 * Mi), limit: null },
 };
 
+type QuantityFixture = { text: string; amount: number | null };
+type PairFixture = { request: QuantityFixture | null; limit: QuantityFixture | null };
+/** A pod's container as `list_pods` sends it; `resources` is absent in an older payload. */
+type ContainerFixture = { name: string; image: string; ready: boolean; resources?: { cpu: PairFixture; memory: PairFixture } };
+
 type PodMetricsFixture = {
   name: string;
   namespace: string;
@@ -140,7 +145,7 @@ export const FIXTURES = {
         { name: "worker", image: "ghcr.io/x/worker:2.1", ready: true, resources: WORKER_RESOURCES },
         { name: "envoy", image: "ghcr.io/x/envoy:1.29", ready: true, resources: ENVOY_RESOURCES },
         { name: "init-migrate", image: "ghcr.io/x/init-migrate:1.0", ready: true },
-      ],
+      ] as ContainerFixture[],
       labels: { app: "api" },
       creation_timestamp: "2026-07-10T09:00:00Z",
     },
@@ -155,7 +160,7 @@ export const FIXTURES = {
       node: null,
       pod_ip: null,
       qos_class: null,
-      containers: [{ name: "worker", image: "ghcr.io/x/worker:2.1", ready: false }],
+      containers: [{ name: "worker", image: "ghcr.io/x/worker:2.1", ready: false }] as ContainerFixture[],
       labels: { app: "worker" },
       creation_timestamp: "2026-07-11T08:00:00Z",
     },
