@@ -13,6 +13,7 @@
 //! | [`types`]      | Domain types mirroring the kubeconfig spec |
 //! | [`error`]      | Error types: [`KubeconfigError`], [`ContextError`] |
 //! | [`watcher`]    | Watch streaming for Kubernetes resources |
+//! | [`limits`]     | Check and apply a change of a Deployment's requests and limits |
 //!
 //! ## Quick Start
 //!
@@ -37,6 +38,7 @@ pub mod exec;
 pub mod helm;
 pub mod integration;
 pub mod kubeconfig;
+pub mod limits;
 pub mod logs;
 pub mod metrics;
 pub mod portforward;
@@ -54,6 +56,10 @@ pub use dynamic::{ResourceKindInfo, ResourceRef, ResourceTable, TableColumn, Tab
 pub use error::{ContextError, KubeconfigError};
 pub use helm::HelmReleaseInfo;
 pub use kubeconfig::{discover_kubeconfig_files, is_kubeconfig_file, KubeConfig};
+pub use limits::{
+    Evaluation, ManagerInfo, ManagerKind, OverrideContainer, OverrideInfo, PairText, Proposal,
+    ResourceFacts, ResourceField, ResourceName, ResourceTexts, SeenState,
+};
 pub use logs::{LogLevel, LogLine};
 pub use metrics::{ContainerUsageInfo, NodeCapacityInfo, PodMetricsInfo};
 pub use resources::{

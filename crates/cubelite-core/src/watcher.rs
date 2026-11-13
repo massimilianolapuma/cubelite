@@ -33,6 +33,7 @@ use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use kube::{runtime::watcher, Api, Client};
 use serde::{Deserialize, Serialize};
 
+use crate::limits::{active_override, detect_manager, OVERRIDE_ANNOTATION};
 use crate::metrics::{parse_cpu_millis, parse_memory_bytes};
 use crate::resources::{
     ConfigMapInfo, ContainerInfo, ContainerResourcesInfo, CronJobInfo, DeploymentConditionInfo,
@@ -508,6 +509,19 @@ pub(crate) fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
     let name = d.metadata.name.clone()?;
     let namespace = d.metadata.namespace.clone().unwrap_or_default();
     let creation = creation_timestamp(&d.metadata);
+    let manager = detect_manager(
+        d.metadata.labels.as_ref().unwrap_or(&Default::default()),
+        d.metadata
+            .annotations
+            .as_ref()
+            .unwrap_or(&Default::default()),
+    );
+    let override_annotation = d
+        .metadata
+        .annotations
+        .as_ref()
+        .and_then(|a| a.get(OVERRIDE_ANNOTATION))
+        .cloned();
 
     let (replicas, images, selector, strategy, containers) = match d.spec {
         Some(spec) => {
@@ -568,7 +582,9 @@ pub(crate) fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
         strategy,
         conditions,
         creation_timestamp: creation,
+        resources_override: active_override(override_annotation.as_deref(), &containers),
         containers,
+        manager,
     })
 }
 
@@ -1372,6 +1388,93 @@ mod tests {
             Some("ghcr.io/x/mesh:1.0")
         );
         assert_eq!(info.images.len(), 2); // unchanged: regular containers only
+    }
+
+    /// A deployment of `api` (memory limit `memory_limit`) with these labels
+    /// and annotations.
+    fn labelled_deployment(
+        labels: serde_json::Value,
+        annotations: serde_json::Value,
+        memory_limit: &str,
+    ) -> Deployment {
+        serde_json::from_value(serde_json::json!({
+            "metadata": {
+                "name": "api", "namespace": "default",
+                "labels": labels, "annotations": annotations
+            },
+            "spec": {
+                "selector": { "matchLabels": { "app": "api" } },
+                "template": { "spec": { "containers": [
+                    { "name": "api", "resources": {
+                        "requests": { "cpu": "250m", "memory": "256Mi" },
+                        "limits": { "cpu": "500m", "memory": memory_limit }
+                    } }
+                ] } }
+            }
+        }))
+        .unwrap()
+    }
+
+    const API_MARK: &str = r#"{"v":1,"at":"2026-11-13T11:20:00Z","containers":{"api":{"original":{"cpu":{"request":"250m","limit":"500m"},"memory":{"request":"256Mi","limit":"512Mi"}},"applied":{"cpu":{"request":"250m","limit":"500m"},"memory":{"request":"256Mi","limit":"768Mi"}}}}}"#;
+
+    #[test]
+    fn deployment_info_carries_the_manager_and_the_active_override() {
+        use crate::limits::{ManagerInfo, ManagerKind, OVERRIDE_ANNOTATION};
+        let d = labelled_deployment(
+            serde_json::json!({ "app.kubernetes.io/managed-by": "Helm" }),
+            serde_json::json!({
+                "meta.helm.sh/release-name": "orders",
+                OVERRIDE_ANNOTATION: API_MARK
+            }),
+            "768Mi",
+        );
+        let info = deployment_to_info(d).unwrap();
+        assert_eq!(
+            info.manager,
+            ManagerInfo {
+                kind: ManagerKind::Helm,
+                release: Some("orders".into())
+            }
+        );
+        let mark = info.resources_override.expect("an active mark");
+        assert_eq!(mark.at, "2026-11-13T11:20:00Z");
+        assert_eq!(mark.containers[0].name, "api");
+        assert_eq!(
+            mark.containers[0].original.memory.limit.as_deref(),
+            Some("512Mi")
+        );
+        // Labels and annotations are not shipped whole.
+        let v = serde_json::to_value(deployment_to_info(labelled_deployment(
+            serde_json::json!({}),
+            serde_json::json!({}),
+            "768Mi",
+        )))
+        .unwrap();
+        assert!(v.get("labels").is_none() && v.get("annotations").is_none());
+        assert_eq!(v["manager"]["kind"], "none");
+        assert!(v["resources_override"].is_null());
+    }
+
+    #[test]
+    fn deployment_info_drops_a_stale_override() {
+        use crate::limits::OVERRIDE_ANNOTATION;
+        // The fix arrived from git with 1Gi: the mark says 768Mi.
+        let d = labelled_deployment(
+            serde_json::json!({}),
+            serde_json::json!({ OVERRIDE_ANNOTATION: API_MARK }),
+            "1Gi",
+        );
+        assert_eq!(deployment_to_info(d).unwrap().resources_override, None);
+        // A value the app did not write is no mark.
+        let garbage = labelled_deployment(
+            serde_json::json!({}),
+            serde_json::json!({ OVERRIDE_ANNOTATION: "{" }),
+            "768Mi",
+        );
+        assert_eq!(
+            deployment_to_info(garbage).unwrap().resources_override,
+            None
+        );
     }
 
     #[test]
