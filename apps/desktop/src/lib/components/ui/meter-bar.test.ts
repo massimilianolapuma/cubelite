@@ -53,4 +53,10 @@ describe("MeterBar thresholds (parity v2 §4, Tonal §7)", () => {
     expect(screen.getByText("2.0 / 8.0 GiB")).toBeInTheDocument();
     expect(screen.getByText("25%")).toBeInTheDocument();
   });
+
+  it("leaves the label column out when it has no label, so a row with a name of its own keeps its room", () => {
+    const { container } = render(MeterBar, { props: { percent: 40 } });
+    expect(container.querySelector(".type-label")).toBeNull();
+    expect(screen.getByText("40%")).toBeInTheDocument();
+  });
 });

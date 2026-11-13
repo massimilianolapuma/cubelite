@@ -1,6 +1,8 @@
 <script lang="ts">
 	import DeploymentTable from '#lib/components/DeploymentTable.svelte';
 	import DeploymentDrawer from '#lib/components/deployments/DeploymentDrawer.svelte';
+	import ResourceEditor from '#lib/components/deployments/ResourceEditor.svelte';
+	import { resourceEditor } from '#lib/stores/resourceEditor.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import { SEARCH_FIELD } from '#lib/ui-classes.ts';
@@ -57,4 +59,8 @@
 		deployment={current}
 		onClose={() => (app.selectedDeployment = null)}
 	/>
+{/if}
+
+{#if resourceEditor.target}
+	<ResourceEditor />
 {/if}

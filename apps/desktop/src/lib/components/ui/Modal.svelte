@@ -9,13 +9,19 @@
 		width = 520,
 		onClose,
 		children,
-		footer
+		footer,
+		heading = $bindable(null),
+		focusableTitle = false
 	}: {
 		title: string;
 		width?: number;
 		onClose: () => void;
 		children: Snippet;
 		footer?: Snippet;
+		/** The title element, for a dialog that moves focus to it (a step of a wizard). */
+		heading?: HTMLElement | null;
+		/** The title takes focus from script (`tabindex="-1"`); off by default. */
+		focusableTitle?: boolean;
 	} = $props();
 
 	// Esc closes the topmost overlay: register so app.closeTopOverlay() reaches
@@ -33,7 +39,16 @@
 	aria-label={title}
 >
 	<header class="flex shrink-0 items-center justify-between gap-3 px-6 pt-5 pb-3">
-		<h2 class="type-headline min-w-0 truncate" {title}>{title}</h2>
+		<!-- -1 or nothing: the title takes focus from script only, never from Tab. -->
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+		<h2
+			bind:this={heading}
+			class="type-headline min-w-0 truncate {focusableTitle ? 'focus-ring rounded-xs' : ''}"
+			{title}
+			tabindex={focusableTitle ? -1 : undefined}
+		>
+			{title}
+		</h2>
 		<button
 			type="button"
 			aria-label="Close"

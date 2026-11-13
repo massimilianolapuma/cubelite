@@ -128,6 +128,11 @@ describe("DeletePodDialog", () => {
     await fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it("keeps a plain title: only a dialog that asks for it gets a focusable one", () => {
+    render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
+    expect(screen.getByRole("heading", { name: "Delete Pod" })).not.toHaveAttribute("tabindex");
+  });
 });
 
 describe("PreferencesModal", () => {
