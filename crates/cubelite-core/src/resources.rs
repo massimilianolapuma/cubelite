@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+use crate::limits::{ManagerInfo, OverrideInfo};
+
 /// A Kubernetes quantity as the cluster writes it, with its amount:
 /// millicores for CPU, bytes for memory. `amount` is None when `text` cannot be parsed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -179,6 +181,13 @@ pub struct DeploymentInfo {
     /// regular containers in spec order, then the native sidecars.
     #[serde(default)]
     pub containers: Vec<TemplateContainerInfo>,
+    /// Who manages the deployment, from its labels and annotations.
+    #[serde(default)]
+    pub manager: ManagerInfo,
+    /// The override mark of the app, when it is active (spec §6.2); a stale
+    /// or foreign annotation is `None`.
+    #[serde(default)]
+    pub resources_override: Option<OverrideInfo>,
 }
 
 /// Lightweight representation of a Kubernetes Service.
@@ -409,6 +418,8 @@ mod tests {
         assert!(dep.strategy.is_none());
         assert!(dep.conditions.is_empty());
         assert!(dep.containers.is_empty());
+        assert_eq!(dep.manager, ManagerInfo::default());
+        assert_eq!(dep.resources_override, None);
     }
 
     #[test]

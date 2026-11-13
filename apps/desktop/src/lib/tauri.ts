@@ -51,6 +51,24 @@ export type DeploymentConditionInfo = {
   reason: string | null;
 };
 
+/** Who manages a workload, from its labels and annotations. */
+export type ManagerKind =
+  | "argo_cd"
+  | "flux_kustomization"
+  | "flux_helm_release"
+  | "helm"
+  | "possibly_managed"
+  | "none";
+/** `release` is the Helm release name, set for `helm` only. */
+export type ManagerInfo = { kind: ManagerKind; release: string | null };
+/** A request and a limit as text; null is not set. */
+export type PairText = { request: string | null; limit: string | null };
+export type ResourceTexts = { cpu: PairText; memory: PairText };
+/** One container of the override mark: its values before the first change and the ones applied last. */
+export type OverrideContainer = { name: string; original: ResourceTexts; applied: ResourceTexts };
+/** The active override mark of a deployment; `containers` in name order. */
+export type OverrideInfo = { at: string; containers: OverrideContainer[] };
+
 export type DeploymentInfo = {
   name: string;
   namespace: string;
@@ -63,6 +81,10 @@ export type DeploymentInfo = {
   creation_timestamp: string | null;
   /** Template containers (regular, then native sidecars); absent in a payload from an older core. */
   containers?: TemplateContainerInfo[];
+  /** Who manages the deployment; absent in a payload from an older core. */
+  manager?: ManagerInfo;
+  /** The active override mark; null when there is none or it is stale. */
+  resources_override?: OverrideInfo | null;
 };
 
 export type ContextInfo = {
