@@ -13,7 +13,7 @@ use the inter-agent protocol described below.
 | `coordinator` | Any / cross-cutting | Claude Opus 4.7 | Issue triage, milestone planning, inter-agent routing |
 | `core-agent` | `crates/**` | Claude Sonnet 4.6 | `cargo test`, `cargo clippy --deny warnings`, `cargo build` |
 | `desktop-agent` | `apps/desktop/**` | Claude Sonnet 4.6 | `pnpm --filter desktop test`, Vitest, Playwright |
-| `design-agent` | `apps/desktop/**` (UI only) | Claude Opus 4.7 | Penpot MCP, Tonal design tokens (`design/tokens.json`), Tailwind v4 |
+| `design-agent` | `apps/desktop/**` (UI only) | Claude Opus 4.7 | Tonal design system (`design/README.md`, `design/tokens.json`), Tailwind v4 |
 | `devops-agent` | `.github/**` | Claude Sonnet 4.6 | GitHub Actions, secret scanning, YAML lint |
 | `qa-agent` | Any / quality | Claude Sonnet 4.6 | Test coverage, CI validation, security review |
 | `docs-agent` | `docs/`, README, CHANGELOG | Claude Sonnet 4.6 | `cargo doc`, documentation generation, Mermaid diagrams |
@@ -96,17 +96,14 @@ change over time and must be respected on every task.
 
 When a task involves **creating a new UI section, view, or panel** (not a minor tweak to an existing view):
 
-1. **Design first** — delegate to `design-agent` to create the Penpot board(s) with layout, colors, typography, and component specs
+1. **Design first** — delegate to `design-agent` to write the design: a spec under `docs/superpowers/specs/` with mockups in the Tonal design system (layout, states, components, tokens; see `design/README.md`)
 2. **Review** — the coordinator presents the design to the user for approval
 3. **Implement only after approval** — the implementing agent (desktop-agent) receives the approved design as reference
 
 This applies to `apps/desktop/` UI work. Bug fixes, refactors,
 and modifications to existing views that don't introduce new sections are exempt.
 
-A design approved by the user in another form counts as well: a design spec under
-`docs/superpowers/specs/` reviewed with the user, as for the Tonal restyle (#604).
-
-**Rationale**: code-first UI leads to rework; Penpot designs are cheap to iterate on.
+**Rationale**: code-first UI leads to rework; a design spec is cheap to iterate on.
 
 ---
 
@@ -118,7 +115,7 @@ A design approved by the user in another form counts as well: a design spec unde
 - Do NOT call `unwrap()` or `expect()` in production Rust code (outside `tests/`)
 - Do NOT install telemetry or tracking without explicit user opt-in
 - Do NOT modify another agent's owned files without coordination
-- Do NOT implement new UI sections without an approved Penpot design (see Design-First Workflow)
+- Do NOT implement new UI sections without an approved design (see Design-First Workflow)
 
 ---
 
