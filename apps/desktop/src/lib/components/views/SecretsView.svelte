@@ -1,13 +1,14 @@
 <script lang="ts">
-	import SortHeader from '#lib/components/ui/SortHeader.svelte';
-	import GroupedRows from '#lib/components/ui/GroupedRows.svelte';
-	import ListTitle from '#lib/components/ui/ListTitle.svelte';
-	import { gridColumns } from '#lib/list-group.ts';
+	import { EMPTY } from '#lib/empty.ts';
 	import Eye from '@lucide/svelte/icons/eye';
 	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import Button from '#lib/components/ui/Button.svelte';
+	import ResourceList from '#lib/components/ui/ResourceList.svelte';
+	import SortHeader from '#lib/components/ui/SortHeader.svelte';
 	import { formatAge } from '#lib/age.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { LIST_PINNED } from '#lib/ui-classes.ts';
 
 	$effect(() => {
 		void [app.namespace, app.activeCluster];
@@ -25,82 +26,65 @@
 		const key = keyOf(ns, name);
 		revealed = { ...revealed, [key]: !revealed[key] };
 	}
-
-	const grid = $derived(gridColumns(['2.2fr', '1fr', '1.3fr', '0.5fr', '0.55fr', '0.7fr'], app.groupedLists));
 </script>
 
-<div class="flex flex-col gap-3 p-4">
-	<ListTitle title="Secrets">
-		<span
-			class="rounded-full px-2.5 py-1 type-micro"
-			style="background: var(--alpha-pill-warn); color: var(--color-status-warn);"
-		>
-			values decoded locally — never leave this machine
+<ResourceList
+	list="secrets"
+	title="Secrets"
+	nouns={['secret', 'secrets']}
+	rows={resources.secrets}
+	tracks={['2.2fr', '1fr', '1.3fr', '0.5fr', '0.55fr', '0.9fr']}
+	accessors={{ name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp }}
+	loaded={resources.kindLoaded('secrets')}
+	error={resources.kindError('secrets')}
+	busy={resources.extraLoading}
+	onRetry={() => void resources.loadKind('secrets')}
+>
+	{#snippet tools()}
+		<span class="type-body-sm rounded-full bg-warning-container px-3 py-1 text-on-warning-container">
+			values decoded on this machine only
 		</span>
-	</ListTitle>
+	{/snippet}
 
-	{#if resources.extraError}
-		<p class="py-8 text-center text-xs text-status-err">{resources.extraError}</p>
-	{:else}
-		<div class="overflow-hidden rounded-lg border border-border-default">
-			<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
-				<SortHeader list="secrets" field="name" label="Name" />
-				{#if !app.groupedLists}<SortHeader list="secrets" field="namespace" label="Namespace" />{/if}
-				<span class="type-colhead">Type</span>
-				<span class="type-colhead">Data</span>
-				<SortHeader list="secrets" field="age" label="Age" />
-				<span class="type-colhead">Reveal</span>
+	{#snippet head()}
+		<span class="truncate">Type</span>
+		<span class="truncate text-right">Data</span>
+		<SortHeader list="secrets" field="age" label="Age" />
+		<span class="truncate">Reveal</span>
+	{/snippet}
+
+	{#snippet cells(secret)}
+		{@const isRevealed = revealed[keyOf(secret.namespace, secret.name)] ?? false}
+		<span class="type-data-sm truncate text-text-muted">{secret.secret_type ?? EMPTY}</span>
+		<span class="type-data-sm text-right text-text-muted">{Object.keys(secret.data).length}</span>
+		<span class="type-data-sm text-text-muted">{formatAge(secret.creation_timestamp)}</span>
+		<span class="flex min-w-0 items-center">
+			<Button variant="text" size="inline" onclick={() => toggle(secret.namespace, secret.name)}>
+				{#snippet icon()}
+					{#if isRevealed}
+						<EyeOff class="h-3 w-3" aria-hidden="true" />
+					{:else}
+						<Eye class="h-3 w-3" aria-hidden="true" />
+					{/if}
+				{/snippet}
+				{isRevealed ? 'Hide' : 'Reveal'}
+			</Button>
+		</span>
+	{/snippet}
+
+	{#snippet below(secret)}
+		{@const isRevealed = revealed[keyOf(secret.namespace, secret.name)] ?? false}
+		{#if Object.keys(secret.data).length > 0}
+			<div class="{LIST_PINNED} mb-1 flex flex-col gap-1 rounded-md bg-surface-sunken px-3 py-2" data-testid="secret-data">
+				{#each Object.entries(secret.data) as [key, value] (key)}
+					<div class="flex items-baseline gap-3">
+						<span class="type-data-sm w-44 shrink-0 truncate text-text-muted">{key}</span>
+						<span class="type-data-sm break-all {isRevealed ? 'text-text' : 'text-text-subtle'}">
+							{isRevealed ? value : '••••••••'}
+						</span>
+					</div>
+				{/each}
 			</div>
-			<div class="bg-surface-panel">
-				{#if resources.secrets.length === 0}
-					<p class="py-8 text-center text-xs text-text-disabled">No secrets found.</p>
-				{:else}
-					<GroupedRows list="secrets" rows={resources.secrets} accessors={{ name: (x) => x.name, namespace: (x) => x.namespace, created: (x) => x.creation_timestamp }} nouns={['secret', 'secrets']}>
-						{#snippet row(secret, grouped)}
-							{@const isRevealed = revealed[keyOf(secret.namespace, secret.name)] ?? false}
-							<div class="border-b border-border-faint last:border-b-0">
-								<div
-									class="grid items-center gap-x-3 px-3 hover:bg-surface-row-hover"
-									style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default);"
-								>
-									<span class="type-data truncate text-text-data-bright {grouped ? 'pl-4.5' : ''}">{secret.name}</span>
-									{#if !grouped}<span class="type-data-sm truncate text-text-secondary">{secret.namespace}</span>{/if}
-									<span class="type-data-sm truncate text-text-secondary">{secret.secret_type ?? '—'}</span>
-									<span class="type-data-sm text-text-secondary">{Object.keys(secret.data).length}</span>
-									<span class="type-data-sm text-text-secondary">{formatAge(secret.creation_timestamp)}</span>
-									<button
-										type="button"
-										class="focus-ring type-caption flex h-7 w-fit items-center gap-1 rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110"
-										onclick={() => toggle(secret.namespace, secret.name)}
-									>
-										{#if isRevealed}
-											<EyeOff class="h-3 w-3" />
-											Hide
-										{:else}
-											<Eye class="h-3 w-3" />
-											Reveal
-										{/if}
-									</button>
-								</div>
-								{#if Object.keys(secret.data).length > 0}
-									<div class="flex flex-col gap-1 bg-surface-sunken px-3 py-2">
-										{#each Object.entries(secret.data) as [key, value] (key)}
-											<div class="flex items-baseline gap-3">
-												<span class="type-data-sm w-44 shrink-0 truncate text-text-tertiary">{key}</span>
-												<span
-													class="type-data-sm break-all {isRevealed ? 'text-text-log' : 'text-text-disabled'}"
-												>
-													{isRevealed ? value : '••••••••'}
-												</span>
-											</div>
-										{/each}
-									</div>
-								{/if}
-							</div>
-						{/snippet}
-					</GroupedRows>
-				{/if}
-			</div>
-		</div>
-	{/if}
-</div>
+		{/if}
+	{/snippet}
+</ResourceList>

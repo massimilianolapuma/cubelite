@@ -10,20 +10,36 @@
 		segments,
 		value = $bindable(),
 		onChange,
-		label
+		label,
+		dense = false,
+		outlined = false
 	}: {
 		segments: Segment<T>[];
 		value: T;
 		onChange?: (value: T) => void;
 		/** Accessible name of the group. */
 		label?: string;
+		/** Narrower segments, for toolbars that must stay on one row. */
+		dense?: boolean;
+		/**
+		 * An `outline-strong` border instead of the filled track, for forms and
+		 * dialogs: on `surface-overlay` the filled track is one step away and has
+		 * no visible edge.
+		 */
+		outlined?: boolean;
 	} = $props();
 </script>
 
+<!-- One pill group; the selected segment is the tonal fill (Tonal §7) inside a
+     1.5 px primary ring: the fill alone is 1.3–1.6:1 from its surface, and the
+     ring, drawn inside, reaches 3:1 without changing the segment's size. -->
 <div
-	class="inline-flex overflow-hidden rounded-md border border-border-default bg-surface-window"
+	class="inline-flex shrink-0 gap-0.5 rounded-full p-0.5 {outlined
+		? 'border border-outline-strong'
+		: 'bg-surface-container-high'}"
 	role="radiogroup"
 	aria-label={label}
+	data-outlined={outlined}
 >
 	{#each segments as segment (segment.value)}
 		{@const active = value === segment.value}
@@ -33,12 +49,12 @@
 			aria-checked={active}
 			disabled={segment.disabled}
 			title={segment.title}
-			class="type-caption h-7 border-r border-border-default px-3 last:border-r-0 {segment.disabled
-				? 'text-text-disabled opacity-45'
+			data-selected={active}
+			class="focus-ring type-body-sm h-(--control-inline-h) rounded-full {dense ? 'px-2' : 'px-3.5'} {segment.disabled
+				? 'text-text-subtle opacity-45'
 				: active
-					? 'text-text-primary'
-					: 'text-text-secondary hover:bg-surface-row-hover'}"
-			style={active ? 'background: var(--alpha-active-nav-bg);' : ''}
+					? 'bg-primary-container font-semibold text-on-primary-container inset-ring-[1.5px] inset-ring-primary'
+					: 'text-text-muted ' + (outlined ? 'hover-layer' : 'hover:bg-surface-container-top')}"
 			onclick={() => {
 				value = segment.value;
 				onChange?.(segment.value);

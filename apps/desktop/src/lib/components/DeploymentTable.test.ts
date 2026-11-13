@@ -28,11 +28,17 @@ import DeploymentTable from "./DeploymentTable.svelte";
 import { restartDeployment, scaleDeployment, type DeploymentInfo } from "#lib/tauri.ts";
 import { SCALE_DEBOUNCE_MS } from "#lib/stores/mutations.svelte.ts";
 import { app } from "#lib/stores/app.svelte.ts";
+import { layout } from "#lib/stores/layout.svelte.ts";
+import { lists } from "#lib/stores/lists.svelte.ts";
 
 beforeEach(() => {
   vi.clearAllMocks();
   app.kubeconfigPath = "/home/u/.kube/config";
   app.activeCluster = "prod";
+  app.namespace = null;
+  lists.resetSession();
+  lists.groupByNamespace = false;
+  layout.contentWidth = 0;
 });
 
 function dep(overrides: Partial<DeploymentInfo> = {}): DeploymentInfo {
@@ -50,9 +56,11 @@ function dep(overrides: Partial<DeploymentInfo> = {}): DeploymentInfo {
   };
 }
 
+const badge = (label: string) => screen.getByText(label, { selector: "[data-state] *" }).closest("[data-state]")!;
+
 describe("DeploymentTable", () => {
   it("renders the spec'd column headers", () => {
-    render(DeploymentTable, { props: { deployments: [] } });
+    render(DeploymentTable, { props: { deployments: [dep()] } });
     for (const h of ["Name", "Namespace", "Ready", "Status", "Age", "Replicas · Actions"]) {
       expect(screen.getByText(h)).toBeInTheDocument();
     }
@@ -60,18 +68,29 @@ describe("DeploymentTable", () => {
 
   it("shows the empty state when there are no deployments", () => {
     render(DeploymentTable, { props: { deployments: [] } });
-    expect(screen.getByText("No deployments found.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No deployments in any namespace" })).toBeInTheDocument();
+  });
+
+  it("shows placeholder rows while the first load is in flight, and a failed load as an error (#606)", async () => {
+    const loading = render(DeploymentTable, { props: { deployments: [], loaded: false } });
+    expect(screen.getByRole("status", { name: "Loading deployments" })).toBeInTheDocument();
+    expect(screen.queryByText(/^No deployments/)).not.toBeInTheDocument();
+    loading.unmount();
+
+    render(DeploymentTable, { props: { deployments: [], error: "timeout" } });
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load deployments");
+    expect(screen.getByRole("alert")).toHaveTextContent("timeout");
   });
 
   it("derives Available when all replicas are ready", () => {
     render(DeploymentTable, { props: { deployments: [dep()] } });
-    expect(screen.getByText("Available")).toBeInTheDocument();
+    expect(badge("Available")).toHaveAttribute("data-state", "ok");
     expect(screen.getByText("3/3")).toBeInTheDocument();
   });
 
   it("derives Progressing when replicas are missing", () => {
     render(DeploymentTable, { props: { deployments: [dep({ ready_replicas: 1 })] } });
-    expect(screen.getByText("Progressing")).toBeInTheDocument();
+    expect(badge("Progressing")).toHaveAttribute("data-state", "warn");
   });
 
   it("batches stepper clicks and applies once after the debounce", async () => {
@@ -81,7 +100,10 @@ describe("DeploymentTable", () => {
       await fireEvent.click(screen.getByLabelText("Scale up"));
       await fireEvent.click(screen.getByLabelText("Scale up"));
       // Pending target is shown immediately; nothing is sent yet.
-      expect(screen.getByText("5")).toBeInTheDocument();
+      // It is bold with a triangle, not coloured.
+      const pending = screen.getByText("5");
+      expect(pending).toHaveAttribute("data-pending", "true");
+      expect(pending.querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "warn");
       expect(scaleDeployment).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS);
       expect(scaleDeployment).toHaveBeenCalledTimes(1);
@@ -127,10 +149,57 @@ describe("DeploymentTable", () => {
     expect(restartDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", "prod");
   });
 
+  it("Enter on a control inside the row does not also select the row", async () => {
+    const onRowClick = vi.fn();
+    render(DeploymentTable, { props: { deployments: [dep()], onRowClick } });
+    await fireEvent.keyDown(screen.getByLabelText("Scale up"), { key: "Enter" });
+    expect(onRowClick).not.toHaveBeenCalled();
+    await fireEvent.keyDown(screen.getByText("api").closest('[role="button"]')!, { key: "Enter" });
+    expect(onRowClick).toHaveBeenCalledWith(dep());
+  });
+
+  it("keeps Restart focusable and marks it busy while a restart runs", async () => {
+    let done: () => void = () => {};
+    vi.mocked(restartDeployment).mockReturnValueOnce(new Promise<void>((resolve) => (done = resolve)));
+    render(DeploymentTable, { props: { deployments: [dep()] } });
+    const restart = screen.getByRole("button", { name: "Restart" });
+    await fireEvent.click(restart);
+    expect(restart).toHaveAttribute("aria-busy", "true");
+    expect(restart).not.toBeDisabled();
+    done();
+    await vi.waitFor(() => expect(restart).not.toHaveAttribute("aria-busy"));
+  });
+
   it("calls onRowClick with the deployment", async () => {
     const onRowClick = vi.fn();
     render(DeploymentTable, { props: { deployments: [dep()], onRowClick } });
     await fireEvent.click(screen.getByText("api"));
     expect(onRowClick).toHaveBeenCalledWith(dep());
+  });
+});
+
+describe("DeploymentTable beside a docked detail panel (Tonal §3 #2 #11)", () => {
+  it("keeps the identifying columns and leaves scale and restart to the panel", () => {
+    layout.contentWidth = 1200;
+    const d = dep();
+    render(DeploymentTable, { props: { deployments: [d], selected: d } });
+    expect(screen.queryByText("Replicas · Actions")).toBeNull();
+    expect(screen.queryByLabelText("Scale up")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Restart" })).toBeNull();
+    for (const h of ["Name", "Namespace", "Ready", "Status", "Age"]) {
+      expect(screen.getByText(h)).toBeInTheDocument();
+    }
+  });
+
+  it("keeps the controls in the row while the panel overlays the list or nothing is selected", () => {
+    layout.contentWidth = 964;
+    const d = dep();
+    const overlay = render(DeploymentTable, { props: { deployments: [d], selected: d } });
+    expect(screen.getByLabelText("Scale up")).toBeInTheDocument();
+    overlay.unmount();
+
+    layout.contentWidth = 1200;
+    render(DeploymentTable, { props: { deployments: [d] } });
+    expect(screen.getByLabelText("Scale up")).toBeInTheDocument();
   });
 });

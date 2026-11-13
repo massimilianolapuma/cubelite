@@ -1,10 +1,12 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import Loading from '#lib/components/ui/Loading.svelte';
 	import LineChart from '#lib/components/metrics/LineChart.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import PrometheusHint from '#lib/components/metrics/PrometheusHint.svelte';
-	import { UI_LINK_CLASS } from '#lib/integration.ts';
 	import { observeOnce } from '#lib/in-view.ts';
 	import { LatestLoad } from '#lib/latest-load.svelte.ts';
 	import {
@@ -20,7 +22,8 @@
 		formatValue,
 		latest,
 		latestTotal,
-		seriesColor,
+		REFERENCE_COLOR,
+		seriesStyle,
 		sumPoints,
 		type ChartLine,
 		type Unit
@@ -74,7 +77,7 @@
 	function usageLines(usage: Chart, request: Chart, limit: Chart): ChartLine[] {
 		const lines: ChartLine[] = series(usage).map((s, i) => ({
 			label: s.label,
-			color: seriesColor(i),
+			...seriesStyle(i),
 			points: s.points
 		}));
 		for (const [chart, label] of [
@@ -85,7 +88,7 @@
 			if (ref.length > 0) {
 				lines.push({
 					label,
-					color: 'var(--color-text-tertiary)',
+					color: REFERENCE_COLOR,
 					points: sumPoints(ref.map((s) => s.points)),
 					dashed: true
 				});
@@ -97,7 +100,7 @@
 	function usageSummary(usage: Chart, request: Chart, limit: Chart, unit: Unit): string {
 		const parts: string[] = [];
 		const now = latestTotal(series(usage));
-		parts.push(now === null ? '—' : formatValue(now, unit));
+		parts.push(now === null ? EMPTY : formatValue(now, unit));
 		const req = latestTotal(series(request));
 		if (req !== null) parts.push(`req ${formatValue(req, unit)}`);
 		const lim = latestTotal(series(limit));
@@ -108,18 +111,18 @@
 	const cpuLines = $derived(result ? usageLines('cpu', 'cpu-request', 'cpu-limit') : []);
 	const memoryLines = $derived(result ? usageLines('memory', 'memory-request', 'memory-limit') : []);
 	const restartLines = $derived(
-		series('restarts').map((s, i) => ({ label: s.label, color: seriesColor(i), points: s.points }))
+		series('restarts').map((s, i) => ({ label: s.label, ...seriesStyle(i), points: s.points }))
 	);
 	const networkLines = $derived<ChartLine[]>([
-		...series('network-rx').map((s) => ({ label: 'rx', color: seriesColor(0), points: s.points })),
-		...series('network-tx').map((s) => ({ label: 'tx', color: seriesColor(1), points: s.points }))
+		...series('network-rx').map((s) => ({ label: 'rx', ...seriesStyle(0), points: s.points })),
+		...series('network-tx').map((s) => ({ label: 'tx', ...seriesStyle(1), points: s.points }))
 	]);
 	const networkSummary = $derived.by(() => {
 		const rx = series('network-rx')[0];
 		const tx = series('network-tx')[0];
 		const fmt = (s: Series | undefined) => {
 			const v = s ? latest(s.points) : null;
-			return v === null ? '—' : formatValue(v, 'bytes-per-second');
+			return v === null ? EMPTY : formatValue(v, 'bytes-per-second');
 		};
 		return `↓ ${fmt(rx)} ↑ ${fmt(tx)}`;
 	});
@@ -153,19 +156,18 @@
 	const restartsTotal = $derived.by(() => {
 		const total = series('restarts-total')[0];
 		const value = total ? latest(total.points) : null;
-		return value === null ? '—' : `${Math.round(value)} in range`;
+		return value === null ? EMPTY : `${Math.round(value)} in range`;
 	});
-	const emptyCadvisor = 'no data — needs cAdvisor metrics in Prometheus';
-	const emptyKsm = 'no data — needs kube-state-metrics in Prometheus';
+	const emptyCadvisor = 'no data: needs cAdvisor metrics in Prometheus';
+	const emptyKsm = 'no data: needs kube-state-metrics in Prometheus';
 </script>
 
 {#if endpoint}
 	<div bind:this={root} data-testid="metrics-section">
-		<div class="mb-1.5 flex flex-wrap items-center gap-2">
-			<span class="type-section text-text-tertiary">Metrics</span>
-			{#if loading}
-				<LoaderCircle class="h-3 w-3 animate-spin text-text-tertiary" aria-label="Loading metrics" />
-			{/if}
+		<div class="mb-2 flex flex-wrap items-center gap-2">
+			<span class="type-label text-text-muted">Metrics</span>
+			<!-- Always in place, so the controls never move; the body says it on a first load. -->
+			<Loading label="Loading metrics" active={loading} words={!!result} />
 			<span class="ml-auto"></span>
 			<SegmentedControl segments={METRICS_RANGES} bind:value={range} label="Metrics range" />
 			<SegmentedControl
@@ -177,13 +179,17 @@
 				label="Per container or total"
 			/>
 			{#if canOpenGrafana && result}
-				<button type="button" class={UI_LINK_CLASS} onclick={() => void grafana(...ALL)}>
-					<ExternalLink class="h-3 w-3" /> Grafana
-				</button>
+				<Button variant="text" size="inline" onclick={() => void grafana(...ALL)}>
+					{#snippet icon()}<ExternalLink class="h-3.5 w-3.5" aria-hidden="true" />{/snippet}
+					Grafana
+				</Button>
 			{/if}
 		</div>
 		{#if error}
-			<p class="type-caption text-status-err" role="alert">{error}</p>
+			<p class="type-body-sm flex items-start gap-1.5 text-text" role="alert">
+				<StatusGlyph state="err" class="mt-1 text-error" />
+				{error}
+			</p>
 		{:else if result}
 			<div class="flex flex-col gap-2">
 				<LineChart
@@ -236,7 +242,7 @@
 				/>
 			</div>
 		{:else}
-			<p class="type-caption text-text-disabled">loading metrics…</p>
+			<p class="type-body-sm text-text-muted" role="status">loading metrics…</p>
 		{/if}
 	</div>
 {:else if hint}

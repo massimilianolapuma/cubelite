@@ -17,7 +17,7 @@ test("a new kind opens as kubectl's columns with a read-only YAML drawer", async
   const sidebar = page.locator("aside").first();
   await sidebar.getByRole("button", { name: /^Workloads/ }).click();
   await sidebar.getByText("DaemonSets").click();
-  await expect(page.getByRole("heading", { name: "DaemonSets" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "DaemonSets" })).toBeVisible();
   for (const h of ["Desired", "Node Selector"]) await expect(page.getByText(h, { exact: true })).toBeVisible();
   await expect(page.getByText("kubernetes.io/os=linux")).toBeVisible();
   await expect(sidebar.getByText("DaemonSets").locator("..").getByTestId("nav-count")).toHaveText("1");
@@ -46,5 +46,5 @@ test("a cluster-scoped kind says so and has no Namespace column", async ({ page 
   await page.locator("aside").first().getByText("Cluster Roles").click();
   await expect(page.getByText("cluster-scoped")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sort by Namespace" })).toHaveCount(0);
-  await expect(page.getByText("No cluster roles found.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No cluster roles in this cluster" })).toBeVisible();
 });

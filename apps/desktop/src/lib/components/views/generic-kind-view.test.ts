@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   discoverResourceKinds: vi.fn(async () => []),
@@ -13,6 +13,7 @@ import GenericKindView from "./GenericKindView.svelte";
 import { viewEntry } from "./index.ts";
 import { app } from "#lib/stores/app.svelte.ts";
 import { dynamic } from "#lib/stores/dynamic.svelte.ts";
+import { layout } from "#lib/stores/layout.svelte.ts";
 
 const col = (name: string, column_type = "string", format = "") => ({ name, column_type, format, description: "" });
 
@@ -33,6 +34,7 @@ beforeEach(() => {
   app.activeCluster = `ctx-${++n}`;
   app.namespace = null;
   app.selectedObject = null;
+  layout.contentWidth = 0;
   dynamic.clear();
 });
 
@@ -74,16 +76,37 @@ describe("GenericKindView", () => {
     expect(discoverResourceKinds).toHaveBeenCalled();
   });
 
-  it("shows the load error", async () => {
+  it("shows the load error with Retry", async () => {
+    vi.mocked(listResourceTable).mockRejectedValueOnce("connection refused");
+    render(GenericKindView, { view: "daemonsets" });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Could not load daemon sets");
+    expect(alert).toHaveTextContent("connection refused");
+    await fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("fluent-bit")).toBeInTheDocument();
+  });
+
+  it("says so when RBAC forbids the list", async () => {
     vi.mocked(listResourceTable).mockRejectedValue("403 Forbidden: daemonsets.apps is forbidden");
     render(GenericKindView, { view: "daemonsets" });
-    expect(await screen.findByText("403 Forbidden: daemonsets.apps is forbidden")).toBeInTheDocument();
+    expect(await screen.findByText("You are not allowed to list daemon sets in any namespace.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("a filter that matches nothing offers Clear filter", async () => {
+    render(GenericKindView, { view: "daemonsets" });
+    await screen.findByText("fluent-bit");
+    await fireEvent.input(screen.getByLabelText("Filter DaemonSets"), { target: { value: "zzz" } });
+    expect(screen.getByRole("heading", { name: 'No daemon sets match "zzz"' })).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "Clear filter" }));
+    expect(screen.getByLabelText("Filter DaemonSets")).toHaveValue("");
+    expect(screen.getByText("fluent-bit")).toBeInTheDocument();
   });
 
   it("shows the empty state", async () => {
     vi.mocked(listResourceTable).mockResolvedValue({ columns: daemonsets.columns, rows: [] });
     render(GenericKindView, { view: "daemonsets" });
-    expect(await screen.findByText("No daemon sets found.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "No daemon sets in any namespace" })).toBeInTheDocument();
   });
 
   it("opens the read-only YAML drawer on row click", async () => {
@@ -107,7 +130,7 @@ describe("GenericKindView", () => {
     expect(row).not.toHaveAttribute("aria-current");
     await fireEvent.click(row);
     expect(row).toHaveAttribute("aria-current", "true");
-    expect(row.getAttribute("style")).toContain("inset 2px 0 0");
+    expect(row).toHaveAttribute("data-selected", "true");
     expect(screen.getByRole("button", { name: /kube-proxy/ })).not.toHaveAttribute("aria-current");
   });
 
@@ -116,8 +139,60 @@ describe("GenericKindView", () => {
     await screen.findByRole("button", { name: /fluent-bit/ });
     vi.mocked(listResourceTable).mockReturnValueOnce(new Promise(() => {}));
     app.namespace = "logging";
-    await vi.waitFor(() => expect(screen.getByText("Loading…")).toBeInTheDocument());
+    await vi.waitFor(() => expect(screen.getByRole("status", { name: "Loading daemon sets" })).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /fluent-bit/ })).toBeNull();
+  });
+
+  it("the panel lists every column the server returned, above the YAML", async () => {
+    render(GenericKindView, { view: "daemonsets" });
+    await fireEvent.click(await screen.findByRole("button", { name: /fluent-bit/ }));
+    const drawer = await screen.findByRole("dialog", { name: "fluent-bit" });
+    const summary = within(drawer).getByRole("group", { name: "Summary" });
+    expect(within(summary).getAllByRole("term").map((el) => el.textContent)).toEqual(["Namespace", "Desired", "Node Selector", "Age"]);
+    expect(within(summary).getByText("<none>")).toBeInTheDocument();
+    expect(within(drawer).getByText("daemon set")).toBeInTheDocument();
+  });
+
+  it("the Summary's age is the object's age, whatever the server put in the cell", async () => {
+    vi.mocked(listResourceTable).mockResolvedValue({
+      columns: [col("Name", "string", "name"), col("Age", "date"), col("Last Seen", "date")],
+      rows: [{ name: "x", namespace: "default", creation_timestamp: "2020-01-01T00:00:00Z", cells: ["x", "10d", "3h"] }],
+    });
+    render(GenericKindView, { view: "daemonsets" });
+    await fireEvent.click(await screen.findByRole("button", { name: /^x/ }));
+    const summary = within(await screen.findByRole("dialog", { name: "x" })).getByRole("group", { name: "Summary" });
+    const values = within(summary).getAllByRole("definition").map((el) => el.textContent?.trim());
+    // Namespace, Age (from the creation timestamp, years ago), Last Seen (the server's own text).
+    expect(values[0]).toBe("default");
+    expect(values[1]).toMatch(/^\d+d$/);
+    expect(values[2]).toBe("3h");
+  });
+
+  it("opens the panel of a kind whose columns repeat a label", async () => {
+    vi.mocked(listResourceTable).mockResolvedValue({
+      columns: [col("Name", "string", "name"), col("Namespace"), col("Status"), col("Status")],
+      rows: [{ name: "x", namespace: "default", creation_timestamp: null, cells: ["x", "default", "a", "b"] }],
+    });
+    render(GenericKindView, { view: "daemonsets" });
+    await fireEvent.click(await screen.findByRole("button", { name: /^x/ }));
+    const summary = within(await screen.findByRole("dialog", { name: "x" })).getByRole("group", { name: "Summary" });
+    expect(within(summary).getAllByRole("term").map((el) => el.textContent)).toEqual(["Namespace", "Namespace", "Status", "Status"]);
+  });
+
+  it("beside a docked panel the list keeps at most five columns; the rest is in the panel", async () => {
+    const wide = ["A", "B", "C", "D", "E", "F"];
+    vi.mocked(listResourceTable).mockResolvedValue({
+      columns: [col("Name", "string", "name"), ...wide.map((n) => col(n))],
+      rows: [{ name: "x", namespace: "default", creation_timestamp: null, cells: ["x", ...wide.map((n) => n.toLowerCase())] }],
+    });
+    layout.contentWidth = 1200;
+    render(GenericKindView, { view: "daemonsets" });
+    const row = await screen.findByRole("button", { name: /^x/ });
+    expect(document.querySelectorAll(".list-head > *")).toHaveLength(8);
+    await fireEvent.click(row);
+    expect([...document.querySelectorAll(".list-head > *")].map((el) => el.textContent?.trim())).toEqual(["Name", "Namespace", "A", "B", "C"]);
+    const summary = within(await screen.findByRole("dialog", { name: "x" })).getByRole("group", { name: "Summary" });
+    expect(within(summary).getAllByRole("term").map((el) => el.textContent)).toEqual(["Namespace", ...wide]);
   });
 
   it("filter and drawer reset when the kind changes", async () => {
@@ -161,7 +236,7 @@ describe("custom kinds (resource-kinds §5.3)", () => {
     render(GenericKindView, { view: "crd:monitoring.coreos.com/servicemonitors" });
     expect(screen.getByRole("heading", { name: "ServiceMonitor" })).toBeInTheDocument();
     expect(screen.getByText("monitoring.coreos.com")).toBeInTheDocument();
-    expect(await screen.findByText("No servicemonitors found.")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "No servicemonitors in any namespace" })).toBeInTheDocument();
     expect(screen.getByLabelText("Filter ServiceMonitor")).toHaveAttribute("placeholder", "Filter servicemonitors…");
   });
 

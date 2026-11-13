@@ -3,6 +3,7 @@
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import {
 		BUTTON_CLASS,
+		CHECKBOX_CLASS,
 		INPUT_CLASS,
 		MODE_SEGMENTS,
 		type TargetForm,
@@ -40,9 +41,9 @@
 	} = $props();
 </script>
 
-<div class="flex items-center justify-between gap-3">
-	<span class="type-caption text-text-secondary">{sourceLabel}</span>
-	<SegmentedControl {segments} bind:value={form.mode} />
+<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+	<span class="type-label text-text-muted">{sourceLabel}</span>
+	<SegmentedControl {segments} bind:value={form.mode} label={sourceLabel} outlined />
 </div>
 
 {#if form.mode === 'in-cluster'}
@@ -50,7 +51,7 @@
 		<button type="button" class={BUTTON_CLASS} {disabled} onclick={onDetect}>
 			{detecting ? 'Detecting…' : 'Detect'}
 		</button>
-		<span class="type-caption text-text-tertiary">{detectHint}</span>
+		<span class="type-body-sm text-text-muted">{detectHint}</span>
 	</div>
 	{@render detected?.()}
 	<div class="grid grid-cols-[1fr_1.4fr_5rem] gap-2">
@@ -58,10 +59,10 @@
 		<input class={INPUT_CLASS} aria-label="Service" placeholder="service" bind:value={form.service} />
 		<input class={INPUT_CLASS} aria-label="Port" type="number" min="1" max="65535" bind:value={form.port} />
 	</div>
-	<label class="type-caption flex items-center gap-2 text-text-secondary">
-		<input type="checkbox" bind:checked={form.https} /> {httpsLabel}
+	<label class="type-body-sm flex items-center gap-2 text-text-muted">
+		<input type="checkbox" class={CHECKBOX_CLASS} bind:checked={form.https} /> {httpsLabel}
 	</label>
 {:else if form.mode === 'external'}
 	<input class={INPUT_CLASS} aria-label={urlLabel} placeholder={urlPlaceholder} bind:value={form.url} />
-	{#if form.urlError}<p class="type-caption text-status-err">{form.urlError}</p>{/if}
+	{#if form.urlError}<p class="type-body-sm text-error">{form.urlError}</p>{/if}
 {/if}

@@ -7,6 +7,8 @@
 	import LogBody from '#lib/components/logpanel/LogBody.svelte';
 	import LogToolbar from '#lib/components/logpanel/LogToolbar.svelte';
 	import Toaster from '#lib/components/ui/Toaster.svelte';
+	import StreamState from './StreamState.svelte';
+	import { TOOLBAR_ICON } from '#lib/ui-classes.ts';
 	import { matchShortcut } from '#lib/keyboard.ts';
 	import { isMac } from '#lib/platform.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -17,12 +19,6 @@
 	let { windowKey }: { windowKey: string } = $props();
 
 	const session = $derived(logPanel.active);
-
-	function dot(status: string): string {
-		if (status === 'streaming') return 'var(--color-status-ok)';
-		if (status === 'error') return 'var(--color-status-err)';
-		return 'var(--color-status-warn)';
-	}
 
 	/** The main window's shortcut handler is off in the pop-out; only log
 	 * search applies here (#351). Everything else falls through untouched. */
@@ -82,37 +78,36 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="flex h-screen flex-col overflow-hidden bg-surface-window">
+<!-- The whole window is the log card (Tonal §8.5): header and toolbar on the card,
+     lines on surface-sunken. Its tint is its pod's cluster's,
+     set on <html> by the page (windowTint), and follows that cluster's colour. -->
+<div class="flex h-screen flex-col overflow-hidden bg-surface-container" data-testid="logwindow">
 	{#if session}
-		<header
-			class="flex min-h-[34px] items-center gap-2 border-b border-border-default bg-surface-raised px-3"
-		>
-			<span
-				class="h-1.5 w-1.5 shrink-0 rounded-full"
-				style="background: {dot(session.status)};"
-				aria-hidden="true"
-			></span>
-			<span class="type-caption font-mono font-medium text-text-primary">{session.pod}</span>
+		<header class="flex h-11 shrink-0 items-center gap-2 px-3 pt-1">
+			<span class="inline-flex shrink-0 items-center" data-testid="logwindow-state">
+				<StreamState status={session.status} word />
+			</span>
+			<span class="type-data min-w-0 truncate font-semibold text-text" title={session.pod}>{session.pod}</span>
 			{#if session.container}
-				<span class="type-caption font-mono text-text-tertiary">{session.container}</span>
+				<span class="type-data-sm min-w-0 truncate text-text-muted">{session.container}</span>
 			{/if}
 			<div class="flex-1"></div>
 			<button
 				type="button"
-				class="focus-ring flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary hover:text-text-secondary"
+				class={TOOLBAR_ICON}
 				title="Return this session to the log panel"
 				aria-label="Return to log panel"
 				data-testid="logwindow-reattach"
 				onclick={() => void reattach()}
 			>
-				<SquareArrowOutDownLeft size={14} strokeWidth={1.5} />
+				<SquareArrowOutDownLeft class="h-4 w-4" aria-hidden="true" />
 			</button>
 		</header>
 		<LogToolbar {session} detached />
 		<LogBody {session} />
 	{:else}
 		<div class="flex flex-1 items-center justify-center">
-			<span class="type-caption text-text-tertiary">Connecting…</span>
+			<span class="type-body-sm text-text-muted">Connecting…</span>
 		</div>
 	{/if}
 </div>

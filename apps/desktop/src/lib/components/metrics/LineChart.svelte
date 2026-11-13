@@ -1,16 +1,21 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import {
 		formatTime,
 		formatValue,
 		linePath,
 		maxValue,
+		forcedDash,
 		nearestIndex,
 		niceMax,
+		REFERENCE_DASH,
 		type ChartLine,
 		type Unit
 	} from '#lib/metrics.ts';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import type { MetricsRange } from '#lib/tauri.ts';
+	import { PANEL_CARD } from '#lib/ui-classes.ts';
 
 	// One Metrics chart (#510): lines over the range, dashed reference lines
 	// (requests, limits), a hover crosshair with every line's value.
@@ -60,6 +65,14 @@
 		return { t, x: ((t - start) / (end - start || 1)) * WIDTH, values };
 	});
 
+	// Reference lines (requests, limits) are short dashes; a series that repeats a colour has its own pattern.
+	const dashOf = (line: ChartLine) => (line.dashed ? REFERENCE_DASH : line.dash);
+	// In forced colours every line is the text colour (app.css): each series then
+	// takes the dash of its rank among the series, which the legend key repeats.
+	const forced = $derived(
+		new Map(lines.filter((l) => !l.dashed).map((l, i) => [l, forcedDash(i)] as const))
+	);
+
 	function move(event: PointerEvent) {
 		const rect = (event.currentTarget as SVGElement).getBoundingClientRect();
 		if (rect.width === 0) return;
@@ -68,29 +81,49 @@
 	}
 </script>
 
-<div class="rounded-lg border border-border-faint bg-surface-surface px-2.5 py-2" data-testid="metrics-chart">
-	<div class="mb-1 flex items-baseline gap-2">
-		<span class="type-section text-text-tertiary">{title}</span>
+{#snippet swatch(line: ChartLine)}
+	<!-- The legend draws each line as the chart does: a dashed line has a dashed key. -->
+	<svg width="14" height="4" viewBox="0 0 14 4" aria-hidden="true" class="shrink-0">
+		<line
+			x1="0"
+			y1="2"
+			x2="14"
+			y2="2"
+			stroke={line.color}
+			stroke-width="2"
+			stroke-dasharray={dashOf(line)}
+			data-series={line.dashed ? 'reference' : 'series'}
+			style:--forced-dash={forced.get(line)}
+		/>
+	</svg>
+{/snippet}
+
+<div class="{PANEL_CARD} px-3 py-2.5" data-testid="metrics-chart">
+	<div class="mb-1.5 flex items-baseline gap-2">
+		<span class="type-label text-text-muted">{title}</span>
 		{#if note}
-			<span class="type-micro text-text-disabled">{note}</span>
+			<span class="type-micro text-text-subtle">{note}</span>
 		{/if}
 		{#if onGrafana}
 			<button
 				type="button"
-				class="focus-ring rounded-sm text-text-tertiary hover:text-text-secondary"
+				class="focus-ring forced-edge rounded-xs text-text-muted hover:text-text"
 				aria-label="Open {title} in Grafana"
 				title="Open in Grafana"
 				onclick={onGrafana}
 			>
-				<ExternalLink class="h-3 w-3" />
+				<ExternalLink class="h-3 w-3" aria-hidden="true" />
 			</button>
 		{/if}
-		<span class="type-data-sm ml-auto truncate text-text-secondary">{summary}</span>
+		<span class="type-data-sm ml-auto truncate text-text">{summary}</span>
 	</div>
 	{#if error}
-		<p class="type-caption text-status-err" role="alert">{error}</p>
+		<p class="type-body-sm flex items-start gap-1.5 text-text" role="alert">
+			<StatusGlyph state="err" class="mt-1 text-error" />
+			{error}
+		</p>
 	{:else if !hasData}
-		<p class="type-caption text-text-disabled">{emptyText}</p>
+		<p class="type-body-sm text-text-muted">{emptyText}</p>
 	{:else}
 		<svg
 			class="block h-16 w-full touch-none"
@@ -101,38 +134,36 @@
 			onpointermove={move}
 			onpointerleave={() => (hoverT = null)}
 		>
-			<line x1="0" y1={HEIGHT} x2={WIDTH} y2={HEIGHT} stroke="var(--color-border-faint)" vector-effect="non-scaling-stroke" />
+			<line data-chart-guide x1="0" y1={HEIGHT} x2={WIDTH} y2={HEIGHT} stroke="var(--color-outline)" vector-effect="non-scaling-stroke" />
 			{#each lines as line (line.label + (line.dashed ? '-ref' : ''))}
 				<path
 					d={linePath(line.points, box)}
 					fill="none"
 					stroke={line.color}
-					stroke-width="1.25"
-					stroke-dasharray={line.dashed ? '3 3' : undefined}
+					stroke-width="1.5"
+					stroke-dasharray={dashOf(line)}
 					vector-effect="non-scaling-stroke"
+					data-series={line.dashed ? 'reference' : 'series'}
+					style:--forced-dash={forced.get(line)}
 				/>
 			{/each}
 			{#if hover}
-				<line x1={hover.x} y1="0" x2={hover.x} y2={HEIGHT} stroke="var(--color-border-strong)" vector-effect="non-scaling-stroke" />
+				<line data-chart-guide x1={hover.x} y1="0" x2={hover.x} y2={HEIGHT} stroke="var(--color-outline-strong)" vector-effect="non-scaling-stroke" />
 			{/if}
 		</svg>
-		<div class="mt-0.5 flex min-h-4 flex-wrap items-center gap-x-2.5 gap-y-0.5">
-			{#if hover}
-				<span class="type-micro font-mono text-text-tertiary">{formatTime(hover.t, range)}</span>
-				{#each hover.values as { line, value } (line.label + (line.dashed ? '-ref' : ''))}
-					<span class="type-micro font-mono" style="color: {line.color};">
-						{line.label || title} {value === null ? '—' : formatValue(value, unit)}
-					</span>
-				{/each}
-			{:else}
-				{#each lines as line (line.label + (line.dashed ? '-ref' : ''))}
-					<span class="type-micro flex items-center gap-1 text-text-tertiary">
-						<span class="inline-block h-0.5 w-2.5" style="background: {line.color};"></span>
-						{line.label || title}
-					</span>
-				{/each}
-				<span class="type-micro ml-auto font-mono text-text-disabled">max {formatValue(yMax, unit)}</span>
-			{/if}
+		<!-- Legend and hover values are in the text colour: the key carries the line's colour.
+		     Hovering adds each line's value to its legend entry, so the chart keeps its height. -->
+		<div class="mt-1 flex min-h-4 flex-wrap items-center gap-x-3 gap-y-0.5">
+			{#each lines as line (line.label + (line.dashed ? '-ref' : ''))}
+				{@const at = hover?.values.find((v) => v.line === line)}
+				<span class="type-micro flex items-center gap-1 {at ? 'font-mono text-text' : 'text-text-muted'}">
+					{@render swatch(line)}
+					{line.label || title}{#if at}&nbsp;{at.value === null ? EMPTY : formatValue(at.value, unit)}{/if}
+				</span>
+			{/each}
+			<span class="type-micro ml-auto font-mono text-text-subtle">
+				{hover ? formatTime(hover.t, range) : `max ${formatValue(yMax, unit)}`}
+			</span>
 		</div>
 	{/if}
 </div>

@@ -16,7 +16,8 @@
 		blocked = null,
 		setup = true,
 		testid = 'logpanel-source',
-		hintTestid = 'logpanel-history-hint'
+		hintTestid = 'logpanel-history-hint',
+		dense = false
 	}: {
 		value: 'live' | 'history';
 		onChange: (source: 'live' | 'history') => void;
@@ -25,6 +26,8 @@
 		setup?: boolean;
 		testid?: string;
 		hintTestid?: string;
+		/** Narrower segments (log panel toolbar). */
+		dense?: boolean;
 	} = $props();
 
 	const endpoint = $derived(elastic.endpointFor(app.activeCluster));
@@ -41,11 +44,11 @@
 
 {#if endpoint}
 	<span data-testid={testid} title={blocked ?? undefined}>
-		<SegmentedControl {segments} {value} {onChange} label="Log source" />
+		<SegmentedControl {segments} {value} {onChange} label="Log source" {dense} />
 	</span>
 {:else if historyHint}
 	<span class="flex items-center gap-1.5" title={HISTORY_HINT} data-testid={hintTestid}>
-		<SegmentedControl segments={HINT_SEGMENTS} value="live" label="Log source" />
+		<SegmentedControl segments={HINT_SEGMENTS} value="live" label="Log source" {dense} />
 		{#if setup}
 			<button type="button" class={ACCENT_LINK_CLASS} onclick={() => app.openPreferences('elasticsearch')}>
 				Set up

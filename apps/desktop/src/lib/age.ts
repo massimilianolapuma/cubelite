@@ -1,8 +1,10 @@
+import { EMPTY } from "./empty";
+
 /** kubectl-style relative age from an RFC 3339 timestamp (e.g. "3d", "5h12m"). */
 export function formatAge(iso: string | null, now: Date = new Date()): string {
-  if (!iso) return "—";
+  if (!iso) return EMPTY;
   const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "—";
+  if (Number.isNaN(then)) return EMPTY;
 
   let seconds = Math.floor((now.getTime() - then) / 1000);
   if (seconds < 0) seconds = 0;

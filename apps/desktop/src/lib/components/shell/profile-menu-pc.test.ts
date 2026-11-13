@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/svelte";
 
-// Off macOS the Go to resource hint reads "Ctrl+K", which leaves the
-// profile name too little room next to a visible "Profile:" prefix.
-vi.mock("#lib/platform.ts", () => ({ isMac: false, modLabel: "Ctrl+" }));
+// The pill shows only the profile's name; "Profile:" stays in its accessible
+// name and tooltip on every platform.
 
 import ProfileMenu from "./ProfileMenu.svelte";
 import { profiles } from "#lib/stores/profiles.svelte.ts";
@@ -14,7 +13,7 @@ beforeEach(() => {
   profiles.reset();
 });
 
-describe("ProfileMenu off macOS", () => {
+describe("ProfileMenu", () => {
   it("keeps the Profile: prefix for screen readers only", () => {
     render(ProfileMenu);
     const trigger = screen.getByRole("button", { name: /^Profile: On-call/ });

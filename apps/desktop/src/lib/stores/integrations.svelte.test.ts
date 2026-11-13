@@ -228,7 +228,7 @@ describe("integrations banner model (#527)", () => {
     await integrations.enable("prod");
     expect(prometheus.endpointFor("prod")).not.toBeNull();
     expect(toasts.items.map((t) => [t.message, t.tone])).toEqual([
-      ["Prometheus enabled for prod — no container metrics (cAdvisor) found yet", "warn"],
+      ["Prometheus enabled for prod, but no container metrics (cAdvisor) found yet", "warn"],
     ]);
   });
 

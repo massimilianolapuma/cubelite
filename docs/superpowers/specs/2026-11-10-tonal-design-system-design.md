@@ -61,7 +61,7 @@ These are visible changes in how the app works. Each is my call unless marked co
 | 4 | Cluster colours become **teal, blue, indigo, violet, magenta**. Saved `amber` becomes `indigo`, saved `pink` becomes `magenta`. | Amber and pink collide with warning and error once they tint the whole window |
 | 5 | The **status bar is removed**. Kubernetes version moves into the cluster chip, the server address into its menu, the warnings count into a top-bar chip that opens Events; the refresh interval stays in Preferences. | C has no bottom strip; 27 px back to content |
 | 6 | Sidebar **section dots are removed**, and Overview cards lose their per-resource tints. | Colour is reserved for tint and state |
-| 7 | "Needs attention" (Pods) and "Warnings only" (Events) become **status chips** above the list: Failing, Pending, Running, Completed with counts; pressing one filters. "Needs attention" equals Failing + Pending. | C's header; the counts double as a summary |
+| 7 | "Needs attention" (Pods) and "Warnings only" (Events) become **status chips** above the list: Failing, Pending, Running, Completed with counts; pressing one filters. "Needs attention" equals Failing + Pending: a running pod that is not ready or restarts hard counts as Failing, whatever its phase, so the two chips always add up to the sidebar's attention count. A completed pod never needs attention, whatever its restart count. The row keeps the exact status the API returned. | C's header; the counts double as a summary |
 | 8 | Default window 1200 × 800 → **1360 × 860**; minimum stays 800 × 600. | At 1200 the panel could never dock |
 | 9 | Fonts: **Space Grotesk** (titles), **Inter** (interface), **JetBrains Mono** (data) replace Geist and Geist Mono. | Part of the chosen look |
 | 10 | The "logs ↵" chip on the selected pod row is removed; Enter on a selected row still opens logs, and Logs is the panel's primary button. | The chip sat under the drawer |
@@ -134,7 +134,7 @@ its component is restyled. Uppercase labels disappear.
 
 ### 4.4 Shape, space, density
 
-- Radius: `xs` 6 (key hints), `sm` 10 (failure badge), `md` 16 (rows, menu items, active avatar),
+- Radius: `xs` 6 (key hints, failure badge), `sm` 10 (small boxes), `md` 16 (rows, menu items, active avatar),
   `lg` 20 (tiles, inner cards, menus), `xl` 28 (cards, panel, dialogs, palette), `full` (buttons,
   chips, nav rows, fields, meters). `2xl` is retired.
 - Spacing scale unchanged (4 · 8 · 12 · 16 · 20 · 24 · 32). Window gutter and gap between cards: 12.
@@ -143,12 +143,16 @@ its component is restyled. Uppercase labels disappear.
 | Variable | Default | Compact |
 |---|---|---|
 | `--row-h` (list rows; a fixed height replaces padding-based rows) | 46 | 38 |
-| `--nav-h` (sidebar rows) | 38 | 32 |
+| `--nav-h` (sidebar rows; see the note below) | 28 | 26 |
 | `--control-h` (buttons, fields, avatars) | 44 | 36 |
 | `--control-inline-h` (controls inside a row) | 32 | 28 |
 | `--chip-h` | 40 | 36 |
 | `--control-primary-h` | 48 | 48 |
 
+- Sidebar rows are 28 px, not the 38 px of the mockup. With the default profile (7 pins, 8
+  sections) an open section must show all its types in a 1280 × 800 window without scrolling (the
+  contract of the sidebar spec of 2026-11-07, checked by `profiles.spec.ts`); 24 rows only fit at
+  28 px. For the same reason the profile pill and the Go-to button in the sidebar are 36 px.
 - Elevation: only `shadow-overlay`, only under `surface-overlay`. Cards have no shadow and no border.
 - Motion: 160 ms colour, 240 ms panel and tint, 200 ms avatar shape; `cubic-bezier(0.2, 0, 0, 1)`;
   all instant under reduced motion.
@@ -182,11 +186,11 @@ carries no contrast requirement.
   derives it from the tint-240 colours.
 - `apps/desktop/src/design/wcag.ts`: gains OKLCH → sRGB (clipped) so contrast is computed from the
   tokens. `tokens-contrast.test.ts` runs the pairing matrix for **both themes × five tints**:
-  `text` and `text-muted` on every surface; `text-subtle` on every surface except sunken; each
-  `on-*` on its fill; `primary`, `success`, `warning`, `error` as text on every surface; `data-*` on
-  sunken, container, container-high and container-top (4.5:1); `outline-strong` on every surface and
-  `success` on `primary-container` (3:1). All of these pass with the values above (checked while
-  writing this spec; lowest text pair 4.72:1, lowest 3:1 pair 3.56:1).
+  `text`, `text-muted`, `text-subtle` and `primary` on every surface; each `on-*` on its fill;
+  `success`, `warning`, `error` as text on every surface; `data-*` on sunken, container,
+  container-high and container-top (4.5:1); `outline-strong` on every surface and `success` on
+  `primary-container` (3:1). All of these pass with the values above (lowest text pair 4.72:1,
+  lowest 3:1 pair 3.09:1, `outline-strong` on `surface-container-top`).
 - `scripts/design-lint.sh`: phase 9 adds the retired names (`type-caption`, `type-colhead`,
   `type-section`, `type-subtitle`, old colour names, `rounded-2xl`) to the rejected patterns.
 - Fonts via `@fontsource` packages (bundled, offline); Geist packages removed in phase 9.
@@ -205,19 +209,28 @@ carries no contrast requirement.
 
 - 12 px gutter around the content column and between cards. Rail and sidebar sit on
   `surface-window` with no card.
-- **Top bar**: cluster chip (identity square, name, Kubernetes version; menu with server address,
-  copy, reconnect), namespace chip, spacer, warnings chip (hidden at zero). It is the window drag
-  region; chips are not.
+- **Top bar**: cluster chip (identity square, name, provider, Kubernetes version, connection state;
+  menu with server address, copy, reconnect), namespace chip, spacer, warnings chip (hidden at
+  zero), the "Search & switch" field. It is the window drag region; chips are not. The cluster chip
+  carries its own cluster's tint, so it keeps its colour on the All Clusters dashboard.
+  It stays on one row at any width: below 60 rem of content the search field becomes its icon and
+  the version goes; below 44 rem the provider tag and the words beside a glyph go too (they stay
+  in the accessible names). The namespace chip takes at most a quarter of the row; a long context
+  name truncates in the cluster chip.
 - **Rail**: All Clusters, one 44 px disc per context with a health glyph, Preferences at the bottom.
-  The active cluster becomes a `radius-md` square in `primary`. More contexts than fit: the avatar
+  Every avatar carries its own cluster's tint; the active cluster becomes a `radius-md` square in
+  `primary`. More contexts than fit: the avatar
   list scrolls, All Clusters and Preferences stay pinned.
 - **Sidebar**: profile pill and Go-to button (⌘K), Pinned, All resources. Same structure and rules
   as the sidebar spec of 2026-11-07 (one section open at a time, only the open section's list
   scrolls). Hidden on the All Clusters dashboard, as today.
-- **Detail panel**: docked or overlay is decided by a container query on the content column
-  (≥ 1000 px docked), not by the window width, so it follows sidebar and rail changes.
-- **Log panel**: a `surface-sunken` card under the list and the detail panel, resizable 160–560 as
-  today. The `z-[35]` rule that lifts it above the drawer is kept only for overlay mode.
+- **Detail panel**: docked or overlay is decided by the width of the content column (≥ 1000 px
+  docked), not by the window width, so it follows sidebar and rail changes. The shell measures the
+  column (a container query cannot tell the list which columns to keep).
+- **Log panel**: a card under the list and the detail panel, resizable 160–560 as today. Tab strip
+  and toolbar sit on the card (`surface-container`); only the lines are `surface-sunken`, inset
+  (§8.5). The card grows past the height the user set when that would leave fewer than four lines.
+  The `z-[35]` rule that lifts it above the drawer is kept only for overlay mode.
 - Banners (update available, integrations) become one pill-shaped row above the cards, on
   `surface-container-high`, with their action as a text button.
 
@@ -227,7 +240,7 @@ carries no contrast requirement.
 |---|---|---|---|---|
 | Healthy (Running, Available, Bound, deployed, Ready) | circle, `success` | glyph + word in `text` | plain line | plain number |
 | Attention (Pending, Progressing, degraded, pending-upgrade) | triangle | `warning-container` pill | `warning-container` hero | pill with triangle |
-| Failure (CrashLoopBackOff, Failed, Error, unreachable, NotReady) | square | `error-container` badge, `radius-sm` | `error-container` hero, `headline` | badge with square |
+| Failure (CrashLoopBackOff, Failed, Error, unreachable, NotReady) | square | `error-container` badge, `radius-xs` (a rectangle next to the attention pill) | `error-container` hero, `headline` | badge with square |
 | Finished (Completed, Succeeded) | ring | glyph + word in `text-subtle` | plain line | plain number |
 | Unknown (no data, forbidden, not served) | dashed ring | word in `text-subtle`, value en dash | says why | en dash |
 
@@ -238,12 +251,12 @@ Glyphs are 9 px inline SVG filled with `currentColor`, so they survive Windows f
 
 | Component | Rule |
 |---|---|
-| Button | Pill. Primary (`primary`, 48 px, one per panel or dialog), tonal (`primary-container`), text, destructive text (`error`), destructive solid (`error-solid`, confirm dialogs only). Pending keeps width and swaps the icon for a spinner. Icon-only buttons are discs with an accessible name. |
+| Button | Pill. Primary (`primary`, 48 px, one per panel or dialog), tonal (`primary-container`), text, destructive text (`error`), destructive solid (`error-solid`, confirm dialogs only). Pending keeps width and keyboard focus (`aria-disabled`, not disabled) and swaps the icon for a spinner. Unfilled buttons and menu items highlight with a 14 % layer of their own text colour, which shows on every surface. Icon-only buttons are discs with an accessible name. |
 | Chip | Pill on `surface-container-high`. Status filter chips take their state's container when pressed; scope chips (cluster, namespace) open a menu. Zero-count status chips are hidden. |
 | StatusBadge | §6. |
 | NavRow | Pill, `--nav-h`. Current: `primary-container`. Sections in `text` with a chevron; types indent 40 px. Unavailable types stay in place in `text-subtle` with an en dash. |
 | List row | `--row-h`, `radius-md`, 2 px apart, no separators. Hover `surface-container-high`; selected `primary-container`. Name in `data`, numbers right-aligned. A number needing attention is bold, not coloured. |
-| Field (input, search, native select trigger) | `--control-h`, `radius-full` for search and selects, `radius-md` inside forms; `outline-strong` border in forms, filled `surface-container-high` in toolbars. Native select popups stay native. |
+| Field (input, search, native select trigger) | `--control-h` in toolbars, 36 px in both densities inside forms (dialogs would double in length at 44); `radius-full` for search and selects, `radius-md` inside forms; `outline-strong` border in forms, filled `surface-container-high` in toolbars. Native select popups stay native. |
 | Switch | 44 × 26 pill; on = `primary`. |
 | SegmentedControl | One pill group; selected segment `primary-container`; disabled segment `text-subtle`. |
 | Meter | 8 px pill track on the next surface up, fill `primary`. From 60 % a triangle and from 75 % a square precede the percentage, which turns bold; the fill takes `warning` / `error`. Null shows an empty track and an en dash. |
@@ -266,7 +279,12 @@ One shared list card replaces the per-view table markup:
 - Column header in `label`, sticky inside the card's scroller (it is not sticky today). Sort arrows
   as today.
 - Rows per §7. Grouping by namespace keeps today's logic; the group header is a `label` row of
-  compact height with its count and a worst-state glyph.
+  compact height (`--control-inline-h`) with its count and a worst-state glyph beside the number of
+  problem rows.
+- Status chips: one per state present, worst first; the counts follow the text filter; a pressed
+  chip stays visible at zero so it can be released. Events have Warning and Normal. The count
+  beside the title reads "12 of 40" while a filter or a chip hides rows.
+- The filter field stays on the lists that had one (Pods, Deployments, generic kinds).
 - Too many columns for the width: the card scrolls horizontally; the name column stays visible.
 - Secrets: the revealed key/value block is a `surface-sunken`, `radius-md` block under its row; the
   "decoded locally" note is a `warning-container` pill in the header.
@@ -276,10 +294,10 @@ One shared list card replaces the per-view table markup:
 
 | State | Shown as |
 |---|---|
-| Loading | Six placeholder rows in `surface-container-high` (pulse; static under reduced motion). Never the empty message. |
+| Loading | Six placeholder rows in `surface-container-high` (pulse; static under reduced motion). Never the empty message. Also after a namespace change, until that namespace answers: never the previous namespace's rows. |
 | Empty | `headline` "No pods in payments" + one `body-sm` line; no illustration. |
 | Filtered to nothing | "No pods match "abc"" + Clear filter (text button). |
-| Error | `error-container` block: what failed, the server's message in `data`, Retry. |
+| Error | `error-container` block: what failed, the server's message in `data`, Retry. The block stays while a reload runs (Retry shows the spinner), so a list that keeps failing does not flicker between error and loading on every refresh. Pods, deployments and events each report their own failure: one of them refused by RBAC does not blank the other two. An error belongs to the namespace it was loaded for. |
 | Forbidden (RBAC) | "You are not allowed to list pods in payments." with the dashed ring. |
 | Not available on this cluster | Existing copy, dashed ring. |
 | Partial data (no metrics) | En dash in the cell; one `body-sm` line under the header says metrics are unavailable. |
@@ -293,15 +311,27 @@ is fixed.
 - Status: a hero in the state's container with the state in `headline` and the reason in `body-sm`
   for attention and failure; a plain status line for healthy and finished.
 - Two tiles with the numbers that explain the state (Pod: restarts, memory; Deployment: ready,
-  updated; Node: pods, CPU).
+  matched pods, since the core does not report updated replicas; Node: pods, CPU). The Node's pod
+  count is of the pods loaded, so with a namespace selected its tile says "Pods in payments".
 - Facts as label / value rows; then the kind's sections (containers, label chips, conditions, child
   pods, metrics charts, YAML).
 - Footer pinned to the bottom: one primary (Pod: Open logs), tonal actions, destructive as text.
+- Deployment: the replica stepper is always in the panel; the row keeps its own only while the
+  list has its full width (§3 #11). A condition shows its status as a word, and one that is not
+  True stands out by weight: True is not always good news (ReplicaFailure).
 - Generic objects: a Summary block lists every column the server returned, above the YAML, so
   nothing is lost when the list is narrowed.
 - Columns kept when docked: name, status, up to three more; namespace is one of them when listing
-  all namespaces ungrouped. The exact set per list is decided in the phase plan.
+  all namespaces ungrouped. Pods: name, namespace or age, status, ready, restarts. Deployments:
+  name, namespace, ready, status, age. Nodes: all five. Generic kinds: the first five. A list
+  sorted by a column that would go keeps it in view, in place of another.
 - Focus: opening moves focus to the panel heading; Esc or the close button returns it to the row.
+  Enter on the heading runs the panel's primary action, so Enter on a pod row and Enter again
+  still opens its logs (§3 #10). Changing the selection with the panel open does not move focus;
+  the panel then starts at its top, and closing it returns focus to the row it shows now.
+- The panel shows the object as it is now, not as it was when clicked, and closes when a list that
+  answered no longer has the object. In a panel under 400 px tall (a small window with the log
+  panel open) the footer scrolls with the content.
   The panel is non-modal in both modes (the list stays operable) and keeps `role="dialog"` with its
   name, so the existing e2e locators hold.
 - Overlay mode (content < 1000 px): the same panel on `surface-overlay` with `shadow-overlay`,
@@ -311,14 +341,31 @@ is fixed.
 
 ### 8.4 Dashboards
 
-- **All Clusters**: tiles (clusters online, pods, warnings, watched); a grid of cluster cards, each
-  **tinted with its own hue** (§4.1), with avatar, server, health badge, facts and meters. An
-  unreachable cluster's card shows the failure badge and "Last seen …". Zero contexts (no state
-  today): `headline` "No clusters yet", how kubeconfig files are found, a button to Preferences.
+- **All Clusters**: tiles (clusters online, pods, pods needing attention, watched); a grid of
+  cluster cards, each **tinted with its own hue** (§4.1), with avatar, server, health badge, facts
+  and meters. An unreachable cluster's card shows the failure badge and "Last seen …".
+  - The third figure counts pods that are not ready or have restarted more than three times. It
+    never counted warning events, so it is "Pods needing attention" on the tile and "Attention" on a
+    card, not "Warnings".
+  - "Clusters online" takes `warning-container` only when a cluster is known to be unreachable. A
+    cluster not probed yet is unknown, not offline.
+  - Card hover is one surface up: `surface-container-top`. The avatar of a cluster that is not
+    active is `primary-container`, so it shows on the card.
+  - Zero contexts (no state today): `headline` "No clusters yet", how kubeconfig files are found, a
+    button to Preferences. It shows only once the kubeconfig has been read; before that, placeholder
+    cards. A read error replaces it with an `error-container` block that gives the error.
+  - Open Preferences, from either, opens on the Kubeconfig files.
 - **Overview**: four tiles, capacity card with meters and history chart, recent warnings, alerts
   card, resource summary cards (neutral, no per-resource tint; "forbidden" uses the dashed ring).
-- **Charts**: series in `data-1` … `data-5`; past five, series repeat dashed. Request and limit
-  lines dashed in `text-subtle`; axes in `outline`. Hand-rolled SVG stays.
+- **Charts**: series in `data-1` … `data-5`; past five, the colours repeat with a different dash
+  each round (`6 3`, then `2 2`, then `8 3 2 3`), so no two of the first twenty series look the
+  same. Request and limit lines dashed in `text-subtle`; axes in `outline`. Hand-rolled SVG stays.
+  Legend and hover values are in the text colour next to a key drawn like the line (same colour,
+  same dash), so a dashed repeat is told apart in the legend too. Hovering keeps the legend and
+  adds each line's value to its entry; the time replaces the maximum. The chart keeps its height.
+  Charts sit on `surface-container-top`, cards on a dashboard on `surface-container-high`.
+- Alert severity and summary counts: a shape and a word, never a colour alone. A summary count that
+  needs attention shows its shape only above zero.
 - **Unreachable**: failure hero with server and reason, Retry (primary), All Clusters (text).
 - **Connecting**: `surface-overlay` card with spinner, cluster name and Cancel; the tint switches to
   the target cluster as soon as connecting starts.
@@ -337,6 +384,32 @@ is fixed.
   `data-3`.
 - Pop-out window: its root carries the tint of the cluster the pod belongs to.
 - Pod shell and YAML modals: `radius-xl` modal with a `surface-sunken`, `radius-md` code area.
+
+Decided in phase 7 (#623):
+
+- The toolbar and the tab strip are on `surface-container` in the panel and the pop-out too: light
+  `surface-container-high` (controls) and light `surface-sunken` differ by .005 L, so controls on a
+  sunken card had no shape.
+- The panel toolbar is one row from 1280 × 800 up and at most two at 800 × 600. To get there the
+  words of "prev", "filter" and the Following / Paused chip hide in a narrow toolbar (they stay in
+  the accessible name; the chip keeps its circle or pause icon), the search field shrinks to 6 rem,
+  and below 44 rem of toolbar Raw · JSON · ECS is a pill select. No control moves into a menu.
+- The lines area never shows fewer than four lines (72 px), in the panel and in the Logs view.
+- Tail size is a pill select; a size reached with "Load 500 earlier" is listed as its own option.
+- Sources: regular containers in pod-spec order, then init containers. Past five the colours repeat
+  with a dashed, then dotted, then double underline. The pod column of the Logs view stays neutral.
+- Message text is `text`; timestamps, JSON keys and DEBUG are `text-muted`. The WARN / ERROR wash is
+  the container token at 35 %.
+- Search matches: `warning-container` fill with a `warning` underline; the active match has a
+  `warning` outline and semibold weight instead.
+- A stream's state is a shape and a word: streaming circle, connecting dashed ring, reconnecting
+  triangle, ended ring, error square. The word is visible in the pop-out header and read out in the
+  tab strip.
+- The pop-out follows a change of its cluster's colour made in the main window (the colours setting
+  is re-read on a `storage` event). It does not follow a theme change; that is left as it was.
+- In the pop-out the toolbar menus open downwards, below the toolbar at the top of the window; a
+  menu scrolls inside itself where the window is too short and is moved back in where it would
+  leave the window sideways. In the log panel they still open upwards (#624).
 
 ### 8.6 Overlays and settings
 

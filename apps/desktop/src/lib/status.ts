@@ -1,5 +1,7 @@
 /** Status → tone mapping shared by tables, pills and drawers. */
 
+import type { GlyphState } from "#lib/components/ui/StatusGlyph.svelte";
+import type { ChipDef } from "#lib/status-chips.ts";
 import type { DeploymentInfo, PodInfo } from "#lib/tauri.ts";
 
 export type StatusTone = "ok" | "warn" | "err" | "neutral";
@@ -22,6 +24,37 @@ export function podTone(pod: PodInfo): StatusTone {
   }
 }
 
+/**
+ * A pod that is not ready or restarting hard. A completed pod never is: the
+ * restarts of a Job that retried and then succeeded are history.
+ */
+export function needsAttention(p: PodInfo): boolean {
+  return p.phase !== "Succeeded" && (!p.ready || p.restarts > 3);
+}
+
+/** The shape of a tone (Tonal §6); a tone-less state is the unknown ring. */
+export function toneGlyph(tone: StatusTone): GlyphState {
+  return tone === "neutral" ? "unknown" : tone;
+}
+
+/** Shape of a pod's status cell: a completed pod is finished, not healthy. */
+export function podGlyph(pod: PodInfo): GlyphState {
+  return pod.phase?.toLowerCase() === "succeeded" ? "done" : toneGlyph(podTone(pod));
+}
+
+/**
+ * The status chip a pod is counted under. Failing and Pending together are
+ * exactly `needsAttention`, so the sidebar's attention count and the two
+ * chips always agree: a running pod that is not ready or restarts hard is
+ * failing, whatever its phase says.
+ */
+export function podChip(pod: PodInfo): "err" | "warn" | "ok" | "done" {
+  const phase = pod.phase?.toLowerCase();
+  if (phase === "succeeded") return "done";
+  if (!needsAttention(pod)) return "ok";
+  return phase === "pending" ? "warn" : "err";
+}
+
 export function podStatusLabel(pod: PodInfo): string {
   if (!pod.phase) return "Unknown";
   if (pod.phase === "Running" && !pod.ready) return "NotReady";
@@ -37,13 +70,6 @@ export function deploymentStatus(dep: DeploymentInfo): {
   }
   return { label: "Progressing", tone: "warn" };
 }
-
-export const toneColor: Record<StatusTone, string> = {
-  ok: "var(--color-status-ok)",
-  warn: "var(--color-status-warn)",
-  err: "var(--color-status-err)",
-  neutral: "var(--color-text-tertiary)",
-};
 
 // Tones for the Status sort (#496): problems sort first.
 
@@ -74,3 +100,36 @@ export function helmTone(status: string | null): StatusTone {
   if (s === "failed" || s === "unknown") return "err";
   return "neutral";
 }
+
+/** Chips of each list with a status column, worst first (Tonal §8.1). */
+export const STATUS_CHIPS = {
+  pods: [
+    { key: "err", label: "Failing", state: "err" },
+    { key: "warn", label: "Pending", state: "warn" },
+    { key: "ok", label: "Running", state: "ok" },
+    { key: "done", label: "Completed", state: "done" },
+  ],
+  replicas: [
+    { key: "warn", label: "Progressing", state: "warn" },
+    { key: "ok", label: "Available", state: "ok" },
+  ],
+  pvcs: [
+    { key: "err", label: "Lost", state: "err" },
+    { key: "warn", label: "Pending", state: "warn" },
+    { key: "ok", label: "Bound", state: "ok" },
+  ],
+  helm: [
+    { key: "err", label: "Failed", state: "err" },
+    { key: "warn", label: "Pending", state: "warn" },
+    { key: "ok", label: "Deployed", state: "ok" },
+    { key: "neutral", label: "Other", state: "unknown" },
+  ],
+  nodes: [
+    { key: "err", label: "Not ready", state: "err" },
+    { key: "ok", label: "Ready", state: "ok" },
+  ],
+  events: [
+    { key: "warning", label: "Warning", state: "warn" },
+    { key: "normal", label: "Normal" },
+  ],
+} as const satisfies Record<string, readonly ChipDef[]>;

@@ -7,6 +7,157 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The app follows your system's accessibility settings** (#632):
+  - With **more contrast** asked for in the system (on macOS, Increase
+    contrast), secondary text is darker in the light theme and brighter in
+    the dark one, and every card, tile, dialog, menu and toast gets a
+    visible edge.
+  - In a **Windows contrast theme** the states that were told by a fill take
+    a system colour, an edge or a shape instead: the selected row, the current
+    sidebar item and cluster, pressed filters, the chosen option of a
+    segmented control, a switch that is on, the highlighted menu item,
+    palette row and log tab take the system's highlight colour; fields,
+    toggles, avatars, badges and meters keep an edge; buttons, chips, the
+    search buttons and key hints get one too; the main action of a panel or
+    dialog stands out from the others; status shapes and icons take the
+    system's text colour. Chart lines and their legend keys take the text
+    colour, and each series a dash of its own (past eight series the dashes
+    come round again); request and limit lines keep their short dash, which
+    no series uses. The cluster colour swatches keep their colours and name them
+    when you point at one. Rows of a resource list and of the sidebar show
+    where the pointer is.
+  - With **reduced motion** nothing moves: panels, dialogs, menus and toasts
+    appear at once, chevrons and the cluster colour change at once, the
+    loading rows and the paused pill stop pulsing, and spinners stand still.
+    A busy button keeps its label in view, faded. While metrics reload,
+    "Loading metrics" is written beside the still circle; on a first load
+    the section says it once, below.
+  - The Metrics header no longer moves while metrics load, with or without
+    reduced motion.
+
+### Changed
+
+- **Tonal design system, foundations** (#604, #608): colours, fonts and corner
+  radii now come from the Tonal tokens. The window takes its colour from the
+  cluster you are on, so switching cluster changes the tint of the whole app;
+  the All Clusters dashboard keeps the default tint. Fonts are Inter, Space
+  Grotesk and JetBrains Mono.
+- **New shell** (#611): the title bar and the status bar are gone. A top bar
+  holds the cluster chip (name, provider, Kubernetes version, connection state;
+  its menu has the server address, Copy and Reconnect), the namespace chip, a
+  warnings chip that opens Events, and search. The cluster rail shows health as
+  a shape as well as a colour, each avatar carries its own cluster's colour and
+  the active one is a filled square. Sidebar rows are pills, sections no longer
+  have coloured dots, and counts that need attention carry a triangle or a
+  square. The content sits on one rounded card. Default window is 1360 × 860.
+- **Controls in the new look** (#613): status is a shape and a word everywhere
+  a status pill was used (circle healthy, triangle attention, square failure);
+  switches are primary when on, not green; segmented controls, menus, dialogs,
+  toasts, tiles, key hints and the pin and group toggles are restyled. A meter
+  past 60 % or 75 % shows a triangle or a square and a bold value, and "no
+  data" is an en dash. Menus mark the current item with a check.
+- **Lists in the new look** (#615): every resource list shares one card: a large
+  title with its count, the pin and group toggles, the filter, and rows without
+  separators under a column header that stays in place while the rows scroll.
+  Status is a shape and a word in every list. Lists with a status get **status
+  chips** with counts (Pods: Failing, Pending, Running, Completed); pressing
+  chips filters the list. They replace "Needs attention" and "Warnings only":
+  Failing plus Pending are the pods that need attention. A number that needs
+  attention (restarts, failed jobs) is bold instead of red. When a list has
+  more columns than fit, it scrolls sideways and the name stays visible. The
+  "logs" chip on the selected pod is gone: Enter on the selected row still
+  opens its logs. The top bar stays on one row in a narrow window.
+- **Detail panel beside the list** (#617): selecting a pod, a deployment, a node
+  or any other object opens its panel as a card beside the list when the window
+  is wide enough (about 1320 px), and over the list when it is not. Beside the
+  panel the list keeps its five identifying columns; the rest is in the panel.
+  The panel leads with the state (a filled block when something is wrong, with
+  what explains it), two numbers, then the facts. A deployment is scaled and
+  restarted from its panel; other objects get a Summary of every column above
+  their YAML. Opening the panel moves keyboard focus to it and Esc gives it
+  back to the row; Enter on a pod row and Enter again still opens its logs.
+- **Dashboards in the new look** (#619): on All Clusters every cluster card is
+  in its own cluster's colour, with its health as a shape and a word; an
+  unreachable cluster says when it was last seen, and a card you point at
+  turns one shade lighter. The count of pods that are not
+  ready or keep restarting is now called "Pods needing attention" (on a card,
+  "Attention"): it was labelled "Warnings" but never counted warning events.
+  "Clusters online" warns only when a cluster is known to be unreachable, not
+  while the others simply have not been checked yet. "No clusters yet" appears
+  only once your kubeconfig has been read; if it cannot be read, the page shows
+  why instead, and Open Preferences takes you straight to the kubeconfig
+  files. The window takes a cluster's colour as soon as you start connecting
+  to it. On Overview the resource cards lose their own colours: a count that
+  needs attention (pending, failed, degraded) is bold with a triangle or a
+  square, and alert severity is a shape and a word. Charts draw their lines in
+  five data colours; past five lines the colours repeat with a different dash
+  each round. Request and limit lines are dashed and grey. Pointing at a chart
+  keeps its legend and adds each line's value to it. "Cluster unreachable"
+  leads with the failure and its reason, with Retry as the main action.
+- **Logs in the new look** (#623): the Logs view, the log panel and the pop-out
+  window share one look, with a toolbar of chips and pill fields and the lines
+  on a sunken area. The level is a word in its own column; warning and error
+  lines get a faint wash instead of a coloured left edge, and INFO is neutral.
+  Following and Paused are a chip with a circle or a pause icon. In a merged
+  stream each container has one of five data colours; past five the colours
+  repeat with a dashed, dotted or double underline. Search matches are filled
+  and underlined, and the current one is outlined and bold. A stream's state
+  (streaming, connecting, reconnecting, ended, error) is a shape and a word on
+  its tab and in the pop-out. Tail size is a menu, and a size reached with
+  "Load 500 earlier" shows in it. The log panel always keeps at least four
+  lines visible. The pop-out window takes the colour of its pod's cluster and
+  follows a change of that colour. The pod shell and YAML dialogs have a sunken
+  code area, and the YAML editor fits its dialog in a small window.
+- **Palette, Preferences, onboarding and the delete dialog in the new look**
+  (#627): the palette is wider, and a cluster in it keeps its own colour
+  and shows its health as a shape (and a word when it is not connected); a
+  long cluster name wraps instead of being cut. Preferences is grouped
+  under Appearance, Connection, Navigation, Integrations, Kubeconfig files
+  and Updates; cluster colours are swatches, the chosen one with a check.
+  Onboarding says which step you are on. The delete dialog names the pod,
+  its namespace and the cluster. The one main action of a dialog is as tall
+  as in the pod panel, and Install update keeps its label while it
+  downloads.
+- **Clearer states everywhere** (#632): a pressed status filter has a ring
+  in its state's colour, and a meter's track has a visible edge, so neither
+  depends on a faint fill. The log toolbar's previous-instance and filter
+  toggles get the same ring when pressed. Search and filter fields and the
+  menus in toolbars (the list filter, the log search, the label selector,
+  the tail, workload and history menus, the custom resource filter) have a
+  visible edge. A control that Tab scrolls into view in Preferences or a
+  detail panel shows its whole focus ring. The Apply button of the YAML
+  editor is the dialog's main action, as tall as the others. An empty value
+  is an en dash (ages, metrics, Preferences, an event with no object), and
+  CubeLite's own messages, the errors it reports included, no longer use an
+  em dash as punctuation: "Log session for api-0 closed: the cluster
+  changed", "authentication failed: check the credentials", the shell
+  dialog is "api-0 shell" and the log window "api-0 logs".
+- **Cluster colors** are now blue, magenta, teal, violet and indigo. A cluster
+  saved as amber becomes indigo and one saved as pink becomes magenta: warm
+  colours are reserved for warnings and errors.
+
+### Fixed
+
+- **Lists no longer say "No pods found" while they load, or when the load
+  failed** (#606): a list shows placeholder rows until its first answer, then
+  either its rows, "No pods in payments", "No pods match "abc"" with Clear
+  filter, the error with the server's message and Retry, or "You are not
+  allowed to list pods in payments". Changing namespace shows the placeholders
+  instead of the previous namespace's rows. Pods, deployments and events each
+  report their own failure, so being refused one of them no longer hides the
+  others. The Pods list says when CPU and memory are missing because
+  metrics-server did not answer.
+- **The log pop-out window's menus open downwards** (#624): the container
+  picker and "More log options" no longer open above the top of the window, so
+  every container and option can be picked; in a short window a menu scrolls,
+  and in a narrow one it stays inside the window.
+
+### Removed
+
+- **Preferences → Accent**: the accent is the active cluster's colour.
+
 ## [0.10.1] - 2026-11-07
 
 ### Fixed

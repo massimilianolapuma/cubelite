@@ -1,19 +1,23 @@
 <script lang="ts">
+	import { EMPTY } from '#lib/empty.ts';
 	import FileCode from '@lucide/svelte/icons/file-code';
 	import FileText from '@lucide/svelte/icons/file-text';
-	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import RotateCw from '@lucide/svelte/icons/rotate-cw';
 	import SquareTerminal from '@lucide/svelte/icons/square-terminal';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import { formatAge } from '#lib/age.ts';
+	import Button from '#lib/components/ui/Button.svelte';
 	import Drawer from '#lib/components/ui/Drawer.svelte';
+	import FactRows from '#lib/components/ui/FactRows.svelte';
 	import YamlModal from '#lib/components/YamlModal.svelte';
 	import ShellModal from '#lib/components/pods/ShellModal.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
 	import MetricsSection from '#lib/components/metrics/MetricsSection.svelte';
 	import WorkloadLinks from '#lib/components/integrations/WorkloadLinks.svelte';
-	import StatusPill from '#lib/components/ui/StatusPill.svelte';
-	import { podStatusLabel, podTone } from '#lib/status.ts';
+	import StatCard from '#lib/components/ui/StatCard.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
+	import StatusHero from '#lib/components/ui/StatusHero.svelte';
+	import { podGlyph, podStatusLabel } from '#lib/status.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { portforward } from '#lib/stores/portforward.svelte.ts';
@@ -21,6 +25,7 @@
 	import { parsePort, resolveLocalPort } from '#lib/ports.ts';
 	import { formatBytes, formatCpu, percentOf } from '#lib/units.ts';
 	import type { PodInfo } from '#lib/tauri.ts';
+	import { FIELD, PANEL_CARD, PANEL_SECTION } from '#lib/ui-classes.ts';
 
 	let {
 		pod,
@@ -58,69 +63,81 @@
 		const ok = await mutations.deletePod(pod.namespace, pod.name);
 		if (ok) onClose();
 	}
-	const meta = $derived<[string, string][]>([
+
+	function openLogs() {
+		void logPanel.openFor({ namespace: pod.namespace, name: pod.name });
+	}
+
+	// Not named `state`: that would shadow the `$state` rune.
+	const glyph = $derived(restarting ? 'unknown' : podGlyph(pod));
+	// What explains an attention or failure state, from what the list already knows.
+	const reason = $derived.by(() => {
+		if (glyph !== 'warn' && glyph !== 'err') return undefined;
+		const ready = `${pod.ready_containers} of ${pod.total_containers} containers ready`;
+		return pod.restarts > 0 ? `${ready}, ${pod.restarts} restart${pod.restarts === 1 ? '' : 's'}` : ready;
+	});
+
+	const usage = $derived(resources.metricsFor(pod.namespace, pod.name));
+	// Bars are relative to the allocatable capacity of the pod's node.
+	const nodeCapacity = $derived(resources.nodes.find((n) => n.name === pod.node) ?? null);
+
+	const facts = $derived<[string, string | null][]>([
 		['Namespace', pod.namespace],
-		['Node', pod.node ?? '—'],
+		['Node', pod.node],
 		['Age', formatAge(pod.creation_timestamp)],
-		['Restarts', String(pod.restarts)],
-		['Pod IP', pod.pod_ip ?? '—'],
-		['QoS', pod.qos_class ?? '—']
+		['Ready', `${pod.ready_containers}/${pod.total_containers}`],
+		['Pod IP', pod.pod_ip],
+		['QoS', pod.qos_class]
 	]);
 
 	const labelEntries = $derived(
 		Object.entries(pod.labels ?? {}).sort(([a], [b]) => a.localeCompare(b))
 	);
-	const usage = $derived(resources.metricsFor(pod.namespace, pod.name));
-	// Bars are relative to the allocatable capacity of the pod's node.
-	const nodeCapacity = $derived(resources.nodes.find((n) => n.name === pod.node) ?? null);
-
-	const pillTone = $derived.by(() => {
-		const tone = podTone(pod);
-		return tone === 'neutral' ? 'neutral' : tone;
-	});
 </script>
 
-<Drawer title={pod.name} {onClose}>
+<Drawer kind="Pod" title={pod.name} {onClose} onPrimary={openLogs}>
 	<div class="flex flex-col gap-4">
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<StatusPill label={podStatusLabel(pod)} tone={pillTone} />
-			<WorkloadLinks namespace={pod.namespace} workload={{ kind: 'pod', name: pod.name }} />
+		<StatusHero state={glyph} label={restarting ? 'Terminating…' : podStatusLabel(pod)} {reason} />
+
+		<WorkloadLinks namespace={pod.namespace} workload={{ kind: 'pod', name: pod.name }} />
+
+		<div class="grid grid-cols-2 gap-2">
+			<!-- A completed pod's restarts are history (Tonal §3 #7): no warning. -->
+			<StatCard
+				surface="top"
+				label="Restarts"
+				value={pod.restarts}
+				tone={pod.phase !== 'Succeeded' && pod.restarts > 3 ? 'warn' : undefined}
+			/>
+			<StatCard surface="top" label="Memory" value={usage ? formatBytes(usage.memory_bytes) : EMPTY} />
 		</div>
 
-		<div class="grid grid-cols-2 gap-x-4 gap-y-2.5">
-			{#each meta as [label, value] (label)}
-				<div>
-					<div class="type-colhead mb-0.5">{label}</div>
-					<div class="type-data-sm {value === '—' ? 'text-text-disabled' : 'text-text-secondary'}">
-						{value}
-					</div>
-				</div>
-			{/each}
-		</div>
+		<FactRows {facts} />
 
 		{#if pod.containers.length > 0}
 			<div>
-				<div class="type-section mb-1.5 text-text-tertiary">Containers</div>
-				<div class="overflow-hidden rounded-lg border border-border-faint">
+				<div class={PANEL_SECTION}>Containers</div>
+				<div class="flex flex-col gap-0.5">
 					{#each pod.containers as container (container.name)}
-						<div class="flex items-center gap-2 border-b border-border-faint bg-surface-surface px-2.5 py-1.5 last:border-b-0">
-							<span
-								class="h-1.5 w-1.5 shrink-0 rounded-full"
-								style="background: {container.ready
-									? 'var(--color-status-ok)'
-									: 'var(--color-status-warn)'};"
-							></span>
-							<span class="type-data-sm shrink-0 text-text-secondary">{container.name}</span>
-							<span class="type-caption min-w-0 flex-1 truncate text-right text-text-tertiary">
-								{container.image ?? ''}
-							</span>
+						<!-- Two lines: a long name and a long image each get the row's width. -->
+						<div class="{PANEL_CARD} flex flex-col gap-0.5 px-3 py-2" data-container={container.name}>
+							<div class="flex min-w-0 items-center gap-2">
+								<StatusGlyph state={container.ready ? 'ok' : 'warn'} class={container.ready ? 'text-success' : 'text-warning'} />
+								<span class="type-data-sm min-w-0 flex-1 truncate text-text" title={container.name}>{container.name}</span>
+								<span class="type-body-sm shrink-0 {container.ready ? 'text-text-muted' : 'font-semibold text-text'}">
+									{container.ready ? 'ready' : 'not ready'}
+								</span>
+							</div>
+							{#if container.image}
+								<span class="type-body-sm truncate text-text-muted" title={container.image}>{container.image}</span>
+							{/if}
 						</div>
 					{/each}
 				</div>
 			</div>
 		{/if}
 
-		<div class="flex flex-col gap-2 rounded-lg border border-border-faint bg-surface-surface p-3">
+		<div class="{PANEL_CARD} flex flex-col gap-2 p-3">
 			<MeterBar
 				label="CPU"
 				percent={usage && nodeCapacity
@@ -134,12 +151,12 @@
 					: null}
 			/>
 			{#if usage}
-				<p class="type-caption text-text-tertiary">
-					{formatCpu(usage.cpu_millis)} CPU · {formatBytes(usage.memory_bytes)} — share of node allocatable
+				<p class="type-body-sm text-text-muted">
+					{formatCpu(usage.cpu_millis)} CPU · {formatBytes(usage.memory_bytes)}: share of node allocatable
 				</p>
 			{:else}
-				<p class="type-caption text-text-disabled">
-					metrics unavailable — metrics-server not detected in this cluster
+				<p class="type-body-sm text-text-muted">
+					Metrics unavailable: metrics-server did not answer for this pod.
 				</p>
 			{/if}
 		</div>
@@ -148,11 +165,11 @@
 
 		{#if labelEntries.length > 0}
 			<div>
-				<div class="type-section mb-1.5 text-text-tertiary">Labels</div>
-				<div class="flex flex-wrap gap-1">
+				<div class={PANEL_SECTION}>Labels</div>
+				<div class="flex flex-wrap gap-1.5">
 					{#each labelEntries as [key, value] (key)}
 						<span
-							class="max-w-full truncate rounded-sm border border-border-faint bg-surface-raised px-1.5 py-px type-micro font-mono text-text-secondary"
+							class="type-data-sm max-w-full rounded-md bg-surface-container-top px-2.5 py-0.5 break-all text-text-muted"
 							title="{key}={value}"
 						>
 							{key}={value}
@@ -163,106 +180,64 @@
 		{/if}
 
 		<div>
-			<div class="type-section mb-1.5 text-text-tertiary">Port forward</div>
-			<div class="flex items-center gap-1.5">
-				<input
-					type="text"
-					aria-label="Remote port"
-					bind:value={remotePortText}
-					class="focus-ring h-7 w-16 rounded-md border border-border-default bg-surface-window px-2 text-center type-data-sm text-text-primary"
-				/>
-				<span class="type-caption text-text-tertiary">→</span>
+			<div class={PANEL_SECTION}>Port forward</div>
+			<div class="flex items-center gap-2">
+				<input type="text" aria-label="Remote port" bind:value={remotePortText} class="{FIELD} w-20! text-center font-mono" />
+				<span class="type-body-sm text-text-muted" aria-hidden="true">→</span>
 				<input
 					type="text"
 					aria-label="Local port"
 					placeholder="auto"
 					bind:value={localPortText}
-					class="focus-ring h-7 w-16 rounded-md border border-border-default bg-surface-window px-2 text-center type-data-sm text-text-primary placeholder:text-text-disabled"
+					class="{FIELD} w-20! text-center font-mono"
 				/>
-				<button
-					type="button"
-					disabled={remotePort === null || localPort === null || forwarding}
-					class="focus-ring type-caption flex h-7 items-center rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110 disabled:opacity-45"
+				<Button
+					variant="tonal"
+					size="inline"
+					pending={forwarding}
+					disabled={remotePort === null || localPort === null}
 					onclick={() => void forward()}
 				>
-					{forwarding ? 'Forwarding…' : 'Forward'}
-				</button>
+					Forward
+				</Button>
 			</div>
 			{#if remotePort === null || localPort === null}
-				<p class="type-caption mt-1 text-status-err">
+				<p class="type-body-sm mt-1.5 flex items-start gap-1.5 text-text" role="alert">
+					<StatusGlyph state="err" class="mt-1 text-error" />
 					Ports must be numbers between 1 and 65535 (local: empty = remote, "auto" = free port)
 				</p>
 			{/if}
 			{#each forwardSessions as session (session.id)}
-				<div class="mt-1.5 flex items-center gap-2">
-					<span class="h-1.5 w-1.5 shrink-0 rounded-full" style="background: var(--color-status-ok);"
-					></span>
-					<span class="flex-1 type-data-sm text-text-secondary">
+				<div class="mt-2 flex items-center gap-2">
+					<StatusGlyph state="ok" class="text-success" />
+					<span class="type-data-sm flex-1 text-text">
 						localhost:{session.localPort} → {session.remotePort}
 					</span>
-					<button
-						type="button"
-						class="focus-ring type-caption flex h-7 items-center rounded-md border border-border-default bg-surface-raised px-2 text-text-secondary hover:brightness-110"
-						onclick={() => void portforward.stop(session.id)}
-					>
-						Stop
-					</button>
+					<Button variant="text" size="inline" onclick={() => void portforward.stop(session.id)}>Stop</Button>
 				</div>
 			{/each}
 		</div>
 	</div>
 
 	{#snippet footer()}
-		<button
-			type="button"
-			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md bg-accent text-surface-window hover:brightness-110"
-			aria-label="Log panel"
-			title="Open pod logs panel"
-			onclick={() => void logPanel.openFor({ namespace: pod.namespace, name: pod.name })}
-		>
-			<FileText class="h-3 w-3" />
-			Logs
-		</button>
-		<button
-			type="button"
-			aria-label="Shell"
-			title="Open a shell in this pod"
-			class="focus-ring type-body flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110"
-			onclick={() => (shellOpen = true)}
-		>
-			<SquareTerminal class="h-3 w-3" />
-		</button>
-		<button
-			type="button"
-			aria-label="YAML"
-			title="View YAML"
-			class="focus-ring type-body flex h-7 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised px-2.5 text-text-secondary hover:brightness-110"
-			onclick={() => (yamlOpen = true)}
-		>
-			<FileCode class="h-3 w-3" />
-		</button>
-		<button
-			type="button"
-			disabled={restarting}
-			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-surface-raised text-text-secondary hover:brightness-110 disabled:opacity-45"
-			onclick={() => void restart()}
-		>
-			{#if restarting}
-				<LoaderCircle class="h-3 w-3 animate-spin" />
-			{:else}
-				<RotateCw class="h-3 w-3" />
-			{/if}
+		<Button variant="primary" size="primary" title="Open pod logs panel" onclick={openLogs}>
+			{#snippet icon()}<FileText class="h-4 w-4" aria-hidden="true" />{/snippet}
+			Open logs
+		</Button>
+		<Button variant="tonal" iconOnly label="Shell" title="Open a shell in this pod" onclick={() => (shellOpen = true)}>
+			{#snippet icon()}<SquareTerminal class="h-4 w-4" aria-hidden="true" />{/snippet}
+		</Button>
+		<Button variant="tonal" iconOnly label="YAML" title="View YAML" onclick={() => (yamlOpen = true)}>
+			{#snippet icon()}<FileCode class="h-4 w-4" aria-hidden="true" />{/snippet}
+		</Button>
+		<Button variant="tonal" pending={restarting} onclick={() => void restart()}>
+			{#snippet icon()}<RotateCw class="h-4 w-4" aria-hidden="true" />{/snippet}
 			Restart
-		</button>
-		<button
-			type="button"
-			class="focus-ring type-body flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border text-status-err hover:brightness-110"
-			style="border-color: color-mix(in srgb, var(--color-status-err) 40%, transparent);"
-			onclick={() => onDelete?.(pod)}
-		>
-			<Trash2 class="h-3 w-3" />
+		</Button>
+		<Button variant="danger" onclick={() => onDelete?.(pod)}>
+			{#snippet icon()}<Trash2 class="h-4 w-4" aria-hidden="true" />{/snippet}
 			Delete
-		</button>
+		</Button>
 	{/snippet}
 </Drawer>
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
@@ -42,6 +42,7 @@ function flush(): Promise<void> {
 import CommandPalette from "./CommandPalette.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
+import { health } from "#lib/stores/health.svelte.ts";
 import { logPanel } from "#lib/stores/logPanel.svelte.ts";
 import { elastic } from "#lib/stores/elastic.svelte.ts";
 import { prometheus } from "#lib/stores/prometheus.svelte.ts";
@@ -90,7 +91,7 @@ beforeEach(() => {
     { name: "prod", cluster_server: "https://prod:6443", namespace: "default", is_active: true },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
   ];
-  clusters.identityColors = { prod: "blue", staging: "amber" };
+  clusters.identityColors = { prod: "blue", staging: "magenta" };
   clusters.connectionState = "connected";
 });
 
@@ -161,6 +162,73 @@ describe("CommandPalette", () => {
     await flush();
     expect(app.paletteOpen).toBe(false);
     expect(logPanel.activeKey).toBe("default/api-0");
+  });
+});
+
+describe("cluster rows (Tonal §8.6)", () => {
+  const clusterRow = (name: string) => document.querySelector<HTMLElement>(`[data-cluster-row="${name}"]`);
+
+  afterEach(() => {
+    health.byContext = {};
+  });
+
+  it("each row carries its own cluster's tint, not the active one's", async () => {
+    render(CommandPalette);
+    await flush();
+    expect(clusterRow("prod")).toHaveAttribute("data-tint");
+    expect(clusterRow("staging")).toHaveAttribute("data-tint");
+    expect(clusterRow("prod")?.getAttribute("style")).toContain("--cl-hue-blue");
+    expect(clusterRow("staging")?.getAttribute("style")).toContain("--cl-hue-magenta");
+  });
+
+  it("shows health as a shape and a word", async () => {
+    health.byContext = { staging: { ...health.for("staging"), state: "unreachable" } };
+    render(CommandPalette);
+    await flush();
+    const prod = clusterRow("prod")!;
+    const staging = clusterRow("staging")!;
+    expect(prod).toHaveTextContent("Connected");
+    expect(prod.querySelector("[data-glyph]")).toHaveAttribute("data-glyph", "ok");
+    expect(staging).toHaveTextContent("Unreachable");
+    expect(staging.querySelector("[data-glyph]")).toHaveAttribute("data-glyph", "err");
+    clusters.connectionState = "unknown";
+    await flush();
+    expect(prod).toHaveTextContent("Not connected");
+    expect(prod.querySelector("[data-glyph]")).toHaveAttribute("data-glyph", "unknown");
+  });
+
+  it("writes the health word out only when a cluster is not connected; connected keeps it for screen readers", async () => {
+    health.byContext = { staging: { ...health.for("staging"), state: "unreachable" } };
+    render(CommandPalette);
+    await flush();
+    // The circle carries "connected"; the word would only take room from a long name.
+    const word = (name: string, text: string) =>
+      [...clusterRow(name)!.querySelectorAll<HTMLElement>('[data-testid="cluster-health"] *')].find(
+        (el) => el.textContent === text,
+      );
+    expect(word("prod", "Connected")).toHaveClass("sr-only");
+    expect(word("staging", "Unreachable")).not.toHaveClass("sr-only");
+    expect(clusterRow("prod")).toHaveTextContent("Connected");
+  });
+
+  it("draws no section dot on a resource row, and tells a cluster's state by a glyph and a word", async () => {
+    health.byContext = { staging: { ...health.for("staging"), state: "unreachable" } };
+    render(CommandPalette);
+    await flush();
+    // The old section dot was an empty disc before the label (`span.rounded-full`, painted inline).
+    const dots = (row: Element) => row.querySelectorAll(":empty.rounded-full, [style*='background']");
+    const resourceRows = document.querySelectorAll("[data-resource]");
+    expect(resourceRows.length).toBeGreaterThan(5);
+    for (const row of resourceRows) expect(dots(row), row.getAttribute("data-resource")!).toHaveLength(0);
+    // A cluster's state is a shape inside the row and a word in its accessible name.
+    for (const [name, glyph, word] of [
+      ["prod", "ok", "Connected"],
+      ["staging", "err", "Unreachable"],
+    ]) {
+      const row = screen.getByRole("option", { name: new RegExp(`^${name}\\b.*\\b${word}\\b`) });
+      expect(row).toBe(clusterRow(name));
+      expect(within(row).getByTestId("cluster-health").querySelector("[data-glyph]")).toHaveAttribute("data-glyph", glyph);
+    }
   });
 });
 

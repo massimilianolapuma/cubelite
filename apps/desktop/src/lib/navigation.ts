@@ -5,22 +5,20 @@ import { GENERIC_KINDS, isGenericView } from "#lib/resource-kinds.ts";
 export type SectionId = "cluster" | "workloads" | "network" | "storage" | "config" | "access" | "observe";
 
 export type NavItem = { view: View; label: string };
-export type NavSection = { id: SectionId; label: string; dot: string; items: NavItem[] };
+export type NavSection = { id: SectionId; label: string; items: NavItem[] };
 
 /** Label of a hand-written view, or of a ★ kind from the registry. */
 type Item = View | [View, string];
 
-// Dot colours: workloads blue, network violet, storage teal, config amber,
-// access pink, observe teal (resource-kinds mockup). One row per section:
-// id, label, dot colour, items in default order.
-const SECTION_TABLE: [SectionId, string, string, Item[]][] = [
-  ["cluster", "Cluster", "var(--color-accent)", [["overview", "Overview"], ["nodes", "Nodes"], "namespaces"]],
-  ["workloads", "Workloads", "var(--color-cluster-blue)", [["pods", "Pods"], ["deployments", "Deployments"], ["statefulsets", "StatefulSets"], "daemonsets", "replicasets", ["jobs", "Jobs"], ["cronjobs", "CronJobs"], "hpas", ["helm", "Helm Releases"]]],
-  ["network", "Network", "var(--color-cluster-violet)", [["services", "Services"], ["ingresses", "Ingresses"], "ingressclasses", "endpointslices", "networkpolicies"]],
-  ["storage", "Storage", "var(--color-cluster-teal)", [["pvcs", "PVCs"], "pvs", "storageclasses"]],
-  ["config", "Config", "var(--color-status-warn)", [["configmaps", "ConfigMaps"], ["secrets", "Secrets"], "resourcequotas", "limitranges", "pdbs", "priorityclasses"]],
-  ["access", "Access Control", "var(--color-cluster-pink)", ["serviceaccounts", "roles", "rolebindings", "clusterroles", "clusterrolebindings"]],
-  ["observe", "Observe", "var(--color-cluster-teal)", [["events", "Events"], ["logs", "Logs"]]],
+// One row per section: id, label, items in default order.
+const SECTION_TABLE: [SectionId, string, Item[]][] = [
+  ["cluster", "Cluster", [["overview", "Overview"], ["nodes", "Nodes"], "namespaces"]],
+  ["workloads", "Workloads", [["pods", "Pods"], ["deployments", "Deployments"], ["statefulsets", "StatefulSets"], "daemonsets", "replicasets", ["jobs", "Jobs"], ["cronjobs", "CronJobs"], "hpas", ["helm", "Helm Releases"]]],
+  ["network", "Network", [["services", "Services"], ["ingresses", "Ingresses"], "ingressclasses", "endpointslices", "networkpolicies"]],
+  ["storage", "Storage", [["pvcs", "PVCs"], "pvs", "storageclasses"]],
+  ["config", "Config", [["configmaps", "ConfigMaps"], ["secrets", "Secrets"], "resourcequotas", "limitranges", "pdbs", "priorityclasses"]],
+  ["access", "Access Control", ["serviceaccounts", "roles", "rolebindings", "clusterroles", "clusterrolebindings"]],
+  ["observe", "Observe", [["events", "Events"], ["logs", "Logs"]]],
 ];
 
 function navItem(item: Item): NavItem {
@@ -29,10 +27,9 @@ function navItem(item: Item): NavItem {
   return { view: item, label: GENERIC_KINDS[item].label };
 }
 
-export const DEFAULT_SECTIONS: readonly NavSection[] = SECTION_TABLE.map(([id, label, dot, items]) => ({
+export const DEFAULT_SECTIONS: readonly NavSection[] = SECTION_TABLE.map(([id, label, items]) => ({
   id,
   label,
-  dot,
   items: items.map(navItem),
 }));
 

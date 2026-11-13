@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { BUTTON_CLASS, type FormResult } from '#lib/integration-form.svelte.ts';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
+	import { BUTTON_CLASS, CHECKBOX_CLASS, type FormResult } from '#lib/integration-form.svelte.ts';
 
 	// Skip-TLS opt-in, Test connection, Save, the saved endpoint and the
 	// last result (shared by the integration preferences).
@@ -29,11 +30,11 @@
 </script>
 
 {#if active && tls}
-	<label class="type-caption flex items-center gap-2 text-text-secondary">
-		<input type="checkbox" bind:checked={skipTlsVerify} /> Skip TLS verification (self-signed, no CA)
+	<label class="type-body-sm flex items-center gap-2 text-text-muted">
+		<input type="checkbox" class={CHECKBOX_CLASS} bind:checked={skipTlsVerify} /> Skip TLS verification (self-signed, no CA)
 	</label>
 {/if}
-<div class="flex items-center gap-2">
+<div class="flex min-w-0 items-center gap-2">
 	{#if active}
 		<button type="button" class={BUTTON_CLASS} disabled={busy !== null || incomplete} onclick={onTest}>
 			{busy === 'test' ? 'Testing…' : 'Test connection'}
@@ -43,11 +44,17 @@
 		{busy === 'save' ? 'Saving…' : 'Save'}
 	</button>
 	{#if current}
-		<span class="type-caption truncate text-text-tertiary" title={current}>current: {current}</span>
+		<span class="type-body-sm min-w-0 truncate text-text-muted" title={current}>current: {current}</span>
 	{/if}
 </div>
 {#if result}
-	<p class="type-caption {result.ok ? 'text-status-ok' : 'text-status-err'}" role={result.ok ? 'status' : 'alert'}>
-		{result.text}
+	<!-- Passed or failed is a shape as well as a colour (Tonal §9.3): circle or square. -->
+	<p
+		class="type-body-sm flex items-baseline gap-2 [overflow-wrap:anywhere] {result.ok ? 'text-text' : 'text-error'}"
+		role={result.ok ? 'status' : 'alert'}
+		data-state={result.ok ? 'ok' : 'err'}
+	>
+		<StatusGlyph state={result.ok ? 'ok' : 'err'} class="relative top-px {result.ok ? 'text-success' : ''}" />
+		<span>{result.text}</span>
 	</p>
 {/if}

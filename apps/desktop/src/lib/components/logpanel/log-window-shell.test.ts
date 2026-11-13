@@ -57,6 +57,16 @@ describe("LogWindowShell shortcuts (#351)", () => {
     expect(await fireEvent.keyDown(window, { key: "f" })).toBe(true);
   });
 
+  // Tonal §9.3: the pop-out's stream state is a shape and a word, not a coloured dot.
+  it("shows the stream state as a shape and a word", async () => {
+    withSession();
+    logPanel.active!.status = "reconnecting";
+    render(LogWindowShell, { windowKey: "default/api-0" });
+    const state = screen.getByTestId("logwindow-state");
+    expect(state).toHaveTextContent("Reconnecting");
+    expect(state.querySelector('[data-glyph="warn"]')).not.toBeNull();
+  });
+
   it("does nothing before the session arrives", async () => {
     render(LogWindowShell, { windowKey: "default/api-0" });
     expect(screen.getByText("Connecting…")).toBeInTheDocument();

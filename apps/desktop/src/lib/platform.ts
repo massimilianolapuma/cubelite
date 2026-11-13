@@ -1,4 +1,4 @@
-/** Platform detection for shortcut labels and titlebar layout. */
+/** Platform detection for shortcut labels and the room left for the macOS window controls. */
 export const isMac: boolean =
   typeof navigator !== "undefined" && navigator.userAgent.includes("Mac");
 

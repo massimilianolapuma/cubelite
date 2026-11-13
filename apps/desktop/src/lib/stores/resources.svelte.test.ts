@@ -24,6 +24,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import {
+  listDeployments,
+  listEvents,
   listNamespaces,
   listNodes,
   listPods,
@@ -224,5 +226,161 @@ describe("generic kinds (resource-kinds phase 2)", () => {
     );
     resources.clear();
     expect(dynamic.count("roles")).toBeNull();
+  });
+});
+
+describe("list load state (#606)", () => {
+  it("mainLoaded is false until pods, deployments and events have loaded once", async () => {
+    vi.mocked(listPods).mockResolvedValue([pod("a", "default")]);
+    expect(resources.mainLoaded).toBe(false);
+    const pending = resources.load();
+    expect(resources.mainLoaded).toBe(false);
+    await pending;
+    expect(resources.mainLoaded).toBe(true);
+  });
+
+  it("mainLoaded stays true during a refresh of the same namespace", async () => {
+    vi.mocked(listPods).mockResolvedValue([pod("a", "default")]);
+    await resources.load();
+    const pending = resources.load();
+    expect(resources.mainLoaded).toBe(true);
+    await pending;
+  });
+
+  it("mainLoaded drops when the namespace changes, until that namespace has loaded", async () => {
+    vi.mocked(listPods).mockResolvedValue([pod("a", "default")]);
+    await resources.load();
+    app.namespace = "default";
+    expect(resources.mainLoaded).toBe(false);
+    await resources.load();
+    expect(resources.mainLoaded).toBe(true);
+    resources.clear();
+    expect(resources.mainLoaded).toBe(false);
+  });
+
+  it("keeps the error of a failed load while the retry is in flight, and clears it on success", async () => {
+    vi.mocked(listPods).mockRejectedValueOnce(new Error("connection reset"));
+    expect(await resources.load()).toBe(false);
+    expect(resources.error).toBe("connection reset");
+
+    vi.mocked(listPods).mockResolvedValue([]);
+    const retry = resources.load();
+    expect(resources.error).toBe("connection reset");
+    await retry;
+    expect(resources.error).toBeNull();
+  });
+
+  it("kindLoaded follows the namespace a kind was loaded for", async () => {
+    vi.mocked(listServices).mockResolvedValue([]);
+    expect(resources.kindLoaded("services")).toBe(false);
+    await resources.loadKind("services");
+    expect(resources.kindLoaded("services")).toBe(true);
+    app.namespace = "default";
+    expect(resources.kindLoaded("services")).toBe(false);
+  });
+
+  it("kindError belongs to the kind that failed", async () => {
+    vi.mocked(listServices).mockRejectedValueOnce(new Error("boom"));
+    await resources.loadKind("services");
+    expect(resources.kindError("services")).toBe("boom");
+    expect(resources.kindError("secrets")).toBeNull();
+  });
+
+  it("keeps a kind's error while it reloads, and drops it when the reload succeeds", async () => {
+    vi.mocked(listServices).mockRejectedValueOnce(new Error("boom"));
+    await resources.loadKind("services");
+    vi.mocked(listServices).mockResolvedValue([]);
+    const retry = resources.loadKind("services");
+    expect(resources.kindError("services")).toBe("boom");
+    await retry;
+    expect(resources.kindError("services")).toBeNull();
+  });
+});
+
+describe("each main list reports its own failure (#606)", () => {
+  const refused = (what: string) => new Error(`${what} is forbidden: User "dev" cannot list`);
+
+  beforeEach(() => {
+    vi.mocked(listPods).mockResolvedValue([pod("a", "default")]);
+    vi.mocked(listDeployments).mockResolvedValue([]);
+    vi.mocked(listEvents).mockResolvedValue([]);
+  });
+
+  it("a failed events load is an error of the events list only", async () => {
+    vi.mocked(listEvents).mockRejectedValueOnce(refused("events"));
+    expect(await resources.load()).toBe(true);
+    expect(resources.listError("events")).toContain("events is forbidden");
+    expect(resources.listError("pods")).toBeNull();
+    expect(resources.pods).toHaveLength(1);
+    expect(resources.mainLoaded).toBe(true);
+  });
+
+  it("a failed deployments load in one namespace does not fail pods", async () => {
+    app.namespace = "default";
+    vi.mocked(listDeployments).mockRejectedValueOnce(refused("deployments.apps"));
+    expect(await resources.load()).toBe(true);
+    expect(resources.listError("deployments")).toContain("deployments.apps is forbidden");
+    expect(resources.listError("pods")).toBeNull();
+    expect(resources.pods).toHaveLength(1);
+  });
+
+  it("deployments refused in every namespace is a failed list, not an empty one", async () => {
+    vi.mocked(listDeployments).mockRejectedValue(refused("deployments.apps"));
+    expect(await resources.load()).toBe(true);
+    expect(resources.listError("deployments")).toContain("deployments.apps is forbidden");
+  });
+
+  it("deployments refused in some namespaces keeps the rows of the others", async () => {
+    vi.mocked(listDeployments).mockRejectedValueOnce(refused("deployments.apps"));
+    expect(await resources.load()).toBe(true);
+    expect(resources.listError("deployments")).toBeNull();
+  });
+
+  it("a failed pods load fails the load but keeps what the other lists answered", async () => {
+    vi.mocked(listPods).mockRejectedValueOnce(new Error("connection reset"));
+    vi.mocked(listEvents).mockResolvedValueOnce([
+      { event_type: "Normal", reason: "x", object: "Pod/a", message: null, namespace: "default", count: 1, last_timestamp: null },
+    ]);
+    expect(await resources.load()).toBe(false);
+    expect(resources.error).toBe("connection reset");
+    expect(resources.listError("pods")).toBe("connection reset");
+    expect(resources.listError("events")).toBeNull();
+    expect(resources.events).toHaveLength(1);
+  });
+
+  it("an error belongs to the namespace it was loaded for", async () => {
+    app.namespace = "default";
+    vi.mocked(listPods).mockRejectedValueOnce(refused("pods"));
+    await resources.load();
+    expect(resources.listError("pods")).toContain("forbidden");
+    app.namespace = "kube-system";
+    expect(resources.listError("pods")).toBeNull();
+    expect(resources.mainLoaded).toBe(false);
+  });
+
+  it("a kind's error belongs to the namespace it was loaded for; nodes are cluster-scoped", async () => {
+    app.namespace = "default";
+    vi.mocked(listServices).mockRejectedValueOnce(refused("services"));
+    vi.mocked(listNodes).mockRejectedValueOnce(refused("nodes"));
+    await resources.loadKind("services");
+    expect(resources.kindError("services")).toContain("forbidden");
+    app.namespace = "kube-system";
+    expect(resources.kindError("services")).toBeNull();
+    await resources.loadKind("nodes");
+    app.namespace = "default";
+    expect(resources.kindError("nodes")).toContain("forbidden");
+  });
+
+  it("an overview batch that answers after a namespace change does not replace the new namespace's kinds", async () => {
+    let answer: (rows: never[]) => void = () => {};
+    vi.mocked(listServices).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    const batch = resources.loadOverviewExtras();
+    app.namespace = "default";
+    vi.mocked(listServices).mockResolvedValueOnce([]);
+    await resources.loadKind("services");
+    expect(resources.kindLoaded("services")).toBe(true);
+    answer([]);
+    await batch;
+    expect(resources.kindLoaded("services")).toBe(true);
   });
 });

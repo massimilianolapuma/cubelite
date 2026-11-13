@@ -88,8 +88,15 @@ describe("refresh", () => {
     await clusters.refresh();
     expect(clusters.contexts).toHaveLength(2);
     expect(clusters.identityFor("prod")).toBe("blue");
-    expect(clusters.identityFor("staging")).toBe("amber");
-    expect(settings.identityColors.value).toEqual({ prod: "blue", staging: "amber" });
+    expect(clusters.identityFor("staging")).toBe("magenta");
+    expect(settings.identityColors.value).toEqual({ prod: "blue", staging: "magenta" });
+  });
+
+  it("moves a saved retired color to its successor and saves the result", async () => {
+    settings.identityColors.value = { prod: "amber", staging: "pink" };
+    vi.mocked(listContexts).mockResolvedValue(contexts);
+    await clusters.refresh();
+    expect(settings.identityColors.value).toEqual({ prod: "indigo", staging: "magenta" });
   });
 
   it("records the error when discovery fails", async () => {
@@ -412,5 +419,20 @@ describe("reloadKubeconfig", () => {
     expect(toasts.items.at(-1)?.message).toBe("Kubeconfig updated");
     load.mockRestore();
     app.connecting = null;
+  });
+});
+
+describe("identityFor", () => {
+  it("reads the saved color before contexts are loaded (pop-out log window)", () => {
+    clusters.identityColors = {};
+    settings.identityColors.value = { prod: "teal", old: "pink" };
+    expect(clusters.identityFor("prod")).toBe("teal");
+    expect(clusters.identityFor("old")).toBe("magenta");
+  });
+
+  it("falls back to the default for a context it has never seen", () => {
+    clusters.identityColors = {};
+    settings.identityColors.value = {};
+    expect(clusters.identityFor("nowhere")).toBe("blue");
   });
 });

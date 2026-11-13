@@ -40,9 +40,9 @@ describe("host panels (#530)", () => {
     const result = metrics({ cpu: { value: 0.5 }, "cpu-allocatable": { value: 4, source: "kube-state-metrics" } });
     const lines = panelLines(result, CPU);
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatchObject({ label: "", color: "var(--color-accent)" });
+    expect(lines[0]).toMatchObject({ label: "", color: "var(--color-data-1)" });
     expect(lines[0].dashed).toBeFalsy();
-    expect(lines[1]).toMatchObject({ label: "alloc", dashed: true, color: "var(--color-text-tertiary)" });
+    expect(lines[1]).toMatchObject({ label: "alloc", dashed: true, color: "var(--color-text-subtle)" });
     expect(panelSummary(result, CPU)).toBe("500m / alloc 4");
     expect(panelQueries(result, CPU)).toEqual(["q-cpu", "q-cpu-allocatable"]);
     expect(panelSource(result, CPU)).toBe("from cAdvisor");
@@ -71,7 +71,7 @@ describe("host panels (#530)", () => {
     expect(panelSummary(result, NETWORK)).toBe("↓ 2Ki/s ↑ 1Ki/s");
     expect(panelLines(result, NETWORK).map((l) => l.label)).toEqual(["rx", "tx"]);
     expect(panelSource(result, NETWORK)).toBe("from node-exporter");
-    expect(panelSummary(metrics({}), CPU)).toBe("—");
+    expect(panelSummary(metrics({}), CPU)).toBe("–");
   });
 
   it("says why a chart is empty", () => {

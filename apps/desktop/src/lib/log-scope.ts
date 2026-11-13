@@ -23,7 +23,7 @@ export type HistoryMapping =
   | { namespace: string; target: Workload | null; reason: null }
   | { namespace: null; target: null; reason: string };
 
-export const SELECTOR_HISTORY_HINT = "History can't filter by label selector — clear it to search Elasticsearch";
+export const SELECTOR_HISTORY_HINT = "History can't filter by label selector: clear it to search Elasticsearch";
 export const NAMESPACE_HISTORY_HINT = "Pick a namespace (or a workload) to search its history";
 
 /** Kind labels, as the picker and the scope chip show them. */

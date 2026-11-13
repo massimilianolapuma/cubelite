@@ -113,6 +113,12 @@ describe("Overview alerts (#530)", () => {
     expect(screen.getByTestId("alerts-informational")).toHaveTextContent("1 informational");
     expect(screen.getAllByTestId("alert-row")[2]).toHaveTextContent("Watchdog");
     expect(screen.getByText("Pod is crash looping.")).toBeInTheDocument();
+    // Severity is a shape and a word: triangle warning, square critical, dashed ring for the rest.
+    const rows = screen.getAllByTestId("alert-row");
+    expect(rows.map((r) => r.getAttribute("data-tone"))).toEqual(["warn", "err", "neutral"]);
+    expect(rows.map((r) => r.querySelector("svg[data-glyph]")?.getAttribute("data-glyph"))).toEqual(["warn", "err", "unknown"]);
+    expect(rows[1]).toHaveTextContent("critical");
+    for (const row of rows) expect(row.querySelector("[style]")).toBeNull();
 
     await fireEvent.click(screen.getByRole("button", { name: "shop/api-0" }));
     expect(app.view).toBe("pods");
@@ -254,7 +260,7 @@ describe("Node metrics (#530)", () => {
     expect(screen.getAllByText("from node-exporter")).toHaveLength(3);
     expect(screen.getByText("from kube-state-metrics")).toBeInTheDocument();
     expect(
-      screen.getByText("not available — needs node-exporter or cAdvisor metrics for this node"),
+      screen.getByText("not available: needs node-exporter or cAdvisor metrics for this node"),
     ).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: "Open CPU in Grafana" }));

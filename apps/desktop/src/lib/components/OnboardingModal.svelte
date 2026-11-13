@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
+	import Button from '#lib/components/ui/Button.svelte';
 	import IdentityAvatar from '#lib/components/ui/IdentityAvatar.svelte';
 	import Kbd from '#lib/components/ui/Kbd.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -7,6 +8,7 @@
 	import { settings } from '#lib/stores/settings.svelte.ts';
 	import { modLabel } from '#lib/platform.ts';
 
+	const STEPS = 3;
 	let step = $state(0);
 
 	function finish() {
@@ -21,92 +23,82 @@
 	];
 </script>
 
-<!-- Dimmed 88% backdrop per spec (heavier than modals). -->
+<!-- Dimmed 88 % backdrop: heavier than a modal's, nothing behind it is in use yet. -->
+<div class="animate-fadein fixed inset-0 z-40 bg-black/88" role="presentation"></div>
+<!-- A dialog in the Modal look (Tonal §7, §8.6). Only the step's content scrolls,
+     so the progress and the actions stay in a short window. -->
 <div
-	class="animate-fadein fixed inset-0 z-40"
-	style="background: color-mix(in srgb, black 88%, transparent);"
-	role="presentation"
-></div>
-<div
-	class="animate-popin fixed top-1/2 left-1/2 z-50 w-[480px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-strong bg-surface-overlay p-6 shadow-overlay"
+	class="card animate-popin fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-2rem)] w-[480px] max-w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay"
 	role="dialog"
 	aria-modal="true"
 	aria-label="Welcome to CubeLite"
+	data-testid="onboarding"
 >
-	{#if step === 0}
-		<h1 class="type-display mb-2">Welcome to CubeLite</h1>
-		<p class="type-body mb-4 text-text-secondary">
-			A fast, keyboard-first Kubernetes client with one identity per cluster — so you always know
-			where you are acting.
-		</p>
-		<div class="flex items-center gap-2.5 rounded-lg border border-border-faint bg-surface-window px-3 py-2.5">
-			<span class="truncate type-data-sm text-text-secondary">
-				{app.kubeconfigPath || '~/.kube/config'}
-			</span>
-			<span class="flex-1"></span>
-			<span class="flex items-center gap-1 type-caption text-status-ok">
-				<Check class="h-3 w-3" />
-				{clusters.contexts.length} context{clusters.contexts.length === 1 ? '' : 's'} found
-			</span>
-		</div>
-	{:else if step === 1}
-		<h2 class="type-title mb-1">Your clusters</h2>
-		<p class="type-caption mb-3 text-text-tertiary">
-			Each context gets a stable identity color, everywhere it appears.
-		</p>
-		<div class="flex max-h-64 flex-col gap-1.5 overflow-y-auto">
-			{#each clusters.contexts.slice(0, 5) as ctx, i (ctx.name)}
-				<div class="flex items-center gap-2.5 rounded-lg border border-border-faint bg-surface-window px-3 py-2">
-					<IdentityAvatar name={ctx.name} color={clusters.identityFor(ctx.name)} size={26} />
-					<span class="type-body flex-1 truncate text-text-primary">{ctx.name}</span>
-					<Kbd label="{modLabel}{i + 1}" />
-				</div>
-			{/each}
-		</div>
-	{:else}
-		<h2 class="type-title mb-1">Keyboard first</h2>
-		<p class="type-caption mb-3 text-text-tertiary">Everything is a few keys away.</p>
-		<div class="flex flex-col gap-1.5">
-			{#each shortcuts as [combo, label] (combo)}
-				<div class="flex items-center gap-3 rounded-lg border border-border-faint bg-surface-window px-3 py-2">
-					<Kbd label={combo} />
-					<span class="type-body text-text-secondary">{label}</span>
-				</div>
-			{/each}
-		</div>
-	{/if}
-
-	<div class="mt-5 flex items-center gap-1.5">
-		{#each [0, 1, 2] as dot (dot)}
-			<span
-				class="h-1.5 w-1.5 rounded-full"
-				style="background: {dot === step ? 'var(--color-accent)' : 'var(--color-border-strong)'};"
-			></span>
-		{/each}
-		<span class="flex-1"></span>
-		{#if step < 2}
-			<button
-				type="button"
-				class="focus-ring type-body flex h-7 items-center rounded-md px-3 text-text-tertiary hover:text-text-secondary"
-				onclick={finish}
-			>
-				Skip
-			</button>
-			<button
-				type="button"
-				class="focus-ring type-body flex h-7 items-center rounded-md bg-accent px-3 text-surface-window hover:brightness-110"
-				onclick={() => (step += 1)}
-			>
-				Continue
-			</button>
+	<div class="min-h-0 flex-1 overflow-y-auto px-6 pt-6 pb-2">
+		{#if step === 0}
+			<h2 class="type-headline mb-2">Welcome to CubeLite</h2>
+			<p class="type-body mb-4 text-text-muted">
+				A fast, keyboard-first Kubernetes client with one identity per cluster, so you always know
+				where you are acting.
+			</p>
+			<div class="flex items-center gap-3 rounded-md bg-surface-sunken px-4 py-3">
+				<span class="type-data-sm min-w-0 truncate text-text-muted" title={app.kubeconfigPath || '~/.kube/config'}>
+					{app.kubeconfigPath || '~/.kube/config'}
+				</span>
+				<span class="flex-1"></span>
+				<span class="type-body-sm flex shrink-0 items-center gap-1.5 font-semibold text-text">
+					<Check class="h-3.5 w-3.5 text-success" aria-hidden="true" />
+					{clusters.contexts.length} context{clusters.contexts.length === 1 ? '' : 's'} found
+				</span>
+			</div>
+		{:else if step === 1}
+			<h2 class="type-headline mb-1">Your clusters</h2>
+			<p class="type-body-sm mb-4 text-text-muted">
+				Each context gets a stable identity color, everywhere it appears.
+			</p>
+			<ul class="flex flex-col gap-1" aria-label="Clusters">
+				{#each clusters.contexts.slice(0, 5) as ctx, i (ctx.name)}
+					<!-- The avatar carries its own cluster's tint (Tonal §4.1). -->
+					<li class="flex items-center gap-3 py-1">
+						<IdentityAvatar name={ctx.name} color={clusters.identityFor(ctx.name)} size={32} surface="container" />
+						<span class="type-body min-w-0 flex-1 truncate text-text" title={ctx.name}>{ctx.name}</span>
+						<Kbd label="{modLabel}{i + 1}" />
+					</li>
+				{/each}
+			</ul>
 		{:else}
-			<button
-				type="button"
-				class="focus-ring type-body flex h-7 items-center rounded-md bg-accent px-3 text-surface-window hover:brightness-110"
-				onclick={finish}
-			>
-				Start using CubeLite
-			</button>
+			<h2 class="type-headline mb-1">Keyboard first</h2>
+			<p class="type-body-sm mb-4 text-text-muted">Everything is a few keys away.</p>
+			<ul class="flex flex-col gap-2" aria-label="Shortcuts">
+				{#each shortcuts as [combo, label] (combo)}
+					<li class="flex items-center gap-3 py-1">
+						<span class="flex w-16 shrink-0"><Kbd label={combo} /></span>
+						<span class="type-body text-text">{label}</span>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</div>
+
+	<!-- The one primary action is 48 px (Tonal §7), as in the pod panel. -->
+	<div class="flex shrink-0 flex-wrap items-center gap-2 px-6 pt-3 pb-5">
+		<!-- Progress is a sentence; the dots repeat it, the current one longer (Tonal §9.3). -->
+		<div class="flex items-center gap-1.5" aria-hidden="true">
+			{#each Array.from({ length: STEPS }, (_, i) => i) as dot (dot)}
+				<span
+					data-step-dot
+					data-current={dot === step}
+					class="h-2 rounded-full {dot === step ? 'w-5 bg-primary' : 'w-2 bg-outline-strong'}"
+				></span>
+			{/each}
+		</div>
+		<span class="type-label ml-1 text-text-muted" data-testid="onboarding-progress">Step {step + 1} of {STEPS}</span>
+		<span class="flex-1"></span>
+		{#if step < STEPS - 1}
+			<Button variant="text" onclick={finish}>Skip</Button>
+			<Button variant="primary" size="primary" onclick={() => (step += 1)}>Continue</Button>
+		{:else}
+			<Button variant="primary" size="primary" onclick={finish}>Start using CubeLite</Button>
 		{/if}
 	</div>
 </div>

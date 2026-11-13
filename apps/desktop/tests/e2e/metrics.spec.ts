@@ -104,7 +104,7 @@ test("Overview cluster history and alerts, and a node's metrics (#530)", async (
   const section = drawer.getByTestId("node-metrics-section");
   await section.scrollIntoViewIfNeeded();
   await expect(section.getByTestId("metrics-chart")).toHaveCount(5);
-  await expect(section.getByText("not available — needs node-exporter or cAdvisor metrics for this node")).toBeVisible();
+  await expect(section.getByText("not available: needs node-exporter or cAdvisor metrics for this node")).toBeVisible();
 });
 
 test("Open in Grafana forwards to an in-cluster Grafana without a URL (#525)", async ({ page }) => {
@@ -119,4 +119,19 @@ test("Open in Grafana forwards to an in-cluster Grafana without a URL (#525)", a
   const forwards = await page.evaluate(() => window.__grafanaForwards);
   expect(forwards).toHaveLength(2);
   expect(forwards?.[0]).toMatchObject({ context: "prod-aks", service: GRAFANA_SERVICE });
+});
+
+test("every series of a chart is drawn in a colour that exists (Tonal data colours)", async ({ page }) => {
+  const section = await openMetrics(page, { grafanaUrl: null });
+  // Network has two series (rx, tx): the second one used a colour the stylesheet did not have.
+  const network = section.getByTestId("metrics-chart").filter({ hasText: "Network" });
+  const strokes = await network.locator("svg[role=img] path").evaluateAll((paths) => paths.map((p) => getComputedStyle(p).stroke));
+  expect(strokes.length).toBeGreaterThanOrEqual(2);
+  for (const stroke of strokes) expect(stroke).not.toBe("none");
+  expect(new Set(strokes).size).toBe(strokes.length);
+  // All five data colours are defined on the page.
+  const colors = await page.evaluate(() =>
+    [1, 2, 3, 4, 5].map((n) => getComputedStyle(document.documentElement).getPropertyValue(`--color-data-${n}`).trim()),
+  );
+  for (const color of colors) expect(color).not.toBe("");
 });

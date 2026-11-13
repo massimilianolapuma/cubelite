@@ -18,7 +18,7 @@
 <input class={INPUT_CLASS} aria-label="Cluster label" {placeholder} bind:value />
 {#if found && found.length > 0}
 	<div class="grid grid-cols-[auto_1fr] items-center gap-2">
-		<span class="type-caption text-text-secondary">Clusters found</span>
+		<span class="type-label text-text-muted">Clusters found</span>
 		<select class={INPUT_CLASS} aria-label="Clusters found" bind:value>
 			<option value="">none (every cluster)</option>
 			{#each found as cluster (cluster)}

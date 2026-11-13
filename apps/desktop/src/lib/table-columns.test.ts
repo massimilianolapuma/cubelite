@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cellText, gridTemplate, planColumns } from "#lib/table-columns.ts";
+import { cellText, narrowPlan, planColumns, planTracks, type ColumnPlan } from "#lib/table-columns.ts";
 import { formatAge } from "#lib/age.ts";
 
 const col = (name: string, column_type = "string", format = "") => ({ name, column_type, format, description: "" });
@@ -73,10 +73,37 @@ describe("cellText", () => {
   });
 });
 
-describe("gridTemplate", () => {
+describe("planTracks", () => {
   it("gives the name the room and Age a narrow column", () => {
-    expect(gridTemplate([{ kind: "name" }, { kind: "namespace" }, { kind: "cell", index: 1, label: "X", date: false }, { kind: "age", label: "Age" }])).toBe(
-      "grid-template-columns: minmax(0,3fr) minmax(0,1fr) minmax(0,1fr) 0.55fr;",
-    );
+    expect(planTracks([{ kind: "name" }, { kind: "namespace" }, { kind: "cell", index: 1, label: "X", date: false }, { kind: "age", label: "Age" }])).toEqual([
+      "minmax(0,3fr)",
+      "minmax(0,1fr)",
+      "minmax(0,1fr)",
+      "0.55fr",
+    ]);
+  });
+});
+
+describe("cellText with a date that is not a timestamp", () => {
+  it("keeps a duration the server already formatted", () => {
+    expect(cellText("10d", true)).toBe("10d");
+    expect(cellText("3h", true)).toBe("3h");
+  });
+});
+
+describe("narrowPlan", () => {
+  const cell = (label: string, index: number): ColumnPlan => ({ kind: "cell", index, label, date: false });
+  const plan: ColumnPlan[] = [{ kind: "name" }, { kind: "namespace" }, cell("A", 1), cell("B", 2), cell("C", 3), cell("D", 4), { kind: "age", label: "Age" }];
+
+  it("keeps the first five columns", () => {
+    expect(narrowPlan(plan, "name")).toEqual(plan.slice(0, 5));
+  });
+
+  it("keeps the column the list is sorted by in view, in place of the last one", () => {
+    expect(narrowPlan(plan, "age")).toEqual([...plan.slice(0, 4), { kind: "age", label: "Age" }]);
+  });
+
+  it("leaves a plan of five or fewer alone", () => {
+    expect(narrowPlan(plan.slice(0, 3), "age")).toEqual(plan.slice(0, 3));
   });
 });

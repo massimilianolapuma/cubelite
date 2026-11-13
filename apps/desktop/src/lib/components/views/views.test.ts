@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
@@ -31,6 +31,7 @@ import EmptyStateView from "./EmptyStateView.svelte";
 import UnreachableView from "./UnreachableView.svelte";
 import EventsView from "./EventsView.svelte";
 import OverviewView from "./OverviewView.svelte";
+import { EMPTY } from "#lib/empty.ts";
 import AllClustersView from "./AllClustersView.svelte";
 import PodsView from "./PodsView.svelte";
 import PodDrawer from "#lib/components/pods/PodDrawer.svelte";
@@ -38,7 +39,8 @@ import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
 import { health } from "#lib/stores/health.svelte.ts";
-import type { PodInfo } from "#lib/tauri.ts";
+import { listEvents, listNamespaces, listPods, type EventInfo, type PodInfo } from "#lib/tauri.ts";
+import { lists } from "#lib/stores/lists.svelte.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
   return {
@@ -66,14 +68,17 @@ beforeEach(() => {
   app.selectedPod = null;
   app.selectedDeployment = null;
   app.podFilter = "";
-  app.podIssuesOnly = false;
-  app.eventWarningsOnly = false;
+  lists.resetSession();
+  lists.groupByNamespace = false;
   app.deploymentFilter = "";
   clusters.contexts = [
     { name: "prod", cluster_server: "https://prod:6443", namespace: "default", is_active: true },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
   ];
-  clusters.identityColors = { prod: "blue", staging: "amber" };
+  clusters.identityColors = { prod: "blue", staging: "magenta" };
+  clusters.loaded = true;
+  clusters.error = null;
+  health.byContext = {};
   clusters.connectionState = "connected";
   clusters.unreachableReason = null;
   resources.pods = [];
@@ -96,10 +101,30 @@ describe("UnreachableView", () => {
     clusters.connectionState = "unreachable";
     clusters.unreachableReason = "connection timed out";
     render(UnreachableView);
-    expect(screen.getByText("Cluster unreachable")).toBeInTheDocument();
+    // A failure hero: the square, the state as the view's title, the reason under it.
+    const title = screen.getByRole("heading", { level: 1, name: "Cluster unreachable" });
+    const hero = title.closest("[data-hero]")!;
+    expect(hero).toHaveAttribute("data-hero", "error");
+    expect(hero.querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "err");
+    expect(hero).toHaveTextContent("connection timed out");
     expect(screen.getByText("https://prod:6443")).toBeInTheDocument();
-    expect(screen.getByText("connection timed out")).toBeInTheDocument();
-    expect(screen.getByText("Retry")).toBeInTheDocument();
+    // Retry is the one primary action; All Clusters is text.
+    expect(screen.getByRole("button", { name: "Retry" })).toHaveAttribute("data-variant", "primary");
+    expect(screen.getByRole("button", { name: "All Clusters" })).toHaveAttribute("data-variant", "text");
+  });
+
+  it("Retry shows it is running and does not start a second retry", async () => {
+    let done: () => void = () => {};
+    const retry = vi.spyOn(clusters, "retry").mockReturnValue(new Promise<void>((resolve) => (done = resolve)));
+    render(UnreachableView);
+    const button = screen.getByRole("button", { name: "Retry" });
+    await fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-busy", "true");
+    await fireEvent.click(button);
+    expect(retry).toHaveBeenCalledOnce();
+    done();
+    await vi.waitFor(() => expect(button).not.toHaveAttribute("aria-busy"));
+    retry.mockRestore();
     await fireEvent.click(screen.getByText("All Clusters"));
     expect(app.view).toBe("dashboard");
   });
@@ -123,10 +148,50 @@ describe("OverviewView", () => {
     render(OverviewView);
     expect(screen.getByText("Nodes")).toBeInTheDocument();
     expect(screen.getByText("Pods running")).toBeInTheDocument();
-    expect(screen.getByText(/metrics unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/Metrics unavailable/)).toBeInTheDocument();
     expect(screen.getByText("Recent warnings")).toBeInTheDocument();
     expect(screen.getByText("Pod/api-1")).toBeInTheDocument();
     expect(screen.getByText("0/3 nodes are available")).toBeInTheDocument();
+    // A recent warning is told by its triangle, not by a coloured dot.
+    const row = screen.getByText("Pod/api-1").closest("button")!;
+    expect(row.querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "warn");
+  });
+
+  it("shows a warning with no involved object as the empty value (Tonal §6)", () => {
+    resources.events = [
+      {
+        event_type: "Warning",
+        reason: "FailedMount",
+        object: "",
+        message: "orphan warning",
+        namespace: "default",
+        count: 1,
+        last_timestamp: new Date().toISOString(),
+      },
+    ];
+    render(OverviewView);
+    const row = screen.getByText("orphan warning").closest("button")!;
+    expect(within(row).getByText(EMPTY)).toBeInTheDocument();
+  });
+
+  it("marks a summary count that needs attention by shape and weight, and leaves a zero plain", () => {
+    resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" })];
+    render(OverviewView);
+    const value = (label: string) =>
+      within(screen.getByRole("region", { name: "Pods" })).getByText(label).nextElementSibling as HTMLElement;
+    expect(value("Pending")).toHaveAttribute("data-attention", "warn");
+    expect(value("Pending").querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "warn");
+    expect(value("Failed")).toHaveAttribute("data-attention", "none");
+    expect(value("Failed").querySelector("svg")).toBeNull();
+    expect(value("Running")).toHaveAttribute("data-attention", "none");
+    expect(value("Pending").getAttribute("style")).toBeNull();
+  });
+
+  it("gives the resource cards no colour of their own", () => {
+    render(OverviewView);
+    for (const icon of screen.getByTestId("resource-grid").querySelectorAll("h2")) {
+      expect(icon.previousElementSibling?.getAttribute("style")).toBeNull();
+    }
   });
 
   it("shows running/total and healthy/total in the stat row", () => {
@@ -153,6 +218,8 @@ describe("OverviewView", () => {
     render(OverviewView);
     expect(screen.getByRole("region", { name: "Secrets" })).toHaveTextContent("forbidden");
     expect(screen.getAllByTestId("forbidden-badge")).toHaveLength(1);
+    // Unknown, not a warning: the dashed ring.
+    expect(screen.getByTestId("forbidden-badge").querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "unknown");
   });
 
   it("adds absolute capacity sub-labels when metrics are available", () => {
@@ -205,6 +272,109 @@ describe("AllClustersView", () => {
     expect(screen.getByText("metrics unavailable")).toBeInTheDocument();
   });
 
+  it("tints every card with its own cluster's colour", () => {
+    render(AllClustersView);
+    const card = (name: string) => screen.getByText(name).closest<HTMLElement>("[data-tint]")!;
+    expect(card("prod").getAttribute("style")).toContain("--cl-tint-h: var(--cl-hue-blue)");
+    expect(card("staging").getAttribute("style")).toContain("--cl-tint-h: var(--cl-hue-magenta)");
+  });
+
+  it("tells health by shape: healthy a circle, unknown a dashed ring, unreachable a square with when it was last seen", () => {
+    health.byContext = {
+      staging: { state: "unreachable", version: null, nodeCount: null, podCount: null, issuePodCount: null, capacity: null, reason: "dial tcp: i/o timeout", lastSeen: "2020-01-01T00:00:00Z" },
+    };
+    render(AllClustersView);
+    const card = (name: string) => screen.getByText(name).closest<HTMLElement>("[data-tint]")!;
+    const glyph = (name: string) => card(name).querySelector("[data-state] svg[data-glyph]")?.getAttribute("data-glyph");
+    expect(glyph("prod")).toBe("ok");
+    expect(glyph("staging")).toBe("err");
+    expect(within(card("staging")).getByTestId("unreachable-detail")).toHaveTextContent(/^Last seen \d+d ago · dial tcp: i\/o timeout$/);
+    expect(within(card("staging")).getByTestId("unreachable-detail").getAttribute("style")).toBeNull();
+  });
+
+  it("marks a cluster's warnings above zero by shape and weight", () => {
+    resources.pods = [pod({ ready: false, phase: "Pending" })];
+    render(AllClustersView);
+    const prod = screen.getByText("prod").closest<HTMLElement>("[data-tint]")!;
+    const warnings = within(prod).getByText("Attention").nextElementSibling!;
+    expect(warnings).toHaveAttribute("data-attention", "true");
+    expect(warnings.querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "warn");
+  });
+
+  it("with no context at all says where clusters come from and opens Preferences on the kubeconfig files", async () => {
+    clusters.contexts = [];
+    clusters.loaded = true;
+    app.preferencesOpen = false;
+    render(AllClustersView);
+    expect(screen.getByRole("heading", { name: "No clusters yet" })).toBeInTheDocument();
+    expect(screen.getByTestId("no-clusters")).toHaveTextContent("~/.kube/config");
+    expect(screen.queryByText("Clusters online")).toBeNull();
+    await fireEvent.click(screen.getByRole("button", { name: "Open Preferences" }));
+    expect(app.preferencesOpen).toBe(true);
+    expect(app.preferencesSection).toBe("kubeconfig");
+    app.preferencesOpen = false;
+    app.preferencesSection = null;
+  });
+
+  it("does not say there are no clusters before the kubeconfig has been read", () => {
+    clusters.contexts = [];
+    clusters.loaded = false;
+    render(AllClustersView);
+    expect(screen.queryByText("No clusters yet")).toBeNull();
+    expect(screen.getByRole("status", { name: "Loading clusters" })).toBeInTheDocument();
+    clusters.loaded = true;
+  });
+
+  it("shows why the kubeconfig could not be read, instead of saying there are no clusters", () => {
+    clusters.contexts = [];
+    clusters.loaded = true;
+    clusters.error = "invalid YAML at line 12";
+    render(AllClustersView);
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not read the kubeconfig");
+    expect(screen.getByRole("alert")).toHaveTextContent("invalid YAML at line 12");
+    expect(screen.queryByText("No clusters yet")).toBeNull();
+    clusters.error = null;
+  });
+
+  it("gives every card a disc that shows on the card, and a name that says the cluster and its health", () => {
+    render(AllClustersView);
+    const staging = screen.getByText("staging").closest<HTMLElement>("[data-tint]")!;
+    expect(staging).toHaveAccessibleName("staging, Unknown");
+    // The inactive disc is not the card's own surface.
+    expect(within(staging).getByTestId("identity-avatar")).toHaveAttribute("data-surface", "container");
+  });
+
+  it("counts pods needing attention under that name, not as warnings", () => {
+    resources.pods = [pod({ ready: false, phase: "Pending" })];
+    render(AllClustersView);
+    expect(screen.getByText("Pods needing attention")).toBeInTheDocument();
+    expect(screen.queryByText("Warnings")).toBeNull();
+    const prod = screen.getByText("prod").closest<HTMLElement>("[data-tint]")!;
+    expect(prod).toHaveAccessibleName("prod, Healthy, 1 pod needs attention");
+  });
+
+  it("does not warn about clusters online while the others are only not probed yet", () => {
+    render(AllClustersView);
+    const tile = screen.getByText("Clusters online").closest("[data-tone]")!;
+    expect(tile).toHaveAttribute("data-tone", "none");
+  });
+
+  it("warns about clusters online when one is unreachable", () => {
+    health.byContext = {
+      staging: { state: "unreachable", version: null, nodeCount: null, podCount: null, issuePodCount: null, capacity: null, reason: null, lastSeen: null },
+    };
+    render(AllClustersView);
+    expect(screen.getByText("Clusters online").closest("[data-tone]")).toHaveAttribute("data-tone", "warn");
+  });
+
+  it("shows a long version whole in a tooltip", () => {
+    health.byContext = {
+      staging: { state: "connected", version: "v1.29.6-eks-db838b0", nodeCount: 1, podCount: 1, issuePodCount: 0, capacity: null, reason: null, lastSeen: null },
+    };
+    render(AllClustersView);
+    expect(screen.getByText("v1.29.6-eks-db838b0")).toHaveAttribute("title", "v1.29.6-eks-db838b0");
+  });
+
   it("navigates to overview when clicking the active cluster card", async () => {
     app.view = "dashboard";
     render(AllClustersView);
@@ -213,9 +383,26 @@ describe("AllClustersView", () => {
   });
 });
 
+/** Loads pods and events through the store, as the app does on connect. */
+async function loadMain(data: { pods?: PodInfo[]; events?: EventInfo[] }) {
+  const kubeconfig = app.kubeconfigPath;
+  const view = app.view;
+  app.kubeconfigPath = "/home/u/.kube/config";
+  app.view = "pods";
+  vi.mocked(listPods).mockResolvedValueOnce(data.pods ?? []);
+  vi.mocked(listNamespaces).mockResolvedValueOnce([]);
+  vi.mocked(listEvents).mockResolvedValueOnce(data.events ?? []);
+  await resources.load();
+  app.kubeconfigPath = kubeconfig;
+  app.view = view;
+}
+
+const statusChip = (name: RegExp) =>
+  within(screen.getByRole("group", { name: "Filter by status" })).getByRole("button", { name });
+
 describe("PodsView", () => {
   it("filters pods and opens the drawer on row click", async () => {
-    resources.pods = [pod(), pod({ name: "worker-0" })];
+    await loadMain({ pods: [pod(), pod({ name: "worker-0" })] });
     render(PodsView);
     const input = screen.getByPlaceholderText("Filter pods…");
     await fireEvent.input(input, { target: { value: "worker" } });
@@ -225,19 +412,84 @@ describe("PodsView", () => {
   });
 });
 
-describe("PodsView needs-attention filter (#574)", () => {
-  it("shows only the pods needing attention while pressed, combined with the text filter", async () => {
-    resources.pods = [
-      pod(),
-      pod({ name: "api-1", ready: false, phase: "Pending" }),
-      pod({ name: "worker-0", restarts: 9 }),
-    ];
+describe("PodsView load states (#606)", () => {
+  it("shows placeholder rows until pods have loaded, then the rows", async () => {
+    resources.clear();
     render(PodsView);
-    const toggle = screen.getByRole("button", { name: /Needs attention/ });
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
-    expect(toggle).toHaveTextContent("2");
-    await fireEvent.click(toggle);
-    expect(app.podIssuesOnly).toBe(true);
+    expect(screen.getByRole("status", { name: "Loading pods" })).toBeInTheDocument();
+    expect(screen.queryByText(/^No pods/)).toBeNull();
+    await loadMain({ pods: [pod()] });
+    expect(await screen.findByText("api-0")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading pods" })).toBeNull();
+  });
+
+  it("shows a failed refresh as an error with Retry, not as an empty list", async () => {
+    await loadMain({ pods: [pod()] });
+    app.kubeconfigPath = "/home/u/.kube/config";
+    vi.mocked(listPods).mockRejectedValueOnce(new Error("connection reset"));
+    vi.mocked(listNamespaces).mockResolvedValueOnce([]);
+    await resources.load();
+    render(PodsView);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Could not load pods");
+    expect(alert).toHaveTextContent("connection reset");
+
+    vi.mocked(listPods).mockResolvedValueOnce([pod()]);
+    vi.mocked(listNamespaces).mockResolvedValueOnce([]);
+    await fireEvent.click(within(alert).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("api-0")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    app.kubeconfigPath = "";
+  });
+
+  it("says metrics are unavailable when the cluster has no metrics-server", async () => {
+    const { listPodMetrics } = await import("#lib/tauri.ts");
+    vi.mocked(listPodMetrics).mockRejectedValueOnce(new Error("no metrics-server"));
+    await loadMain({ pods: [pod()] });
+    render(PodsView);
+    expect(await screen.findByTestId("metrics-notice")).toHaveTextContent("CPU and memory are unavailable");
+  });
+});
+
+describe("each main list shows its own failure (#606)", () => {
+  it("Events says it could not load, instead of looking empty", async () => {
+    app.kubeconfigPath = "/home/u/.kube/config";
+    vi.mocked(listPods).mockResolvedValueOnce([pod()]);
+    vi.mocked(listNamespaces).mockResolvedValueOnce([]);
+    vi.mocked(listEvents).mockRejectedValueOnce(new Error("etcd timeout"));
+    await resources.load();
+    app.kubeconfigPath = "";
+    render(EventsView);
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not load events");
+    expect(screen.getByRole("alert")).toHaveTextContent("etcd timeout");
+    expect(screen.queryByText(/^No events/)).toBeNull();
+  });
+
+  it("Pods still lists when only events failed", async () => {
+    app.kubeconfigPath = "/home/u/.kube/config";
+    vi.mocked(listPods).mockResolvedValueOnce([pod()]);
+    vi.mocked(listNamespaces).mockResolvedValueOnce([]);
+    vi.mocked(listEvents).mockRejectedValueOnce(new Error('events is forbidden: User "dev" cannot list'));
+    await resources.load();
+    app.kubeconfigPath = "";
+    render(PodsView);
+    expect(screen.getByText("api-0")).toBeInTheDocument();
+    expect(screen.queryByText(/not allowed/)).toBeNull();
+  });
+});
+
+describe("PodsView status chips (#574, Tonal §3 #7)", () => {
+  it("Failing and Pending show the pods needing attention, combined with the text filter", async () => {
+    await loadMain({
+      pods: [pod(), pod({ name: "api-1", ready: false, phase: "Pending" }), pod({ name: "worker-0", restarts: 9 })],
+    });
+    render(PodsView);
+    expect(statusChip(/Failing/)).toHaveAttribute("aria-pressed", "false");
+    expect(statusChip(/Failing/)).toHaveTextContent("1");
+    expect(statusChip(/Pending/)).toHaveTextContent("1");
+    await fireEvent.click(statusChip(/Failing/));
+    await fireEvent.click(statusChip(/Pending/));
+    expect(lists.pressed("pods")).toEqual(["err", "warn"]);
     expect(screen.queryByText("api-0")).toBeNull();
     expect(screen.getByText("api-1")).toBeInTheDocument();
     expect(screen.getByText("worker-0")).toBeInTheDocument();
@@ -246,46 +498,26 @@ describe("PodsView needs-attention filter (#574)", () => {
     expect(screen.getByText("worker-0")).toBeInTheDocument();
   });
 
-  it("hides the toggle when every pod is fine", () => {
-    resources.pods = [pod()];
+  it("has no Failing or Pending chip when every pod is fine", async () => {
+    await loadMain({ pods: [pod()] });
     render(PodsView);
-    expect(screen.queryByRole("button", { name: /Needs attention/ })).toBeNull();
+    const group = screen.getByRole("group", { name: "Filter by status" });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent?.replace(/\s+/g, " ").trim())).toEqual(["Running 1"]);
   });
 
-  it("is cleared on context switch", () => {
-    app.podIssuesOnly = true;
-    app.eventWarningsOnly = true;
+  it("the chips are released on context switch", () => {
+    lists.setStatus("pods", ["err", "warn"]);
+    lists.setStatus("events", ["warning"]);
     app.resetForClusterSwitch();
-    expect(app.podIssuesOnly).toBe(false);
-    expect(app.eventWarningsOnly).toBe(false);
+    expect(lists.pressed("pods")).toEqual([]);
+    expect(lists.pressed("events")).toEqual([]);
   });
 });
 
-describe("PodDrawer", () => {
-  it("shows meta grid with real fields and live footer actions", async () => {
-    const onClose = vi.fn();
-    const onDelete = vi.fn();
-    render(PodDrawer, { props: { pod: pod({ restarts: 2 }), onClose, onDelete } });
-    expect(screen.getByText("api-0")).toBeInTheDocument();
-    expect(screen.getByText("Namespace")).toBeInTheDocument();
-    expect(screen.getByText("QoS")).toBeInTheDocument();
-    expect(screen.getByText("Logs").closest("button")).not.toBeDisabled();
-    expect(screen.getByText("Restart").closest("button")).not.toBeDisabled();
-    await fireEvent.click(screen.getByText("Delete"));
-    expect(onDelete).toHaveBeenCalled();
-  });
-
-  it("shows label chips sorted by key", () => {
-    render(PodDrawer, {
-      props: { pod: pod({ labels: { tier: "api", app: "shop" } }), onClose: vi.fn() },
-    });
-    expect(screen.getByText("Labels")).toBeInTheDocument();
-    const chips = screen.getAllByTitle(/=/).map((el) => el.textContent?.trim());
-    expect(chips).toEqual(["app=shop", "tier=api"]);
-  });
-
-  it("portals into the app's drawer host so it stays pinned while the view scrolls", () => {
-    const host = document.createElement("main");
+// The pod panel's content is covered in components/panels.test.ts.
+describe("PodDrawer in the app shell", () => {
+  it("renders into the app's panel host, beside the list card", () => {
+    const host = document.createElement("div");
     host.setAttribute("data-drawer-host", "");
     document.body.appendChild(host);
     try {
@@ -305,8 +537,8 @@ describe("PodDrawer", () => {
 });
 
 describe("EventsView", () => {
-  it("renders type pills, warning row tint and count suffix", () => {
-    resources.events = [
+  it("renders the warning as a pill on an untinted row, and the count suffix", async () => {
+    const events: EventInfo[] = [
       {
         event_type: "Warning",
         reason: "BackOff",
@@ -326,24 +558,54 @@ describe("EventsView", () => {
         last_timestamp: null,
       },
     ];
+    await loadMain({ events });
     render(EventsView);
     for (const h of ["Type", "Reason", "Object", "Message", "Age"]) {
       expect(screen.getByText(h)).toBeInTheDocument();
     }
-    expect(screen.getByText("Warning")).toBeInTheDocument();
-    expect(screen.getByText("Normal")).toBeInTheDocument();
     expect(screen.getByText(/BackOff ×7/)).toBeInTheDocument();
-    const warningRow = screen.getByText("Pod/api-0").closest("div");
-    expect(warningRow?.getAttribute("style")).toContain("--alpha-log-warn-row");
+    const warningRow = screen.getByText("Pod/api-0").closest<HTMLElement>("[data-event-type]")!;
+    const pill = within(warningRow).getByText("Warning").closest("[data-state]")!;
+    expect(pill).toHaveAttribute("data-state", "warn");
+    expect(pill.querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "warn");
+    expect(warningRow.getAttribute("style")).toBeNull();
+    const normalRow = screen.getByText("Pod/api-1").closest<HTMLElement>("[data-event-type]")!;
+    expect(within(normalRow).getByText("Normal").closest("[data-state]")).toBeNull();
   });
 
-  it("shows the empty state", () => {
+  it("shows an event with no involved object as the empty value (Tonal §6)", async () => {
+    const events: EventInfo[] = [
+      {
+        event_type: "Normal",
+        reason: "Sync",
+        object: "",
+        message: "orphan event",
+        namespace: "default",
+        count: 1,
+        last_timestamp: new Date().toISOString(),
+      },
+    ];
+    await loadMain({ events });
     render(EventsView);
-    expect(screen.getByText("No events found.")).toBeInTheDocument();
+    const row = screen.getByText("orphan event").closest<HTMLElement>("[data-event-type]")!;
+    expect(within(row).getByText(EMPTY)).toBeInTheDocument();
   });
 
-  it("filters to warnings with the Warnings only toggle (#574)", async () => {
-    const event = (event_type: string, object: string) => ({
+  it("shows the empty state", async () => {
+    await loadMain({});
+    render(EventsView);
+    expect(screen.getByRole("heading", { name: "No events in any namespace" })).toBeInTheDocument();
+  });
+
+  it("shows placeholder rows until events have loaded (#606)", () => {
+    resources.clear();
+    render(EventsView);
+    expect(screen.getByRole("status", { name: "Loading events" })).toBeInTheDocument();
+    expect(screen.queryByText(/^No events/)).toBeNull();
+  });
+
+  it("filters to warnings with the Warning chip (#574)", async () => {
+    const event = (event_type: string, object: string): EventInfo => ({
       event_type,
       reason: "x",
       object,
@@ -352,10 +614,11 @@ describe("EventsView", () => {
       count: 1,
       last_timestamp: null,
     });
-    resources.events = [event("Warning", "Pod/bad"), event("Normal", "Pod/good")];
+    await loadMain({ events: [event("Warning", "Pod/bad"), event("Normal", "Pod/good")] });
     render(EventsView);
-    const toggle = screen.getByRole("button", { name: /Warnings only/ });
+    const toggle = statusChip(/Warning/);
     expect(toggle).toHaveTextContent("1");
+    expect(statusChip(/Normal/)).toHaveTextContent("1");
     await fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Pod/bad")).toBeInTheDocument();

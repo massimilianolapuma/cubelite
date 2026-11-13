@@ -108,7 +108,7 @@ export function enabledText(kind: IntegrationKind, context: string): string {
 
 /** Prometheus answered but has no cAdvisor series: saved, with a warning. */
 export function noCadvisorText(context: string): string {
-  return `Prometheus enabled for ${context} — no container metrics (cAdvisor) found yet`;
+  return `Prometheus enabled for ${context}, but no container metrics (cAdvisor) found yet`;
 }
 
 /** Persisted dismissals: context → integrations hidden from the banner. */

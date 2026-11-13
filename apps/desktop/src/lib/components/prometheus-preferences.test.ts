@@ -68,7 +68,7 @@ describe("PrometheusPreferences (#510)", () => {
     await fireEvent.click(screen.getByRole("button", { name: /Use grafana monitoring\/kps-grafana/ }));
     expect(screen.getByLabelText("Service")).toHaveValue("prometheus-operated");
     expect(screen.getByTestId("grafana-service")).toHaveTextContent(
-      "Grafana in the cluster: monitoring/kps-grafana:80 — opened through a port-forward",
+      "Grafana in the cluster: monitoring/kps-grafana:80, opened through a port-forward",
     );
     await fireEvent.input(screen.getByLabelText("Grafana URL"), { target: { value: "https://grafana.example" } });
     expect(screen.getByTestId("grafana-service")).toHaveTextContent("(the URL above wins)");

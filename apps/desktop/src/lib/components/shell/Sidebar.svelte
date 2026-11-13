@@ -2,37 +2,33 @@
 	import { tick, untrack } from 'svelte';
 	import { ContextMenu } from 'bits-ui';
 	import Search from '@lucide/svelte/icons/search';
-	import Kbd from '#lib/components/ui/Kbd.svelte';
 	import AllResources from './AllResources.svelte';
 	import NavRow from './NavRow.svelte';
 	import ProfileMenu from './ProfileMenu.svelte';
-	import { modLabel } from '#lib/platform.ts';
+	import { isMac, modLabel } from '#lib/platform.ts';
+	import { MENU_CONTENT, MENU_ITEM } from '#lib/ui-classes.ts';
 	import { app, type View } from '#lib/stores/app.svelte.ts';
 	import { navigation } from '#lib/stores/navigation.svelte.ts';
 	import { profiles } from '#lib/stores/profiles.svelte.ts';
 	import { sidebar } from '#lib/stores/sidebar.svelte.ts';
 	import { dynamic } from '#lib/stores/dynamic.svelte.ts';
 	import { isCustomView, parseCustomView } from '#lib/resource-kinds.ts';
-	import { CUSTOM_DOT } from './CustomResources.svelte';
 
 	// Sidebar variant C (resource-kinds §3): profile switch, Go to resource,
 	// the active profile's pins, then every section with one open at a time.
 	// Order and visibility of sections and types come from Preferences (#496).
 	const sections = $derived(navigation.sections);
 
-	/** Every type's label and section dot, hidden ones included, plus the cluster's custom kinds. */
+	/** Every type's label, hidden ones included, plus the cluster's custom kinds. */
 	const meta = $derived(
-		new Map<View, { label: string; dot: string; hint?: string }>([
-			...navigation.arranged.flatMap((s) => s.items.map((i) => [i.view, { label: i.label, dot: s.dot }] as const)),
-			...dynamic.customGroups.flatMap((g) =>
-				g.kinds.map((k) => [k.view, { label: k.kind, dot: CUSTOM_DOT, hint: g.group }] as const)
-			)
+		new Map<View, { label: string; hint?: string }>([
+			...navigation.arranged.flatMap((s) => s.items.map((i) => [i.view, { label: i.label }] as const)),
+			...dynamic.customGroups.flatMap((g) => g.kinds.map((k) => [k.view, { label: k.kind, hint: g.group }] as const))
 		])
 	);
 	/** A pin the cluster does not serve: custom kinds fall back to their plural. */
-	const fallback = (view: View): { label: string; dot: string; hint?: string } => ({
-		label: (isCustomView(view) && parseCustomView(view)?.plural) || view,
-		dot: CUSTOM_DOT
+	const fallback = (view: View): { label: string; hint?: string } => ({
+		label: (isCustomView(view) && parseCustomView(view)?.plural) || view
 	});
 	const pins = $derived(
 		profiles.active.pins
@@ -75,28 +71,27 @@
 		});
 	}
 
-	const label = 'type-section px-2.5 text-text-tertiary';
-	const menuItem =
-		'flex cursor-default items-center gap-3 rounded-md px-2.5 py-1.5 type-body text-text-secondary data-highlighted:text-text-primary';
+	const label = 'type-label px-3.5';
 </script>
 
-<aside class="flex min-h-0 w-[216px] shrink-0 flex-col gap-2 overflow-y-auto bg-surface-panel px-2 py-2.5">
-	<div class="flex shrink-0 items-center gap-1">
+<!-- Sits on the window ground, no card: tone separates it from the content (Tonal §5). -->
+<aside class="flex min-h-0 w-[232px] flex-1 flex-col gap-2 overflow-y-auto px-2 pt-1 pb-3">
+	<!-- On macOS this row sits beside the window controls: keep clear of their 78 px. -->
+	<div class="flex shrink-0 items-center gap-2 {isMac ? 'pl-1' : ''}">
 		<div class="min-w-0 flex-1"><ProfileMenu /></div>
 		<button
 			type="button"
-			class="focus-ring flex h-7 shrink-0 items-center gap-1 rounded-md border border-border-default bg-surface-window px-1.5 text-text-tertiary hover:text-text-secondary"
+			class="focus-ring forced-edge flex h-(--control-h-compact) w-(--control-h-compact) shrink-0 items-center justify-center rounded-full bg-surface-container-high text-text-muted hover:brightness-110"
 			aria-label="Go to resource"
 			title="Go to resource ({modLabel}K)"
 			onclick={() => (app.paletteOpen = true)}
 		>
-			<Search class="h-3 w-3" aria-hidden="true" />
-			<Kbd label="{modLabel}K" />
+			<Search class="h-4 w-4" aria-hidden="true" />
 		</button>
 	</div>
 
 	<div class="shrink-0">
-		<div class="{label} mb-0.5 truncate" id="sidebar-pinned-label" title={profiles.active.name}>
+		<div class="{label} mb-1 truncate" id="sidebar-pinned-label" title={profiles.active.name}>
 			Pinned · {profiles.active.name}
 		</div>
 		<ul aria-label="Pinned · {profiles.active.name}" bind:this={pinList}>
@@ -104,13 +99,13 @@
 				<li>
 					<ContextMenu.Root>
 						<ContextMenu.Trigger>
-							<NavRow view={pin.view} label={pin.label} dot={pin.dot} hint={pin.hint} />
+							<NavRow view={pin.view} label={pin.label} hint={pin.hint} />
 						</ContextMenu.Trigger>
 						<ContextMenu.Portal>
 							<ContextMenu.Content
-								class="animate-popin z-50 min-w-40 rounded-xl border border-border-strong bg-surface-overlay p-1 shadow-overlay"
+								class="{MENU_CONTENT} min-w-40"
 							>
-								<ContextMenu.Item class={menuItem} onSelect={() => unpin(pin.view)}>Unpin</ContextMenu.Item>
+								<ContextMenu.Item class={MENU_ITEM} onSelect={() => unpin(pin.view)}>Unpin</ContextMenu.Item>
 							</ContextMenu.Content>
 						</ContextMenu.Portal>
 					</ContextMenu.Root>
@@ -118,12 +113,12 @@
 			{/each}
 		</ul>
 		{#if pins.length === 0}
-			<p class="type-caption px-2.5 text-text-tertiary">Pin any resource from its list header.</p>
+			<p class="type-body-sm px-3.5 text-text-subtle">Pin any resource from its list header.</p>
 		{/if}
 	</div>
 
-	<div class="flex min-h-0 flex-1 flex-col border-t border-border-faint pt-2">
-		<div class="{label} mb-0.5 shrink-0">All resources</div>
+	<div class="flex min-h-0 flex-1 flex-col">
+		<div class="{label} mb-1 shrink-0">All resources</div>
 		<AllResources {sections} />
 	</div>
 </aside>

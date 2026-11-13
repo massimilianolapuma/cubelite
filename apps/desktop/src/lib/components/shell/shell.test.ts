@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
@@ -22,13 +22,16 @@ vi.mock("#lib/tauri.ts", () => ({
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
+const windowApi = vi.hoisted(() => ({ startDragging: vi.fn(), toggleMaximize: vi.fn() }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => windowApi }));
 
-import Titlebar from "./Titlebar.svelte";
+import TopBar from "./TopBar.svelte";
 import ClusterRail from "./ClusterRail.svelte";
 import Sidebar from "./Sidebar.svelte";
-import StatusBar from "./StatusBar.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
+import { health } from "#lib/stores/health.svelte.ts";
+import { lists } from "#lib/stores/lists.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
 import { dynamic } from "#lib/stores/dynamic.svelte.ts";
 import { sidebar } from "#lib/stores/sidebar.svelte.ts";
@@ -67,33 +70,111 @@ beforeEach(() => {
     { name: "prod-aks", cluster_server: "https://prod.azmk8s.io:443", namespace: "default", is_active: true },
     { name: "staging", cluster_server: "https://staging:6443", namespace: "default", is_active: false },
   ];
-  clusters.identityColors = { "prod-aks": "blue", staging: "amber" };
+  clusters.identityColors = { "prod-aks": "blue", staging: "magenta" };
   clusters.connectionState = "connected";
   resources.pods = [];
   resources.namespaces = [];
   resources.deployments = [];
   resources.events = [];
+  health.byContext = {};
 });
 
-describe("Titlebar", () => {
-  it("shows the active cluster with provider chip and connection state", () => {
-    render(Titlebar);
+const warning = {
+  event_type: "Warning",
+  reason: "BackOff",
+  object: "Pod/api-0",
+  message: "Back-off restarting failed container",
+  namespace: "default",
+  count: 3,
+  last_timestamp: null,
+};
+
+describe("TopBar", () => {
+  it("shows the active cluster with provider tag and connection state", () => {
+    render(TopBar);
     expect(screen.getByText("prod-aks")).toBeInTheDocument();
     expect(screen.getByText("AKS")).toBeInTheDocument();
     expect(screen.getByText("Connected")).toBeInTheDocument();
   });
 
-  it("shows Unreachable when the active cluster is down", () => {
+  it("shows the connection state as a shape and a word", () => {
+    render(TopBar);
+    const state = () => screen.getByTestId("connection-state");
+    expect(state().querySelector("svg")).toHaveAttribute("data-glyph", "ok");
     clusters.connectionState = "unreachable";
-    render(Titlebar);
-    expect(screen.getByText("Unreachable")).toBeInTheDocument();
+    render(TopBar);
+    const last = screen.getAllByTestId("connection-state").at(-1)!;
+    expect(last).toHaveTextContent("Unreachable");
+    expect(last.querySelector("svg")).toHaveAttribute("data-glyph", "err");
+  });
+
+  it("carries the Kubernetes version the status bar used to show", () => {
+    health.byContext = {
+      "prod-aks": { ...health.for("prod-aks"), state: "connected", version: "v1.30.2" },
+    };
+    render(TopBar);
+    expect(screen.getByText("v1.30.2")).toBeInTheDocument();
+  });
+
+  it("tints the cluster chip with the cluster's own colour, whatever the window shows", () => {
+    clusters.identityColors = { "prod-aks": "teal", staging: "magenta" };
+    app.view = "dashboard";
+    render(TopBar);
+    const chip = screen.getByRole("button", { name: /prod-aks/ });
+    expect(chip).toHaveAttribute("data-tint");
+    expect(chip.getAttribute("style")).toContain("--cl-tint-h: var(--cl-hue-teal)");
+  });
+
+  it("opens a menu with the server address, copy and reconnect", async () => {
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    const retry = vi.spyOn(clusters, "retry").mockResolvedValue();
+    render(TopBar);
+    await fireEvent.click(screen.getByRole("button", { name: /prod-aks/ }));
+    expect(await screen.findByText("https://prod.azmk8s.io:443")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Copy server address" }));
+    expect(writeText).toHaveBeenCalledWith("https://prod.azmk8s.io:443");
+    await fireEvent.click(screen.getByRole("button", { name: /prod-aks/ }));
+    await fireEvent.click(await screen.findByRole("menuitem", { name: "Reconnect" }));
+    expect(retry).toHaveBeenCalled();
+    retry.mockRestore();
+    vi.unstubAllGlobals();
   });
 
   it("opens the command palette from the search button", async () => {
-    render(Titlebar);
+    render(TopBar);
     await fireEvent.click(screen.getByText("Search & switch…"));
     expect(app.paletteOpen).toBe(true);
     app.paletteOpen = false;
+  });
+
+  it("counts warnings in a chip that opens Events, with the warning shape", async () => {
+    resources.events = [warning];
+    render(TopBar);
+    const chip = screen.getByRole("button", { name: "1 warning" });
+    expect(chip.querySelector("svg")).toHaveAttribute("data-glyph", "warn");
+    // Whatever was pressed in Events before, the chip shows the warnings it counts.
+    lists.setStatus("events", ["normal"]);
+    await fireEvent.click(chip);
+    expect(app.view).toBe("events");
+    expect(lists.pressed("events")).toEqual(["warning"]);
+  });
+
+  it("drags the window from its empty space, not from a chip", async () => {
+    windowApi.startDragging.mockClear();
+    const { container } = render(TopBar);
+    const header = container.querySelector("header")!;
+    expect(header).toHaveAttribute("data-tauri-drag-region");
+    await fireEvent.mouseDown(screen.getByRole("button", { name: /prod-aks/ }), { button: 0 });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(windowApi.startDragging).not.toHaveBeenCalled();
+    await fireEvent.mouseDown(header, { button: 0 });
+    await vi.waitFor(() => expect(windowApi.startDragging).toHaveBeenCalledTimes(1));
+  });
+
+  it("has no warnings chip when there is nothing to warn about", () => {
+    render(TopBar);
+    expect(screen.queryByRole("button", { name: /warning/ })).toBeNull();
   });
 });
 
@@ -110,6 +191,39 @@ describe("ClusterRail", () => {
     expect(dots.map((d) => d.dataset.health)).toEqual(["connected", "unknown"]);
   });
 
+  it("shows health as a shape, not as a colour alone", () => {
+    clusters.connectionState = "unreachable";
+    render(ClusterRail);
+    const glyphs = screen.getAllByTestId("health-dot").map((d) => d.querySelector("svg")?.dataset.glyph);
+    expect(glyphs).toEqual(["err", "unknown"]);
+    clusters.connectionState = "connected";
+  });
+
+  it("names each cluster button with the context and its health, not just initials", () => {
+    render(ClusterRail);
+    expect(screen.getByRole("button", { name: "prod-aks, connected" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "staging, not connected" })).toBeInTheDocument();
+  });
+
+  it("gives every avatar its own cluster's tint and marks the active one", () => {
+    render(ClusterRail);
+    const avatars = screen.getAllByTestId("identity-avatar");
+    expect(avatars.map((a) => a.getAttribute("style"))).toEqual([
+      expect.stringContaining("--cl-tint-h: var(--cl-hue-blue)"),
+      expect.stringContaining("--cl-tint-h: var(--cl-hue-magenta)"),
+    ]);
+    expect(avatars.every((a) => a.hasAttribute("data-tint"))).toBe(true);
+    expect(avatars.map((a) => a.dataset.active)).toEqual(["true", "false"]);
+  });
+
+  it("keeps All Clusters and Preferences outside the list that scrolls", () => {
+    render(ClusterRail);
+    const list = screen.getByRole("list", { name: "Contexts" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(list).queryByLabelText("All Clusters")).toBeNull();
+    expect(within(list).queryByLabelText("Preferences")).toBeNull();
+  });
+
   it("names the defining kubeconfig file in the tooltip only with several files", () => {
     clusters.contexts = clusters.contexts.map((c) => ({
       ...c,
@@ -124,7 +238,7 @@ describe("ClusterRail", () => {
       { path: "/home/u/.kube/team.yaml", exists: true, contexts: 1, shadowed: [] },
     ];
     render(ClusterRail);
-    expect(screen.getByTitle("staging — /home/u/.kube/team.yaml")).toBeInTheDocument();
+    expect(screen.getByTitle("staging (/home/u/.kube/team.yaml)")).toBeInTheDocument();
   });
 
   it("navigates to the dashboard from the home button", async () => {
@@ -169,7 +283,10 @@ describe("Sidebar", () => {
     sidebar.open("storage");
     const storageClasses = (await screen.findByText("Storage Classes")).closest("button")!;
     expect(storageClasses).toHaveAttribute("title", "Not available on this cluster");
-    expect(screen.getByText("Storage Classes")).toHaveClass("text-text-disabled");
+    // Stays in place, marked, with an en dash where the count would be.
+    expect(storageClasses).toHaveAttribute("data-unavailable", "true");
+    expect(storageClasses).toHaveTextContent("–");
+    expect(storageClasses.querySelector("[data-testid=nav-count]")).toBeNull();
     dynamic.clear();
   });
 
@@ -185,23 +302,28 @@ describe("Sidebar", () => {
   });
 
   it("keeps the pods total neutral and badges only the pods needing attention (#574)", async () => {
-    app.podIssuesOnly = false;
+    lists.resetSession();
     resources.pods = [pod(), pod({ name: "api-1", ready: false, phase: "Pending" }), pod({ name: "api-2" })];
     render(Sidebar);
     const row = screen.getByText("Pods").closest("button")!;
     expect(row).toHaveTextContent("3");
-    expect(row.querySelector("[data-testid=nav-count]")).toHaveClass("text-text-tertiary");
+    // The total is its own neutral number, outside the toned badge.
+    expect(row.querySelector("[data-testid=nav-count]")!.closest("[data-tone]")).toBeNull();
+    expect(row.querySelector("[data-testid=nav-count]")).toHaveTextContent(/^3$/);
     const badge = screen.getByRole("button", { name: "1 pod needs attention: show them" });
     expect(badge).toHaveTextContent("1");
-    expect(badge.getAttribute("style")).toContain("--color-status-err");
+    // Failure is a square as well as a colour.
+    expect(badge).toHaveAttribute("data-tone", "err");
+    expect(badge.querySelector("svg")).toHaveAttribute("data-glyph", "err");
 
     await fireEvent.click(badge);
     expect(app.view).toBe("pods");
-    expect(app.podIssuesOnly).toBe(true);
+    // Failing and Pending together are the pods needing attention.
+    expect(lists.pressed("pods")).toEqual(["err", "warn"]);
   });
 
   it("badges warning events in amber and opens Events filtered (#574)", async () => {
-    app.eventWarningsOnly = false;
+    lists.resetSession();
     const event = (event_type: string) => ({
       event_type,
       reason: "x",
@@ -214,10 +336,25 @@ describe("Sidebar", () => {
     resources.events = [event("Warning"), event("Warning"), event("Normal")];
     render(Sidebar);
     const badge = screen.getByRole("button", { name: "2 warnings: show them" });
-    expect(badge.getAttribute("style")).toContain("--color-status-warn");
+    expect(badge).toHaveAttribute("data-tone", "warn");
+    expect(badge.querySelector("svg")).toHaveAttribute("data-glyph", "warn");
     await fireEvent.click(badge);
     expect(app.view).toBe("events");
-    expect(app.eventWarningsOnly).toBe(true);
+    expect(lists.pressed("events")).toEqual(["warning"]);
+  });
+
+  it("rows carry no section dot: colour is for the tint and for state", () => {
+    render(Sidebar);
+    const row = screen.getByText("Pods").closest("button")!;
+    expect(row.firstElementChild).toHaveTextContent("Pods");
+    expect(row.querySelector("[style*='background']")).toBeNull();
+  });
+
+  it("marks the current view on its row", async () => {
+    render(Sidebar);
+    await fireEvent.click(screen.getByText("Deployments"));
+    expect(screen.getByText("Deployments").closest("[data-active]")).toHaveAttribute("data-active", "true");
+    expect(screen.getByText("Pods").closest("[data-active]")).toHaveAttribute("data-active", "false");
   });
 
   it("has no badge when nothing needs attention (#574)", () => {
@@ -255,27 +392,5 @@ describe("Sidebar", () => {
     render(Sidebar);
     await fireEvent.click(screen.getByText("Pods"));
     expect(app.view).toBe("pods");
-  });
-});
-
-describe("StatusBar", () => {
-  it("shows server, refresh interval and clickable warning count", async () => {
-    resources.events = [
-      {
-        event_type: "Warning",
-        reason: "BackOff",
-        object: "Pod/api-0",
-        message: "Back-off restarting failed container",
-        namespace: "default",
-        count: 3,
-        last_timestamp: null,
-      },
-    ];
-    render(StatusBar);
-    expect(screen.getByText("https://prod.azmk8s.io:443")).toBeInTheDocument();
-    expect(screen.getByText(/refresh/)).toBeInTheDocument();
-    const warnings = screen.getByText("1 warning");
-    await fireEvent.click(warnings);
-    expect(app.view).toBe("events");
   });
 });

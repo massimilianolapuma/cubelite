@@ -1,4 +1,4 @@
-/** Best-effort provider label for a kube context (titlebar/palette chip). */
+/** Best-effort provider label for a kube context (top bar chip, palette). */
 export function providerOf(name: string, server: string | null): string {
   const hay = `${name} ${server ?? ""}`.toLowerCase();
   if (hay.includes("azmk8s") || hay.includes("aks")) return "AKS";

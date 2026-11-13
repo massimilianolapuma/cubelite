@@ -12,22 +12,61 @@ export const METRICS_RANGES: { value: MetricsRange; label: string }[] = [
   { value: "7d", label: "7d" },
 ];
 
-/** Line colours, in order of first appearance (same tokens as cluster identity). */
-export const SERIES_COLORS = [
-  "var(--color-accent)",
-  "var(--color-cluster-teal)",
-  "var(--color-cluster-violet)",
-  "var(--color-cluster-amber)",
-  "var(--color-cluster-pink)",
-  "var(--color-cluster-blue)",
+/**
+ * The data colours (Tonal §4.2), each named in full: Tailwind only emits the
+ * theme variables it finds written out in the sources, so a name built from a
+ * template would leave the colour undefined and the line undrawn.
+ */
+const DATA_COLORS = [
+  "var(--color-data-1)",
+  "var(--color-data-2)",
+  "var(--color-data-3)",
+  "var(--color-data-4)",
+  "var(--color-data-5)",
+];
+/** Stroke of each round past the first five series: a different dash every time. */
+const REPEAT_DASHES = ["6 3", "2 2", "8 3 2 3"];
+/** Reference lines (requests, limits, allocatable): dashed, in the quietest text colour. */
+export const REFERENCE_COLOR = "var(--color-text-subtle)";
+/** The short even dash of a reference line. */
+export const REFERENCE_DASH = "3 3";
+/**
+ * Stroke of each series in forced colours (Tonal §9.1), by order: the system
+ * palette draws every line in the text colour, so the dash alone tells them
+ * apart. None is the reference lines' dash; past eight they come round again.
+ */
+export const FORCED_DASHES = [
+  "none",
+  "6 3",
+  "1.5 2.5",
+  "6 3 1.5 3",
+  "12 3",
+  "1.5 2.5 1.5 6",
+  "12 3 1.5 3",
+  "6 2 6 2 1.5 2",
 ];
 
-export function seriesColor(index: number): string {
-  return SERIES_COLORS[index % SERIES_COLORS.length];
+/** The forced-colours dash of the series at `index`. */
+export function forcedDash(index: number): string {
+  return FORCED_DASHES[index % FORCED_DASHES.length];
 }
 
-/** One line of a chart; dashed for reference lines (requests, limits). */
-export type ChartLine = { label: string; color: string; points: Point[]; dashed?: boolean };
+/**
+ * Colour and stroke of the series at `index`, in order of first appearance:
+ * the five data colours solid, then the same five in another dash each round,
+ * so that the sixth line is not mistaken for the first, nor the eleventh.
+ */
+export function seriesStyle(index: number): { color: string; dash?: string } {
+  const color = DATA_COLORS[index % DATA_COLORS.length];
+  const round = Math.floor(index / DATA_COLORS.length);
+  return round === 0 ? { color } : { color, dash: REPEAT_DASHES[(round - 1) % REPEAT_DASHES.length] };
+}
+
+/**
+ * One line of a chart. `dashed` marks a reference line (requests, limits);
+ * `dash` is the stroke pattern of a series that repeats a colour.
+ */
+export type ChartLine = { label: string; color: string; points: Point[]; dashed?: boolean; dash?: string };
 
 export type Unit = "cores" | "bytes" | "bytes-per-second" | "count";
 

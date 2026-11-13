@@ -364,7 +364,7 @@ pub async fn send(
             .to_string();
         return Ok(RawResponse {
             status,
-            body: format!("redirect to {location} not followed — use that URL as the endpoint"),
+            body: format!("redirect to {location} not followed: use that URL as the endpoint"),
         });
     }
     let body = response.text().await.map_err(|e| e.to_string())?;

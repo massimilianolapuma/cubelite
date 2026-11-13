@@ -66,7 +66,7 @@ pub fn cli_error(stderr: &str) -> PromError {
     let lower = stderr.to_ascii_lowercase();
     if lower.contains("az login") || lower.contains("please run 'az login'") {
         return PromError::Config(
-            "Not logged in to the Azure CLI — run `az login` and try again".to_string(),
+            "Not logged in to the Azure CLI: run `az login` and try again".to_string(),
         );
     }
     let first = stderr
@@ -103,7 +103,7 @@ pub async fn token() -> Result<String, PromError> {
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 PromError::Config(
-                    "Azure CLI (az) not found — install it or choose another method".to_string(),
+                    "Azure CLI (az) not found: install it or choose another method".to_string(),
                 )
             } else {
                 PromError::Config(format!("Cannot run the Azure CLI: {e}"))

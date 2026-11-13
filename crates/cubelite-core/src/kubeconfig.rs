@@ -400,7 +400,7 @@ impl KubeConfig {
             .paths
             .first()
             .ok_or_else(|| KubeconfigError::FileNotFound {
-                path: "(no kubeconfig paths known — cannot save)".to_string(),
+                path: "(no kubeconfig paths known, cannot save)".to_string(),
             })?;
 
         let content = std::fs::read_to_string(primary)?;

@@ -1,7 +1,12 @@
-# Design Tokens — CubeLite
+# Design tokens — CubeLite (Tonal)
 
-Single source of truth for all visual design primitives and semantic aliases used across the
-CubeLite desktop application.
+`design/tokens.json` is the single source of truth for the colours, type, shape, density and
+motion of the desktop app. A generator turns it into the generated regions of
+`apps/desktop/src/app.css`; a lint keeps the components on it; a test suite checks its contrast.
+
+- Spec: `docs/superpowers/specs/2026-11-10-tonal-design-system-design.md`
+- Design system (usage rules, components): https://claude.ai/artifact/NhxxZZksmWfXA5FyA2vr3d
+- `design/design_handoff_cubelite_ui/` is the v2 handoff, kept for history only.
 
 ---
 
@@ -9,96 +14,235 @@ CubeLite desktop application.
 
 ```
 design/
-├── tokens.json          ← All tokens (primitives + semantics + spacing + typography)
-├── export-tokens.ts     ← Generator script — run to sync tokens → CSS
+├── tokens.json          ← All tokens (v3, Tonal)
+├── build-css.ts         ← Pure builders: tokens → the generated regions of app.css
+├── build-css.test.ts    ← Generator tests, including "app.css is in sync"
+├── type-style.ts        ← Parser for the compact typography syntax
+├── type-style.test.ts   ← Parser tests
+├── export-tokens.ts     ← CLI: reads tokens.json, rewrites app.css (`pnpm design:tokens`)
 └── README.md            ← This file
 ```
 
 ---
 
-## Token Layers
+## `tokens.json`
 
-### 1. Primitive colours
+Top-level groups: `color`, `identity`, `spacing`, `radius`, `shadow`, `font`, `density`,
+`contrast`, `motion`. A key starting with `$` is metadata (`$description`, `$type`, …) and is never emitted.
 
-Raw zinc palette (`zinc-50` → `zinc-950`).
-These are reference-only — **do not use primitive tokens directly in components**; use semantic aliases.
+### Colour roles (`color`)
 
-### 2. Semantic aliases (light + dark)
+Each role carries one OKLCH value per theme, `[lightness, chroma, hue]`:
 
-All values are **HSL channel triples** consumed with `hsl(var(--token))` in shadcn-svelte components.
+```json
+"surface-container": { "$dark": [0.215, 0.036, "tint"], "$light": [0.99, 0.005, "tint"] }
+```
 
-| Token | Light | Dark | Notes |
-|---|---|---|---|
-| `--background` | `0 0% 100%` | `240 10% 3.9%` | Page / window background |
-| `--foreground` | `240 10% 3.9%` | `0 0% 98%` | Default text |
-| `--card` / `--card-foreground` | white / 3.9% | 3.9% / 98% | Card surfaces |
-| `--muted` / `--muted-foreground` | 95.9% / 46.1% | 15.9% / 64.9% | Disabled / secondary text |
-| `--border` | `240 5.9% 90%` | `240 3.7% 15.9%` | Dividers and outlines |
-| `--ring` | `240 5.9% 10%` | `240 4.9% 83.9%` | Focus rings |
-| `--primary` / `--primary-foreground` | 10% / 98% | 98% / 10% | Buttons, active states |
-| `--destructive` | `0 84.2% 60.2%` | `0 62.8% 30.6%` | Error / delete actions |
-| `--sidebar-background` | `240 5.9% 95%` | `240 5.9% 10%` | Sidebar panel |
+A hue of `"tint"` follows the active cluster: the generator writes `oklch(L C var(--cl-tint-h))`.
+A number is a fixed hue (the state and data colours). Anything else (a typo such as `"Tint"`, a
+missing value) stops the generator with the role's name.
 
-### 3. Spacing
+| Group | Roles |
+|---|---|
+| Surfaces (tinted) | `surface-window`, `surface-sunken`, `surface-container`, `surface-container-high`, `surface-container-top`, `surface-overlay` |
+| Lines (tinted) | `outline` (decorative hairlines), `outline-strong` (control borders, 3:1) |
+| Text (tinted) | `text`, `text-muted`, `text-subtle` |
+| Primary (tinted) | `primary` / `on-primary`, `primary-container` / `on-primary-container` |
+| State (fixed hues) | `success`, `warning`, `error`, their `*-container` / `on-*-container` pairs, `error-solid` / `on-error-solid` |
+| Data (fixed hues) | `data-1` … `data-5`: chart series, log sources, JSON values |
 
-`--spacing-{0‥24}` — matches Tailwind's default 4 px base scale (values in `rem`).
+Every role becomes a Tailwind colour (`bg-surface-container`, `text-text-muted`,
+`border-outline-strong`, `fill-success`, …) and the variable `var(--color-<role>)`.
 
-### 4. Border radius
+**Write the full name.** Tailwind v4 emits a theme variable only if its full name appears
+literally somewhere in the sources: `var(--color-data-${n})` or `` `text-${role}` `` built at run
+time leaves the colour undefined and nothing is drawn. Keep a literal table instead
+(`var(--color-data-1)`, …).
 
-`--radius-{none,sm,md,lg,xl,2xl,full}` — consumed by shadcn-svelte components.
+### Tint and identity (`identity`)
 
-### 5. Shadows
+`identity.hues` maps each cluster identity to a hue: blue 240 (the `default`), magenta 345, teal
+190, violet 310, indigo 275. They stay between 185 and 345: red, amber and green mean a state,
+never a cluster (the contrast suite checks this).
 
-`--shadow-{sm,md,lg,xl}` — standard elevation scale.
+A cluster shows its identity as a **tint**, never as a colour of its own:
 
-### 6. Typography
+- `--cl-tint-h` is set inline on `<html>` from the active cluster (`applyTint` in
+  `apps/desktop/src/lib/appearance.ts`); the All Clusters dashboard and onboarding keep the
+  default. Changing cluster cross-fades every tinted colour (`--cl-tint-h` is a registered
+  `@property`).
+- A subtree that belongs to another cluster (rail avatar, dashboard card, palette row, the log
+  pop-out) carries `data-tint` and `style={tintStyle(color)}` (`--cl-tint-h: var(--cl-hue-teal)`):
+  every role is declared again on `[data-tint]`, so `bg-primary` inside it is that cluster's
+  primary.
 
-`--font-sans` = Geist (UI), `--font-mono` = Geist Mono (data only: names, metrics, IPs, logs).
+### Typography (`font`)
 
-`font.style.*` tokens use the compact syntax `"<weight> <size>px <sans|mono>[ · uppercase][ · ls <em>em]"`
-plus optional `$lineHeight` and `$color` (a key of the `text` group). The generator emits one
-Tailwind `@utility type-<name>` per token inside the `@generated:type` region of `app.css`. Sizes below 10px are rejected (Apple HIG floor).
+`font.family`: `sans` = Inter (interface), `mono` = JetBrains Mono (values the cluster produced),
+`display` = Space Grotesk (titles, status heroes, key numbers). The fonts are bundled with the
+`@fontsource` packages imported at the top of `app.css` (offline, no network).
 
-| Token | Value | Use |
+`font.style.*` uses a compact syntax, `"<weight> <size>px <sans|mono|display>[ · ls <em>em]"`, plus
+an optional `$lineHeight` and `$color` (a colour role). The generator emits one
+`@utility type-<name>` per style; a size under 10 px, an unknown flag (there is no `uppercase`:
+labels are sentence case) or an unknown colour role stops it.
+
+| Style | Value | Use |
 |---|---|---|
-| display | 600 28px sans | onboarding hero |
-| title | 600 16px sans | view titles |
-| subtitle | 600 13.5px sans | modal/card titles, titlebar cluster name |
-| body | 500 13px sans | nav, buttons, rows |
-| caption | 400 11.5px sans | descriptions, meta, filter inputs |
-| section | 600 10px sans · uppercase · ls .07em | section headers |
-| colhead | 600 11px sans · uppercase · ls .05em | column headers, card labels |
-| data | 500 12.5px mono | resource names |
-| data-sm | 400 12px mono | cells, metrics |
-| log | 400 11.5px mono | log lines |
-| stat | 600 22px mono | stat card values |
-| micro | 500 10.5px sans | kbd, pills, counters, log meta |
+| `display` | 600 34px display · ls −.02em | view title and its count |
+| `stat` | 600 32px display | the numbers that explain a state |
+| `headline` | 600 22px display · ls −.01em | status hero, dialog titles, empty states |
+| `title` | 600 15px sans | card titles, primary button |
+| `body` | 500 14px sans | navigation, buttons, chips, rows |
+| `body-sm` | 400 13px sans | descriptions, helper text, toasts |
+| `label` | 600 12px sans, `text-subtle` | column headers, section and field labels |
+| `micro` | 500 11px sans | keyboard hints, counters |
+| `data` | 500 13px mono | resource names, values |
+| `data-sm` | 500 12px mono | numeric cells, counts, versions |
+| `log` | 400 12px mono | log lines, YAML, terminal |
 
-Components must use these utilities (optionally combined with `font-mono`, `font-normal`,
-`font-semibold`, `uppercase`); hard-coded `text-[Npx]` classes are not allowed.
+### Shape, space, density, motion
+
+- `radius`: `xs` 6 · `sm` 10 · `md` 16 · `lg` 20 · `xl` 28 · `full` (pills).
+- `spacing`: `1…8` on a 4 px scale.
+- `shadow`: `overlay` only, under `surface-overlay`. Cards have no shadow and no border.
+- `density`: `--row-h`, `--nav-h`, `--control-h`, `--control-inline-h`, `--chip-h`,
+  `--control-primary-h`; `<html data-density="compact">` swaps each for its `-compact` value (the
+  rule at the end of `app.css`).
+- `motion`: animation timings, emitted as `--motion-*`. Under `prefers-reduced-motion: reduce`
+  every animation and transition is off (see "More contrast, forced colours, reduced motion").
+- `contrast.more`: under `prefers-contrast: more` each role listed takes another role's value
+  (`text-subtle` → `text-muted`), on `:root` and every `[data-tint]` subtree, in both themes.
+  Cards, tiles and overlays carry the `card` class (`app.css`), which gains an `outline-strong`
+  edge with more contrast and in forced colours.
+
+A token the generator emits must be read somewhere (`var(--x)`, `h-(--x)` or, for a shadow, its
+`shadow-x` utility): the generator tests fail on one that nothing reads.
 
 ---
 
-## Accessibility
+## The generator
 
-All semantic aliases satisfy **WCAG 2.1 AA** contrast requirements:
+```
+pnpm design:tokens     # tsx design/export-tokens.ts — rewrites app.css
+pnpm design:test       # tsx --test design/*.test.ts
+```
 
-| Pairing | Contrast ratio | Requirement |
-|---|---|---|
-| `--foreground` on `--background` (light) | ≥ 16:1 | ≥ 4.5:1 (text) ✅ |
-| `--foreground` on `--background` (dark) | ≥ 16:1 | ≥ 4.5:1 (text) ✅ |
-| `--muted-foreground` on `--background` (light) | ≥ 4.6:1 | ≥ 4.5:1 (text) ✅ |
-| `--muted-foreground` on `--background` (dark) | ≥ 4.6:1 | ≥ 4.5:1 (text) ✅ |
-| `--primary-foreground` on `--primary` | ≥ 12:1 | ≥ 4.5:1 (text) ✅ |
-| `--destructive` on `--background` (non-text) | ≥ 3.1:1 | ≥ 3:1 (non-text) ✅ |
+`build-css.ts` rewrites only what lies between the `/* @generated:<name>-start */` and
+`/* @generated:<name>-end */` markers of `app.css`; everything else in the file is hand-written and
+kept:
+
+| Region | Content |
+|---|---|
+| `theme` | Tailwind `@theme`: fonts, `--color-<role>: var(--cl-color-<role>)` for every role, shadows, spacing, radius |
+| `layer` | `@layer base`: the `--cl-color-*` values on `:root, [data-tint]` (light) and `.dark, .dark [data-tint]` (dark); `--cl-tint-h` and `--cl-hue-*` on `:root`; the `--color-*` roles declared again on `[data-tint]`; density and motion variables; the `prefers-contrast: more` swaps |
+| `type` | one `@utility type-<style>` per typography style |
+
+`@theme` lands on `:root`, where `var(--cl-color-*)` is already resolved to the window's tint; that
+is why a tinted subtree needs the roles declared again on `[data-tint]`.
+
+There is no shadcn HSL bridge (`--background`, `--foreground`, …): nothing reads one. bits-ui is
+used directly and reads no CSS variable.
+
+### Updating tokens
+
+1. Edit `design/tokens.json`.
+2. Run `pnpm design:tokens`.
+3. Run `pnpm design:test` (the generator tests fail if `app.css` is out of sync) and
+   `pnpm --filter desktop test` (the contrast suite).
+4. Commit `tokens.json` and `apps/desktop/src/app.css` together.
+
+A new colour role must be added to the contrast matrix (or listed as exempt with a reason), or
+the suite fails.
 
 ---
 
-## Updating tokens
+## The lint
 
-1. Edit `design/tokens.json`
-2. Run `pnpm design:tokens` (executes `tsx design/export-tokens.ts`)
-3. Commit `tokens.json` and `apps/desktop/src/app.css`
+`scripts/design-lint.sh` (bash 4 or later; on macOS `/opt/homebrew/bin/bash`) keeps the app on the
+tokens. It fails on:
 
-> The generator rewrites **only** the content between `/* @generated:*-start */` and
-> `/* @generated:*-end */` markers — manual CSS outside those blocks is preserved.
+- in `apps/desktop/src/**/*.svelte`: `text-[Npx]` classes (use a `type-*` style) and raw hex
+  colours (use a role; issue references such as `#317` and HTML entities are allowed);
+- in `apps/desktop/src` and `apps/desktop/tests` (Svelte, TypeScript, JavaScript, CSS outside the
+  generated regions): every name the Tonal restyle retired.
+
+| Retired | Use instead |
+|---|---|
+| `surface-panel`, `surface-surface` | `surface-container` |
+| `surface-raised`, `surface-row-hover` | `surface-container-high` |
+| `border-default`, `border-faint` · `border-strong` | `outline` · `outline-strong` |
+| `text-primary`, `text-data-bright` (as `text-text-…`, `--color-text-…`) | `text` |
+| `text-secondary`, `text-log` | `text-muted` |
+| `text-tertiary` | `text-subtle` |
+| `text-disabled` | `text-subtle` at reduced opacity (no contrast requirement) |
+| `accent` | `primary` |
+| `accent-alt-violet`, `accent-alt-teal`, `cluster-*` for data | `data-1` … `data-5` |
+| `cluster-*` for a cluster's identity | a `data-tint` subtree |
+| `status-ok` · `warn` · `err` · `err-solid` · `info` | `success` · `warning` · `error` · `error-solid` · `text-muted` |
+| `--alpha-selection-bg`, `--alpha-active-nav-bg` | `primary-container` |
+| `--alpha-pill-*`, `--alpha-log-*-row` | the state's `*-container` |
+| `type-subtitle` | `type-title` |
+| `type-caption` | `type-body-sm` (running text) or `type-label` (a label) |
+| `type-colhead`, `type-section` | `type-label` |
+| `rounded-2xl`, `--radius-2xl` | `rounded-xl` |
+| `shadow-drawer`, `--shadow-drawer` | none (cards have no shadow; `shadow-overlay` under overlays) |
+| `--control-height` | `--control-h` |
+| `--row-pad-default`, `--row-pad-compact` | `--row-h` |
+| `--icon-2xs` … `--icon-2xl` | a size class (`h-4 w-4`) |
+| `--min-hit-target` | the `hit-target` class (`app.css`) |
+
+A colour name is matched only right after a colour utility (`bg-`, `text-`, `border-t-`, `fill-`,
+`inset-ring-`, …) or `--color-` / `--cl-color-`, itself not part of a longer word. So `text-primary`
+alone (the primary role used as text) is allowed, and so are attributes and words that merely end
+in a retired stem (`data-accent`, `data-testid="conn-status-ok"`, "pre-accent").
+
+`scripts/design-lint.test.sh` runs the lint on throwaway trees: a clean one, and one per rule and
+per retired name. Both run in CI (Design Lint job) and in `scripts/gates.sh` (`lint-test`,
+`design-lint`).
+
+---
+
+## Contrast
+
+`apps/desktop/src/design/tokens-contrast.test.ts` computes WCAG contrast from `tokens.json`
+(OKLCH → sRGB, clipped to the gamut as a browser paints it, `apps/desktop/src/design/wcag.ts`) for
+**both themes on the five identity hues**:
+
+- 4.5:1 — `text`, `text-muted`, `text-subtle`, `primary`, `success`, `warning`, `error` on every
+  surface; each `on-*` on its fill; `data-1` … `data-5` on the sunken and container surfaces;
+- 3:1 — `success` on `primary-container` (the healthy glyph on a selected row).
+
+A second table, `CONTROLS`, holds the edge, indicator or glyph that identifies each control to
+3:1 against what it sits on (WCAG 1.4.11), on the same hues and themes: a field's
+`outline-strong` edge (forms, and the filled toolbar fields and selects, on their fill and on the
+card or window), the switch, a checked checkbox, the selected segment's and a pressed chip's or
+log toolbar toggle's `primary` ring (on its fill and on the card), icon glyphs, a pressed icon
+toggle, the meter track's edge and fills, and the focus ring on every surface and row. A control
+named by its own text (a chip's label) is identified by that text, held to 4.5:1 above.
+
+Every colour role must appear in one of the tables or in the exempt list with a reason. What the
+tables cannot see (a ring drawn on a real fill, a meter on its card, the controls in forced
+colours) is checked in the browser by `apps/desktop/tests/e2e/a11y-tonal.spec.ts`.
+
+### More contrast, forced colours, reduced motion
+
+- **More contrast** (`prefers-contrast: more`): `contrast.more` in `tokens.json` swaps
+  `text-subtle` for `text-muted` (generated, on `:root` and every `[data-tint]`); the `card`
+  class gains a 1 px `outline-strong` outline drawn inside.
+- **Forced colours** (`forced-colors: active`, the block at the end of `app.css`): no state may
+  live in a fill or a shadow, which the system palette replaces. Selected rows, current items,
+  pressed and checked controls take `Highlight` / `HighlightText` and opt out of the forcing so
+  their text gets no backplate; fields, toggles, avatars, badges, swatches and tonal buttons get
+  a `CanvasText` border; the one primary action is inverted (`ButtonText` fill); SVG glyphs and
+  icons follow their text. Chart lines and legend keys take `CanvasText` and each series a dash of
+  its rank (`FORCED_DASHES` in `lib/metrics.ts`, set as `--forced-dash`), reference lines keep
+  their own. Cluster colour swatches keep their colour. Button-like controls whose fill was
+  their edge (class `forced-edge`, the text and danger buttons) and `kbd` get a system-colour
+  outline drawn inside, and list rows and the sidebar's rows a `Highlight` one on hover, in the utilities layer
+  so a focus ring wins over them. A focus ring on an item that opted out of the forcing takes a
+  system colour.
+- **Reduced motion**: one rule near the end of `app.css` turns every transition and animation
+  off. A spinner then stands still, so `ui/Loading.svelte` shows its words beside it (it keeps
+  their room whether it is active or not, so nothing next to it moves) and a pending `Button`
+  fades its label to 45 %.

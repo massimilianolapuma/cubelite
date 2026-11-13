@@ -1,72 +1,76 @@
 <script lang="ts">
-	import PinToggle from '#lib/components/ui/PinToggle.svelte';
+	import { EMPTY } from '#lib/empty.ts';
+	import ListCard from '#lib/components/ui/ListCard.svelte';
+	import StatusBadge from '#lib/components/ui/StatusBadge.svelte';
 	import { formatAge } from '#lib/age.ts';
-	import FilterToggle from '#lib/components/ui/FilterToggle.svelte';
+	import { listState } from '#lib/list-state.ts';
+	import { STATUS_CHIPS } from '#lib/status.ts';
+	import { applyChips, chipViews } from '#lib/status-chips.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { lists } from '#lib/stores/lists.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+	import type { EventInfo } from '#lib/tauri.ts';
+	import { LIST_ROW } from '#lib/ui-classes.ts';
 
-	const warnings = $derived(resources.warningEvents.length);
-	const shown = $derived(app.eventWarningsOnly ? resources.warningEvents : resources.events);
+	const NOUNS = ['event', 'events'] as const;
+	const chipOf = (e: EventInfo) => (e.event_type === 'Warning' ? 'warning' : 'normal');
 
-	const grid = 'grid-template-columns: 0.7fr 1fr 1.4fr 2.6fr 0.5fr;';
+	const pressed = $derived(lists.pressed('events'));
+	const chips = $derived(chipViews(STATUS_CHIPS.events, resources.events, chipOf, pressed));
+	const shown = $derived(applyChips(resources.events, chipOf, pressed));
+	// Not named `state`: that would shadow the `$state` rune.
+	const shows = $derived(
+		listState({
+			nouns: NOUNS,
+			namespace: app.namespace,
+			loaded: resources.mainLoaded,
+			error: resources.listError('events'),
+			total: resources.events.length,
+			shown: shown.length,
+			chips: pressed.length > 0
+		})
+	);
 </script>
 
-<div class="flex flex-col gap-3 p-4">
-	<div class="flex min-h-7 items-center gap-3">
-		<h1 class="type-title flex-1">Events</h1>
-		<PinToggle />
-		{#if warnings > 0 || app.eventWarningsOnly}
-			<FilterToggle
-				label="Warnings only"
-				count={warnings}
-				tone="warn"
-				pressed={app.eventWarningsOnly}
-				onToggle={() => (app.eventWarningsOnly = !app.eventWarningsOnly)}
-			/>
-		{/if}
-	</div>
+<!-- Events keep the server's order: newest activity is what the list is for. -->
+<ListCard
+	title="Events"
+	list="events"
+	nouns={NOUNS}
+	columns={['6.5rem', '1fr', '1.4fr', '2.6fr', '0.5fr']}
+	state={shows}
+	shown={shown.length}
+	total={resources.events.length}
+	groupable={false}
+	{chips}
+	busy={resources.loading}
+	onRetry={() => void resources.load()}
+	onClear={() => lists.setStatus('events', [])}
+>
+	{#snippet head()}
+		<span class="truncate">Type</span>
+		<span class="truncate">Reason</span>
+		<span class="truncate">Object</span>
+		<span class="truncate">Message</span>
+		<span class="truncate">Age</span>
+	{/snippet}
 
-	<div class="overflow-hidden rounded-lg border border-border-default">
-		<div class="grid gap-x-3 border-b border-border-default bg-surface-surface px-3 py-2" style={grid}>
-			<span class="type-colhead">Type</span>
-			<span class="type-colhead">Reason</span>
-			<span class="type-colhead">Object</span>
-			<span class="type-colhead">Message</span>
-			<span class="type-colhead">Age</span>
+	{#each shown as event, i (i)}
+		<!-- A warning is told by its pill; the row itself is not tinted (Tonal §8.1). -->
+		<div class={LIST_ROW} data-event-type={event.event_type ?? ''}>
+			<span class="flex min-w-0 items-center">
+				{#if event.event_type === 'Warning'}
+					<StatusBadge state="warn" label="Warning" />
+				{:else}
+					<span class="type-body-sm truncate text-text-muted">{event.event_type ?? EMPTY}</span>
+				{/if}
+			</span>
+			<span class="type-data-sm truncate text-text-muted">
+				{event.reason ?? EMPTY}{event.count > 1 ? ` ×${event.count}` : ''}
+			</span>
+			<span class="type-data-sm truncate text-text-muted" title={event.object || undefined}>{event.object || EMPTY}</span>
+			<span class="type-body-sm truncate text-text-muted" title={event.message ?? undefined}>{event.message ?? EMPTY}</span>
+			<span class="type-data-sm text-text-muted">{formatAge(event.last_timestamp)}</span>
 		</div>
-		<div class="bg-surface-panel">
-			{#if shown.length === 0}
-				<p class="py-8 text-center text-xs text-text-disabled">
-					{app.eventWarningsOnly ? 'No warning events.' : 'No events found.'}
-				</p>
-			{:else}
-				{#each shown as event, i (i)}
-					{@const warning = event.event_type === 'Warning'}
-					<div
-						class="grid items-center gap-x-3 border-b border-border-faint px-3 last:border-b-0 hover:bg-surface-row-hover"
-						style="{grid} padding-top: var(--row-pad-default); padding-bottom: var(--row-pad-default); {warning
-							? 'background: var(--alpha-log-warn-row);'
-							: ''}"
-					>
-						<span>
-							<span
-								class="inline-flex rounded-full px-2 py-0.5 type-micro"
-								style={warning
-									? 'background: var(--alpha-pill-warn); color: var(--color-status-warn);'
-									: 'background: var(--color-surface-raised); color: var(--color-text-secondary);'}
-							>
-								{event.event_type ?? '—'}
-							</span>
-						</span>
-						<span class="type-data-sm truncate text-text-secondary">
-							{event.reason ?? '—'}{event.count > 1 ? ` ×${event.count}` : ''}
-						</span>
-						<span class="type-data-sm truncate text-text-secondary">{event.object}</span>
-						<span class="type-caption truncate text-text-secondary">{event.message ?? '—'}</span>
-						<span class="type-data-sm text-text-secondary">{formatAge(event.last_timestamp)}</span>
-					</div>
-				{/each}
-			{/if}
-		</div>
-	</div>
-</div>
+	{/each}
+</ListCard>

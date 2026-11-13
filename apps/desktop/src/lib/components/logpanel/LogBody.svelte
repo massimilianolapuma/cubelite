@@ -6,7 +6,9 @@
 	import HistoryStrip from './HistoryStrip.svelte';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import type { LogSession } from '#lib/stores/logSession.svelte.ts';
-	import { identityColorFor } from '#lib/stores/identityColor.ts';
+	import { sourceIndex } from '#lib/log-sources.ts';
+	import Button from '#lib/components/ui/Button.svelte';
+	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 
 	let { session }: { session: LogSession } = $props();
 
@@ -136,17 +138,28 @@
 	}
 </script>
 
-<div class="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-sunken">
+<!-- Lines in the log type on surface-sunken, inset in the card (Tonal §8.5), never
+     shorter than four lines (4 × 18 px). -->
+<div
+	class="relative mx-3 mb-3 flex min-h-18 flex-1 flex-col overflow-hidden rounded-lg bg-surface-sunken"
+	data-testid="log-lines"
+>
 	{#if session.source === 'history'}
 		<HistoryStrip history={session.history} />
 	{:else if session.status === 'reconnecting'}
-		<div class="absolute inset-x-0 top-0 z-10 flex items-center justify-center gap-2 border-b border-border-default px-2.5 py-1"
-			style="background: var(--alpha-pill-warn);">
-			<span class="type-caption" style="color: var(--color-status-warn);">
-				Reconnecting — attempt {session.reconnectAttempt} · retrying in {retryIn}s
+		<div
+			class="absolute inset-x-3 top-2 z-10 flex items-center justify-center gap-2 rounded-full bg-warning-container px-4 py-1 text-on-warning-container"
+			role="status"
+		>
+			<StatusGlyph state="warn" />
+			<span class="type-body-sm">
+				Reconnecting: attempt {session.reconnectAttempt} · retrying in {retryIn}s
 			</span>
-			<button type="button" class="type-caption underline" style="color: var(--color-status-warn);"
-				onclick={() => session.retryNow()}>
+			<button
+				type="button"
+				class="focus-ring type-body-sm rounded-full px-1 font-semibold underline underline-offset-2"
+				onclick={() => session.retryNow()}
+			>
 				Retry now
 			</button>
 		</div>
@@ -156,8 +169,7 @@
 		<div class="pointer-events-auto absolute inset-x-0 bottom-2 z-10 flex justify-center">
 			<button
 				type="button"
-				class="type-caption rounded-full px-2.5 py-1"
-				style="background: var(--alpha-pill-warn); color: var(--color-status-warn);"
+				class="focus-ring forced-edge type-body-sm rounded-full bg-warning-container px-3 py-1 font-semibold text-on-warning-container shadow-overlay hover:brightness-105"
 				onclick={resume}
 			>
 				↓ {newLines} new {newLines === 1 ? 'line' : 'lines'}
@@ -166,24 +178,20 @@
 	{/if}
 
 	{#if session.source === 'live' && session.status === 'error'}
-		<div class="flex flex-1 flex-col items-center justify-center gap-2">
-			<p class="type-caption text-text-secondary">{session.error}</p>
-			<button
-				type="button"
-				class="focus-ring type-caption rounded-md border border-border-default bg-surface-raised px-2.5 py-1 text-text-secondary hover:brightness-110"
-				onclick={() => void session.open()}
-			>
-				Retry
-			</button>
+		<div class="flex flex-1 flex-col items-center justify-center gap-2 px-4" role="alert">
+			<p class="type-body-sm flex items-center gap-2 text-text">
+				<StatusGlyph state="err" class="text-error" />{session.error}
+			</p>
+			<Button variant="tonal" size="inline" onclick={() => void session.open()}>Retry</Button>
 		</div>
 	{:else if lines.length === 0}
-		<p class="py-8 text-center text-xs text-text-disabled">
+		<p class="type-body-sm py-8 text-center text-text-muted">
 			{#if logPanel.search.filterMode && logPanel.search.query}
-				No matches for "{logPanel.search.query}" — esc clears search
+				No matches for "{logPanel.search.query}". Esc clears the search
 			{:else if session.source === 'history'}
 				{session.history.loading ? 'Loading history…' : session.history.error ? '' : 'No lines in Elasticsearch for this pod and range.'}
 			{:else if session.ring.totalAppended > 0}
-				Buffer cleared — waiting for new lines…
+				Buffer cleared. Waiting for new lines…
 			{:else}
 				Waiting for log lines…
 			{/if}
@@ -206,7 +214,7 @@
 								? { query: logPanel.search.query, active: line.id === logPanel.search.activeId }
 								: null}
 							source={session.merged && line.container
-								? { name: line.container, color: identityColorFor(session.containers, line.container) }
+								? { name: line.container, index: sourceIndex(session.containers, line.container) }
 								: null}
 							mode={logPanel.viewMode}
 							container={session.merged ? null : session.container}
