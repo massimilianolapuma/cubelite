@@ -55,7 +55,7 @@ pub use error::{ContextError, KubeconfigError};
 pub use helm::HelmReleaseInfo;
 pub use kubeconfig::{discover_kubeconfig_files, is_kubeconfig_file, KubeConfig};
 pub use logs::{LogLevel, LogLine};
-pub use metrics::{NodeCapacityInfo, PodMetricsInfo};
+pub use metrics::{ContainerUsageInfo, NodeCapacityInfo, PodMetricsInfo};
 pub use resources::{
     ConfigMapInfo, ContainerDetail, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo,
     NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,

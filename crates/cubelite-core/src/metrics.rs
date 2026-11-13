@@ -7,6 +7,17 @@
 
 use serde::{Deserialize, Serialize};
 
+/// CPU/memory usage of one container of a pod.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ContainerUsageInfo {
+    /// Container name.
+    pub name: String,
+    /// CPU usage in millicores.
+    pub cpu_millis: f64,
+    /// Memory usage in bytes.
+    pub memory_bytes: u64,
+}
+
 /// CPU/memory usage of one pod (summed over its containers).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PodMetricsInfo {
@@ -18,6 +29,9 @@ pub struct PodMetricsInfo {
     pub cpu_millis: f64,
     /// Memory usage in bytes.
     pub memory_bytes: u64,
+    /// Usage of each container, in the order metrics-server returns them.
+    #[serde(default)]
+    pub containers: Vec<ContainerUsageInfo>,
 }
 
 /// Usage and allocatable capacity of one node.
@@ -139,7 +153,8 @@ pub fn parse_memory_bytes(quantity: &str) -> Option<u64> {
     (bytes < 18_446_744_073_709_551_616.0).then_some(bytes as u64)
 }
 
-/// Sum the container usage entries of one PodMetrics item.
+/// Read one PodMetrics item: the usage of each named container, and the
+/// sums over every container entry.
 pub(crate) fn pod_metrics_from_item(item: &serde_json::Value) -> Option<PodMetricsInfo> {
     let name = item["metadata"]["name"].as_str()?.to_string();
     let namespace = item["metadata"]["namespace"]
@@ -148,16 +163,22 @@ pub(crate) fn pod_metrics_from_item(item: &serde_json::Value) -> Option<PodMetri
         .to_string();
     let mut cpu_millis = 0.0;
     let mut memory_bytes = 0u64;
+    let mut containers = Vec::new();
     for c in item["containers"]
         .as_array()
         .map(Vec::as_slice)
         .unwrap_or(&[])
     {
-        if let Some(cpu) = c["usage"]["cpu"].as_str().and_then(parse_cpu_millis) {
-            cpu_millis += cpu;
-        }
-        if let Some(mem) = c["usage"]["memory"].as_str().and_then(parse_memory_bytes) {
-            memory_bytes += mem;
+        let cpu = c["usage"]["cpu"].as_str().and_then(parse_cpu_millis);
+        let mem = c["usage"]["memory"].as_str().and_then(parse_memory_bytes);
+        cpu_millis += cpu.unwrap_or(0.0);
+        memory_bytes = memory_bytes.saturating_add(mem.unwrap_or(0));
+        if let Some(container) = c["name"].as_str() {
+            containers.push(ContainerUsageInfo {
+                name: container.to_string(),
+                cpu_millis: cpu.unwrap_or(0.0),
+                memory_bytes: mem.unwrap_or(0),
+            });
         }
     }
     Some(PodMetricsInfo {
@@ -165,6 +186,7 @@ pub(crate) fn pod_metrics_from_item(item: &serde_json::Value) -> Option<PodMetri
         namespace,
         cpu_millis,
         memory_bytes,
+        containers,
     })
 }
 
@@ -225,5 +247,62 @@ mod tests {
         let m = pod_metrics_from_item(&item).expect("parse");
         assert_eq!(m.cpu_millis, 150.0);
         assert_eq!(m.memory_bytes, 96 * 1024 * 1024);
+    }
+
+    #[test]
+    fn pod_metrics_keep_each_container() {
+        let item = serde_json::json!({
+            "metadata": { "name": "api-0", "namespace": "default" },
+            "containers": [
+                { "name": "api", "usage": { "cpu": "412m", "memory": "498Mi" } },
+                { "name": "envoy", "usage": { "cpu": "38000000n", "memory": "41Mi" } },
+                { "name": "broken", "usage": {} }
+            ]
+        });
+        let m = pod_metrics_from_item(&item).unwrap();
+        assert_eq!(m.cpu_millis, 450.0);
+        assert_eq!(m.memory_bytes, (498 + 41) * 1024 * 1024);
+        assert_eq!(
+            m.containers,
+            vec![
+                ContainerUsageInfo {
+                    name: "api".into(),
+                    cpu_millis: 412.0,
+                    memory_bytes: 498 * 1024 * 1024
+                },
+                ContainerUsageInfo {
+                    name: "envoy".into(),
+                    cpu_millis: 38.0,
+                    memory_bytes: 41 * 1024 * 1024
+                },
+                ContainerUsageInfo {
+                    name: "broken".into(),
+                    cpu_millis: 0.0,
+                    memory_bytes: 0
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn pod_metrics_skip_a_container_without_a_name_and_accept_an_older_payload() {
+        let item = serde_json::json!({
+            "metadata": { "name": "api-0", "namespace": "default" },
+            "containers": [
+                { "usage": { "cpu": "100m", "memory": "64Mi" } },
+                { "name": "api", "usage": { "cpu": "50m", "memory": "32Mi" } }
+            ]
+        });
+        let m = pod_metrics_from_item(&item).unwrap();
+        // The sums still count every entry; only named ones are listed.
+        assert_eq!(m.cpu_millis, 150.0);
+        assert_eq!(m.containers.len(), 1);
+        assert_eq!(m.containers[0].name, "api");
+
+        let old: PodMetricsInfo = serde_json::from_value(serde_json::json!({
+            "name": "api-0", "namespace": "default", "cpu_millis": 1.0, "memory_bytes": 2
+        }))
+        .unwrap();
+        assert!(old.containers.is_empty());
     }
 }
