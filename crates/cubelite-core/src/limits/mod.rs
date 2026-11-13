@@ -9,7 +9,9 @@
 //! | `pod_math` | Effective values, pod figures, QoS class |
 //! | `evaluate` | The check: `evaluate(facts, proposal) -> Evaluation` |
 //! | `facts` | `KubeClient::resource_facts`: what the check needs, read from the cluster |
+//! | `apply` | The patch, `KubeClient::apply_resources` (dry run, mark, restore), `KubeClient::clear_resources_override` |
 
+mod apply;
 pub mod evaluate;
 mod facts;
 #[cfg(test)]
@@ -19,6 +21,7 @@ pub mod mark;
 pub mod pod_math;
 pub mod types;
 
+pub use apply::patch_body;
 pub use evaluate::evaluate;
 pub use manager::{detect_manager, ManagerInfo, ManagerKind};
 pub use mark::{

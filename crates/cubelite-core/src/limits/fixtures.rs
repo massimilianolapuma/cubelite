@@ -484,6 +484,14 @@ impl Cluster {
         self
     }
 
+    /// Requests of one method whose path starts with `prefix` are answered
+    /// with `status` and `body`.
+    pub(crate) fn on(mut self, method: Method, prefix: &str, status: u16, body: Value) -> Self {
+        self.overrides
+            .push((Some(method), prefix.to_string(), status, body));
+        self
+    }
+
     /// The answer to one request.
     pub(crate) fn respond(&self, method: &Method, uri: &str) -> (StatusCode, Value) {
         let replaced = self.overrides.iter().rev().find(|(m, prefix, _, _)| {
