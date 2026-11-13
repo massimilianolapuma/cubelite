@@ -299,6 +299,9 @@ test("a deployment panel shows each container's requests, limits and usage insid
   const meterDetail = await textLeft(worker.locator('[data-resource-row="cpu"]').getByText("260m of 500m", { exact: false }));
   const lineDetail = await textLeft(envoy.locator('[data-resource-row="cpu"] .type-data-sm'));
   expect(Math.abs(meterDetail - lineDetail)).toBeLessThan(1);
+  // And the sentence under a meter starts where the meter's track does.
+  const track = (await worker.locator('[data-resource-row="cpu"] [data-meter-track]').boundingBox())!;
+  expect(Math.abs(meterDetail - track.x)).toBeLessThan(1);
 });
 
 test("a deployment panel says once that usage is unavailable when metrics-server does not answer", async ({ page }) => {
@@ -382,6 +385,17 @@ test("a long container name and long sentences wrap inside the panel instead of 
   const otel = section.locator(`[data-container="${name}"]`);
   await expect(otel.locator('[data-resource-row="memory"]')).toContainText("1.3Gi used · request 1.5Gi · no limit");
   await expect(otel).toContainText("sidecar");
+  // The name is whole: not cut with an ellipsis, nothing of it scrolled away, inside its card.
+  const head = otel.locator("[data-container-name]");
+  await expect(head.locator(".text-text").first()).toHaveText(name);
+  expect(await fits(head)).toBe(true);
+  expect(await head.evaluate((e) => getComputedStyle(e).textOverflow)).not.toBe("ellipsis");
+  const card = (await otel.boundingBox())!;
+  const nameRects = await head.evaluate((e) => [...e.getClientRects()].map((r) => ({ left: r.left, right: r.right })));
+  for (const r of nameRects) {
+    expect(r.left).toBeGreaterThanOrEqual(Math.floor(card.x));
+    expect(r.right).toBeLessThanOrEqual(Math.ceil(card.x + card.width));
+  }
   expect(await fits(section)).toBe(true);
   for (const card of await section.locator("[data-container]").all()) {
     await expectRowsInside(panel, card);

@@ -472,6 +472,37 @@ describe("DeploymentDrawer", () => {
     expect(screen.queryByText(UNAVAILABLE)).toBeNull();
   });
 
+  it("writes a meter row's sentence as it writes the sentence of a row without a meter", async () => {
+    await loadWithMetrics([apiPod()], [API_0_METRICS]);
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
+    const meterRow = resourceRow(resourceCard("api"), "cpu");
+    const lineRow = resourceRow(resourceCard("mesh"), "cpu");
+    const sentence = (row: HTMLElement) => row.querySelector<HTMLElement>("[data-resource-detail]")!;
+    const text = (row: HTMLElement) => sentence(row).lastElementChild as HTMLElement;
+    expect(sentence(meterRow)).toHaveTextContent("260m of 500m · request 250m");
+    expect(sentence(meterRow).className).toBe(sentence(lineRow).className);
+    expect(text(meterRow).className).toBe(text(lineRow).className);
+    expect(text(meterRow)).toHaveClass("text-text-muted");
+    // Its parts do not break inside: "260m of 500m" stays whole.
+    const parts = [...text(meterRow).children];
+    expect(parts.map((el) => el.textContent)).toEqual(["260m of 500m", "request 250m"]);
+    for (const el of parts) expect(el).toHaveClass("whitespace-nowrap");
+    // The meter's own sentence (subtle, breaks anywhere) is not used.
+    expect(meterRow.querySelector(".text-text-subtle")).toBeNull();
+  });
+
+  it("lets a long container name wrap whole, with sidecar after it", () => {
+    const name = "opentelemetry-collector-contrib-agent-with-a-very-long-suffix";
+    render(DeploymentDrawer, {
+      props: { deployment: dep({ containers: [{ ...TEMPLATE[1], name }] }), onClose: vi.fn() },
+    });
+    const head = resourcesSection()!.querySelector<HTMLElement>("[data-container-name]")!;
+    expect(head).toHaveTextContent(`${name} sidecar`);
+    expect(head).toHaveClass("break-words");
+    expect(head.querySelector(".truncate")).toBeNull();
+    expect(head).not.toHaveClass("truncate");
+  });
+
   it("has no Resources section for a payload without containers", () => {
     render(DeploymentDrawer, { props: { deployment: dep(), onClose: vi.fn() } });
     expect(resourcesSection()).toBeNull();

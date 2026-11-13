@@ -137,10 +137,11 @@
 				<div class="flex flex-col gap-0.5">
 					{#each resourceRows as container (container.name)}
 						<div class="{PANEL_CARD} flex flex-col gap-2 px-3 py-2" data-container={container.name}>
-							<div class="flex min-w-0 items-baseline gap-2">
-								<span class="type-data-sm min-w-0 truncate text-text" title={container.name}>{container.name}</span>
+							<!-- A long name wraps whole, as the panel's heading does; "sidecar" follows it. -->
+							<div class="min-w-0 break-words" data-container-name>
+								<span class="type-data-sm text-text">{container.name}</span>
 								{#if container.sidecar}
-									<span class="type-body-sm shrink-0 text-text-muted">sidecar</span>
+									<span class="type-body-sm ml-1.5 whitespace-nowrap text-text-muted">sidecar</span>
 								{/if}
 							</div>
 							<ContainerResourceRows rows={container.rows} />

@@ -9,21 +9,26 @@
 	const SEPARATOR = ' · ';
 </script>
 
+<!-- One sentence for both kinds of row: its label column is MeterBar's (w-9, gap-2.5),
+     so the text starts where the meter's track does; it wraps only at its separators. -->
+{#snippet sentence(row: ResourceRow, label: string | null)}
+	<div class="flex items-baseline gap-2.5" data-resource-detail>
+		<span class="type-label w-9 shrink-0" aria-hidden={label === null ? 'true' : undefined}>{label ?? ''}</span>
+		<span class="type-data-sm min-w-0 text-text-muted">
+			{#each row.detail.split(SEPARATOR) as part, i (i)}{#if i > 0}{SEPARATOR}{/if}<span class="whitespace-nowrap">{part}</span>{/each}
+		</span>
+	</div>
+{/snippet}
+
 <div class="flex flex-col gap-2">
 	{#each rows as row (row.resource)}
-		{#if row.meter}
-			<div data-resource-row={row.resource}>
-				<MeterBar label={row.label} percent={row.percent} detail={row.detail} />
-			</div>
-		{:else}
-			<!-- Same label column as MeterBar (w-9, gap-2.5), so the text starts where a meter's detail does. -->
-			<div class="flex items-baseline gap-2.5" data-resource-row={row.resource}>
-				<span class="type-label w-9 shrink-0">{row.label}</span>
-				<!-- A long sentence wraps at its separators, never inside "no limit". -->
-				<span class="type-data-sm min-w-0 text-text-muted">
-					{#each row.detail.split(SEPARATOR) as part, i (i)}{#if i > 0}{SEPARATOR}{/if}<span class="whitespace-nowrap">{part}</span>{/each}
-				</span>
-			</div>
-		{/if}
+		<div class="flex flex-col gap-1" data-resource-row={row.resource}>
+			{#if row.meter}
+				<MeterBar label={row.label} percent={row.percent} />
+				{@render sentence(row, null)}
+			{:else}
+				{@render sentence(row, row.label)}
+			{/if}
+		</div>
 	{/each}
 </div>
