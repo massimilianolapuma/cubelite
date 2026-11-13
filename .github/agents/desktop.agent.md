@@ -123,7 +123,7 @@ You own all code under `apps/desktop/`. Follow `.github/instructions/desktop-sve
 - **Svelte 5 runes** only: `$state`, `$derived`, `$effect` — no legacy stores
 - Components in `PascalCase.svelte`
 - Tauri commands must match Rust function signatures in `src-tauri/src/commands/`
-- Use `shadcn-svelte` components and Tailwind v4 for styling
+- Use the components in `src/lib/components/ui/` and Tailwind v4 with the design tokens for styling (see `design/README.md`)
 
 ## Quality Gates
 

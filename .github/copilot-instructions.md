@@ -39,7 +39,7 @@ cubelite/
 | Area            | Language              | Key Libraries                                            |
 | --------------- | --------------------- | -------------------------------------------------------- |
 | `crates/`       | Rust 1.82+            | kube-rs 0.97, tokio, thiserror 2, anyhow 1               |
-| `apps/desktop/` | TypeScript + Svelte 5 | Tauri v2, shadcn-svelte, Tailwind v4, Vitest, Playwright |
+| `apps/desktop/` | TypeScript + Svelte 5 | Tauri v2, bits-ui, Tailwind v4, Vitest, Playwright |
 | `.github/`      | YAML                  | GitHub Actions                                           |
 
 ---
@@ -152,7 +152,7 @@ dispatches the implementation.
 | --------------- | ------------------------- | ----------------------------------------------------------------- |
 | `core-agent`    | `crates/**`               | Rust logic, k8s API, domain models, error types                   |
 | `desktop-agent` | `apps/desktop/**`         | Svelte components, Tauri commands, frontend tests                 |
-| `design-agent`  | `apps/desktop/**` UI only | Design tokens, shadcn-svelte, Tailwind, accessibility, Penpot MCP |
+| `design-agent`  | `apps/desktop/**` UI only | Design tokens, `ui/` components, Tailwind, accessibility, Penpot MCP |
 | `devops-agent`  | `.github/**`              | GitHub Actions, CI/CD workflows, secret handling                  |
 | `ai-agent`      | Any                       | Cross-cutting AI assistance, architecture decisions               |
 

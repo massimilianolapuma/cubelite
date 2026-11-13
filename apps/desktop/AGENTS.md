@@ -11,7 +11,7 @@ This file defines agent boundaries and rules for the Tauri + Svelte 5 desktop ap
 | Agent | Responsibility |
 |---|---|
 | `desktop-agent` | Tauri commands, Svelte logic, TypeScript types, tests |
-| `design-agent` | Tailwind tokens, shadcn-svelte components, accessibility |
+| `design-agent` | Design tokens (`design/tokens.json`), the `src/lib/components/ui/` components, accessibility |
 
 ---
 
@@ -49,7 +49,7 @@ pnpm --filter desktop test:e2e  # Playwright e2e
 - No `localStorage` for secrets — use Tauri Store or OS keychain via Rust
 - No `console.log` in committed code — use `debug` or remove
 - No modifications to `crates/` from this agent
-- No overriding shadcn-svelte component internals — compose via slots/props
+- No overriding the internals of a `src/lib/components/ui/` component from outside — compose via props and snippets, or change the component itself
 
 ---
 

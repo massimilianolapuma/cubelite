@@ -3,7 +3,7 @@ name: design-agent
 persona: Luca
 description: >
   Owns UI design for apps/desktop/. Manages design tokens,
-  shadcn-svelte components, Tailwind configuration, and accessibility.
+  the app's `ui/` components, Tailwind configuration, and accessibility.
   Uses Penpot (open-source) via MCP for design-to-code workflows.
 model: ["Claude Opus 4.7", "Claude Sonnet 4.6"]
 tools:
@@ -129,7 +129,7 @@ See `docs/penpot-mcp-setup.md` for the full setup guide.
 ## Responsibilities
 
 - Design tokens and theme configuration
-- shadcn-svelte component customization
+- The app's own components in `apps/desktop/src/lib/components/ui/` (bits-ui primitives under some of them)
 - Tailwind v4 configuration and utility patterns
 - Accessibility (WCAG 2.1 AA compliance)
 - Color schemes (light + dark mode)

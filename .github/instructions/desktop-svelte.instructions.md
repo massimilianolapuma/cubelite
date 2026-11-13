@@ -24,12 +24,14 @@ Guidelines for all code under `apps/desktop/`.
 - Prefer `type` over `interface` for unions and mapped types; `interface` for extensible shapes
 - All Tauri command payloads typed with matching Rust serialization (`#[serde]`)
 
-## shadcn-svelte & Tailwind v4
+## Components, design tokens & Tailwind v4
 
-- Use shadcn-svelte components from `#lib/components/ui/`
-- Do not override component internals — compose or extend via slot props
+- Use the app's own components from `#lib/components/ui/` (`Button.svelte`, `Chip.svelte`, `Modal.svelte`, `Drawer.svelte`, …); `bits-ui` supplies the headless primitives under some of them
+- Do not override component internals — compose via props and snippets, or change the component itself
 - Tailwind utility classes only — no inline styles, no CSS-in-JS
-- Design tokens defined in `src/app.css` as CSS custom properties; reference via Tailwind `theme()`
+- Design tokens are defined in `design/tokens.json` (Tonal design system); `pnpm design:tokens` writes them into the generated regions of `src/app.css` — never edit those regions by hand
+- Reference tokens through their utilities (`bg-surface-container`, `text-text-muted`, `type-body-sm`, …); no raw hex and no `text-[Npx]` — `scripts/design-lint.sh` rejects them
+- `design/README.md` has the token roles, the retired → current name table and the rules for more contrast, forced colours and reduced motion
 
 ## Tauri Commands
 

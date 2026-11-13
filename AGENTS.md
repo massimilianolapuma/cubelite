@@ -13,7 +13,7 @@ use the inter-agent protocol described below.
 | `coordinator` | Any / cross-cutting | Claude Opus 4.7 | Issue triage, milestone planning, inter-agent routing |
 | `core-agent` | `crates/**` | Claude Sonnet 4.6 | `cargo test`, `cargo clippy --deny warnings`, `cargo build` |
 | `desktop-agent` | `apps/desktop/**` | Claude Sonnet 4.6 | `pnpm --filter desktop test`, Vitest, Playwright |
-| `design-agent` | `apps/desktop/**` (UI only) | Claude Opus 4.7 | Penpot MCP, shadcn-svelte, Tailwind tokens |
+| `design-agent` | `apps/desktop/**` (UI only) | Claude Opus 4.7 | Penpot MCP, Tonal design tokens (`design/tokens.json`), Tailwind v4 |
 | `devops-agent` | `.github/**` | Claude Sonnet 4.6 | GitHub Actions, secret scanning, YAML lint |
 | `qa-agent` | Any / quality | Claude Sonnet 4.6 | Test coverage, CI validation, security review |
 | `docs-agent` | `docs/`, README, CHANGELOG | Claude Sonnet 4.6 | `cargo doc`, documentation generation, Mermaid diagrams |
