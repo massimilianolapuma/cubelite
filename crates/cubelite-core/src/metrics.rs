@@ -162,8 +162,9 @@ pub fn parse_memory_bytes(quantity: &str) -> Option<u64> {
     (bytes < 18_446_744_073_709_551_616.0).then_some(bytes as u64)
 }
 
-/// Read one PodMetrics item: the usage of each named container, and the
-/// sums over every container entry.
+/// Read one PodMetrics item: the usage of each named container whose CPU
+/// and memory could both be read, and the sums of what was read over every
+/// container entry.
 pub(crate) fn pod_metrics_from_item(item: &serde_json::Value) -> Option<PodMetricsInfo> {
     let name = item["metadata"]["name"].as_str()?.to_string();
     let namespace = item["metadata"]["namespace"]
@@ -182,11 +183,15 @@ pub(crate) fn pod_metrics_from_item(item: &serde_json::Value) -> Option<PodMetri
         let mem = c["usage"]["memory"].as_str().and_then(parse_memory_bytes);
         cpu_millis += cpu.unwrap_or(0.0);
         memory_bytes = memory_bytes.saturating_add(mem.unwrap_or(0));
-        if let Some(container) = c["name"].as_str() {
+        // Listed only when both were read: a missing or unreadable usage is
+        // no sample, not a measured 0.
+        if let (Some(container), Some(cpu_millis), Some(memory_bytes)) =
+            (c["name"].as_str(), cpu, mem)
+        {
             containers.push(ContainerUsageInfo {
                 name: container.to_string(),
-                cpu_millis: cpu.unwrap_or(0.0),
-                memory_bytes: mem.unwrap_or(0),
+                cpu_millis,
+                memory_bytes,
             });
         }
     }
@@ -275,11 +280,14 @@ mod tests {
             "containers": [
                 { "name": "api", "usage": { "cpu": "412m", "memory": "498Mi" } },
                 { "name": "envoy", "usage": { "cpu": "38000000n", "memory": "41Mi" } },
-                { "name": "broken", "usage": {} }
+                { "name": "broken", "usage": {} },
+                { "name": "half", "usage": { "cpu": "5m", "memory": "lots" } }
             ]
         });
         let m = pod_metrics_from_item(&item).unwrap();
-        assert_eq!(m.cpu_millis, 450.0);
+        // The sums count what was read; a container is listed only when both
+        // its CPU and its memory were read: a missing sample is not a 0.
+        assert_eq!(m.cpu_millis, 455.0);
         assert_eq!(m.memory_bytes, (498 + 41) * 1024 * 1024);
         assert_eq!(
             m.containers,
@@ -293,11 +301,6 @@ mod tests {
                     name: "envoy".into(),
                     cpu_millis: 38.0,
                     memory_bytes: 41 * 1024 * 1024
-                },
-                ContainerUsageInfo {
-                    name: "broken".into(),
-                    cpu_millis: 0.0,
-                    memory_bytes: 0
                 },
             ]
         );

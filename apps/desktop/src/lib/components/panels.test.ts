@@ -292,6 +292,27 @@ describe("PodDrawer", () => {
     expect(resourceRow(card, "memory").querySelector("[data-level]")).toHaveAttribute("data-level", "critical");
     expect(document.querySelector('[data-container="legacy"] [data-resource-row]')).toBeNull();
   });
+
+  it("says no sample in a container card when metrics-server answers without this pod", async () => {
+    const withResources = pod({
+      containers: [{ name: "api", image: "registry.example/api:1.4", ready: true, resources: API_RESOURCES }],
+    });
+    await loadWithMetrics([withResources], []);
+    render(PodDrawer, { props: { pod: withResources, onClose: vi.fn() } });
+    const card = document.querySelector<HTMLElement>('[data-container="api"]')!;
+    expect(card).toHaveTextContent("no sample · limit 500m · request 250m");
+  });
+
+  it("does not say no sample when metrics-server did not answer", async () => {
+    const withResources = pod({
+      containers: [{ name: "api", image: "registry.example/api:1.4", ready: true, resources: API_RESOURCES }],
+    });
+    await loadWithMetrics([withResources], new Error("the server could not find the requested resource"));
+    render(PodDrawer, { props: { pod: withResources, onClose: vi.fn() } });
+    const card = document.querySelector<HTMLElement>('[data-container="api"]')!;
+    expect(card).toHaveTextContent("limit 500m · request 250m");
+    expect(card).not.toHaveTextContent("no sample");
+  });
 });
 
 describe("DeploymentDrawer", () => {
@@ -433,6 +454,13 @@ describe("DeploymentDrawer", () => {
     const api = resourceCard("api");
     expect(api).toHaveTextContent("limit 500m · request 250m");
     expect(resourceRow(api, "cpu").querySelector('[data-testid="meter-value"]')).toHaveTextContent("–");
+    expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+  });
+
+  it("says no sample for a container its pods report nothing for while metrics-server answers", async () => {
+    await loadWithMetrics([apiPod()], []);
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
+    expect(resourceRow(resourceCard("api"), "cpu")).toHaveTextContent("no sample · limit 500m · request 250m");
     expect(screen.queryByText(UNAVAILABLE)).toBeNull();
   });
 

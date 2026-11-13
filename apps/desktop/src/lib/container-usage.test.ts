@@ -224,6 +224,43 @@ describe("containerRows", () => {
     expect(api.rows[1].detail).toBe("request 256Mi · no limit");
   });
 
+  it("says no sample when a sample was expected from a pod that runs the template", () => {
+    const template = [
+      { name: "api", resources: API },
+      { name: "envoy", resources: ENVOY },
+    ];
+    // metrics-server answered, the pod runs the template, but nothing for these containers.
+    const answered = [pod("api-0", [{ name: "other", cpu_millis: 1, memory_bytes: 1 }])];
+    const [api, envoy] = containerRows(template, answered, { expectSample: true });
+    expect(api.rows[0]).toEqual({
+      resource: "cpu",
+      label: "CPU",
+      percent: null,
+      meter: true,
+      detail: "no sample · limit 500m · request 250m",
+    });
+    expect(envoy.rows[0].detail).toBe("no sample · request 100m · no limit");
+
+    // A pod metrics-server has no entry for (just started) is no sample too.
+    const unlisted = [{ containers: [{ name: "api", resources: API }], metrics: null }];
+    expect(containerRows(template, unlisted, { expectSample: true })[0].rows[1].detail).toBe(
+      "no sample · limit 512Mi · request 256Mi",
+    );
+  });
+
+  it("does not say no sample without a counted pod, or when no sample was expected", () => {
+    const template = [{ name: "api", resources: API }];
+    // No pods at all: there is nothing to measure.
+    expect(containerRows(template, [], { expectSample: true })[0].rows[0].detail).toBe("limit 500m · request 250m");
+    // Only a pod of another limit: it does not count, so no sample was expected from it.
+    const other = [pod("old", [], { api: ENVOY })];
+    expect(containerRows(template, other, { expectSample: true })[0].rows[0].detail).toBe("limit 500m · request 250m");
+    // metrics-server did not answer: the panel says so once, the rows do not.
+    const answered = [pod("api-0", [])];
+    expect(containerRows(template, answered)[0].rows[0].detail).toBe("limit 500m · request 250m");
+    expect(containerRows(template, answered, { expectSample: false })[0].rows[0].detail).toBe("limit 500m · request 250m");
+  });
+
   it("ignores metrics of a container the spec does not have, and pods without metrics", () => {
     const rows = containerRows(
       [{ name: "api", resources: API }],

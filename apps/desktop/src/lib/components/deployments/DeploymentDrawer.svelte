@@ -60,7 +60,9 @@
 	const resourceRows = $derived(
 		containerRows(
 			deployment.containers ?? [],
-			childPods.map((p) => ({ containers: p.containers, metrics: resources.metricsFor(p.namespace, p.name) }))
+			childPods.map((p) => ({ containers: p.containers, metrics: resources.metricsFor(p.namespace, p.name) })),
+			// Once metrics-server answered, a counted pod without a sample says "no sample".
+			{ expectSample: resources.metricsAvailable }
 		)
 	);
 	// Only once metrics-server was asked: before that, it has not failed to answer.

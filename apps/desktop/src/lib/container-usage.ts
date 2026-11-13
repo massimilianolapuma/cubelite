@@ -92,6 +92,7 @@ function row(
   spec: (typeof RESOURCES)[number],
   pair: ResourcePairInfo,
   used: number | null,
+  sampleMissing: boolean,
 ): ResourceRow {
   // A request or a limit is written in the used value's unit, so the three
   // numbers read together ("954Mi of 954Mi", not "954Mi of 1G"); the
@@ -109,6 +110,9 @@ function row(
     detail =
       used === null ? `${request} · no limit` : `${spec.format(used)} used · ${request} · no limit`;
   }
+  // A sample was expected and none came (just started, crashing): said in
+  // words, so an empty track does not read as a value.
+  if (sampleMissing) detail = `no sample · ${detail}`;
   const percent =
     limit && limit.amount !== null && used !== null ? percentOf(used, limit.amount) : null;
   return { resource: spec.resource, label: spec.label, percent, meter: limit !== null, detail };
@@ -117,10 +121,13 @@ function row(
 /**
  * Rows for each container that has a `resources` field. Usage is the highest
  * among the given pods that run the container with the template's limit.
+ * With `expectSample` (pod metrics answered), a row with no sample from any
+ * such pod says `no sample`; without such a pod there is nothing to measure.
  */
 export function containerRows(
   containers: readonly ContainerLike[],
   pods: readonly PodUsage[],
+  { expectSample = false }: { expectSample?: boolean } = {},
 ): ContainerRows[] {
   const out: ContainerRows[] = [];
   for (const c of containers) {
@@ -129,7 +136,8 @@ export function containerRows(
     const [cpu, memory] = RESOURCES.map((spec) => {
       const pair = resources[spec.resource];
       const counted = countedPods(c.name, spec.resource, pair.limit, pods);
-      return row(spec, pair, highest(c.name, counted, spec.used));
+      const used = highest(c.name, counted, spec.used);
+      return row(spec, pair, used, expectSample && counted.length > 0 && used === null);
     });
     out.push({ name: c.name, sidecar: c.sidecar === true, rows: [cpu, memory] });
   }

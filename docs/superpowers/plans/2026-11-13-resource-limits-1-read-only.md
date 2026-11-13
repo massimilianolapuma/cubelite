@@ -164,22 +164,23 @@ fn pod_metrics_keep_each_container() {
         "containers": [
             { "name": "api", "usage": { "cpu": "412m", "memory": "498Mi" } },
             { "name": "envoy", "usage": { "cpu": "38000000n", "memory": "41Mi" } },
-            { "name": "broken", "usage": {} }
+            { "name": "broken", "usage": {} },
+            { "name": "half", "usage": { "cpu": "5m", "memory": "lots" } }
         ]
     });
     let m = pod_metrics_from_item(&item).unwrap();
-    assert_eq!(m.cpu_millis, 450.0);
+    // Sums of what was read; a container is listed only when both values were read.
+    assert_eq!(m.cpu_millis, 455.0);
     assert_eq!(m.memory_bytes, (498 + 41) * 1024 * 1024);
     assert_eq!(m.containers, vec![
         ContainerUsageInfo { name: "api".into(), cpu_millis: 412.0, memory_bytes: 498 * 1024 * 1024 },
         ContainerUsageInfo { name: "envoy".into(), cpu_millis: 38.0, memory_bytes: 41 * 1024 * 1024 },
-        ContainerUsageInfo { name: "broken".into(), cpu_millis: 0.0, memory_bytes: 0 },
     ]);
 }
 ```
 
 - [ ] **Step 2: Run** `cargo test -p cubelite-core pod_metrics_keep` — expected: FAIL to compile.
-- [ ] **Step 3: Add `ContainerUsageInfo` and the field; fill it in `pod_metrics_from_item`.** A container entry without a `name` is skipped.
+- [ ] **Step 3: Add `ContainerUsageInfo` and the field; fill it in `pod_metrics_from_item`.** A container entry without a `name`, or whose CPU or memory usage is missing or unreadable, is not listed (a missing sample is not a measured 0; changed after review).
 - [ ] **Step 4: Run** `scripts/gates.sh --rust --no-e2e` — expected: exit 0.
 - [ ] **Step 5: Commit** `feat(core): per-container usage in the pod metrics`.
 
@@ -244,7 +245,7 @@ A pod's sample counts for a container and a resource only when that pod's own co
 | not set | yes | `38m used · request 100m · no limit` |
 | not set | no | `request 100m · no limit` |
 
-A request that is not set reads `no request` in place of `request …`. Examples of the units rule: limit `0.5` and request `0.25` with 260m used read `260m of 500m · request 250m`; limit `536870912` reads `512Mi`; limit `1G` with 1G used reads `954Mi of 954Mi · request 954Mi`; limit `16` with 15999.7m used reads `16 of 16 · request 15.50`; limit `1Xi` (unreadable) reads `498Mi of 1Xi`.
+A request that is not set reads `no request` in place of `request …`. When a sample was expected and none came (pod metrics answered, at least one counted pod, no sample for this container), the detail starts with `no sample · ` (`no sample · limit 500m · request 250m`, `no sample · request 100m · no limit`); `containerRows` takes `{ expectSample: boolean }` as a third parameter. No pods, or metrics-server not answering, do not say it (added after review). Examples of the units rule: limit `0.5` and request `0.25` with 260m used read `260m of 500m · request 250m`; limit `536870912` reads `512Mi`; limit `1G` with 1G used reads `954Mi of 954Mi · request 954Mi`; limit `16` with 15999.7m used reads `16 of 16 · request 15.50`; limit `1Xi` (unreadable) reads `498Mi of 1Xi`.
 
 - [ ] **Step 1: Write the failing tests** in `container-usage.test.ts` (helper `q(text, amount)` builds a `QuantityInfo`; `Mi = 1024 * 1024`):
 
