@@ -9,6 +9,7 @@
 	import Button from '#lib/components/ui/Button.svelte';
 	import Drawer from '#lib/components/ui/Drawer.svelte';
 	import FactRows from '#lib/components/ui/FactRows.svelte';
+	import ImageRef from '#lib/components/ui/ImageRef.svelte';
 	import YamlModal from '#lib/components/YamlModal.svelte';
 	import ShellModal from '#lib/components/pods/ShellModal.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
@@ -119,7 +120,7 @@
 				<div class={PANEL_SECTION}>Containers</div>
 				<div class="flex flex-col gap-0.5">
 					{#each pod.containers as container (container.name)}
-						<!-- Two lines: a long name and a long image each get the row's width. -->
+						<!-- Two lines: a long name and a long image each get the row's width; the image's tag never gives way. -->
 						<div class="{PANEL_CARD} flex flex-col gap-0.5 px-3 py-2" data-container={container.name}>
 							<div class="flex min-w-0 items-center gap-2">
 								<StatusGlyph state={container.ready ? 'ok' : 'warn'} class={container.ready ? 'text-success' : 'text-warning'} />
@@ -129,7 +130,7 @@
 								</span>
 							</div>
 							{#if container.image}
-								<span class="type-body-sm truncate text-text-muted" title={container.image}>{container.image}</span>
+								<ImageRef image={container.image} />
 							{/if}
 						</div>
 					{/each}

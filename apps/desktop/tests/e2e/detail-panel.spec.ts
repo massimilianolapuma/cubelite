@@ -1,6 +1,6 @@
-import { type Page } from "@playwright/test";
+import { type Locator, type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { tauriMockScript } from "./tauri-mock";
+import { FIXTURES, tauriMockScript } from "./tauri-mock";
 
 // The detail panel: docked beside the list from 1000 px of content, over it below (Tonal §5, §8.3).
 async function boot(page: Page, width: number, height: number) {
@@ -113,4 +113,115 @@ test("clicking another row and closing gives focus back to that row", async ({ p
   await panel.getByRole("button", { name: "Close" }).click();
   await expect(panel).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^worker-0/ })).toBeFocused();
+});
+
+// #648: the version of an image is what the reader looks for. In the narrowest
+// panel (360 px) a long reference truncates its repository, never its tag.
+const LONG_IMAGE = "registry.example.internal:5000/platform/team/backend-services/orders-api:2.14.3-rc.1";
+const LONG_TAG = "2.14.3-rc.1-build.20261113.sha.4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d";
+
+async function bootWithImages(page: Page) {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const [api, worker] = FIXTURES.pods;
+  await page.addInitScript(
+    tauriMockScript({
+      pods: [
+        {
+          ...api,
+          containers: [
+            { name: "orders", image: LONG_IMAGE, ready: true },
+            { name: "builder", image: `ghcr.io/x/builder:${LONG_TAG}`, ready: true },
+          ],
+        },
+        worker,
+      ],
+      deployments: [{ ...FIXTURES.deployments[0], images: [LONG_IMAGE, "ghcr.io/x/envoy:1.29"] }],
+    }),
+  );
+  await page.addInitScript(() => {
+    window.localStorage.setItem("cubelite.onboardingSeen", "true");
+    window.localStorage.setItem("cubelite.theme", '"dark"');
+  });
+  await page.goto("/");
+}
+
+/**
+ * A part of the reference (`tag` or `name`) is drawn whole: every line of it
+ * inside the reference and the panel, and nothing of it scrolled away.
+ */
+async function expectWhole(panel: Locator, ref: Locator, part: "tag" | "name", text: string) {
+  const el = ref.locator(`[data-image-${part}]`);
+  await expect(el).toHaveText(text);
+  const box = (await panel.boundingBox())!;
+  const own = (await ref.boundingBox())!;
+  const rects = await el.evaluate((e) => [...e.getClientRects()].map((r) => ({ left: r.left, right: r.right })));
+  expect(rects.length).toBeGreaterThan(0);
+  for (const r of rects) {
+    expect(r.left).toBeGreaterThanOrEqual(Math.floor(own.x));
+    expect(r.right).toBeLessThanOrEqual(Math.ceil(own.x + own.width));
+    expect(r.left).toBeGreaterThanOrEqual(box.x);
+    expect(r.right).toBeLessThanOrEqual(box.x + box.width);
+  }
+  // Neither the reference nor the part's own box (the tag's is its wrapper, with the separator) scrolls.
+  expect(await ref.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  expect(
+    await el.evaluate((e, isTag) => {
+      const own = isTag ? e.parentElement! : e;
+      return own.scrollWidth <= own.clientWidth;
+    }, part === "tag"),
+  ).toBe(true);
+}
+
+const lines = (el: Locator) => el.evaluate((e) => e.getClientRects().length);
+const truncated = (el: Locator) => el.evaluate((e) => e.scrollWidth > e.clientWidth);
+
+test("in the narrowest panel a long image keeps its name and tag whole on one line; the prefix truncates", async ({ page }) => {
+  await bootWithImages(page);
+  await open(page, "Pods");
+  await page.getByText("api-0").click();
+  const panel = page.getByRole("dialog", { name: "api-0" });
+  await expect(panel).toHaveAttribute("data-mode", "docked");
+  expect(Math.round((await panel.boundingBox())!.width)).toBe(360);
+
+  const ref = panel.locator('[data-container="orders"] [data-image]');
+  await expect(ref).toHaveAttribute("title", LONG_IMAGE);
+  await expectWhole(panel, ref, "tag", "2.14.3-rc.1");
+  await expectWhole(panel, ref, "name", "orders-api");
+  // The registry and path gave way (the case under test is real); name and tag share one line.
+  expect(await truncated(ref.locator("[data-image-prefix]"))).toBe(true);
+  expect(await lines(ref.locator("[data-image-tag]"))).toBe(1);
+  expect(await lines(ref.locator("[data-image-name]"))).toBe(1);
+  const [prefix, name, tag] = [
+    (await ref.locator("[data-image-prefix]").boundingBox())!,
+    (await ref.locator("[data-image-name]").boundingBox())!,
+    (await ref.locator("[data-image-tag]").boundingBox())!,
+  ];
+  // One line: the prefix gave way in place rather than pushing the name down.
+  expect(Math.abs(name.y - prefix.y)).toBeLessThan(2);
+  expect(Math.abs(tag.y - name.y)).toBeLessThan(2);
+
+  // A tag longer than the row goes under the name, which keeps its line, and wraps there.
+  const long = panel.locator('[data-container="builder"] [data-image]');
+  await expectWhole(panel, long, "tag", LONG_TAG);
+  await expectWhole(panel, long, "name", "builder");
+  const builder = (await long.locator("[data-image-name]").boundingBox())!;
+  const longTag = (await long.locator("[data-image-tag]").boundingBox())!;
+  expect(longTag.y).toBeGreaterThanOrEqual(builder.y + builder.height - 1);
+});
+
+test("a deployment panel shows each long image on its own line with its whole name and tag", async ({ page }) => {
+  await bootWithImages(page);
+  await open(page, "Deployments");
+  await page.getByText("api", { exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "api" });
+  await expect(panel).toHaveAttribute("data-mode", "docked");
+  const refs = panel.locator("dd [data-image]");
+  await expect(refs).toHaveCount(2);
+  await expectWhole(panel, refs.nth(0), "tag", "2.14.3-rc.1");
+  await expectWhole(panel, refs.nth(0), "name", "orders-api");
+  expect(await truncated(refs.nth(0).locator("[data-image-prefix]"))).toBe(true);
+  await expectWhole(panel, refs.nth(1), "tag", "1.29");
+  await expectWhole(panel, refs.nth(1), "name", "envoy");
+  const [a, b] = [(await refs.nth(0).boundingBox())!, (await refs.nth(1).boundingBox())!];
+  expect(b.y).toBeGreaterThanOrEqual(a.y + a.height - 1);
 });
