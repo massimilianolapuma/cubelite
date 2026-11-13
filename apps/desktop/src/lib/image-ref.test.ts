@@ -7,6 +7,8 @@ describe("parseImageRef", () => {
   it("a bare name has no tag: the version shown is latest", () => {
     expect(parseImageRef("nginx")).toEqual({
       repository: "nginx",
+      prefix: "",
+      name: "nginx",
       tag: null,
       digest: null,
       version: "latest",
@@ -46,6 +48,8 @@ describe("parseImageRef", () => {
   it("a digest alone shows short, after an @", () => {
     expect(parseImageRef(`repo@${DIGEST}`)).toEqual({
       repository: "repo",
+      prefix: "",
+      name: "repo",
       tag: null,
       digest: DIGEST,
       version: "sha256:4f53cda18c2b",
@@ -56,6 +60,8 @@ describe("parseImageRef", () => {
   it("with a tag and a digest the tag is what shows; the digest is kept", () => {
     expect(parseImageRef(`registry.example:5000/team/repo:2.1@${DIGEST}`)).toEqual({
       repository: "registry.example:5000/team/repo",
+      prefix: "registry.example:5000/team/",
+      name: "repo",
       tag: "2.1",
       digest: DIGEST,
       version: "2.1",
@@ -64,12 +70,47 @@ describe("parseImageRef", () => {
   });
 
   it("an empty reference has nothing to show", () => {
-    expect(parseImageRef("")).toEqual({ repository: "", tag: null, digest: null, version: null, separator: ":" });
+    expect(parseImageRef("")).toEqual({
+      repository: "",
+      prefix: "",
+      name: "",
+      tag: null,
+      digest: null,
+      version: null,
+      separator: ":",
+    });
     expect(parseImageRef("   ")).toMatchObject({ repository: "", version: null });
   });
 
   it("ignores surrounding whitespace", () => {
     expect(parseImageRef(" nginx:1.27 ")).toMatchObject({ repository: "nginx", tag: "1.27" });
+  });
+});
+
+describe("parseImageRef: prefix and name", () => {
+  it("the name is the last path segment; the prefix is what comes before it, with its slash", () => {
+    expect(parseImageRef("registry.example.internal:5000/platform/team/backend-services/orders-api:2.14.3-rc.1")).toMatchObject({
+      prefix: "registry.example.internal:5000/platform/team/backend-services/",
+      name: "orders-api",
+      tag: "2.14.3-rc.1",
+    });
+    expect(parseImageRef("ghcr.io/org/app:v1.2.3")).toMatchObject({ prefix: "ghcr.io/org/", name: "app" });
+  });
+
+  it("a reference with no slash has an empty prefix", () => {
+    expect(parseImageRef("nginx:1.27")).toMatchObject({ prefix: "", name: "nginx" });
+  });
+
+  it("a registry with a port is all prefix", () => {
+    expect(parseImageRef("localhost:5000/app")).toMatchObject({ prefix: "localhost:5000/", name: "app", version: "latest" });
+    expect(parseImageRef("localhost:5000/app:dev")).toMatchObject({ prefix: "localhost:5000/", name: "app", tag: "dev" });
+  });
+
+  it("prefix and name together are the repository", () => {
+    for (const ref of ["nginx", "a/b/c:1", `x.io/y/z@${DIGEST}`, "localhost:5000/app"]) {
+      const { prefix, name, repository } = parseImageRef(ref);
+      expect(prefix + name).toBe(repository);
+    }
   });
 });
 

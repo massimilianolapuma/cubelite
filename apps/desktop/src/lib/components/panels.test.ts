@@ -136,10 +136,14 @@ describe("PodDrawer", () => {
     const tag = ref.querySelector<HTMLElement>("[data-image-tag]")!;
     expect(tag.textContent).toBe("2.14.3-rc.1");
     expect(tag).toHaveClass("text-text", "font-semibold");
-    const repo = ref.querySelector<HTMLElement>("[data-image-repository]")!;
-    expect(repo.textContent).toBe("registry.example.internal:5000/platform/team/backend-services/orders-api");
-    // The repository is the part that gives way when the row is narrow.
-    expect(repo).toHaveClass("truncate", "text-text-muted", "font-normal");
+    // The image's name is its own element, whole; the registry and path in front are what gives way.
+    const name = ref.querySelector<HTMLElement>("[data-image-name]")!;
+    expect(name.textContent).toBe("orders-api");
+    expect(name).toHaveClass("text-text-muted", "font-normal");
+    expect(name).not.toHaveClass("truncate");
+    const prefix = ref.querySelector<HTMLElement>("[data-image-prefix]")!;
+    expect(prefix.textContent).toBe("registry.example.internal:5000/platform/team/backend-services/");
+    expect(prefix).toHaveClass("truncate", "text-text-muted", "font-normal");
     expect(tag).not.toHaveClass("truncate");
     // The whole reference still reads as one string.
     expect(ref.textContent).toBe(image);
@@ -160,6 +164,9 @@ describe("PodDrawer", () => {
       props: { pod: pod({ containers: [{ name: "api", image: "nginx", ready: true }] as PodInfo["containers"] }), onClose: vi.fn() },
     });
     expect(document.querySelector("[data-container] [data-image-tag]")!.textContent).toBe("latest");
+    // No slash: the whole repository is the name, and nothing is in front of it.
+    expect(document.querySelector("[data-container] [data-image-name]")!.textContent).toBe("nginx");
+    expect(document.querySelector("[data-container] [data-image-prefix]")).toBeNull();
   });
 
   it("lists the facts as label and value rows", () => {
@@ -289,6 +296,11 @@ describe("DeploymentDrawer", () => {
     const refs = [...value.querySelectorAll<HTMLElement>("[data-image]")];
     expect(refs.map((el) => el.getAttribute("title"))).toEqual(images);
     expect(refs.map((el) => el.querySelector("[data-image-tag]")!.textContent)).toEqual(["2.14.3-rc.1", "sha256:0123456789ab"]);
+    expect(refs.map((el) => el.querySelector("[data-image-name]")!.textContent)).toEqual(["orders-api", "sidecar"]);
+    expect(refs.map((el) => el.querySelector("[data-image-prefix]")!.textContent)).toEqual([
+      "registry.example.internal:5000/platform/",
+      "ghcr.io/x/",
+    ]);
     expect(refs[0].querySelector("[data-image-tag]")).toHaveClass("text-text", "font-semibold");
     // No comma-joined string any more.
     expect(value.textContent).not.toContain(", ");

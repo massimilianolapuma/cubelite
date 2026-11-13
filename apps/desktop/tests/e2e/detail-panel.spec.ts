@@ -145,24 +145,37 @@ async function bootWithImages(page: Page) {
   await page.goto("/");
 }
 
-/** The tag is drawn whole inside the panel and inside its own row. */
-async function expectTagWhole(panel: Locator, ref: Locator, tag: string) {
-  const tagEl = ref.locator("[data-image-tag]");
-  await expect(tagEl).toHaveText(tag);
+/**
+ * A part of the reference (`tag` or `name`) is drawn whole: every line of it
+ * inside the reference and the panel, and nothing of it scrolled away.
+ */
+async function expectWhole(panel: Locator, ref: Locator, part: "tag" | "name", text: string) {
+  const el = ref.locator(`[data-image-${part}]`);
+  await expect(el).toHaveText(text);
   const box = (await panel.boundingBox())!;
   const own = (await ref.boundingBox())!;
-  const rects = await tagEl.evaluate((el) => [...el.getClientRects()].map((r) => ({ left: r.left, right: r.right })));
+  const rects = await el.evaluate((e) => [...e.getClientRects()].map((r) => ({ left: r.left, right: r.right })));
+  expect(rects.length).toBeGreaterThan(0);
   for (const r of rects) {
     expect(r.left).toBeGreaterThanOrEqual(Math.floor(own.x));
     expect(r.right).toBeLessThanOrEqual(Math.ceil(own.x + own.width));
+    expect(r.left).toBeGreaterThanOrEqual(box.x);
     expect(r.right).toBeLessThanOrEqual(box.x + box.width);
   }
-  // Nothing of the tag is hidden: neither the reference nor the tag's own box scrolls.
-  expect(await ref.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-  expect(await tagEl.evaluate((el) => el.parentElement!.scrollWidth <= el.parentElement!.clientWidth)).toBe(true);
+  // Neither the reference nor the part's own box (the tag's is its wrapper, with the separator) scrolls.
+  expect(await ref.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
+  expect(
+    await el.evaluate((e, isTag) => {
+      const own = isTag ? e.parentElement! : e;
+      return own.scrollWidth <= own.clientWidth;
+    }, part === "tag"),
+  ).toBe(true);
 }
 
-test("in the narrowest panel a long image keeps its whole tag on one line; the repository truncates", async ({ page }) => {
+const lines = (el: Locator) => el.evaluate((e) => e.getClientRects().length);
+const truncated = (el: Locator) => el.evaluate((e) => e.scrollWidth > e.clientWidth);
+
+test("in the narrowest panel a long image keeps its name and tag whole on one line; the prefix truncates", async ({ page }) => {
   await bootWithImages(page);
   await open(page, "Pods");
   await page.getByText("api-0").click();
@@ -172,21 +185,31 @@ test("in the narrowest panel a long image keeps its whole tag on one line; the r
 
   const ref = panel.locator('[data-container="orders"] [data-image]');
   await expect(ref).toHaveAttribute("title", LONG_IMAGE);
-  await expectTagWhole(panel, ref, "2.14.3-rc.1");
-  // The repository gave way (the case under test is real), and the tag is one line.
-  expect(await ref.locator("[data-image-repository]").evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
-  expect(await ref.locator("[data-image-tag]").evaluate((el) => el.getClientRects().length)).toBe(1);
+  await expectWhole(panel, ref, "tag", "2.14.3-rc.1");
+  await expectWhole(panel, ref, "name", "orders-api");
+  // The registry and path gave way (the case under test is real); name and tag share one line.
+  expect(await truncated(ref.locator("[data-image-prefix]"))).toBe(true);
+  expect(await lines(ref.locator("[data-image-tag]"))).toBe(1);
+  expect(await lines(ref.locator("[data-image-name]"))).toBe(1);
+  const [prefix, name, tag] = [
+    (await ref.locator("[data-image-prefix]").boundingBox())!,
+    (await ref.locator("[data-image-name]").boundingBox())!,
+    (await ref.locator("[data-image-tag]").boundingBox())!,
+  ];
+  // One line: the prefix gave way in place rather than pushing the name down.
+  expect(Math.abs(name.y - prefix.y)).toBeLessThan(2);
+  expect(Math.abs(tag.y - name.y)).toBeLessThan(2);
 
-  // A tag longer than the row goes under the repository, which keeps its line, and wraps there.
+  // A tag longer than the row goes under the name, which keeps its line, and wraps there.
   const long = panel.locator('[data-container="builder"] [data-image]');
-  await expectTagWhole(panel, long, LONG_TAG);
-  const repo = (await long.locator("[data-image-repository]").boundingBox())!;
-  const tag = (await long.locator("[data-image-tag]").boundingBox())!;
-  expect(repo.width).toBeGreaterThan(100);
-  expect(tag.y).toBeGreaterThanOrEqual(repo.y + repo.height - 1);
+  await expectWhole(panel, long, "tag", LONG_TAG);
+  await expectWhole(panel, long, "name", "builder");
+  const builder = (await long.locator("[data-image-name]").boundingBox())!;
+  const longTag = (await long.locator("[data-image-tag]").boundingBox())!;
+  expect(longTag.y).toBeGreaterThanOrEqual(builder.y + builder.height - 1);
 });
 
-test("a deployment panel shows each long image on its own line with its whole tag", async ({ page }) => {
+test("a deployment panel shows each long image on its own line with its whole name and tag", async ({ page }) => {
   await bootWithImages(page);
   await open(page, "Deployments");
   await page.getByText("api", { exact: true }).click();
@@ -194,8 +217,11 @@ test("a deployment panel shows each long image on its own line with its whole ta
   await expect(panel).toHaveAttribute("data-mode", "docked");
   const refs = panel.locator("dd [data-image]");
   await expect(refs).toHaveCount(2);
-  await expectTagWhole(panel, refs.nth(0), "2.14.3-rc.1");
-  await expectTagWhole(panel, refs.nth(1), "1.29");
+  await expectWhole(panel, refs.nth(0), "tag", "2.14.3-rc.1");
+  await expectWhole(panel, refs.nth(0), "name", "orders-api");
+  expect(await truncated(refs.nth(0).locator("[data-image-prefix]"))).toBe(true);
+  await expectWhole(panel, refs.nth(1), "tag", "1.29");
+  await expectWhole(panel, refs.nth(1), "name", "envoy");
   const [a, b] = [(await refs.nth(0).boundingBox())!, (await refs.nth(1).boundingBox())!];
   expect(b.y).toBeGreaterThanOrEqual(a.y + a.height - 1);
 });

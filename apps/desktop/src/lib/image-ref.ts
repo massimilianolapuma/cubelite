@@ -10,6 +10,13 @@
 export interface ImageRef {
   /** Registry and path, e.g. `ghcr.io/org/app`. Empty for an empty reference. */
   repository: string;
+  /**
+   * The repository up to its last segment, trailing slash included
+   * (`ghcr.io/org/`): the part that gives way first. Empty without a slash.
+   */
+  prefix: string;
+  /** The last segment of the repository (`app`): the image's own name. */
+  name: string;
   /** The tag as written, or null when there is none. */
   tag: string | null;
   /** The full digest (`sha256:…`) as written, or null when there is none. */
@@ -36,7 +43,7 @@ export function shortDigest(digest: string): string {
 
 export function parseImageRef(reference: string): ImageRef {
   const ref = reference.trim();
-  if (ref === "") return { repository: "", tag: null, digest: null, version: null, separator: ":" };
+  if (ref === "") return { repository: "", prefix: "", name: "", tag: null, digest: null, version: null, separator: ":" };
 
   const at = ref.indexOf("@");
   const named = at < 0 ? ref : ref.slice(0, at);
@@ -46,8 +53,10 @@ export function parseImageRef(reference: string): ImageRef {
   const hasTag = colon > named.lastIndexOf("/");
   const repository = hasTag ? named.slice(0, colon) : named;
   const tag = hasTag ? named.slice(colon + 1) || null : null;
+  const slash = repository.lastIndexOf("/");
+  const parts = { repository, prefix: repository.slice(0, slash + 1), name: repository.slice(slash + 1), tag, digest };
 
-  if (tag !== null) return { repository, tag, digest, version: tag, separator: ":" };
-  if (digest !== null) return { repository, tag, digest, version: shortDigest(digest), separator: "@" };
-  return { repository, tag, digest, version: "latest", separator: ":" };
+  if (tag !== null) return { ...parts, version: tag, separator: ":" };
+  if (digest !== null) return { ...parts, version: shortDigest(digest), separator: "@" };
+  return { ...parts, version: "latest", separator: ":" };
 }
