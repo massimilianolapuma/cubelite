@@ -219,7 +219,7 @@ affinity are not considered."
 A schedulable node is one that is Ready and not cordoned.
 
 W0 and W1 are warnings and not blocks because the app cannot see what a cluster autoscaler could
-add (a larger node pool scaled to zero, for instance). See §11, call 4.
+add (a larger node pool scaled to zero, for instance). Confirmed by the user (§11).
 
 ### 4.3 Not checked
 
@@ -413,17 +413,15 @@ Three issues under #650, one PR each to `main`, each usable on its own:
 Decided with the user: the change goes to the workload and rolls out; the check is against what
 the nodes can hold; impossible values are blocked, risky ones warn and the user decides; the
 intervention is temporary and stays visible; deployments arrive through Helm or Argo CD / Flux.
+A value above every node of the cluster is a warning (W0), not a block: the app cannot see a
+cluster autoscaler's larger node pools, and the user decides (answered 2026-11-13).
 
 Calls made here, not yet confirmed:
 
 1. Deployments only in this version (StatefulSets have no panel).
 2. Warn, never suspend, for Argo CD and Flux; no reading of their objects.
 3. A check that cannot run is a warning ("not checked"), not a block.
-4. **Open, the user's to settle.** A value above every node of the cluster was first described to
-   the user as blocked. Here it is the strongest warning (W0) instead, because the app cannot see
-   a cluster autoscaler's larger node pools and a false block in an emergency sends the user back
-   to `kubectl`. Blocks are only what the cluster itself refuses (§4.1). If the user prefers the
-   block, W0 moves to §4.1 and nothing else changes.
+4. (Settled, see above: W0 is a warning.)
 5. Memory overcommit warns; CPU overcommit is only a note.
 6. W2 and W3 assume the pods come back to the same nodes.
 7. Usage comes from metrics-server only; Prometheus is not used as a second source.
