@@ -2,10 +2,13 @@
 //! helpers every part of it shares: reading a quantity as an amount, writing
 //! an amount as the desktop does, and a percentage that is always finite.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
-use crate::metrics::{parse_cpu_millis, parse_memory_bytes};
-use crate::resources::{ContainerResourcesInfo, QuantityInfo};
+use super::manager::ManagerInfo;
+use crate::metrics::{parse_cpu_millis, parse_memory_bytes, ContainerUsageInfo};
+use crate::resources::{ContainerResourcesInfo, QuantityInfo, TemplateContainerInfo};
 
 /// A resource a request or a limit is about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -33,6 +36,14 @@ impl ResourceName {
         match self {
             ResourceName::Cpu => parse_cpu_millis(text),
             ResourceName::Memory => parse_memory_bytes(text).map(|b| b as f64),
+        }
+    }
+
+    /// The word for the resource inside a sentence.
+    pub(crate) fn word(self) -> &'static str {
+        match self {
+            ResourceName::Cpu => "CPU",
+            ResourceName::Memory => "memory",
         }
     }
 }
@@ -290,6 +301,342 @@ pub struct LimitRangeFacts {
     pub name: String,
     /// Its items, in spec order.
     pub items: Vec<LimitRangeItemFacts>,
+}
+
+/// A part of the facts that may be missing, with the reason in the user's terms.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum Fact<T> {
+    /// Read.
+    Known {
+        /// What was read.
+        value: T,
+    },
+    /// Not read.
+    Missing {
+        /// Why, in the user's terms.
+        reason: String,
+    },
+}
+
+impl<T> Fact<T> {
+    /// The value, when known.
+    pub fn known(&self) -> Option<&T> {
+        match self {
+            Fact::Known { value } => Some(value),
+            Fact::Missing { .. } => None,
+        }
+    }
+}
+
+/// How the Deployment rolls out, its counts already resolved.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct RolloutFacts {
+    /// Strategy `Recreate`: every old pod stops before a new one starts.
+    pub recreate: bool,
+    /// Pods above the replica count during a rolling update.
+    pub max_surge: i32,
+    /// Pods below the replica count during a rolling update.
+    pub max_unavailable: i32,
+}
+
+/// The Deployment itself.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WorkloadFacts {
+    /// Namespace.
+    pub namespace: String,
+    /// Name.
+    pub name: String,
+    /// `metadata.resourceVersion`.
+    pub resource_version: Option<String>,
+    /// `metadata.generation`.
+    pub generation: i64,
+    /// Wanted replicas.
+    pub replicas: i32,
+    /// The rollout strategy.
+    pub rollout: RolloutFacts,
+    /// Regular containers, spec order.
+    pub containers: Vec<TemplateContainerInfo>,
+    /// Every init container, spec order; `sidecar` set.
+    pub init_containers: Vec<TemplateContainerInfo>,
+    /// The pod overhead of the template (from a running pod), zero without one.
+    pub overhead: Amounts,
+    /// Who manages the Deployment.
+    pub manager: ManagerInfo,
+    /// The override annotation as read, whatever it holds.
+    pub override_annotation: Option<String>,
+}
+
+/// What the editor saw, sent back with the apply (spec §6.1).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SeenState {
+    /// `metadata.generation`.
+    pub generation: i64,
+    /// Every container of the template, init included, by name.
+    pub resources: BTreeMap<String, ContainerResourcesInfo>,
+    /// The override annotation.
+    pub override_annotation: Option<String>,
+}
+
+/// One pod of the workload.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct OwnPodFacts {
+    /// Pod name.
+    pub name: String,
+    /// The node it runs on.
+    pub node: Option<String>,
+    /// Its figures, from its own spec.
+    pub figures: PodFigures,
+    /// Usage per container; empty when there is no sample.
+    pub usage: Vec<ContainerUsageInfo>,
+}
+
+/// One node of the cluster.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NodeFacts {
+    /// Node name.
+    pub name: String,
+    /// Ready and not cordoned.
+    pub schedulable: bool,
+    /// Allocatable CPU and memory.
+    pub allocatable: Amounts,
+    /// Requests of the pods on it that are not this workload's.
+    pub others_requests: Amounts,
+    /// CPU limits of those pods (a pod without one adds 0).
+    pub others_cpu_limits: f64,
+    /// Memory limits of those pods (a pod without one adds 0).
+    pub others_memory_limits: f64,
+    /// Memory in use, from metrics-server; `None` without a sample.
+    pub memory_used: Option<f64>,
+}
+
+/// A ResourceQuota of the namespace, its amounts parsed.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct QuotaFacts {
+    /// Its name.
+    pub name: String,
+    /// It has `scopes` or a `scopeSelector`.
+    pub scoped: bool,
+    /// Hard limits, by key (only the six keys of spec B5).
+    pub hard: BTreeMap<String, f64>,
+    /// Usage, by key.
+    pub used: BTreeMap<String, f64>,
+}
+
+/// A HorizontalPodAutoscaler that targets the Deployment.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct HpaFacts {
+    /// Its name.
+    pub name: String,
+    /// It scales on CPU utilisation.
+    pub cpu_utilization: bool,
+    /// It scales on memory utilisation.
+    pub memory_utilization: bool,
+}
+
+/// A VerticalPodAutoscaler that targets the Deployment.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct VpaFacts {
+    /// Its name.
+    pub name: String,
+    /// `spec.updatePolicy.updateMode`.
+    pub update_mode: String,
+}
+
+/// Everything a change of requests and limits is checked against.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ResourceFacts {
+    /// The Deployment.
+    pub workload: WorkloadFacts,
+    /// What the editor saw.
+    pub seen: SeenState,
+    /// Its pods that are not finished.
+    pub pods: Vec<OwnPodFacts>,
+    /// Known when metrics-server answered.
+    pub usage: Fact<()>,
+    /// The nodes of the cluster.
+    pub nodes: Fact<Vec<NodeFacts>>,
+    /// The LimitRanges of the namespace.
+    pub limit_ranges: Fact<Vec<LimitRangeFacts>>,
+    /// The ResourceQuotas of the namespace.
+    pub quotas: Fact<Vec<QuotaFacts>>,
+    /// The HorizontalPodAutoscalers that target the Deployment.
+    pub hpas: Fact<Vec<HpaFacts>>,
+    /// The VerticalPodAutoscalers that target the Deployment.
+    pub vpas: Fact<Vec<VpaFacts>>,
+}
+
+/// What a proposal asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProposalKind {
+    /// New values for the listed containers.
+    Adjust,
+    /// The original values of the active override mark.
+    Restore,
+}
+
+/// The four values wanted for one container.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ContainerProposal {
+    /// Container name.
+    pub name: String,
+    /// The four values wanted.
+    pub resources: ResourceTexts,
+}
+
+/// A change the user asks for.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Proposal {
+    /// Adjust or restore.
+    pub kind: ProposalKind,
+    /// The containers and their wanted values; ignored for a restore.
+    pub containers: Vec<ContainerProposal>,
+}
+
+/// How serious a finding is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Level {
+    /// The cluster would refuse it: cannot be applied.
+    Blocked,
+    /// Risky: shown with numbers, the user decides.
+    Warning,
+    /// A check that could not run.
+    NotChecked,
+    /// Shown, asks for nothing.
+    Note,
+}
+
+/// Which rule a finding comes from (spec §4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingCode {
+    /// Not a valid quantity.
+    B1,
+    /// A limit of zero.
+    B2,
+    /// A limit under its request.
+    B3,
+    /// A LimitRange violated.
+    B4,
+    /// A ResourceQuota exceeded.
+    B5,
+    /// A value removed by an adjust.
+    Cleared,
+    /// A container that cannot be changed here.
+    UnknownContainer,
+    /// A restore with no active mark.
+    NoOverride,
+    /// Above every node.
+    W0,
+    /// Fewer replicas have room than wanted.
+    W1,
+    /// The rollout may stall on room.
+    W1r,
+    /// Memory limits above a node.
+    W2,
+    /// Full limits run a node out of memory.
+    W3,
+    /// A memory limit under current usage.
+    W4,
+    /// A CPU limit under current usage.
+    W5,
+    /// The rollout may stall on a quota.
+    W6,
+    /// A HorizontalPodAutoscaler on utilisation.
+    W7,
+    /// A VerticalPodAutoscaler that rewrites the values.
+    W8,
+    /// Memory typed with the suffix `m`.
+    MilliMemory,
+    /// Not checked.
+    W9,
+    /// Every replica has room.
+    NoteFits,
+    /// CPU limits above a node's CPU.
+    NoteCpuLimits,
+    /// The QoS class changes.
+    NoteQos,
+    /// No pod is running.
+    NoteNoPods,
+}
+
+/// One finding of the check, with its sentence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Finding {
+    /// The rule.
+    pub code: FindingCode,
+    /// How serious it is.
+    pub level: Level,
+    /// The sentence, with the numbers.
+    pub message: String,
+    /// The container it is about.
+    pub container: Option<String>,
+    /// The resource it is about.
+    pub resource: Option<ResourceName>,
+    /// The field it is about.
+    pub field: Option<ResourceField>,
+    /// The node it is about.
+    pub node: Option<String>,
+}
+
+/// One field the proposal changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Change {
+    /// Container name.
+    pub container: String,
+    /// The container is a native sidecar (it goes under `initContainers`).
+    pub sidecar: bool,
+    /// CPU or memory.
+    pub resource: ResourceName,
+    /// Request or limit.
+    pub field: ResourceField,
+    /// The cluster's text.
+    pub before: Option<String>,
+    /// The wanted text; `None` removes the value.
+    pub after: Option<String>,
+}
+
+/// A percent of a node's allocatable, before and after the change.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct BeforeAfter {
+    /// Before the change.
+    pub before: f64,
+    /// After the change.
+    pub after: f64,
+}
+
+/// One node, before and after the change.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NodeProjection {
+    /// Node name.
+    pub name: String,
+    /// Ready and not cordoned.
+    pub schedulable: bool,
+    /// Pods of the workload on it now.
+    pub own_pods: i32,
+    /// CPU requests, percent of allocatable.
+    pub cpu_requests: BeforeAfter,
+    /// Memory requests, percent of allocatable.
+    pub memory_requests: BeforeAfter,
+    /// CPU limits, percent of allocatable.
+    pub cpu_limits: BeforeAfter,
+    /// Memory limits, percent of allocatable.
+    pub memory_limits: BeforeAfter,
+    /// Memory in use now, and if the workload's pods used their full limit.
+    pub memory_if_full: Option<BeforeAfter>,
+}
+
+/// The outcome of the check.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Evaluation {
+    /// Findings, worst first.
+    pub findings: Vec<Finding>,
+    /// What changes, in template order.
+    pub changes: Vec<Change>,
+    /// The nodes, hosting ones first.
+    pub nodes: Vec<NodeProjection>,
 }
 
 #[cfg(test)]

@@ -129,6 +129,24 @@ pub fn pod_figures(
     }
 }
 
+/// The pod's sums as the LimitRange admission computes them for a `Pod`
+/// item: the same walk, but a container without the value adds nothing,
+/// and the pod has no value only when no container sets one. No overhead.
+pub(crate) fn admission_sum(
+    regular: &[EffectiveContainer],
+    init: &[(EffectiveContainer, bool)],
+    value: impl Fn(&EffectiveContainer) -> Option<f64> + Copy,
+) -> Option<f64> {
+    let any = regular
+        .iter()
+        .chain(init.iter().map(|(c, _)| c))
+        .any(|c| value(c).is_some());
+    if !any {
+        return None;
+    }
+    walk(regular, init, value, true)
+}
+
 /// "Guaranteed", "Burstable" or "BestEffort", over every container of the pod.
 pub fn qos_class(containers: &[EffectiveContainer]) -> &'static str {
     let resources = [ResourceName::Cpu, ResourceName::Memory];
@@ -406,5 +424,26 @@ mod tests {
         assert_eq!(qos_class(&[request_under_limit]), "Burstable");
         let no_memory_limit = set("api", (500.0, Some(500.0)), (512.0, None));
         assert_eq!(qos_class(&[no_memory_limit]), "Burstable");
+    }
+    #[test]
+    fn admission_sums_skip_a_container_without_the_value() {
+        // The LimitRange admission sums what is set: envoy's missing CPU
+        // limit adds nothing, where the scheduler's pod limit is none.
+        let api = set("api", (250.0, Some(500.0)), (256.0, Some(512.0)));
+        let envoy = set("envoy", (100.0, None), (64.0, Some(128.0)));
+        let regular = [api, envoy];
+        assert_eq!(admission_sum(&regular, &[], |c| c.cpu.limit), Some(500.0));
+        assert_eq!(admission_sum(&regular, &[], |c| c.cpu.request), Some(350.0));
+        // A sidecar and a plain init container walk as for the scheduler.
+        let mesh = set("mesh", (50.0, Some(100.0)), (8.0, None));
+        let migrate = set("migrate", (900.0, Some(900.0)), (8.0, None));
+        let init = [(mesh, true), (migrate, false)];
+        assert_eq!(
+            admission_sum(&regular, &init, |c| c.cpu.limit),
+            Some(1000.0)
+        );
+        // No container sets it: the pod has none.
+        let bare = c("bare", (None, None), (None, None));
+        assert_eq!(admission_sum(&[bare], &[], |c| c.cpu.limit), None);
     }
 }

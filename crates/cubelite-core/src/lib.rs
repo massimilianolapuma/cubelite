@@ -57,8 +57,8 @@ pub use error::{ContextError, KubeconfigError};
 pub use helm::HelmReleaseInfo;
 pub use kubeconfig::{discover_kubeconfig_files, is_kubeconfig_file, KubeConfig};
 pub use limits::{
-    ManagerInfo, ManagerKind, OverrideContainer, OverrideInfo, PairText, ResourceField,
-    ResourceName, ResourceTexts,
+    Evaluation, ManagerInfo, ManagerKind, OverrideContainer, OverrideInfo, PairText, Proposal,
+    ResourceFacts, ResourceField, ResourceName, ResourceTexts, SeenState,
 };
 pub use logs::{LogLevel, LogLine};
 pub use metrics::{ContainerUsageInfo, NodeCapacityInfo, PodMetricsInfo};
