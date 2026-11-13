@@ -110,14 +110,13 @@ pub fn patch_body(resource_version: Option<&str>, changes: &[Change], mark: Opti
     Value::Object(body)
 }
 
-/// A change underneath the editor: the annotation always, the resources of
-/// every container (as amounts) when the generation moved.
+/// A change underneath the editor: the annotation, and the resources of
+/// every container (as amounts), whatever the generation. A Deployment
+/// deleted and recreated while the editor is open can be at the same
+/// generation with values the user never saw.
 fn changed_underneath(facts: &ResourceFacts, seen: &SeenState) -> bool {
     if facts.workload.override_annotation != seen.override_annotation {
         return true;
-    }
-    if facts.workload.generation == seen.generation {
-        return false;
     }
     let now = &facts.seen.resources;
     now.len() != seen.resources.len()
@@ -173,9 +172,21 @@ fn now() -> String {
         .to_string()
 }
 
+/// A 403 of RBAC (its message names the verb, or there is none). An
+/// admission webhook built on controller-runtime (Gatekeeper, so Azure
+/// Policy) denies with 403 too, and its message is the policy's reason.
+fn rbac_refusal(error: &kube::Error) -> bool {
+    match error {
+        kube::Error::Api(status) => {
+            status.message.is_empty() || status.message.contains("cannot patch resource")
+        }
+        _ => true,
+    }
+}
+
 /// A write the API refused, as the sentence to show.
 fn write_error(error: &kube::Error) -> KubeconfigError {
-    if api_status_is(error, 403, "Forbidden") {
+    if api_status_is(error, 403, "Forbidden") && rbac_refusal(error) {
         refused(NOT_ALLOWED)
     } else if api_status_is(error, 409, "Conflict") {
         refused(TOO_FAST)
@@ -189,7 +200,9 @@ fn write_error(error: &kube::Error) -> KubeconfigError {
 /// The outcome of one read, check and write.
 enum Attempt {
     Applied(Evaluation),
-    Conflict,
+    /// A write landed between the read and the patch (a 409, or the
+    /// Deployment's spec or mark moved before it): start again from the read.
+    Again,
 }
 
 impl KubeClient {
@@ -209,15 +222,15 @@ impl KubeClient {
         seen: &SeenState,
         dry_run: bool,
     ) -> Result<Evaluation, KubeconfigError> {
-        // A conflict means a write landed between the read and the patch:
-        // read, check and write once more, from the read.
+        // A write landed between the read and the patch: read, check and
+        // write once more, from the read.
         for _ in 0..2 {
             match self
                 .apply_once(namespace, name, proposal, seen, dry_run)
                 .await?
             {
                 Attempt::Applied(evaluation) => return Ok(evaluation),
-                Attempt::Conflict => continue,
+                Attempt::Again => continue,
             }
         }
         Err(refused(TOO_FAST))
@@ -250,8 +263,30 @@ impl KubeClient {
             ProposalKind::Adjust => adjusted_mark(&facts, &evaluation.changes, &now()),
             ProposalKind::Restore => None,
         };
+        // The facts took ten reads, one of them every pod of the cluster:
+        // the resource version they carry may be old already on a
+        // Deployment whose status moves every few seconds. Read it again a
+        // moment before the patch; the check holds while the spec (the
+        // generation) and the mark are the ones it ran on.
+        let api: Api<Deployment> = Api::namespaced(self.client(), namespace);
+        let fresh = api
+            .get(name)
+            .await
+            .map_err(|e| KubeconfigError::ClientError {
+                reason: api_message(&e),
+            })?;
+        let fresh_mark = fresh
+            .metadata
+            .annotations
+            .as_ref()
+            .and_then(|a| a.get(OVERRIDE_ANNOTATION));
+        if fresh.metadata.generation.unwrap_or(0) != facts.workload.generation
+            || fresh_mark != facts.workload.override_annotation.as_ref()
+        {
+            return Ok(Attempt::Again);
+        }
         let body = patch_body(
-            facts.workload.resource_version.as_deref(),
+            fresh.metadata.resource_version.as_deref(),
             &evaluation.changes,
             mark.as_deref(),
         );
@@ -260,10 +295,9 @@ impl KubeClient {
             dry_run,
             ..PatchParams::default()
         };
-        let api: Api<Deployment> = Api::namespaced(self.client(), namespace);
         match api.patch(name, &params, &Patch::Strategic(&body)).await {
             Ok(_) => Ok(Attempt::Applied(evaluation)),
-            Err(e) if api_status_is(&e, 409, "Conflict") => Ok(Attempt::Conflict),
+            Err(e) if api_status_is(&e, 409, "Conflict") => Ok(Attempt::Again),
             Err(e) => Err(write_error(&e)),
         }
     }
@@ -841,29 +875,52 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_resources_are_compared_only_when_the_generation_moved() {
-        // The same generation: the spec has not changed since the editor
-        // opened, whatever the resources it sent back.
+    async fn the_resources_are_compared_whatever_the_generation() {
+        // The same generation, other resources: a Deployment deleted and
+        // recreated while the editor was open. Its values were never shown.
         let mut seen = facts().seen;
         seen.resources.insert(
             "api".into(),
-            crate::limits::fixtures::resources((None, None), (None, None)),
+            crate::limits::fixtures::resources(
+                (Some("250m"), Some("500m")),
+                (Some("256Mi"), Some("384Mi")),
+            ),
+        );
+        let (result, requests_seen) = apply(
+            cluster(),
+            &set("api", Memory, Limit, Some("768Mi")),
+            &seen,
+            true,
+        )
+        .await;
+        assert_eq!(result.expect_err("refused"), UNDERNEATH);
+        assert!(patches(&requests_seen).is_empty());
+        // The same amounts in another unit are the same values.
+        let mut seen = facts().seen;
+        seen.resources.insert(
+            "api".into(),
+            crate::limits::fixtures::resources(
+                (Some("0.25"), Some("500m")),
+                (Some("256Mi"), Some("0.5Gi")),
+            ),
         );
         let (result, _) = apply(
             cluster(),
             &set("api", Memory, Limit, Some("768Mi")),
             &seen,
-            false,
+            true,
         )
         .await;
         result.expect("applied");
     }
 
     /// A cluster whose PATCHes are answered in turn by `answers` (the last
-    /// one repeats), and whose Deployment GETs carry a resource version
-    /// that moves at each read.
-    fn conflicting(
+    /// one repeats), and whose Deployment GET number `n` (from 0) is the
+    /// baseline Deployment changed by `edit(n, ..)`. The counter gives the
+    /// number of GETs.
+    fn scripted(
         answers: Vec<(u16, Value)>,
+        edit: impl Fn(usize, &mut Value) + Send + 'static,
     ) -> (
         KubeClient,
         tokio::task::JoinHandle<Vec<Seen>>,
@@ -882,12 +939,25 @@ mod tests {
             if uri.starts_with(DEPLOYMENT) {
                 let n = counted.fetch_add(1, Ordering::SeqCst);
                 let mut d = base.deployment.clone();
-                d["metadata"]["resourceVersion"] = json!((812 + n).to_string());
+                edit(n, &mut d);
                 return (StatusCode::OK, d);
             }
             base.respond(method, uri)
         });
         (client, server, reads)
+    }
+
+    /// [`scripted`] with a resource version that moves at each read: 812, 813, ...
+    fn conflicting(
+        answers: Vec<(u16, Value)>,
+    ) -> (
+        KubeClient,
+        tokio::task::JoinHandle<Vec<Seen>>,
+        Arc<AtomicUsize>,
+    ) {
+        scripted(answers, |n, d| {
+            d["metadata"]["resourceVersion"] = json!((812 + n).to_string());
+        })
     }
 
     fn conflict() -> (u16, Value) {
@@ -902,6 +972,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_patch_carries_the_version_of_a_read_a_moment_before_it() {
+        // The facts read the Deployment (812), then nine other reads; the
+        // Deployment is read again right before the PATCH (813).
+        let (client, server, reads) = conflicting(vec![(200, cluster().deployment)]);
+        let (result, seen) = apply_on(
+            client,
+            server,
+            &set("api", Memory, Limit, Some("768Mi")),
+            &facts().seen,
+            false,
+        )
+        .await;
+        result.expect("applied");
+        assert_eq!(reads.load(Ordering::SeqCst), 2, "the Deployment read twice");
+        let patch = the_patch(&seen);
+        assert_eq!(patch.body["metadata"]["resourceVersion"], json!("813"));
+        // The second read is the last request before the PATCH.
+        let at = seen
+            .iter()
+            .position(|s| std::ptr::eq(s, patch))
+            .expect("the PATCH");
+        assert_eq!(seen[at - 1].method, Method::GET);
+        assert!(
+            seen[at - 1].uri.starts_with(DEPLOYMENT),
+            "{}",
+            seen[at - 1].uri
+        );
+    }
+
+    #[tokio::test]
+    async fn a_generation_moved_between_the_two_reads_starts_again_once() {
+        // Read 0 (the facts) at generation 7, read 1 at 8: start again from
+        // the read; reads 2 and 3 agree at 8.
+        let (client, server, reads) = scripted(vec![(200, cluster().deployment)], |n, d| {
+            d["metadata"]["resourceVersion"] = json!((812 + n).to_string());
+            if n >= 1 {
+                d["metadata"]["generation"] = json!(8);
+            }
+        });
+        let (result, seen) = apply_on(
+            client,
+            server,
+            &set("api", Memory, Limit, Some("768Mi")),
+            &facts().seen,
+            false,
+        )
+        .await;
+        result.expect("applied on the second try");
+        assert_eq!(reads.load(Ordering::SeqCst), 4);
+        assert_eq!(
+            the_patch(&seen).body["metadata"]["resourceVersion"],
+            json!("815")
+        );
+        // Moving at every read uses up the one retry, with its sentence.
+        let (client, server, reads) = scripted(vec![(200, cluster().deployment)], |n, d| {
+            d["metadata"]["generation"] = json!(7 + n);
+        });
+        let (result, seen) = apply_on(
+            client,
+            server,
+            &set("api", Memory, Limit, Some("768Mi")),
+            &facts().seen,
+            false,
+        )
+        .await;
+        assert_eq!(
+            result.expect_err("gave up"),
+            "The deployment is changing too fast to update. Try again."
+        );
+        assert_eq!(reads.load(Ordering::SeqCst), 4);
+        assert!(patches(&seen).is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_annotation_written_between_the_two_reads_starts_again() {
+        // Read 1 carries a mark the facts did not have: start again from
+        // the read, which now sees a mark the editor did not see.
+        let (client, server, reads) = scripted(vec![(200, cluster().deployment)], |n, d| {
+            if n >= 1 {
+                d["metadata"]["annotations"] = json!({ OVERRIDE_ANNOTATION: "{\"v\":1}" });
+            }
+        });
+        let (result, seen) = apply_on(
+            client,
+            server,
+            &set("api", Memory, Limit, Some("768Mi")),
+            &facts().seen,
+            false,
+        )
+        .await;
+        assert_eq!(result.expect_err("refused"), UNDERNEATH);
+        assert_eq!(reads.load(Ordering::SeqCst), 3);
+        assert!(patches(&seen).is_empty());
+    }
+
+    #[tokio::test]
     async fn one_conflict_is_retried_from_the_read() {
         let (client, server, reads) = conflicting(vec![conflict(), (200, cluster().deployment)]);
         let (result, seen) = apply_on(
@@ -913,12 +1079,16 @@ mod tests {
         )
         .await;
         result.expect("applied on the second try");
-        assert_eq!(reads.load(Ordering::SeqCst), 2, "the Deployment read twice");
+        assert_eq!(
+            reads.load(Ordering::SeqCst),
+            4,
+            "the Deployment read twice per try"
+        );
         let p = patches(&seen);
         assert_eq!(p.len(), 2);
         // Each PATCH carries the version read just before it.
-        assert_eq!(p[0].body["metadata"]["resourceVersion"], json!("812"));
-        assert_eq!(p[1].body["metadata"]["resourceVersion"], json!("813"));
+        assert_eq!(p[0].body["metadata"]["resourceVersion"], json!("813"));
+        assert_eq!(p[1].body["metadata"]["resourceVersion"], json!("815"));
     }
 
     #[tokio::test]
@@ -936,20 +1106,13 @@ mod tests {
             result.expect_err("gave up"),
             "The deployment is changing too fast to update. Try again."
         );
-        assert_eq!(reads.load(Ordering::SeqCst), 2);
+        assert_eq!(reads.load(Ordering::SeqCst), 4);
         assert_eq!(patches(&seen).len(), 2);
     }
 
-    #[tokio::test]
-    async fn forbidden_reads_as_not_allowed() {
-        let c = cluster().on(
-            Method::PATCH,
-            DEPLOYMENT,
-            403,
-            forbidden_json(
-                "deployments.apps \"api\" is forbidden: User \"viewer\" cannot patch resource \"deployments\"",
-            ),
-        );
+    /// What the apply answers when the PATCH gets a 403 with `message`.
+    async fn forbidden_apply(message: &str) -> String {
+        let c = cluster().on(Method::PATCH, DEPLOYMENT, 403, forbidden_json(message));
         let (result, _) = apply(
             c,
             &set("api", Memory, Limit, Some("768Mi")),
@@ -957,10 +1120,28 @@ mod tests {
             true,
         )
         .await;
-        assert_eq!(
-            result.expect_err("forbidden"),
-            "You are not allowed to change this deployment."
-        );
+        result.expect_err("forbidden")
+    }
+
+    /// The 403 of RBAC.
+    const RBAC_DENIED: &str = "deployments.apps \"api\" is forbidden: User \"viewer\" cannot patch resource \"deployments\" in API group \"apps\" in the namespace \"default\"";
+    /// The 403 of an admission webhook built on controller-runtime (Gatekeeper, Azure Policy).
+    const POLICY_DENIED: &str = "admission webhook \"validation.gatekeeper.sh\" denied the request: [container-limits] container <api> memory limit <768Mi> is higher than the maximum allowed of <512Mi>";
+
+    #[tokio::test]
+    async fn forbidden_by_rbac_reads_as_not_allowed() {
+        for message in [RBAC_DENIED, ""] {
+            assert_eq!(
+                forbidden_apply(message).await,
+                "You are not allowed to change this deployment.",
+                "{message:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_403_from_an_admission_webhook_shows_its_message() {
+        assert_eq!(forbidden_apply(POLICY_DENIED).await, POLICY_DENIED);
     }
 
     #[tokio::test]
@@ -1141,17 +1322,24 @@ mod tests {
 
     #[tokio::test]
     async fn clear_override_maps_errors_as_the_apply_does() {
+        for message in [RBAC_DENIED, ""] {
+            let (result, _) =
+                clear(cluster().on(Method::PATCH, DEPLOYMENT, 403, forbidden_json(message))).await;
+            assert_eq!(
+                result.expect_err("forbidden"),
+                "You are not allowed to change this deployment.",
+                "{message:?}"
+            );
+        }
+        // A 403 that is not RBAC's says what the API said.
         let (result, _) = clear(cluster().on(
             Method::PATCH,
             DEPLOYMENT,
             403,
-            forbidden_json("deployments.apps \"api\" is forbidden"),
+            forbidden_json(POLICY_DENIED),
         ))
         .await;
-        assert_eq!(
-            result.expect_err("forbidden"),
-            "You are not allowed to change this deployment."
-        );
+        assert_eq!(result.expect_err("denied"), POLICY_DENIED);
         let (result, _) = clear(cluster().on(
             Method::PATCH,
             DEPLOYMENT,

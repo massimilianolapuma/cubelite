@@ -571,13 +571,14 @@ Only changed fields are written; a change whose `after` is unset writes `null` f
 Order of `apply_resources`, every refusal a `ClientError` whose reason is the sentence:
 
 1. `resource_facts`.
-2. Underneath: when the generation differs from `seen`, compare the resources of every container as amounts; compare the annotation always. A difference: "The deployment's resources changed since you opened this. Reopen and try again."
+2. Underneath: compare the resources of every container as amounts and the annotation, on every apply, whatever the generation (a Deployment deleted and recreated while the editor is open can be at the same generation with values the user never saw). A difference: "The deployment's resources changed since you opened this. Reopen and try again."
 3. `evaluate`. A blocked finding: its message (the first one). No change: "Nothing to change."
 4. The mark: `Adjust` uses `next_mark` (active mark of the facts, the changed containers' values before and after, now as RFC 3339 seconds); `Restore` removes it.
-5. PATCH with `Patch::Strategic`, `PatchParams { field_manager: Some("cubelite"), dry_run, .. }`.
-6. A 409 runs steps 1 to 5 once more. A second 409: "The deployment is changing too fast to update. Try again." A 403: "You are not allowed to change this deployment." Any other API error: its `message`.
+5. GET the Deployment again, a moment before the patch: when its generation and its override annotation equal those of the facts, the patch carries this fresh `metadata.resourceVersion`; when they differ, start again from step 1 (this counts as the one retry of step 7).
+6. PATCH with `Patch::Strategic`, `PatchParams { field_manager: Some("cubelite"), dry_run, .. }`.
+7. A 409 runs steps 1 to 6 once more. A second 409 (or a second start again): "The deployment is changing too fast to update. Try again." A 403 of RBAC (the API's message contains `cannot patch resource`, or is empty): "You are not allowed to change this deployment." Any other 403 (an admission webhook built on controller-runtime, such as Gatekeeper, denies with 403) and any other API error: its `message`.
 
-`clear_resources_override`: a merge patch `{"metadata":{"annotations":{"cubelite.app/resources-override":null}}}`, field manager `cubelite`; errors mapped as in step 6.
+`clear_resources_override`: a merge patch `{"metadata":{"annotations":{"cubelite.app/resources-override":null}}}`, field manager `cubelite`; errors mapped as in step 7.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -600,9 +601,12 @@ Order of `apply_resources`, every refusal a `ClientError` whose reason is the se
 #[tokio::test] async fn resources_changed_underneath_are_refused() { /* seen.resources differ from the cluster, generation differs */ }
 #[tokio::test] async fn the_mark_changed_underneath_is_refused() {}
 #[tokio::test] async fn a_generation_moved_by_a_scale_is_not_refused() { /* seen.generation 6, cluster 7, same resources -> applied */ }
-#[tokio::test] async fn one_conflict_is_retried_from_the_read() { /* first PATCH 409, second 200 -> Ok; two PATCHes, the Deployment read twice */ }
+#[tokio::test] async fn one_conflict_is_retried_from_the_read() { /* first PATCH 409, second 200 -> Ok; two PATCHes, the Deployment read twice per try */ }
 #[tokio::test] async fn a_second_conflict_gives_up_with_its_sentence() {}
-#[tokio::test] async fn forbidden_reads_as_not_allowed() { /* PATCH 403 -> "You are not allowed to change this deployment." */ }
+#[tokio::test] async fn forbidden_by_rbac_reads_as_not_allowed() { /* PATCH 403 "... cannot patch resource ..." or empty -> "You are not allowed to change this deployment." */ }
+#[tokio::test] async fn a_403_from_an_admission_webhook_shows_its_message() { /* PATCH 403 from Gatekeeper -> its message */ }
+#[tokio::test] async fn the_patch_carries_the_version_of_a_read_a_moment_before_it() {}
+#[tokio::test] async fn a_generation_moved_between_the_two_reads_starts_again_once() {}
 #[tokio::test] async fn an_admission_rejection_shows_the_api_message() { /* PATCH 400 with message "denied by policy" -> that text, no prefix inside reason */ }
 #[tokio::test] async fn a_second_change_keeps_the_first_original_in_the_mark() {}
 #[tokio::test] async fn restore_puts_the_original_back_and_removes_the_mark() {
