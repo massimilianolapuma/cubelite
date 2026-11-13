@@ -771,7 +771,7 @@ checksum = "914a755b7c2d4af2bdcff7ce1739e2db9a1b81a9b07123d8015786ae03c0980d"
 
 [[package]]
 name = "cubelite-core"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "base64 0.23.1",
  "dirs",
@@ -798,7 +798,7 @@ dependencies = [
 
 [[package]]
 name = "cubelite-desktop"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "cubelite-core",
  "dbus-secret-service",
