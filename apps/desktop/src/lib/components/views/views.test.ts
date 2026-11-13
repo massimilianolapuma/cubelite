@@ -449,6 +449,15 @@ describe("PodsView load states (#606)", () => {
     render(PodsView);
     expect(await screen.findByTestId("metrics-notice")).toHaveTextContent("CPU and memory are unavailable");
   });
+
+  it("does not say metrics are unavailable when only node capacity was refused", async () => {
+    const { clusterCapacity } = await import("#lib/tauri.ts");
+    vi.mocked(clusterCapacity).mockRejectedValueOnce(new Error("nodes is forbidden"));
+    await loadMain({ pods: [pod()] });
+    await vi.waitFor(() => expect(resources.metricsKnown).toBe(true));
+    render(PodsView);
+    expect(screen.queryByTestId("metrics-notice")).toBeNull();
+  });
 });
 
 describe("each main list shows its own failure (#606)", () => {

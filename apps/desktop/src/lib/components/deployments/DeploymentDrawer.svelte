@@ -6,6 +6,8 @@
 	import { formatAge } from '#lib/age.ts';
 	import { matchesSelector } from '#lib/k8s-match.ts';
 	import ReplicaStepper from '#lib/components/deployments/ReplicaStepper.svelte';
+	import ContainerResourceRows from '#lib/components/resources/ContainerResourceRows.svelte';
+	import { containerRows } from '#lib/container-usage.ts';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Drawer from '#lib/components/ui/Drawer.svelte';
 	import FactRows from '#lib/components/ui/FactRows.svelte';
@@ -51,6 +53,21 @@
 	);
 
 	const podsKnown = $derived(resources.mainLoaded && resources.listError('pods') === null);
+
+	// Requests, limits and usage per template container (#652). Usage is the
+	// highest among the deployment's pods that run the template's limits: the
+	// one closest to its limit.
+	const resourceRows = $derived(
+		containerRows(
+			deployment.containers ?? [],
+			childPods.map((p) => ({ containers: p.containers, metrics: resources.metricsFor(p.namespace, p.name) })),
+			// Once metrics-server answered, a counted pod without a sample says "no sample".
+			{ expectSample: resources.podMetricsAvailable }
+		)
+	);
+	// Only once metrics-server was asked: before that, it has not failed to answer.
+	// Pod metrics alone: a refused node capacity is not metrics-server failing.
+	const usageUnavailable = $derived(resources.metricsKnown && !resources.podMetricsAvailable);
 
 	const glyphTone = { ok: 'text-success', warn: 'text-warning', err: 'text-error', done: '', unknown: '' } as const;
 
@@ -113,6 +130,29 @@
 			<div class={PANEL_SECTION}>Replicas</div>
 			<ReplicaStepper {deployment} />
 		</div>
+
+		{#if resourceRows.length > 0}
+			<div data-section="resources">
+				<div class={PANEL_SECTION}>Resources</div>
+				<div class="flex flex-col gap-0.5">
+					{#each resourceRows as container (container.name)}
+						<div class="{PANEL_CARD} flex flex-col gap-2 px-3 py-2" data-container={container.name}>
+							<!-- A long name wraps whole, as the panel's heading does; "sidecar" follows it. -->
+							<div class="min-w-0 break-words" data-container-name>
+								<span class="type-data-sm text-text">{container.name}</span>
+								{#if container.sidecar}
+									<span class="type-body-sm ml-1.5 whitespace-nowrap text-text-muted">sidecar</span>
+								{/if}
+							</div>
+							<ContainerResourceRows rows={container.rows} />
+						</div>
+					{/each}
+				</div>
+				{#if usageUnavailable}
+					<p class="type-body-sm mt-2 text-text-muted">Usage unavailable: metrics-server did not answer.</p>
+				{/if}
+			</div>
+		{/if}
 
 		<FactRows {facts} />
 

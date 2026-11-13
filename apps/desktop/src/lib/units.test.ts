@@ -10,6 +10,14 @@ describe("formatCpu", () => {
     expect(formatCpu(1000)).toBe("1");
     expect(formatCpu(1250)).toBe("1.25");
   });
+  it("decides the unit and the decimals on the value it shows", () => {
+    // 999.6m rounds to a whole core: "1", never "1000m".
+    expect(formatCpu(999.6)).toBe("1");
+    expect(formatCpu(999.4)).toBe("999m");
+    // 15999.7m is 16 cores at two decimals: "16", not "16.00".
+    expect(formatCpu(15999.7)).toBe("16");
+    expect(formatCpu(1500)).toBe("1.50");
+  });
 });
 
 describe("formatBytes", () => {

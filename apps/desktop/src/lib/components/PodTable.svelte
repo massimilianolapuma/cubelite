@@ -77,7 +77,7 @@
 		prometheus.sparklineError ? `sparklines unavailable: ${prometheus.sparklineError}` : 'sparkline: last hour, from Prometheus'
 	);
 	// Only over rows: an empty or failed list has no CPU column to explain.
-	const noMetrics = $derived(loaded && pods.length > 0 && resources.metricsKnown && !resources.metricsAvailable);
+	const noMetrics = $derived(loaded && pods.length > 0 && resources.metricsKnown && !resources.podMetricsAvailable);
 </script>
 
 <ResourceList

@@ -24,8 +24,10 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import {
+  clusterCapacity,
   listDeployments,
   listEvents,
+  listPodMetrics,
   listNamespaces,
   listNodes,
   listPods,
@@ -382,5 +384,46 @@ describe("each main list reports its own failure (#606)", () => {
     answer([]);
     await batch;
     expect(resources.kindLoaded("services")).toBe(true);
+  });
+});
+
+describe("metrics", () => {
+  const usage = { name: "a", namespace: "default", cpu_millis: 120, memory_bytes: 1024, containers: [] };
+
+  async function loadAndSettle() {
+    vi.mocked(listPods).mockResolvedValue([pod("a", "default")]);
+    await resources.load();
+    await vi.waitFor(() => expect(resources.metricsKnown).toBe(true));
+  }
+
+  it("keeps the pod metrics when node capacity is refused (a user who may not list nodes)", async () => {
+    vi.mocked(listPodMetrics).mockResolvedValueOnce([usage]);
+    vi.mocked(clusterCapacity).mockRejectedValueOnce(new Error("nodes is forbidden"));
+    await loadAndSettle();
+    expect(resources.metricsFor("default", "a")).toEqual(usage);
+    expect(resources.podMetricsAvailable).toBe(true);
+    // Node figures need both: they stay unavailable.
+    expect(resources.metricsAvailable).toBe(false);
+    expect(resources.nodes).toEqual([]);
+  });
+
+  it("has neither when metrics-server does not answer for pods", async () => {
+    vi.mocked(listPodMetrics).mockRejectedValueOnce(new Error("no metrics-server"));
+    vi.mocked(clusterCapacity).mockResolvedValueOnce([
+      { name: "n1", cpu_used_millis: 1, cpu_allocatable_millis: 2, memory_used_bytes: 1, memory_allocatable_bytes: 2 },
+    ]);
+    await loadAndSettle();
+    expect(resources.metricsFor("default", "a")).toBeNull();
+    expect(resources.podMetricsAvailable).toBe(false);
+    expect(resources.metricsAvailable).toBe(false);
+  });
+
+  it("has both when both answer, and forgets them on clear", async () => {
+    vi.mocked(listPodMetrics).mockResolvedValueOnce([usage]);
+    await loadAndSettle();
+    expect(resources.podMetricsAvailable).toBe(true);
+    expect(resources.metricsAvailable).toBe(true);
+    resources.clear();
+    expect(resources.podMetricsAvailable).toBe(false);
   });
 });

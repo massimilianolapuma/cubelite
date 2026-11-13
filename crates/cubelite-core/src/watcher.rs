@@ -24,16 +24,20 @@ use futures::{Stream, StreamExt};
 use k8s_openapi::api::{
     apps::v1::{Deployment, StatefulSet},
     batch::v1::{CronJob, Job},
-    core::v1::{ConfigMap, Namespace, Node, PersistentVolumeClaim, Pod, Secret, Service},
+    core::v1::{
+        ConfigMap, Container, Namespace, Node, PersistentVolumeClaim, Pod, PodSpec, Secret, Service,
+    },
     networking::v1::Ingress,
 };
+use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use kube::{runtime::watcher, Api, Client};
 use serde::{Deserialize, Serialize};
 
+use crate::metrics::{parse_cpu_millis, parse_memory_bytes};
 use crate::resources::{
-    ConfigMapInfo, ContainerInfo, CronJobInfo, DeploymentConditionInfo, DeploymentInfo,
-    IngressInfo, JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo,
-    StatefulSetInfo,
+    ConfigMapInfo, ContainerInfo, ContainerResourcesInfo, CronJobInfo, DeploymentConditionInfo,
+    DeploymentInfo, IngressInfo, JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, QuantityInfo,
+    ResourcePairInfo, SecretInfo, ServiceInfo, StatefulSetInfo, TemplateContainerInfo,
 };
 
 /// Selects which Kubernetes resource type to watch.
@@ -240,6 +244,7 @@ pub(crate) fn pod_to_info(pod: Pod) -> Option<PodInfo> {
             name: c.name.clone(),
             image: c.image.clone(),
             ready: statuses.iter().any(|cs| cs.name == c.name && cs.ready),
+            resources: container_resources(c),
         })
         .collect();
 
@@ -262,6 +267,28 @@ pub(crate) fn pod_to_info(pod: Pod) -> Option<PodInfo> {
         labels,
         creation_timestamp: creation,
     })
+}
+
+/// CPU and memory requests and limits of one container, with the text the
+/// cluster wrote and the parsed amount (millicores, bytes).
+pub(crate) fn container_resources(c: &Container) -> ContainerResourcesInfo {
+    let resources = c.resources.as_ref();
+    let pick = |map: Option<&std::collections::BTreeMap<String, Quantity>>,
+                key: &str,
+                parse: fn(&str) -> Option<f64>| {
+        map.and_then(|m| m.get(key)).map(|q| QuantityInfo {
+            text: q.0.clone(),
+            amount: parse(&q.0),
+        })
+    };
+    let pair = |key: &str, parse: fn(&str) -> Option<f64>| ResourcePairInfo {
+        request: pick(resources.and_then(|r| r.requests.as_ref()), key, parse),
+        limit: pick(resources.and_then(|r| r.limits.as_ref()), key, parse),
+    };
+    ContainerResourcesInfo {
+        cpu: pair("cpu", parse_cpu_millis),
+        memory: pair("memory", |q| parse_memory_bytes(q).map(|b| b as f64)),
+    }
 }
 
 /// Extract picker-ready [`ContainerDetail`] rows from a raw [`Pod`].
@@ -482,7 +509,7 @@ pub(crate) fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
     let namespace = d.metadata.namespace.clone().unwrap_or_default();
     let creation = creation_timestamp(&d.metadata);
 
-    let (replicas, images, selector, strategy) = match d.spec {
+    let (replicas, images, selector, strategy, containers) = match d.spec {
         Some(spec) => {
             let images = spec
                 .template
@@ -495,11 +522,23 @@ pub(crate) fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
                         .collect()
                 })
                 .unwrap_or_default();
+            let containers = spec
+                .template
+                .spec
+                .as_ref()
+                .map(template_containers)
+                .unwrap_or_default();
             let selector = spec.selector.match_labels.unwrap_or_default();
             let strategy = spec.strategy.and_then(|s| s.type_);
-            (spec.replicas.unwrap_or(0), images, selector, strategy)
+            (
+                spec.replicas.unwrap_or(0),
+                images,
+                selector,
+                strategy,
+                containers,
+            )
         }
-        None => (0, Vec::new(), Default::default(), None),
+        None => (0, Vec::new(), Default::default(), None, Vec::new()),
     };
 
     let (ready_replicas, conditions) = match d.status {
@@ -529,7 +568,32 @@ pub(crate) fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
         strategy,
         conditions,
         creation_timestamp: creation,
+        containers,
     })
+}
+
+/// The containers of a pod template with their requests and limits: the
+/// regular containers in spec order, then the native sidecars (init
+/// containers with `restartPolicy: Always`). Plain init containers are left
+/// out: they do not run beside the workload.
+fn template_containers(spec: &PodSpec) -> Vec<TemplateContainerInfo> {
+    let template = |c: &Container, sidecar: bool| TemplateContainerInfo {
+        name: c.name.clone(),
+        image: c.image.clone(),
+        sidecar,
+        resources: container_resources(c),
+    };
+    let sidecars = spec
+        .init_containers
+        .iter()
+        .flatten()
+        .filter(|c| c.restart_policy.as_deref() == Some("Always"))
+        .map(|c| template(c, true));
+    spec.containers
+        .iter()
+        .map(|c| template(c, false))
+        .chain(sidecars)
+        .collect()
 }
 
 /// Convert a raw [`Job`] object into a [`JobInfo`], returning `None` if
@@ -1200,6 +1264,133 @@ mod tests {
         assert_eq!(info.conditions.len(), 1);
         assert_eq!(info.conditions[0].condition_type, "Available");
         assert_eq!(info.conditions[0].status, "True");
+    }
+
+    #[test]
+    fn pod_to_info_carries_container_resources() {
+        let pod: k8s_openapi::api::core::v1::Pod = serde_json::from_value(serde_json::json!({
+            "metadata": { "name": "api-0", "namespace": "default" },
+            "spec": { "containers": [
+                { "name": "api", "resources": {
+                    "requests": { "cpu": "250m", "memory": "256Mi" },
+                    "limits": { "cpu": "500m", "memory": "512Mi" }
+                } },
+                { "name": "envoy", "resources": { "requests": { "cpu": "100m" } } }
+            ] }
+        }))
+        .unwrap();
+
+        let info = pod_to_info(pod).unwrap();
+        let api = &info.containers[0].resources;
+        assert_eq!(
+            api.cpu.request,
+            Some(QuantityInfo {
+                text: "250m".into(),
+                amount: Some(250.0)
+            })
+        );
+        assert_eq!(
+            api.cpu.limit,
+            Some(QuantityInfo {
+                text: "500m".into(),
+                amount: Some(500.0)
+            })
+        );
+        assert_eq!(
+            api.memory.limit,
+            Some(QuantityInfo {
+                text: "512Mi".into(),
+                amount: Some(536_870_912.0)
+            })
+        );
+        let envoy = &info.containers[1].resources;
+        assert_eq!(
+            envoy.cpu.request.as_ref().map(|q| q.amount),
+            Some(Some(100.0))
+        );
+        assert_eq!(envoy.cpu.limit, None);
+        assert_eq!(envoy.memory, ResourcePairInfo::default());
+    }
+
+    #[test]
+    fn deployment_to_info_lists_template_containers_and_native_sidecars() {
+        let deployment: Deployment = serde_json::from_value(serde_json::json!({
+            "metadata": { "name": "api", "namespace": "default" },
+            "spec": {
+                "selector": { "matchLabels": { "app": "api" } },
+                "template": { "spec": {
+                    "containers": [
+                        { "name": "api", "image": "ghcr.io/x/api:2.1",
+                          "resources": { "limits": { "memory": "1Gi" } } },
+                        { "name": "worker", "image": "ghcr.io/x/worker:2.1" }
+                    ],
+                    "initContainers": [
+                        { "name": "migrate", "image": "ghcr.io/x/migrate:2.1" },
+                        { "name": "mesh", "image": "ghcr.io/x/mesh:1.0",
+                          "restartPolicy": "Always",
+                          "resources": { "requests": { "cpu": "50m" } } }
+                    ]
+                } }
+            }
+        }))
+        .unwrap();
+
+        let info = deployment_to_info(deployment).unwrap();
+        let names: Vec<_> = info
+            .containers
+            .iter()
+            .map(|c| (c.name.as_str(), c.sidecar))
+            .collect();
+        assert_eq!(
+            names,
+            vec![("api", false), ("worker", false), ("mesh", true)]
+        );
+        assert_eq!(
+            info.containers[0]
+                .resources
+                .memory
+                .limit
+                .as_ref()
+                .map(|q| q.amount),
+            Some(Some(1_073_741_824.0))
+        );
+        assert_eq!(
+            info.containers[1].resources,
+            ContainerResourcesInfo::default()
+        );
+        assert_eq!(
+            info.containers[2]
+                .resources
+                .cpu
+                .request
+                .as_ref()
+                .map(|q| q.amount),
+            Some(Some(50.0))
+        );
+        assert_eq!(
+            info.containers[2].image.as_deref(),
+            Some("ghcr.io/x/mesh:1.0")
+        );
+        assert_eq!(info.images.len(), 2); // unchanged: regular containers only
+    }
+
+    #[test]
+    fn container_resources_keeps_the_text_of_a_quantity_it_cannot_parse() {
+        let c: k8s_openapi::api::core::v1::Container = serde_json::from_value(serde_json::json!({
+            "name": "api",
+            "resources": { "limits": { "memory": "1Xi" } }
+        }))
+        .unwrap();
+
+        let r = container_resources(&c);
+        assert_eq!(
+            r.memory.limit,
+            Some(QuantityInfo {
+                text: "1Xi".into(),
+                amount: None
+            })
+        );
+        assert_eq!(r.memory.request, None);
     }
 
     /// Pod with an app container (crash-looping), a native sidecar init

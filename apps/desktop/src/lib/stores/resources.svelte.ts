@@ -120,8 +120,16 @@ class ResourcesStore {
   /** ns/name → usage; null until metrics-server answers, {} when it 404s. */
   podMetrics = $state<Record<string, PodMetricsInfo>>({});
   nodes = $state<NodeCapacityInfo[]>([]);
-  /** false when metrics-server is unavailable in the active cluster. */
+  /**
+   * false when metrics-server is unavailable in the active cluster: both the
+   * pod metrics and the node capacity answered (node figures need both).
+   */
   metricsAvailable = $state(false);
+  /**
+   * true when metrics-server answered for pods, even if node capacity was
+   * refused (a user who may not list nodes still has pod usage).
+   */
+  podMetricsAvailable = $state(false);
   /** metrics-server has answered or failed once for the active cluster. */
   metricsKnown = $state(false);
   loading = $state(false);
@@ -265,25 +273,23 @@ class ResourcesStore {
     cluster: string,
     seq: number,
   ): Promise<void> {
-    try {
-      const [podMetricsList, nodeList] = await Promise.all([
-        listPodMetrics(kc, ns, cluster),
-        clusterCapacity(kc, cluster),
-      ]);
-      if (seq !== this.#loadSeq) return;
-      const map: Record<string, PodMetricsInfo> = {};
-      for (const m of podMetricsList) map[`${m.namespace}/${m.name}`] = m;
-      this.podMetrics = map;
-      this.nodes = nodeList;
-      this.metricsAvailable = true;
-      this.metricsKnown = true;
-    } catch {
-      if (seq !== this.#loadSeq) return;
-      this.podMetrics = {};
-      this.nodes = [];
-      this.metricsAvailable = false;
-      this.metricsKnown = true;
+    // Settled apart: node capacity lists nodes first, and a refusal there
+    // must not take the pods' usage with it.
+    const [podsR, nodesR] = await Promise.allSettled([
+      listPodMetrics(kc, ns, cluster),
+      clusterCapacity(kc, cluster),
+    ]);
+    if (seq !== this.#loadSeq) return;
+    const map: Record<string, PodMetricsInfo> = {};
+    if (podsR.status === "fulfilled") {
+      for (const m of podsR.value) map[`${m.namespace}/${m.name}`] = m;
     }
+    const both = podsR.status === "fulfilled" && nodesR.status === "fulfilled";
+    this.podMetrics = map;
+    this.nodes = both ? nodesR.value : [];
+    this.podMetricsAvailable = podsR.status === "fulfilled";
+    this.metricsAvailable = both;
+    this.metricsKnown = true;
   }
 
   metricsFor(namespace: string, name: string): PodMetricsInfo | null {
@@ -537,6 +543,7 @@ class ResourcesStore {
     this.podMetrics = {};
     this.nodes = [];
     this.metricsAvailable = false;
+    this.podMetricsAvailable = false;
     this.metricsKnown = false;
     this.error = null;
     this.loading = false;

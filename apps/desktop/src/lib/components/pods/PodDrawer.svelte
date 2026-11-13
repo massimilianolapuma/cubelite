@@ -13,6 +13,8 @@
 	import YamlModal from '#lib/components/YamlModal.svelte';
 	import ShellModal from '#lib/components/pods/ShellModal.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
+	import ContainerResourceRows from '#lib/components/resources/ContainerResourceRows.svelte';
+	import { containerRows } from '#lib/container-usage.ts';
 	import MetricsSection from '#lib/components/metrics/MetricsSection.svelte';
 	import WorkloadLinks from '#lib/components/integrations/WorkloadLinks.svelte';
 	import StatCard from '#lib/components/ui/StatCard.svelte';
@@ -79,6 +81,15 @@
 	});
 
 	const usage = $derived(resources.metricsFor(pod.namespace, pod.name));
+	// Requests, limits and this pod's usage per container (#652), by name.
+	// Once metrics-server answered, a container without a sample says "no sample".
+	const resourceRows = $derived(
+		new Map(
+			containerRows(pod.containers, [{ containers: pod.containers, metrics: usage }], {
+				expectSample: resources.podMetricsAvailable
+			}).map((c) => [c.name, c.rows])
+		)
+	);
 	// Bars are relative to the allocatable capacity of the pod's node.
 	const nodeCapacity = $derived(resources.nodes.find((n) => n.name === pod.node) ?? null);
 
@@ -131,6 +142,11 @@
 							</div>
 							{#if container.image}
 								<ImageRef image={container.image} />
+							{/if}
+							{#if resourceRows.has(container.name)}
+								<div class="mt-1.5">
+									<ContainerResourceRows rows={resourceRows.get(container.name) ?? []} />
+								</div>
 							{/if}
 						</div>
 					{/each}

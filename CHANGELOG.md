@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Deployment and pod panels show each container's CPU and memory requests, limits and current usage (#652).
+
 ## [0.11.0] - 2026-11-13
 
 ### Added

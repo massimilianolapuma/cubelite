@@ -2,10 +2,26 @@ import { invoke } from "@tauri-apps/api/core";
 
 // --- Types matching Rust structs ---
 
+/** A Kubernetes quantity as the cluster writes it, with its amount (millicores, bytes); `amount` is null when `text` cannot be parsed. */
+export type QuantityInfo = { text: string; amount: number | null };
+export type ResourcePairInfo = { request: QuantityInfo | null; limit: QuantityInfo | null };
+export type ContainerResourcesInfo = { cpu: ResourcePairInfo; memory: ResourcePairInfo };
+/** A container of a workload's pod template; `sidecar` is a native sidecar (init container with `restartPolicy: Always`). */
+export type TemplateContainerInfo = {
+  name: string;
+  image: string | null;
+  sidecar: boolean;
+  resources: ContainerResourcesInfo;
+};
+/** CPU/memory usage of one container of a pod. */
+export type ContainerUsageInfo = { name: string; cpu_millis: number; memory_bytes: number };
+
 export type ContainerInfo = {
   name: string;
   image: string | null;
   ready: boolean;
+  /** Requests and limits; absent in a payload from an older core. */
+  resources?: ContainerResourcesInfo;
 };
 
 export type PodInfo = {
@@ -45,6 +61,8 @@ export type DeploymentInfo = {
   strategy: string | null;
   conditions: DeploymentConditionInfo[];
   creation_timestamp: string | null;
+  /** Template containers (regular, then native sidecars); absent in a payload from an older core. */
+  containers?: TemplateContainerInfo[];
 };
 
 export type ContextInfo = {
@@ -255,6 +273,8 @@ export type PodMetricsInfo = {
   namespace: string;
   cpu_millis: number;
   memory_bytes: number;
+  /** Usage per container; absent in a payload from an older core. */
+  containers?: ContainerUsageInfo[];
 };
 
 export type NodeCapacityInfo = {
