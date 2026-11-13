@@ -442,6 +442,14 @@ describe("DeploymentDrawer", () => {
     expect(resourceCard("api")).toHaveTextContent("limit 512Mi · request 256Mi");
   });
 
+  it("shows usage, and no unavailable sentence, when only node capacity was refused", async () => {
+    vi.mocked(clusterCapacity).mockRejectedValueOnce(new Error("nodes is forbidden"));
+    await loadWithMetrics([apiPod()], [API_0_METRICS]);
+    render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
+    expect(resourceCard("api")).toHaveTextContent("260m of 500m · request 250m");
+    expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+  });
+
   it("does not say usage is unavailable before metrics-server was asked", () => {
     render(DeploymentDrawer, { props: { deployment: dep({ containers: TEMPLATE }), onClose: vi.fn() } });
     expect(resourcesSection()).not.toBeNull();

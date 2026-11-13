@@ -86,7 +86,7 @@
 	const resourceRows = $derived(
 		new Map(
 			containerRows(pod.containers, [{ containers: pod.containers, metrics: usage }], {
-				expectSample: resources.metricsAvailable
+				expectSample: resources.podMetricsAvailable
 			}).map((c) => [c.name, c.rows])
 		)
 	);

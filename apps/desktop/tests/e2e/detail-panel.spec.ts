@@ -311,6 +311,16 @@ test("a deployment panel says once that usage is unavailable when metrics-server
   expect(await fits(section)).toBe(true);
 });
 
+test("a deployment panel keeps the usage when only node capacity is refused", async ({ page }) => {
+  await boot(page, 1440, 900, { podMetrics: [API_0_METRICS], nodeCapacity: null });
+  const panel = await openDeployment(page);
+  const section = panel.locator('[data-section="resources"]');
+  await expect(section.locator('[data-container="worker"] [data-resource-row="memory"]')).toContainText(
+    "498Mi of 512Mi · request 256Mi",
+  );
+  await expect(panel.getByText(UNAVAILABLE)).toHaveCount(0);
+});
+
 test("a pod panel shows the resource rows in its container card, inside the panel's width", async ({ page }) => {
   await boot(page, 1440, 900, { podMetrics: [API_0_METRICS] });
   await open(page, "Pods");

@@ -193,6 +193,8 @@ export const FIXTURES = {
    * sample; null is metrics-server not answering (the command fails).
    */
   podMetrics: [] as PodMetricsFixture[] | null,
+  /** What `cluster_capacity` answers; null is the call refused (a user who may not list nodes). */
+  nodeCapacity: [] as unknown[] | null,
   /** What `list_events` answers (Overview's recent warnings, the Events list). */
   events: [] as {
     event_type: string | null;
@@ -293,7 +295,9 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
       case "list_pod_metrics":
         if (fixtures.podMetrics === null) throw new Error("the server could not find the requested resource");
         return fixtures.podMetrics;
-      case "cluster_capacity": return [];
+      case "cluster_capacity":
+        if (fixtures.nodeCapacity === null) throw new Error("nodes is forbidden: User cannot list resource nodes");
+        return fixtures.nodeCapacity;
       case "list_services":
       case "list_ingresses":
       case "list_configmaps":

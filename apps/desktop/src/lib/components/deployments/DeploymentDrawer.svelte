@@ -62,11 +62,12 @@
 			deployment.containers ?? [],
 			childPods.map((p) => ({ containers: p.containers, metrics: resources.metricsFor(p.namespace, p.name) })),
 			// Once metrics-server answered, a counted pod without a sample says "no sample".
-			{ expectSample: resources.metricsAvailable }
+			{ expectSample: resources.podMetricsAvailable }
 		)
 	);
 	// Only once metrics-server was asked: before that, it has not failed to answer.
-	const usageUnavailable = $derived(resources.metricsKnown && !resources.metricsAvailable);
+	// Pod metrics alone: a refused node capacity is not metrics-server failing.
+	const usageUnavailable = $derived(resources.metricsKnown && !resources.podMetricsAvailable);
 
 	const glyphTone = { ok: 'text-success', warn: 'text-warning', err: 'text-error', done: '', unknown: '' } as const;
 
