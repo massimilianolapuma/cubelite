@@ -19,15 +19,55 @@ const keepBreaks = (s: string) => s.replace(/[^\n]/g, "");
  */
 function stripComments(text: string, file: string): string {
   if (!file.endsWith(".svelte")) return stripScriptComments(text);
-  return text.replace(
-    /(<script\b[^>]*>)([\s\S]*?)(<\/script>)|(<style\b[^>]*>)([\s\S]*?)(<\/style>)|<!--[\s\S]*?-->/g,
-    (all, open, script, close, styleOpen, style, styleClose) =>
-      open !== undefined
-        ? open + stripScriptComments(script) + close
-        : styleOpen !== undefined
-          ? styleOpen + style.replace(/\/\*[\s\S]*?\*\//g, keepBreaks) + styleClose
-          : keepBreaks(all),
-  );
+  let out = "";
+  let i = 0;
+  for (let block = nextBlock(text, i); block; block = nextBlock(text, i)) {
+    const { kind, start } = block;
+    out += text.slice(i, start);
+    if (kind === "comment") {
+      i = endAfter(text, "-->", start);
+      out += keepBreaks(text.slice(start, i));
+      continue;
+    }
+    const bodyStart = endAfter(text, ">", start);
+    const close = text.indexOf(`</${kind}`, bodyStart);
+    // The closing tag is markup: the next round copies it.
+    i = close === -1 ? text.length : close;
+    const body = text.slice(bodyStart, i);
+    out += text.slice(start, bodyStart);
+    out += kind === "script" ? stripScriptComments(body) : body.replace(/\/\*[\s\S]*?\*\//g, keepBreaks);
+  }
+  return out + text.slice(i);
+}
+
+type Block = { kind: "comment" | "script" | "style"; start: number };
+
+const OPENERS = [
+  ["comment", "<!--"],
+  ["script", "<script"],
+  ["style", "<style"],
+] as const;
+
+/**
+ * The next HTML comment, script block or style block of a Svelte file from
+ * `from`. Found by position, as the compiler does, not with a pattern over the
+ * tags: Svelte only knows the lower-case `<script>` and `<style>`.
+ */
+function nextBlock(text: string, from: number): Block | undefined {
+  let best: Block | undefined;
+  for (const [kind, open] of OPENERS) {
+    let at = text.indexOf(open, from);
+    // `<scripted-thing>` is an element, not a script block.
+    while (kind !== "comment" && at !== -1 && /[\w-]/.test(text[at + open.length] ?? "")) at = text.indexOf(open, at + 1);
+    if (at !== -1 && (!best || at < best.start)) best = { kind, start: at };
+  }
+  return best;
+}
+
+/** The position just after the next `mark` from `from`, or the end of the text. */
+function endAfter(text: string, mark: string, from: number): number {
+  const at = text.indexOf(mark, from);
+  return at === -1 ? text.length : at + mark.length;
 }
 
 /** Words after which a `/` starts a regular expression, not a division. */
@@ -198,6 +238,22 @@ describe("the comment stripper", () => {
     expect(out.match(new RegExp(DASH, "g"))).toHaveLength(2);
     expect(out).toContain(`y // ${DASH} kept`);
     expect(out).toContain(`https://example.com ${DASH} kept`);
+  });
+
+  it("reads a script tag with attributes, and takes an element named like one for markup", () => {
+    const svelte = [
+      '<script lang="ts" module>',
+      `  export const a = 1; // aside ${DASH}`,
+      "</script>",
+      `<styled-note>/* ${DASH} kept: this is text */</styled-note>`,
+      `<scripted-note>see // ${DASH} kept</scripted-note>`,
+      `<!-- never closed ${DASH}`,
+    ].join("\n");
+    const out = stripComments(svelte, "X.svelte");
+    expect(out.match(new RegExp(DASH, "g"))).toHaveLength(2);
+    expect(out).toContain(`/* ${DASH} kept: this is text */`);
+    expect(out).toContain(`see // ${DASH} kept`);
+    expect(out.split("\n")).toHaveLength(svelte.split("\n").length);
   });
 });
 
