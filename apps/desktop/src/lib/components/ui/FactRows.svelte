@@ -1,8 +1,12 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { EMPTY } from '#lib/empty.ts';
 	// The facts of an object in a detail panel (Tonal §8.3): one row per fact,
 	// label on the left, value on the right. A missing value is an en dash.
-	let { facts }: { facts: readonly (readonly [label: string, value: string | null])[] } = $props();
+	// A value is text, or a snippet for one that needs markup of its own
+	// (a deployment's images, one per line: #648).
+	type Value = string | Snippet | null;
+	let { facts }: { facts: readonly (readonly [label: string, value: Value])[] } = $props();
 </script>
 
 <!-- A long label takes at most a little over half the row: the value keeps its room. -->
@@ -14,7 +18,11 @@
 			class="type-data-sm text-right break-words {value === null ? 'text-text-subtle' : 'text-text'}"
 			data-missing={value === null}
 		>
-			{value ?? EMPTY}
+			{#if typeof value === 'function'}
+				{@render value()}
+			{:else}
+				{value ?? EMPTY}
+			{/if}
 		</dd>
 	{/each}
 </dl>

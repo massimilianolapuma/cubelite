@@ -122,7 +122,44 @@ describe("PodDrawer", () => {
     });
     expect(screen.getByText(name)).toHaveAttribute("title", name);
     expect(screen.getByText(name)).toHaveClass("truncate");
-    expect(screen.getByText("registry.example/otel:1")).toHaveAttribute("title", "registry.example/otel:1");
+    expect(document.querySelector("[data-container] [data-image]")).toHaveAttribute("title", "registry.example/otel:1");
+  });
+
+  it("shows a container's image tag as its own element, apart from the repository by weight", () => {
+    const image = "registry.example.internal:5000/platform/team/backend-services/orders-api:2.14.3-rc.1";
+    render(PodDrawer, {
+      props: { pod: pod({ containers: [{ name: "orders", image, ready: true }] as PodInfo["containers"] }), onClose: vi.fn() },
+    });
+    const row = screen.getByText("orders").closest<HTMLElement>("[data-container]")!;
+    const ref = row.querySelector<HTMLElement>("[data-image]")!;
+    expect(ref).toHaveAttribute("title", image);
+    const tag = ref.querySelector<HTMLElement>("[data-image-tag]")!;
+    expect(tag.textContent).toBe("2.14.3-rc.1");
+    expect(tag).toHaveClass("text-text", "font-semibold");
+    const repo = ref.querySelector<HTMLElement>("[data-image-repository]")!;
+    expect(repo.textContent).toBe("registry.example.internal:5000/platform/team/backend-services/orders-api");
+    // The repository is the part that gives way when the row is narrow.
+    expect(repo).toHaveClass("truncate", "text-text-muted", "font-normal");
+    expect(tag).not.toHaveClass("truncate");
+    // The whole reference still reads as one string.
+    expect(ref.textContent).toBe(image);
+  });
+
+  it("shows the tag of an image pinned by tag and digest, with the digest in the tooltip", () => {
+    const image = `ghcr.io/x/api:2.1@sha256:${"a".repeat(64)}`;
+    render(PodDrawer, {
+      props: { pod: pod({ containers: [{ name: "api", image, ready: true }] as PodInfo["containers"] }), onClose: vi.fn() },
+    });
+    const ref = document.querySelector<HTMLElement>("[data-container] [data-image]")!;
+    expect(ref).toHaveAttribute("title", image);
+    expect(ref.querySelector("[data-image-tag]")!.textContent).toBe("2.1");
+  });
+
+  it("a container image without a tag shows latest", () => {
+    render(PodDrawer, {
+      props: { pod: pod({ containers: [{ name: "api", image: "nginx", ready: true }] as PodInfo["containers"] }), onClose: vi.fn() },
+    });
+    expect(document.querySelector("[data-container] [data-image-tag]")!.textContent).toBe("latest");
   });
 
   it("lists the facts as label and value rows", () => {
@@ -242,6 +279,30 @@ describe("DeploymentDrawer", () => {
     const row = screen.getByRole("button", { name: /api-0/ });
     expect(row.querySelector("svg[data-glyph]")).toHaveAttribute("data-glyph", "err");
     expect(row).toHaveTextContent("CrashLoopBackOff");
+  });
+
+  it("shows each image on its own line, its tag as its own element", () => {
+    const digest = `sha256:${"0123456789abcdef".repeat(4)}`;
+    const images = ["registry.example.internal:5000/platform/orders-api:2.14.3-rc.1", `ghcr.io/x/sidecar@${digest}`];
+    render(DeploymentDrawer, { props: { deployment: dep({ images }), onClose: vi.fn() } });
+    const value = screen.getByText("Images", { selector: "dt" }).nextElementSibling as HTMLElement;
+    const refs = [...value.querySelectorAll<HTMLElement>("[data-image]")];
+    expect(refs.map((el) => el.getAttribute("title"))).toEqual(images);
+    expect(refs.map((el) => el.querySelector("[data-image-tag]")!.textContent)).toEqual(["2.14.3-rc.1", "sha256:0123456789ab"]);
+    expect(refs[0].querySelector("[data-image-tag]")).toHaveClass("text-text", "font-semibold");
+    // No comma-joined string any more.
+    expect(value.textContent).not.toContain(", ");
+  });
+
+  it("names a single image Image, and shows an en dash when there is none", () => {
+    const one = render(DeploymentDrawer, { props: { deployment: dep(), onClose: vi.fn() } });
+    const value = screen.getByText("Image", { selector: "dt" }).nextElementSibling as HTMLElement;
+    expect(value.querySelector("[data-image-tag]")!.textContent).toBe("1.4");
+    one.unmount();
+    render(DeploymentDrawer, { props: { deployment: dep({ images: [] }), onClose: vi.fn() } });
+    const empty = screen.getByText("Image", { selector: "dt" }).nextElementSibling as HTMLElement;
+    expect(empty).toHaveTextContent("–");
+    expect(empty).toHaveAttribute("data-missing", "true");
   });
 
   it("has Logs as its one primary action", () => {

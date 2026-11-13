@@ -9,6 +9,7 @@
 	import Button from '#lib/components/ui/Button.svelte';
 	import Drawer from '#lib/components/ui/Drawer.svelte';
 	import FactRows from '#lib/components/ui/FactRows.svelte';
+	import ImageRef from '#lib/components/ui/ImageRef.svelte';
 	import YamlModal from '#lib/components/YamlModal.svelte';
 	import StatCard from '#lib/components/ui/StatCard.svelte';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
@@ -21,6 +22,7 @@
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import type { DeploymentInfo } from '#lib/tauri.ts';
+	import type { Snippet } from 'svelte';
 	import { PANEL_CARD, PANEL_SECTION } from '#lib/ui-classes.ts';
 
 	let { deployment, onClose }: { deployment: DeploymentInfo; onClose: () => void } = $props();
@@ -33,10 +35,10 @@
 			.map(([k, v]) => `${k}=${v}`)
 			.join(', ')
 	);
-	const facts = $derived<[string, string | null][]>([
+	const facts = $derived<[string, string | Snippet | null][]>([
 		['Namespace', deployment.namespace],
 		['Age', formatAge(deployment.creation_timestamp)],
-		['Image', deployment.images.join(', ') || null],
+		[deployment.images.length > 1 ? 'Images' : 'Image', deployment.images.length > 0 ? imageLines : null],
 		['Selector', selectorLabel || null],
 		['Strategy', deployment.strategy]
 	]);
@@ -71,6 +73,15 @@
 		app.navigate('logs');
 	}
 </script>
+
+<!-- One image per line, each with its tag apart from its repository (#648). -->
+{#snippet imageLines()}
+	<span class="flex flex-col items-end gap-0.5">
+		{#each deployment.images as image, i (i)}
+			<ImageRef {image} align="end" />
+		{/each}
+	</span>
+{/snippet}
 
 <Drawer kind="Deployment" title={deployment.name} {onClose} onPrimary={openLogs}>
 	<div class="flex flex-col gap-4">

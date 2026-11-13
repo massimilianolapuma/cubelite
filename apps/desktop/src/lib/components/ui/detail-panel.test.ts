@@ -225,4 +225,11 @@ describe("FactRows", () => {
     render(FactRows, { props: { facts: [["Node", null]] } });
     expect(screen.getByRole("definition")).toHaveAttribute("data-missing", "true");
   });
+
+  it("renders a value that is markup of its own, such as one image per line", () => {
+    render(FactRows, { props: { facts: [["Images", html("<span data-own>two lines</span>")]] } });
+    const value = screen.getByRole("definition");
+    expect(value.querySelector("[data-own]")).toHaveTextContent("two lines");
+    expect(value).toHaveAttribute("data-missing", "false");
+  });
 });
