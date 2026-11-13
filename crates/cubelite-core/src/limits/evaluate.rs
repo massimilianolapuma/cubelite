@@ -267,6 +267,23 @@ pub fn evaluate(facts: &ResourceFacts, proposal: &Proposal) -> Evaluation {
             check_nodes(&mut out, facts, nodes, &after, &new);
             out.nodes = project_nodes(facts, nodes, &new);
         }
+        // A container without a memory limit can take what its node has:
+        // W2 and W3 count it 0, so say what they could not weigh.
+        if !facts.pods.is_empty() {
+            for c in after.all().filter(|c| c.memory.limit.is_none()) {
+                out.findings.push(on_field(
+                    FindingCode::W9,
+                    Level::NotChecked,
+                    format!(
+                        "Not checked: how much memory `{}` can take on the nodes (it has no memory limit).",
+                        c.name
+                    ),
+                    &c.name,
+                    ResourceName::Memory,
+                    ResourceField::Limit,
+                ));
+            }
+        }
         check_usage(&mut out, facts);
         check_autoscalers_on_requests(&mut out, facts, &before.figures(facts), &new);
         let qos = |t: &Template| qos_class(&t.all().cloned().collect::<Vec<_>>());
@@ -397,21 +414,35 @@ fn check_nodes(
                 });
                 continue;
             }
-            for c in after.all() {
-                if let Some(limit) = c.get(resource).limit.filter(|&l| above(l, largest)) {
-                    out.findings.push(on_field(
-                        FindingCode::W0,
-                        Level::Warning,
-                        format!(
-                            "No node in this cluster has {} (largest: {}): the container can never use this limit.",
-                            fmt(limit),
-                            fmt(largest)
-                        ),
-                        &c.name,
-                        resource,
-                        ResourceField::Limit,
-                    ));
-                }
+            // A limit the change leaves as it is was there before: not this change's.
+            let touched = |c: &EffectiveContainer| {
+                out.changes.iter().any(|ch| {
+                    ch.container == c.name
+                        && ch.resource == resource
+                        && ch.field == ResourceField::Limit
+                })
+            };
+            let over: Vec<(String, f64)> = after
+                .all()
+                .filter(|c| touched(c))
+                .filter_map(|c| {
+                    let limit = c.get(resource).limit.filter(|&l| above(l, largest))?;
+                    Some((c.name.clone(), limit))
+                })
+                .collect();
+            for (name, limit) in over {
+                out.findings.push(on_field(
+                    FindingCode::W0,
+                    Level::Warning,
+                    format!(
+                        "No node in this cluster has {} (largest: {}): the container can never use this limit.",
+                        fmt(limit),
+                        fmt(largest)
+                    ),
+                    &name,
+                    resource,
+                    ResourceField::Limit,
+                ));
             }
         }
     }
@@ -472,17 +503,19 @@ fn check_nodes(
     }
 
     // W2, W3 and the CPU note: the nodes the workload's pods are on now.
+    // Limits add up as on the node: a container without one counts 0.
     let usage_known = facts.usage.known().is_some();
     for n in &counted {
         let own = own_pods_on(facts, &n.name);
         if own.is_empty() {
             continue;
         }
-        let count = own.len() as f64;
         let alloc = n.allocatable;
-        if let Some(limit) = new.memory_limit {
-            let before = n.others_memory_limits + sum_of(&own, |f| f.memory_limit.unwrap_or(0.0));
-            let after = n.others_memory_limits + count * limit;
+        let own_before = |r: ResourceName| sum_of(&own, |f| f.set_limits.get(r));
+        let own_after = |r: ResourceName| own.len() as f64 * new.set_limits.get(r);
+        {
+            let before = n.others_memory_limits + own_before(ResourceName::Memory);
+            let after = n.others_memory_limits + own_after(ResourceName::Memory);
             if above(after, alloc.memory_bytes) && above(after, before) {
                 out.findings.push(on_node(
                     FindingCode::W2,
@@ -497,27 +530,46 @@ fn check_nodes(
                     ResourceName::Memory,
                 ));
             }
-            if let (true, Some(used)) = (usage_known, n.memory_used) {
-                let full = used - memory_in_use(&own) + count * limit;
-                if above(full, alloc.memory_bytes) && above(full, used) {
-                    out.findings.push(on_node(
-                        FindingCode::W3,
-                        Level::Warning,
-                        format!(
-                            "If these pods use their full limit, {} runs out of memory ({}% → {}%).",
-                            n.name,
-                            percent(used, alloc.memory_bytes),
-                            percent(full, alloc.memory_bytes)
-                        ),
-                        &n.name,
-                        ResourceName::Memory,
-                    ));
+            // W3 only when the change raises these pods' memory limits: a
+            // node that is short already is not this change's doing.
+            let raised = above(
+                own_after(ResourceName::Memory),
+                own_before(ResourceName::Memory),
+            );
+            match (usage_known && raised, n.memory_used) {
+                (false, _) => {}
+                (true, Some(used)) => {
+                    let full = used - memory_in_use(&own) + own_after(ResourceName::Memory);
+                    if above(full, alloc.memory_bytes) && above(full, used) {
+                        out.findings.push(on_node(
+                            FindingCode::W3,
+                            Level::Warning,
+                            format!(
+                                "If these pods use their full limit, {} runs out of memory ({}% → {}%).",
+                                n.name,
+                                percent(used, alloc.memory_bytes),
+                                percent(full, alloc.memory_bytes)
+                            ),
+                            &n.name,
+                            ResourceName::Memory,
+                        ));
+                    }
                 }
+                (true, None) => out.findings.push(on_node(
+                    FindingCode::W9,
+                    Level::NotChecked,
+                    format!(
+                        "Not checked: memory in use on {} (no sample from metrics-server).",
+                        n.name
+                    ),
+                    &n.name,
+                    ResourceName::Memory,
+                )),
             }
         }
-        if let Some(limit) = new.cpu_limit {
-            let before = n.others_cpu_limits + sum_of(&own, |f| f.cpu_limit.unwrap_or(0.0));
-            let after = n.others_cpu_limits + count * limit;
+        {
+            let before = n.others_cpu_limits + own_before(ResourceName::Cpu);
+            let after = n.others_cpu_limits + own_after(ResourceName::Cpu);
             if above(after, alloc.cpu_millis) && above(after, before) {
                 out.findings.push(on_node(
                     FindingCode::NoteCpuLimits,
@@ -577,22 +629,22 @@ fn project_nodes(
                     alloc.get(r),
                 )
             };
+            // Limits as the node adds them up: a container without one counts 0.
             let limits = |r: ResourceName, others: f64| {
                 pair(
-                    others + sum_of(&own, |f| f.limit(r).unwrap_or(0.0)),
-                    others + count * new.limit(r).unwrap_or(0.0),
+                    others + sum_of(&own, |f| f.set_limits.get(r)),
+                    others + count * new.set_limits.get(r),
                     alloc.get(r),
                 )
             };
-            let memory_if_full =
-                match (own.is_empty(), usage_known, n.memory_used, new.memory_limit) {
-                    (false, true, Some(used), Some(limit)) => Some(pair(
-                        used,
-                        used - memory_in_use(&own) + count * limit,
-                        alloc.memory_bytes,
-                    )),
-                    _ => None,
-                };
+            let memory_if_full = match (own.is_empty(), usage_known, n.memory_used) {
+                (false, true, Some(used)) => Some(pair(
+                    used,
+                    used - memory_in_use(&own) + count * new.set_limits.memory_bytes,
+                    alloc.memory_bytes,
+                )),
+                _ => None,
+            };
             let row = NodeProjection {
                 name: n.name.clone(),
                 schedulable: n.schedulable,
@@ -2163,10 +2215,119 @@ mod tests {
         // The same node, a change that leaves the full limits under it.
         let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("640Mi")));
         assert!(!has(&e, FindingCode::W3));
-        // Without a sample of the node's memory there is nothing to project.
+        // Without a sample of the node's memory there is nothing to project:
+        // that is said, for that node.
         nodes_mut(&mut f)[0].memory_used = None;
         let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("1Gi")));
         assert!(!has(&e, FindingCode::W3));
+        assert_eq!(
+            only(&e, FindingCode::W9),
+            on_node(
+                FindingCode::W9,
+                Level::NotChecked,
+                "Not checked: memory in use on aks-pool-1 (no sample from metrics-server).",
+                "aks-pool-1",
+                Memory
+            )
+        );
+    }
+
+    #[test]
+    fn w3_silent_when_the_change_does_not_raise_the_pods_limits() {
+        // A busy node: with the pods at their full limits it is over already.
+        let mut f = facts();
+        nodes_mut(&mut f)[0].memory_used = Some(15.9 * GI);
+        let e = evaluate(&f, &set_on(&f, "api", Cpu, Request, Some("300m")));
+        assert!(!has(&e, FindingCode::W3), "a CPU-only change");
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("500Mi")));
+        assert!(!has(&e, FindingCode::W3), "a memory limit lowered");
+        // Neither needs the node's sample: no "not checked" for it either.
+        nodes_mut(&mut f)[0].memory_used = None;
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("500Mi")));
+        assert!(!has(&e, FindingCode::W9), "{:#?}", e.findings);
+        // Raised, it is reported.
+        nodes_mut(&mut f)[0].memory_used = Some(15.9 * GI);
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("600Mi")));
+        assert!(has(&e, FindingCode::W3));
+    }
+
+    #[test]
+    fn a_container_without_a_limit_does_not_switch_the_node_checks_off() {
+        // envoy has no memory limit: the pod's memory limit is none, and
+        // the node still adds up the limits that are set.
+        let mut f = facts();
+        f.workload.containers[1] =
+            container("envoy", false, (Some("100m"), None), (Some("64Mi"), None));
+        for p in &mut f.pods {
+            p.figures.memory_limit = None;
+            p.figures.set_limits.memory_bytes = 512.0 * MI;
+        }
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("8Gi")));
+        // 11Gi + 3 x 512Mi = 12.5Gi before, 11Gi + 3 x 8Gi = 35Gi after.
+        assert_eq!(
+            only(&e, FindingCode::W2).message,
+            "Memory limits on aks-pool-1 add up to 219% of what the node has (was 78%). Under memory pressure the node evicts pods."
+        );
+        assert!(has(&e, FindingCode::W3));
+        assert_eq!(
+            only(&e, FindingCode::W9),
+            about(
+                FindingCode::W9,
+                Level::NotChecked,
+                "Not checked: how much memory `envoy` can take on the nodes (it has no memory limit).",
+                "envoy",
+                Memory,
+                Some(Limit)
+            )
+        );
+        assert_eq!(
+            e.nodes[0].memory_limits,
+            BeforeAfter {
+                before: 78.0,
+                after: 219.0
+            }
+        );
+        // No pod: nothing runs on the nodes, nothing to say.
+        f.pods = Vec::new();
+        let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("8Gi")));
+        assert!(!has(&e, FindingCode::W9), "{:#?}", e.findings);
+        // The CPU note and the projection the same: envoy has no CPU limit
+        // in the baseline, and api's 500m counts.
+        let e = evaluate(&facts(), &set("api", Cpu, Limit, Some("1")));
+        assert_eq!(
+            only(&e, FindingCode::NoteCpuLimits).message,
+            "CPU limits on aks-pool-1 add up to 125% of its CPU (was 88%). CPU is shared: the pods slow down, they are not killed."
+        );
+        assert_eq!(
+            e.nodes[0].cpu_limits,
+            BeforeAfter {
+                before: 88.0,
+                after: 125.0
+            }
+        );
+    }
+
+    #[test]
+    fn w0_limit_sentence_only_for_a_limit_the_change_touches() {
+        let mut f = facts();
+        f.workload.containers[1] = container(
+            "envoy",
+            false,
+            (Some("100m"), None),
+            (Some("64Mi"), Some("64Gi")),
+        );
+        for p in &mut f.pods {
+            p.figures.memory_limit = Some(64.5 * GI);
+            p.figures.set_limits.memory_bytes = 64.5 * GI;
+        }
+        let e = evaluate(&f, &set_on(&f, "api", Cpu, Limit, Some("600m")));
+        assert!(!has(&e, FindingCode::W0), "{:#?}", e.findings);
+        // The limit typed in this change is reported.
+        let e = evaluate(&f, &set_on(&f, "envoy", Memory, Limit, Some("65Gi")));
+        assert_eq!(
+            only(&e, FindingCode::W0).container.as_deref(),
+            Some("envoy")
+        );
     }
 
     #[test]
@@ -2524,15 +2685,16 @@ mod tests {
 
     #[test]
     fn note_cpu_limits_and_note_qos() {
-        // envoy gets a CPU limit: the pod has one (700m) and three of them
-        // on aks-pool-1 with 2000m of other limits pass its 4000m.
+        // envoy gets a CPU limit: the pod has 700m of limits instead of
+        // api's 500m, and three of them on aks-pool-1 with 2000m of other
+        // limits pass its 4000m.
         let e = evaluate(&facts(), &set("envoy", Cpu, Limit, Some("200m")));
         assert_eq!(
             only(&e, FindingCode::NoteCpuLimits),
             on_node(
                 FindingCode::NoteCpuLimits,
                 Level::Note,
-                "CPU limits on aks-pool-1 add up to 103% of its CPU (was 50%). CPU is shared: the pods slow down, they are not killed.",
+                "CPU limits on aks-pool-1 add up to 103% of its CPU (was 88%). CPU is shared: the pods slow down, they are not killed.",
                 "aks-pool-1",
                 Cpu
             )
@@ -2554,6 +2716,7 @@ mod tests {
         );
         for p in &mut f.pods {
             p.figures.cpu_limit = Some(700.0);
+            p.figures.set_limits.cpu_millis = 700.0;
         }
         let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
         assert!(!has(&e, FindingCode::NoteCpuLimits));
@@ -2655,6 +2818,10 @@ mod tests {
         // api-1 still runs an older template with a 320Mi memory limit.
         f.pods[0].figures = PodFigures {
             memory_limit: Some(320.0 * MI),
+            set_limits: Amounts {
+                cpu_millis: 500.0,
+                memory_bytes: 320.0 * MI,
+            },
             ..f.pods[0].figures.clone()
         };
         let e = evaluate(&f, &set_on(&f, "api", Memory, Limit, Some("768Mi")));
@@ -2677,7 +2844,8 @@ mod tests {
                     own_pods: 3,
                     cpu_requests: ba(51.0, 51.0),
                     memory_requests: ba(56.0, 56.0),
-                    cpu_limits: ba(50.0, 50.0),
+                    // 2000m of others and api's 500m in each pod; envoy has none and adds 0.
+                    cpu_limits: ba(88.0, 88.0),
                     memory_limits: ba(80.0, 85.0),
                     memory_if_full: Some(ba(81.0, 88.0)),
                 },

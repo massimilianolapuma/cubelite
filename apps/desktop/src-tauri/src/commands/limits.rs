@@ -162,6 +162,10 @@ mod tests {
                     },
                     cpu_limit: Some(500.0),
                     memory_limit: Some(512.0 * MI),
+                    set_limits: Amounts {
+                        cpu_millis: 500.0,
+                        memory_bytes: 512.0 * MI,
+                    },
                 },
                 usage: vec![ContainerUsageInfo {
                     name: "api".into(),

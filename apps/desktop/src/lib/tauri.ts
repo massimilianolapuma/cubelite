@@ -82,6 +82,8 @@ export type PodFigures = {
   request: Amounts;
   cpu_limit: number | null;
   memory_limit: number | null;
+  /** The limits as a node adds them up: a container without a limit counts 0. */
+  set_limits: Amounts;
 };
 /** Millicores and bytes, or plain numbers for a ratio; null is not set. */
 export type PerResource = { cpu: number | null; memory: number | null };

@@ -79,6 +79,11 @@ pub(crate) fn pod(name: &str, node: &str) -> OwnPodFacts {
             },
             cpu_limit: None,
             memory_limit: Some(640.0 * MI),
+            // api's 500m; envoy has no CPU limit and adds 0.
+            set_limits: Amounts {
+                cpu_millis: 500.0,
+                memory_bytes: 640.0 * MI,
+            },
         },
         usage: vec![
             ContainerUsageInfo {

@@ -408,8 +408,8 @@ fn node_facts(
     {
         facts.others_requests.cpu_millis += figures.request.cpu_millis;
         facts.others_requests.memory_bytes += figures.request.memory_bytes;
-        facts.others_cpu_limits += figures.cpu_limit.unwrap_or(0.0);
-        facts.others_memory_limits += figures.memory_limit.unwrap_or(0.0);
+        facts.others_cpu_limits += figures.set_limits.cpu_millis;
+        facts.others_memory_limits += figures.set_limits.memory_bytes;
     }
     facts.name = name;
     Some(facts)
@@ -1052,6 +1052,30 @@ mod tests {
             "{:#?}",
             e.findings
         );
+    }
+
+    #[tokio::test]
+    async fn a_container_without_a_limit_does_not_zero_its_pods_limits() {
+        // One container limited, one not: the node counts the limit that is set.
+        let mut c = cluster();
+        c.other_pods.push(pod_json(
+            "data",
+            "mixed-0",
+            "aks-pool-2",
+            "Running",
+            json!([
+                container_json(
+                    "app",
+                    (Some("100m"), Some("300m")),
+                    (Some("1Gi"), Some("2Gi"))
+                ),
+                container_json("sidecar", (Some("50m"), None), (Some("64Mi"), None)),
+            ]),
+        ));
+        let (f, _) = read(c).await;
+        let pool2 = &f.nodes.known().expect("nodes")[1];
+        assert_eq!(pool2.others_cpu_limits, 2300.0);
+        assert_eq!(pool2.others_memory_limits, 10.0 * GI);
     }
 
     #[tokio::test]

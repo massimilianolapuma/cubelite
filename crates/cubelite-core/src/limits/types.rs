@@ -246,6 +246,10 @@ pub struct PodFigures {
     pub cpu_limit: Option<f64>,
     /// The pod's memory limit; `None` when a container has no memory limit.
     pub memory_limit: Option<f64>,
+    /// The pod's limits as a node adds them up (what `kubectl describe
+    /// node` shows): the same walk, a container without a limit counting 0;
+    /// 0 when no container sets one.
+    pub set_limits: Amounts,
 }
 
 impl PodFigures {
@@ -402,9 +406,9 @@ pub struct NodeFacts {
     pub allocatable: Amounts,
     /// Requests of the pods on it that are not this workload's.
     pub others_requests: Amounts,
-    /// CPU limits of those pods (a pod without one adds 0).
+    /// CPU limits of those pods, their `set_limits` (a container without one adds 0).
     pub others_cpu_limits: f64,
-    /// Memory limits of those pods (a pod without one adds 0).
+    /// Memory limits of those pods, their `set_limits` (a container without one adds 0).
     pub others_memory_limits: f64,
     /// Memory in use, from metrics-server; `None` without a sample.
     pub memory_used: Option<f64>,

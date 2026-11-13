@@ -119,6 +119,11 @@ pub fn pod_figures(
     let limit = |r: ResourceName| {
         walk(regular, init, |c| c.get(r).limit, false).map(|v| v + overhead.get(r))
     };
+    // As a node adds them up: the limits that are set, an unset one 0; the
+    // overhead only when a container sets that limit.
+    let set_limit = |r: ResourceName| {
+        admission_sum(regular, init, |c| c.get(r).limit).map_or(0.0, |v| v + overhead.get(r))
+    };
     PodFigures {
         request: Amounts {
             cpu_millis: request(ResourceName::Cpu),
@@ -126,6 +131,10 @@ pub fn pod_figures(
         },
         cpu_limit: limit(ResourceName::Cpu),
         memory_limit: limit(ResourceName::Memory),
+        set_limits: Amounts {
+            cpu_millis: set_limit(ResourceName::Cpu),
+            memory_bytes: set_limit(ResourceName::Memory),
+        },
     }
 }
 
@@ -333,6 +342,47 @@ mod tests {
         let p = pod_figures(&[api], &[(init, false)], &Amounts::default());
         assert_eq!(p.cpu_limit, None);
         assert_eq!(p.memory_limit, Some(512.0 * MI));
+    }
+
+    #[test]
+    fn set_limits_count_an_unset_limit_as_zero() {
+        let api = set("api", (250.0, Some(500.0)), (256.0, Some(512.0)));
+        let envoy = set("envoy", (100.0, None), (64.0, Some(128.0)));
+        let p = pod_figures(&[api.clone(), envoy.clone()], &[], &Amounts::default());
+        assert_eq!(
+            p.set_limits,
+            Amounts {
+                cpu_millis: 500.0,
+                memory_bytes: 640.0 * MI
+            }
+        );
+        // The same walk: a plain init container with a larger limit sets it.
+        let migrate = set("migrate", (10.0, Some(900.0)), (16.0, None));
+        let p = pod_figures(
+            &[api.clone(), envoy.clone()],
+            &[(migrate, false)],
+            &Amounts::default(),
+        );
+        assert_eq!(p.set_limits.cpu_millis, 900.0);
+        assert_eq!(p.set_limits.memory_bytes, 640.0 * MI);
+        // The overhead counts when a container sets a limit; none set is 0.
+        let overhead = Amounts {
+            cpu_millis: 250.0,
+            memory_bytes: 120.0 * MI,
+        };
+        let p = pod_figures(&[api, envoy], &[], &overhead);
+        assert_eq!(
+            p.set_limits,
+            Amounts {
+                cpu_millis: 750.0,
+                memory_bytes: 760.0 * MI
+            }
+        );
+        let open = set("open", (1.0, None), (1.0, None));
+        assert_eq!(
+            pod_figures(&[open], &[], &overhead).set_limits,
+            Amounts::default()
+        );
     }
 
     #[test]
