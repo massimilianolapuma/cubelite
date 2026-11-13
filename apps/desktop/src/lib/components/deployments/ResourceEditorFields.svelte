@@ -108,11 +108,13 @@
 
 	<!-- Four fields and what is used now. Every track has a fixed or shared width, so a
 	     changed mark, "was …" or an invalid field never moves a field. -->
-	<div class="grid grid-cols-[3.75rem_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5">
+	<div class="grid grid-cols-[3.75rem_minmax(0,1fr)_minmax(0,1fr)_4.5rem] items-center gap-x-2 gap-y-1.5">
 		<span aria-hidden="true"></span>
 		<span class="type-label text-text-muted">Request</span>
 		<span class="type-label text-text-muted">Limit</span>
-		<span class="type-label text-right whitespace-nowrap text-text-muted">Now (highest pod)</span>
+		<!-- Wider than its track on purpose: it runs left over the free end of the Limit
+		     head, so the usage column stays narrow and "was …" has its room. -->
+		<span class="type-label justify-self-end whitespace-nowrap text-text-muted">Now (highest pod)</span>
 
 		{#each ROWS as row (row.resource)}
 			<span class="type-label text-text-muted">{row.label}</span>
