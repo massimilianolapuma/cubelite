@@ -8,8 +8,10 @@
 //! | `mark` | The override annotation: parse, active or stale, next value |
 //! | `pod_math` | Effective values, pod figures, QoS class |
 //! | `evaluate` | The check: `evaluate(facts, proposal) -> Evaluation` |
+//! | `facts` | `KubeClient::resource_facts`: what the check needs, read from the cluster |
 
 pub mod evaluate;
+mod facts;
 #[cfg(test)]
 pub(crate) mod fixtures;
 pub mod manager;
