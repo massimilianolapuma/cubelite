@@ -20,6 +20,9 @@ use commands::kubernetes::{
     stop_port_forward, stream_logs, stream_pod_log, unwatch_resources, watch_resources, ExecState,
     LogState, PortForwardState, WatchState,
 };
+use commands::limits::{
+    apply_resources, clear_resources_override, evaluate_resources, resource_facts,
+};
 use commands::prometheus::{
     grafana_port_forward, open_grafana_explore, open_grafana_home, open_grafana_workload,
     prometheus_auth_method, prometheus_detect, prometheus_disconnect, prometheus_metrics,
@@ -100,6 +103,10 @@ pub fn run() {
             list_resource_table,
             get_dynamic_resource_yaml,
             apply_resource_yaml,
+            resource_facts,
+            evaluate_resources,
+            apply_resources,
+            clear_resources_override,
             start_exec,
             exec_send,
             stop_exec,

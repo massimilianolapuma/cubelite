@@ -25,6 +25,10 @@ import {
   discoverResourceKinds,
   listResourceTable,
   getDynamicResourceYaml,
+  resourceFacts,
+  evaluateResources,
+  applyResources,
+  clearResourcesOverride,
 } from "#lib/tauri.ts";
 import type {
   EsEndpoint,
@@ -33,6 +37,10 @@ import type {
   PodInfo,
   NamespaceInfo,
   DeploymentInfo,
+  ResourceFacts,
+  ResourceProposal,
+  ResourceEvaluation,
+  SeenState,
 } from "#lib/tauri.ts";
 
 const mockedInvoke = vi.mocked(invoke);
@@ -484,6 +492,137 @@ describe("resource kinds", () => {
       namespace: "default",
       name: "builder",
       context: "prod",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A change of a deployment's requests and limits (#655)
+// ---------------------------------------------------------------------------
+
+describe("resource limits commands", () => {
+  const texts = { cpu: { request: "250m", limit: "500m" }, memory: { request: "256Mi", limit: "768Mi" } };
+  const proposal: ResourceProposal = { kind: "adjust", containers: [{ name: "api", resources: texts }] };
+  const seen: SeenState = { generation: 7, resources: {}, override_annotation: null };
+  const facts: ResourceFacts = {
+    workload: {
+      namespace: "default",
+      name: "api",
+      resource_version: "812",
+      generation: 7,
+      replicas: 3,
+      rollout: { recreate: false, max_surge: 1, max_unavailable: 0 },
+      containers: [],
+      init_containers: [],
+      overhead: { cpu_millis: 0, memory_bytes: 0 },
+      manager: { kind: "none", release: null },
+      override_annotation: null,
+    },
+    seen,
+    pods: [],
+    usage: { state: "known", value: null },
+    nodes: { state: "missing", reason: "not allowed to list nodes" },
+    limit_ranges: { state: "known", value: [] },
+    quotas: { state: "known", value: [] },
+    hpas: { state: "known", value: [] },
+    vpas: { state: "known", value: [] },
+  };
+  const evaluation: ResourceEvaluation = {
+    findings: [
+      {
+        code: "w9",
+        level: "not_checked",
+        message: "Not checked: room on the nodes (not allowed to list nodes).",
+        container: null,
+        resource: null,
+        field: null,
+        node: null,
+      },
+    ],
+    changes: [
+      {
+        container: "api",
+        sidecar: false,
+        resource: "memory",
+        field: "limit",
+        before: "512Mi",
+        after: "768Mi",
+      },
+    ],
+    nodes: [],
+  };
+
+  it("resourceFacts invokes resource_facts, context null when omitted", async () => {
+    mockedInvoke.mockResolvedValueOnce(facts);
+    const result = await resourceFacts("/k", "default", "api");
+    expect(mockedInvoke).toHaveBeenCalledWith("resource_facts", {
+      kubeconfigPath: "/k",
+      namespace: "default",
+      name: "api",
+      context: null,
+    });
+    expect(result).toEqual(facts);
+  });
+
+  it("evaluateResources sends the facts back with the proposal", async () => {
+    mockedInvoke.mockResolvedValueOnce(evaluation);
+    const result = await evaluateResources(facts, proposal);
+    expect(mockedInvoke).toHaveBeenCalledWith("evaluate_resources", { facts, proposal });
+    expect(result).toEqual(evaluation);
+  });
+
+  it("applyResources passes the proposal, what the editor saw, dryRun and the context", async () => {
+    mockedInvoke.mockResolvedValueOnce(evaluation);
+    const result = await applyResources("/k", "default", "api", proposal, seen, true, "prod");
+    expect(mockedInvoke).toHaveBeenCalledWith("apply_resources", {
+      kubeconfigPath: "/k",
+      namespace: "default",
+      name: "api",
+      proposal,
+      seen,
+      dryRun: true,
+      context: "prod",
+    });
+    expect(result).toEqual(evaluation);
+  });
+
+  it("applyResources sends a real apply with dryRun false and a null context", async () => {
+    mockedInvoke.mockResolvedValueOnce(evaluation);
+    await applyResources("/k", "default", "api", { kind: "restore", containers: [] }, seen, false);
+    expect(mockedInvoke).toHaveBeenCalledWith("apply_resources", {
+      kubeconfigPath: "/k",
+      namespace: "default",
+      name: "api",
+      proposal: { kind: "restore", containers: [] },
+      seen,
+      dryRun: false,
+      context: null,
+    });
+  });
+
+  it("applyResources rejects with the message the command gives", async () => {
+    mockedInvoke.mockRejectedValueOnce("You are not allowed to change this deployment.");
+    await expect(applyResources("/k", "default", "api", proposal, seen, true)).rejects.toBe(
+      "You are not allowed to change this deployment.",
+    );
+  });
+
+  it("clearResourcesOverride invokes clear_resources_override", async () => {
+    mockedInvoke.mockResolvedValueOnce(undefined);
+    await clearResourcesOverride("/k", "default", "api", "prod");
+    expect(mockedInvoke).toHaveBeenCalledWith("clear_resources_override", {
+      kubeconfigPath: "/k",
+      namespace: "default",
+      name: "api",
+      context: "prod",
+    });
+    mockedInvoke.mockResolvedValueOnce(undefined);
+    await clearResourcesOverride("/k", "default", "api");
+    expect(mockedInvoke).toHaveBeenLastCalledWith("clear_resources_override", {
+      kubeconfigPath: "/k",
+      namespace: "default",
+      name: "api",
+      context: null,
     });
   });
 });

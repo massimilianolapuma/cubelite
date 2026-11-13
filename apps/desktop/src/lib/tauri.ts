@@ -69,6 +69,165 @@ export type OverrideContainer = { name: string; original: ResourceTexts; applied
 /** The active override mark of a deployment; `containers` in name order. */
 export type OverrideInfo = { at: string; containers: OverrideContainer[] };
 
+// --- A change of a deployment's requests and limits (resource_facts, evaluate_resources, apply_resources) ---
+
+export type ResourceName = "cpu" | "memory";
+export type ResourceField = "request" | "limit";
+/** A part of the facts that may be missing, with the reason in the user's terms. */
+export type Fact<T> = { state: "known"; value: T } | { state: "missing"; reason: string };
+/** Millicores and bytes. */
+export type Amounts = { cpu_millis: number; memory_bytes: number };
+/** A pod's figures as the scheduler computes them; a null limit is no limit. */
+export type PodFigures = {
+  request: Amounts;
+  cpu_limit: number | null;
+  memory_limit: number | null;
+};
+/** Millicores and bytes, or plain numbers for a ratio; null is not set. */
+export type PerResource = { cpu: number | null; memory: number | null };
+/** One item of a LimitRange; `kind` is its type ("Container", "Pod"). */
+export type LimitRangeItemFacts = {
+  kind: string;
+  min: PerResource;
+  max: PerResource;
+  default: PerResource;
+  default_request: PerResource;
+  max_ratio: PerResource;
+};
+export type LimitRangeFacts = { name: string; items: LimitRangeItemFacts[] };
+/** The rollout strategy, its counts resolved against the replicas. */
+export type RolloutFacts = { recreate: boolean; max_surge: number; max_unavailable: number };
+export type WorkloadFacts = {
+  namespace: string;
+  name: string;
+  resource_version: string | null;
+  generation: number;
+  replicas: number;
+  rollout: RolloutFacts;
+  /** Regular containers, spec order. */
+  containers: TemplateContainerInfo[];
+  /** Every init container, spec order; `sidecar` marks the native sidecars. */
+  init_containers: TemplateContainerInfo[];
+  overhead: Amounts;
+  manager: ManagerInfo;
+  /** The override annotation as read, whatever it holds. */
+  override_annotation: string | null;
+};
+/** What the editor saw when it opened; sent back with the apply. */
+export type SeenState = {
+  generation: number;
+  resources: Record<string, ContainerResourcesInfo>;
+  override_annotation: string | null;
+};
+export type OwnPodFacts = {
+  name: string;
+  node: string | null;
+  figures: PodFigures;
+  /** Empty when metrics-server has no sample. */
+  usage: ContainerUsageInfo[];
+};
+export type NodeFacts = {
+  name: string;
+  /** Ready and not cordoned. */
+  schedulable: boolean;
+  allocatable: Amounts;
+  /** Requests of the pods of other workloads on the node. */
+  others_requests: Amounts;
+  others_cpu_limits: number;
+  others_memory_limits: number;
+  memory_used: number | null;
+};
+export type QuotaFacts = {
+  name: string;
+  /** Has scopes or a scope selector: not evaluated. */
+  scoped: boolean;
+  hard: Record<string, number>;
+  used: Record<string, number>;
+};
+export type HpaFacts = { name: string; cpu_utilization: boolean; memory_utilization: boolean };
+export type VpaFacts = { name: string; update_mode: string };
+/** Everything a change is checked against; held by the frontend and sent back with each proposal. */
+export type ResourceFacts = {
+  workload: WorkloadFacts;
+  seen: SeenState;
+  pods: OwnPodFacts[];
+  usage: Fact<null>;
+  nodes: Fact<NodeFacts[]>;
+  limit_ranges: Fact<LimitRangeFacts[]>;
+  quotas: Fact<QuotaFacts[]>;
+  hpas: Fact<HpaFacts[]>;
+  vpas: Fact<VpaFacts[]>;
+};
+export type ProposalKind = "adjust" | "restore";
+/** The four values wanted for one container, as typed. */
+export type ContainerProposal = { name: string; resources: ResourceTexts };
+/** `containers` is ignored for a restore. */
+export type ResourceProposal = { kind: ProposalKind; containers: ContainerProposal[] };
+export type FindingLevel = "blocked" | "warning" | "not_checked" | "note";
+export type FindingCode =
+  | "b1"
+  | "b2"
+  | "b3"
+  | "b4"
+  | "b5"
+  | "cleared"
+  | "unknown_container"
+  | "no_override"
+  | "w0"
+  | "w1"
+  | "w1r"
+  | "w2"
+  | "w3"
+  | "w4"
+  | "w5"
+  | "w6"
+  | "w7"
+  | "w8"
+  | "milli_memory"
+  | "w9"
+  | "note_fits"
+  | "note_cpu_limits"
+  | "note_qos"
+  | "note_no_pods";
+/** One finding of the check, with its sentence. */
+export type Finding = {
+  code: FindingCode;
+  level: FindingLevel;
+  message: string;
+  container: string | null;
+  resource: ResourceName | null;
+  field: ResourceField | null;
+  node: string | null;
+};
+/** One field a proposal changes; a null `after` removes the value (restore only). */
+export type ResourceChange = {
+  container: string;
+  sidecar: boolean;
+  resource: ResourceName;
+  field: ResourceField;
+  before: string | null;
+  after: string | null;
+};
+/** A percent of a node's allocatable, before and after. */
+export type BeforeAfter = { before: number; after: number };
+export type NodeProjection = {
+  name: string;
+  schedulable: boolean;
+  own_pods: number;
+  cpu_requests: BeforeAfter;
+  memory_requests: BeforeAfter;
+  cpu_limits: BeforeAfter;
+  memory_limits: BeforeAfter;
+  /** Null without usage. */
+  memory_if_full: BeforeAfter | null;
+};
+/** The outcome of the check: findings worst first, changes in template order, hosting nodes first. */
+export type ResourceEvaluation = {
+  findings: Finding[];
+  changes: ResourceChange[];
+  nodes: NodeProjection[];
+};
+
 export type DeploymentInfo = {
   name: string;
   namespace: string;
@@ -591,6 +750,74 @@ export function applyResourceYaml(
     namespace,
     name,
     yaml,
+    context: context ?? null,
+  });
+}
+
+/**
+ * Read what a change of a deployment's requests and limits is checked against.
+ * Rejects only when the deployment or its pods cannot be read; any other part
+ * that cannot be read is a `missing` fact with its reason.
+ */
+export function resourceFacts(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  context?: string,
+): Promise<ResourceFacts> {
+  return invoke<ResourceFacts>("resource_facts", {
+    kubeconfigPath,
+    namespace,
+    name,
+    context: context ?? null,
+  });
+}
+
+/** Check a proposal against facts already read: no cluster call. */
+export function evaluateResources(
+  facts: ResourceFacts,
+  proposal: ResourceProposal,
+): Promise<ResourceEvaluation> {
+  return invoke<ResourceEvaluation>("evaluate_resources", { facts, proposal });
+}
+
+/**
+ * Apply a proposal (or, with `dryRun`, have the API server check the exact
+ * patch without saving it). The core reads the facts again and refuses a
+ * blocked change or one made underneath `seen`. Rejects with a message ready
+ * to show.
+ */
+export function applyResources(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  proposal: ResourceProposal,
+  seen: SeenState,
+  dryRun: boolean,
+  context?: string,
+): Promise<ResourceEvaluation> {
+  return invoke<ResourceEvaluation>("apply_resources", {
+    kubeconfigPath,
+    namespace,
+    name,
+    proposal,
+    seen,
+    dryRun,
+    context: context ?? null,
+  });
+}
+
+/** Remove the override mark and nothing else ("Keep these values"). Rejects with a message ready to show. */
+export function clearResourcesOverride(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  context?: string,
+): Promise<void> {
+  return invoke<void>("clear_resources_override", {
+    kubeconfigPath,
+    namespace,
+    name,
     context: context ?? null,
   });
 }
