@@ -417,12 +417,19 @@ test("a quantity of ten characters shows whole, and the fields keep their column
   await field.fill("1073741824");
   await expect(field).toHaveValue("1073741824");
   expect(await field.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
-  const left = async (label: string) => (await editor.getByLabel(label).boundingBox())!.x;
+  // All four read in one frame: one box at a time, a read can land in another
+  // frame of the dialog's opening animation and the columns look apart.
   for (const column of ["request", "limit"]) {
-    const xs = await Promise.all(
-      ["worker CPU", "worker memory", "envoy CPU", "envoy memory"].map((f) => left(`${f} ${column}`)),
+    const xs = await editor.evaluate(
+      (root, labels) =>
+        labels.map((label) => {
+          const input = root.querySelector(`input[aria-label="${label}"]`);
+          return input ? Math.round(input.getBoundingClientRect().x) : null;
+        }),
+      ["worker CPU", "worker memory", "envoy CPU", "envoy memory"].map((f) => `${f} ${column}`),
     );
-    expect(new Set(xs.map(Math.round)).size, column).toBe(1);
+    expect(xs, column).not.toContain(null);
+    expect(new Set(xs).size, column).toBe(1);
   }
 });
 

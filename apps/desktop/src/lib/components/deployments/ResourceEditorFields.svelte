@@ -138,7 +138,7 @@
 						disabled={!editable}
 						oninput={(e) => resourceEditor.setField(container.name, key, e.currentTarget.value)}
 						onfocus={() => (stepField = key)}
-						class="{FIELD_BASE} w-26 shrink-0 font-mono aria-invalid:border-error {changed ? 'font-semibold' : ''}"
+						class="{FIELD_BASE} w-[calc(10ch+1.75rem)] shrink-0 font-mono aria-invalid:border-error {changed ? 'font-semibold' : ''}"
 					/>
 					<!-- The mark: a square for a value the check refuses, a triangle for a changed one. -->
 					<span class="type-body-sm flex min-w-0 items-center gap-1 text-text-muted">
