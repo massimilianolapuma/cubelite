@@ -166,8 +166,9 @@ function deploymentState(dep: DeploymentInfo): Omit<DeploymentStatus, "title" | 
     };
   }
   // Updated replicas short of available after the controller declared the
-  // rollout complete is a pod that failed since, not a rollout.
-  const completed = progressing?.reason === "NewReplicaSetAvailable" && r.updated >= r.desired && r.old === 0;
+  // rollout complete is a pod that failed since, not a rollout. Only once the
+  // status is observed: before that the condition is the last rollout's.
+  const completed = r.observed && progressing?.reason === "NewReplicaSetAvailable" && r.updated >= r.desired && r.old === 0;
   if (rolloutRunning(r) && !completed) {
     const short = r.available < r.desired;
     return {

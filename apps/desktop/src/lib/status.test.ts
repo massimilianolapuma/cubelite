@@ -132,6 +132,16 @@ describe("deploymentStatus", () => {
     expect(deploymentStatus(d).title).toBe("Updating: the controller has not picked up the change yet");
   });
 
+  it("is a starting rollout right after a change to a completed deployment, whatever the stale condition says", () => {
+    // Apply / Rollout Restart: generation went up, the counts and the condition are the last rollout's.
+    const d = live({ generation: 4, observed_generation: 3, conditions: progressing("NewReplicaSetAvailable") });
+    expect(pick(d)).toEqual({ state: "updating", label: "Updating", tone: "neutral", glyph: "ok", badge: "Updating" });
+    expect(deploymentStatus(d).detail).toBe("The controller has not picked up the change yet");
+    // Scaled 0 → 2, not seen yet: the stale zero counts are not "Scaled to 0".
+    const woken = live({ generation: 4, observed_generation: 3, ready_replicas: 0, total_replicas: 0, updated_replicas: 0, available_replicas: 0 });
+    expect(pick(woken)).toMatchObject({ state: "updating", tone: "warn", badge: "Updating" });
+  });
+
   it("counts the updated replicas first: a healthy surge is neutral, not a problem (#660)", () => {
     // Two new pods coming up, the two old ones still ready.
     const d = live({ total_replicas: 3, updated_replicas: 1, ready_replicas: 2, available_replicas: 2, unavailable_replicas: 1 });
