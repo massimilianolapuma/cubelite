@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-14
+
 ### Added
 
 - Deployment and pod panels show each container's CPU and memory requests, limits and current usage (#652).
 - Adjust a deployment's CPU and memory requests and limits from its panel, with a capacity check before anything is applied, a server-side dry run, and an override mark that can be restored (#650).
+
+### Changed
+
+- Pod and deployment panels show an image's name and tag apart from its registry path, the tag in bold, so the version that runs reads at a glance (#648).
 
 ### Fixed
 
