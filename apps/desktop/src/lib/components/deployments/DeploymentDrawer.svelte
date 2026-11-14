@@ -102,7 +102,13 @@
 	</span>
 {/snippet}
 
-<Drawer kind="Deployment" title={deployment.name} {onClose} onPrimary={openLogs}>
+<Drawer
+	kind="Deployment"
+	title={deployment.name}
+	identity="{deployment.namespace}/{deployment.name}"
+	{onClose}
+	onPrimary={openLogs}
+>
 	<div class="flex flex-col gap-4">
 		<StatusHero
 			state={toneGlyph(status.tone)}

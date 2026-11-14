@@ -59,12 +59,23 @@
 
 	$effect(() => (root ? observeOnce(root, () => (visible = true)) : undefined));
 
+	// The workload by value: a list reload hands the panel a new object with
+	// the same names, and that is not another workload to ask Prometheus about (#659).
+	const subjectNamespace = $derived(namespace);
+	const subjectKind = $derived(workload.kind);
+	const subjectName = $derived(workload.name);
+
 	$effect(() => {
 		const context = app.activeCluster;
 		const ep = endpoint;
-		const request = { namespace, workload, range, perContainer };
+		const request = {
+			namespace: subjectNamespace,
+			workload: { kind: subjectKind, name: subjectName } as Workload,
+			range,
+			perContainer
+		};
 		// Another pod in the same drawer: never show the previous one's charts.
-		metrics.subject(`${context}|${namespace}|${workload.kind}/${workload.name}`);
+		metrics.subject(`${context}|${subjectNamespace}|${subjectKind}/${subjectName}`);
 		if (!visible || !context || !ep) return;
 		void metrics.run(request.range, () => prometheusMetrics(app.kubeconfigPath, context, ep, request));
 	});

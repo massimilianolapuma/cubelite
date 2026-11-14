@@ -35,7 +35,8 @@
 	const cpuTone = $derived(cpu === null ? undefined : Math.round(cpu) >= 75 ? 'err' : Math.round(cpu) >= 60 ? 'warn' : undefined);
 </script>
 
-<Drawer kind="Node" title={name} {onClose}>
+<!-- A node's name is unique in its cluster: it is the identity. -->
+<Drawer kind="Node" title={name} identity={name} {onClose}>
 	<div class="flex flex-col gap-4">
 		{#if info}
 			<StatusHero state={toneGlyph(nodeTone(info.status))} label={info.status} />
