@@ -31,13 +31,19 @@
 	let applying = $state(false);
 	let applyError = $state<string | null>(null);
 
+	// The object by value: a list reload hands the panel that opened this a new
+	// object with the same name, and that is no reason to fetch again (#659).
+	const targetType = $derived(resourceType);
+	const targetNamespace = $derived(namespace);
+	const targetName = $derived(name);
+
 	$effect(() => {
 		yaml = null;
 		error = null;
 		const kc = app.kubeconfigPath;
 		const cluster = app.activeCluster;
 		if (!kc || !cluster) return;
-		getResourceYaml(kc, resourceType, namespace, name, cluster)
+		getResourceYaml(kc, targetType, targetNamespace, targetName, cluster)
 			.then((text) => (yaml = text))
 			.catch((e: unknown) => (error = errorMessage(e)));
 	});

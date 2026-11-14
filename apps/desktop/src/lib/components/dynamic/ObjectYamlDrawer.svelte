@@ -65,7 +65,8 @@
 	}
 </script>
 
-<Drawer {kind} title={name} {onClose}>
+<!-- A name is unique only within its kind and namespace. -->
+<Drawer {kind} title={name} identity="{view}/{namespace ?? ''}/{name}" {onClose}>
 	<div class="flex flex-col gap-4">
 		{#if namespace === null}
 			<p class="type-body-sm text-text-muted">cluster-scoped</p>

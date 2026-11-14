@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deployment and pod panels show each container's CPU and memory requests, limits and current usage (#652).
 - Adjust a deployment's CPU and memory requests and limits from its panel, with a capacity check before anything is applied, a server-side dry run, and an override mark that can be restored (#650).
 
+### Fixed
+
+- An open Deployment or Pod panel no longer jumps back to its top each time the lists reload (during a rollout, every few seconds); it starts at the top only when it shows another object, also one of the same name in another namespace. A reload no longer asks Prometheus for the panel's metrics again, nor fetches its open YAML again (#659).
+
 ## [0.11.0] - 2026-11-13
 
 ### Added

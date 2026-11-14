@@ -126,7 +126,7 @@
 	);
 </script>
 
-<Drawer kind="Pod" title={pod.name} {onClose} onPrimary={openLogs}>
+<Drawer kind="Pod" title={pod.name} identity="{pod.namespace}/{pod.name}" {onClose} onPrimary={openLogs}>
 	<div class="flex flex-col gap-4">
 		<StatusHero state={glyph} label={restarting ? 'Terminating…' : podStatusLabel(pod)} {reason} />
 
