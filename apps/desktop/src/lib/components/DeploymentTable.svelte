@@ -9,7 +9,7 @@
 	import Sparkline from '#lib/components/metrics/Sparkline.svelte';
 	import { formatAge } from '#lib/age.ts';
 	import type { DeploymentInfo } from '#lib/tauri.ts';
-	import { deploymentStatus, STATUS_CHIPS, toneGlyph } from '#lib/status.ts';
+	import { deploymentChip, deploymentProblem, deploymentStatus, STATUS_CHIPS } from '#lib/status.ts';
 	import { matchesSelector } from '#lib/k8s-match.ts';
 	import { sumPoints } from '#lib/metrics.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
@@ -48,6 +48,8 @@
 	} = $props();
 
 	// NAME / NAMESPACE / READY / STATUS / AGE / [CPU · 1h] / REPLICAS · ACTIONS
+	// Status is wide enough for a rollout's badge ("Updating 10/12" as a pill)
+	// at the minimum window and beside the docked panel (#660).
 	const withCpu = $derived(prometheus.active !== null);
 	// The last column holds the stepper, the replica segments and Restart.
 	// Beside the docked panel the list keeps its identifying columns; scale and
@@ -55,8 +57,8 @@
 	const narrow = $derived(layout.docked && selected !== null);
 	const tracks = $derived(
 		narrow
-			? ['2.2fr', '1fr', '0.6fr', '1.1fr', '0.55fr']
-			: ['2.2fr', '1fr', '0.6fr', '1.1fr', '0.55fr', ...(withCpu ? ['0.6fr'] : []), 'minmax(17rem, 1.6fr)']
+			? ['2.2fr', '1fr', '0.6fr', '1.45fr', '0.55fr']
+			: ['2.2fr', '1fr', '0.6fr', '1.45fr', '0.55fr', ...(withCpu ? ['0.6fr'] : []), 'minmax(17rem, 1.6fr)']
 	);
 
 	// Last hour of CPU from Prometheus, summed over each deployment's pods (#510).
@@ -94,10 +96,12 @@
 		name: (x) => x.name,
 		namespace: (x) => x.namespace,
 		created: (x) => x.creation_timestamp,
-		status: (x) => deploymentStatus(x).tone
+		status: (x) => deploymentStatus(x).tone,
+		// A healthy rollout and a deployment scaled to 0 are neutral, not problems (#660).
+		problem: deploymentProblem
 	}}
-	chipDefs={STATUS_CHIPS.replicas}
-	chipOf={(dep) => deploymentStatus(dep).tone}
+	chipDefs={STATUS_CHIPS.deployments}
+	chipOf={deploymentChip}
 	{loaded}
 	{error}
 	{busy}
@@ -130,7 +134,11 @@
 		{@const status = deploymentStatus(dep)}
 		{@const restarting = mutations.isRestarting(dep.namespace, dep.name)}
 		<span class="type-data-sm text-text-muted">{dep.ready_replicas}/{dep.replicas}</span>
-		<span class="flex min-w-0 items-center"><StatusBadge state={toneGlyph(status.tone)} label={status.label} /></span>
+		<!-- A rollout says how far it is in the badge ("Updating 1/2"); the whole
+		     sentence is the tooltip (#660). -->
+		<span class="flex min-w-0 items-center" title={status.title} data-deployment-state={status.state}>
+			<StatusBadge state={status.glyph} label={status.badge} />
+		</span>
 		<span class="type-data-sm text-text-muted">{formatAge(dep.creation_timestamp)}</span>
 		{#if !narrow}
 			{#if withCpu}

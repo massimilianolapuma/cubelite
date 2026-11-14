@@ -63,3 +63,58 @@ test("with the log panel open the list still shows rows", async ({ page }) => {
   const height = await page.getByTestId("list-scroller").evaluate((el) => el.clientHeight);
   expect(height).toBeGreaterThanOrEqual(3 * 38);
 });
+
+// A rolling update with a surge (#660): one new replica up, both old ones
+// still ready, so the ready count alone reads 2/2. Beside it a rollout short
+// of replicas, whose badge is a pill: the widest the Status column holds.
+const [settled] = FIXTURES.deployments;
+const rollout = {
+  ...settled,
+  name: "checkout",
+  total_replicas: 3,
+  updated_replicas: 1,
+  ready_replicas: 2,
+  available_replicas: 2,
+  unavailable_replicas: 1,
+  generation: 4,
+  observed_generation: 4,
+};
+const short = { ...rollout, name: "payments", replicas: 12, total_replicas: 13, updated_replicas: 10, ready_replicas: 9, available_replicas: 9 };
+
+for (const { width, height, docked } of [
+  { width: 800, height: 600, docked: false },
+  // The narrowest Status column: the panel docked beside the list at the smallest window that docks it.
+  { width: 1320, height: 800, docked: true },
+]) {
+  test(`at ${width} × ${height} a deployment row says a rollout is running while its old replicas are ready`, async ({ page }) => {
+    await page.setViewportSize({ width, height });
+    await page.addInitScript(tauriMockScript({ deployments: [settled, rollout, short] }));
+    await page.addInitScript(() => {
+      window.localStorage.setItem("cubelite.onboardingSeen", "true");
+      window.localStorage.setItem("cubelite.theme", '"dark"');
+    });
+    await page.goto("/");
+    await open(page, "Deployments");
+    const row = page.getByRole("button", { name: /checkout/ });
+    await expect(row.getByText("2/2")).toBeVisible();
+    if (docked) {
+      await row.click();
+      await expect(page.getByRole("dialog", { name: "checkout" })).toHaveAttribute("data-mode", "docked");
+    }
+    const cell = row.locator("[data-deployment-state]");
+    await expect(cell).toHaveAttribute("data-deployment-state", "updating");
+    await expect(cell).toHaveAttribute("title", "Updating: 1 of 2 updated, 2 old replicas still running, 2 of 2 available");
+    // The badge says it whole, in the narrowest column too.
+    for (const [name, label, state] of [
+      ["checkout", "Updating 1/2", "ok"],
+      ["payments", "Updating 10/12", "warn"],
+      ["api", "Available", "ok"],
+    ]) {
+      const badge = page.getByRole("button", { name: new RegExp(name) }).locator("[data-state]");
+      await expect(badge).toHaveAttribute("data-state", state);
+      const word = badge.getByText(label, { exact: true });
+      await expect(word).toBeVisible();
+      expect(await word.evaluate((el) => el.scrollWidth <= el.clientWidth), `${label} is not cut`).toBe(true);
+    }
+  });
+}

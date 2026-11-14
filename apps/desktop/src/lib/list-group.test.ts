@@ -67,6 +67,15 @@ describe("groupByNamespace (#547)", () => {
     expect(neutral[0]).toMatchObject({ worst: "neutral", problems: 1 });
   });
 
+  it("counts only the rows a list calls problems, when it says which (#660)", () => {
+    // Deployments: a healthy rollout is neutral and no problem.
+    const acc: GroupAccessors<Row> = { ...withStatus, problem: (x) => x.tone === "warn" || x.tone === "err" };
+    const [calm] = groupByNamespace([r("a", "x", "neutral"), r("b", "x", "ok")], { field: "api", dir: "asc" }, acc);
+    expect(calm).toMatchObject({ worst: "ok", problems: 0 });
+    const [mixed] = groupByNamespace([r("a", "x", "neutral"), r("b", "x", "warn")], { field: "api", dir: "asc" }, acc);
+    expect(mixed).toMatchObject({ worst: "warn", problems: 1 });
+  });
+
   it("lists without a status have no problem marker", () => {
     for (const g of groupByNamespace(rows, { field: "api", dir: "asc" }, noStatus)) {
       expect(g.worst).toBeNull();

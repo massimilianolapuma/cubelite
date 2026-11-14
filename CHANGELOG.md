@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Deployment and pod panels show each container's CPU and memory requests, limits and current usage (#652).
 - Adjust a deployment's CPU and memory requests and limits from its panel, with a capacity check before anything is applied, a server-side dry run, and an override mark that can be restored (#650).
 
+### Fixed
+
+- A rolling update shows in the Deployments list while the old replicas are still ready: the row says `Updating 1/2` (replicas updated of desired) with the whole progress in its tooltip, and the panel says the same. A healthy rollout is not counted as a problem; one past its progress deadline shows as `Stalled`, a failure; a deployment scaled to 0 reads `Scaled to 0` instead of a warning; missing replicas outside a rollout read `Degraded`. The status filters, the Status sort, the namespace markers and the Overview's healthy count follow the same reading (#660).
+
 ## [0.11.0] - 2026-11-13
 
 ### Added

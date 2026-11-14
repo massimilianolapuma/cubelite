@@ -19,7 +19,7 @@
 	import StatusHero from '#lib/components/ui/StatusHero.svelte';
 	import MetricsSection from '#lib/components/metrics/MetricsSection.svelte';
 	import WorkloadLinks from '#lib/components/integrations/WorkloadLinks.svelte';
-	import { deploymentStatus, podGlyph, podStatusLabel, toneGlyph } from '#lib/status.ts';
+	import { deploymentStatus, podGlyph, podStatusLabel } from '#lib/status.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { logs } from '#lib/stores/logs.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
@@ -104,13 +104,8 @@
 
 <Drawer kind="Deployment" title={deployment.name} {onClose} onPrimary={openLogs}>
 	<div class="flex flex-col gap-4">
-		<StatusHero
-			state={toneGlyph(status.tone)}
-			label={status.label}
-			reason={status.tone === 'ok'
-				? undefined
-				: `${deployment.ready_replicas} of ${deployment.replicas} replicas ready`}
-		/>
+		<!-- The row's state and its numbers (#660): a rollout says how far it is. -->
+		<StatusHero state={status.glyph} label={status.label} reason={status.detail ?? undefined} />
 
 		<WorkloadLinks
 			namespace={deployment.namespace}
@@ -122,7 +117,7 @@
 				surface="top"
 				label="Ready"
 				value="{deployment.ready_replicas}/{deployment.replicas}"
-				tone={status.tone === 'ok' ? undefined : 'warn'}
+				tone={status.tone}
 			/>
 			<!-- A count only once the pods answered: a zero would read as "no pods". -->
 			<StatCard surface="top" label="Pods" value={podsKnown ? childPods.length : EMPTY} />
