@@ -574,28 +574,31 @@ pub(crate) fn deployment_to_info(d: Deployment) -> Option<DeploymentInfo> {
         None => (0, Vec::new(), Default::default(), None, Vec::new()),
     };
 
-    let (ready_replicas, conditions) = match d.status {
-        Some(status) => {
-            let conditions = status
-                .conditions
-                .unwrap_or_default()
-                .into_iter()
-                .map(|c| DeploymentConditionInfo {
-                    condition_type: c.type_,
-                    status: c.status,
-                    reason: c.reason,
-                })
-                .collect();
-            (status.ready_replicas.unwrap_or(0), conditions)
-        }
-        None => (0, Vec::new()),
-    };
+    let generation = d.metadata.generation.unwrap_or(0);
+    let status = d.status.unwrap_or_default();
+    let conditions = status
+        .conditions
+        .unwrap_or_default()
+        .into_iter()
+        .map(|c| DeploymentConditionInfo {
+            condition_type: c.type_,
+            status: c.status,
+            reason: c.reason,
+        })
+        .collect();
 
+    // The API omits a zero count, and a new object has no status yet: both read as 0.
     Some(DeploymentInfo {
         name,
         namespace,
         replicas,
-        ready_replicas,
+        ready_replicas: status.ready_replicas.unwrap_or(0),
+        total_replicas: status.replicas.unwrap_or(0),
+        updated_replicas: status.updated_replicas.unwrap_or(0),
+        available_replicas: status.available_replicas.unwrap_or(0),
+        unavailable_replicas: status.unavailable_replicas.unwrap_or(0),
+        generation,
+        observed_generation: status.observed_generation.unwrap_or(0),
         images,
         selector,
         strategy,
@@ -1337,6 +1340,65 @@ mod tests {
         assert_eq!(info.namespace, "staging");
         assert_eq!(info.replicas, 3);
         assert_eq!(info.ready_replicas, 2);
+    }
+
+    #[test]
+    fn deployment_to_info_carries_the_rollout_counts_and_generations() {
+        // A rolling update with a surge (#660): two new pods, two old ones
+        // still ready, the controller has seen the change.
+        let d: Deployment = serde_json::from_value(serde_json::json!({
+            "metadata": { "name": "api", "namespace": "shop", "generation": 7 },
+            "spec": { "replicas": 2, "selector": { "matchLabels": { "app": "api" } },
+                      "template": { "spec": { "containers": [] } } },
+            "status": {
+                "observedGeneration": 7,
+                "replicas": 4,
+                "updatedReplicas": 2,
+                "readyReplicas": 2,
+                "availableReplicas": 2,
+                "unavailableReplicas": 2
+            }
+        }))
+        .unwrap();
+
+        let info = deployment_to_info(d).unwrap();
+        assert_eq!(info.replicas, 2);
+        assert_eq!(info.total_replicas, 4);
+        assert_eq!(info.updated_replicas, 2);
+        assert_eq!(info.ready_replicas, 2);
+        assert_eq!(info.available_replicas, 2);
+        assert_eq!(info.unavailable_replicas, 2);
+        assert_eq!(info.generation, 7);
+        assert_eq!(info.observed_generation, 7);
+    }
+
+    #[test]
+    fn deployment_to_info_reads_absent_counts_and_generations_as_zero() {
+        // The API omits a zero count; a new object has no status yet.
+        let d: Deployment = serde_json::from_value(serde_json::json!({
+            "metadata": { "name": "api", "namespace": "shop" },
+            "spec": { "replicas": 2, "selector": { "matchLabels": { "app": "api" } },
+                      "template": { "spec": { "containers": [] } } },
+            "status": { "replicas": 2 }
+        }))
+        .unwrap();
+        let info = deployment_to_info(d).unwrap();
+        assert_eq!(info.total_replicas, 2);
+        assert_eq!(info.updated_replicas, 0);
+        assert_eq!(info.available_replicas, 0);
+        assert_eq!(info.unavailable_replicas, 0);
+        assert_eq!(info.generation, 0);
+        assert_eq!(info.observed_generation, 0);
+
+        let bare: Deployment = serde_json::from_value(serde_json::json!({
+            "metadata": { "name": "api", "namespace": "shop", "generation": 1 },
+            "spec": { "replicas": 2, "selector": {}, "template": {} }
+        }))
+        .unwrap();
+        let info = deployment_to_info(bare).unwrap();
+        assert_eq!(info.generation, 1);
+        assert_eq!(info.observed_generation, 0);
+        assert_eq!(info.total_replicas, 0);
     }
 
     #[test]

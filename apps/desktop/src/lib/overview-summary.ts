@@ -2,6 +2,7 @@
  * Overview counts (parity v2 §4). Pure, so the counting rules are unit-tested.
  * A `null` list means "not loaded" and yields `null` counts (the UI shows the empty value).
  */
+import { deploymentProblem } from "#lib/status.ts";
 import type {
   ConfigMapInfo,
   DeploymentInfo,
@@ -47,7 +48,8 @@ function count<T>(items: T[], predicate: (item: T) => boolean): number {
 /** Counts for the Overview stat row and resource grid. */
 export function summarize(input: OverviewInput): OverviewSummary {
   const { pods, deployments, namespaces, services, secrets, configmaps, ingresses, helm } = input;
-  const healthy = count(deployments, (d) => d.ready_replicas === d.replicas);
+  // The deployment list's status (#660): a healthy rollout and one scaled to 0 are healthy.
+  const healthy = count(deployments, (d) => !deploymentProblem(d));
   return {
     nodes: input.nodes,
     pods: {

@@ -314,6 +314,13 @@ export const FIXTURES = {
       namespace: "default",
       replicas: 2,
       ready_replicas: 2,
+      // Settled: every replica runs the current template and is available (#660).
+      total_replicas: 2,
+      updated_replicas: 2,
+      available_replicas: 2,
+      unavailable_replicas: 0,
+      generation: 3,
+      observed_generation: 3,
       images: ["ghcr.io/x/api:2.1"],
       selector: { app: "api" },
       strategy: "RollingUpdate",

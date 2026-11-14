@@ -106,6 +106,20 @@ describe("summarize", () => {
     });
   });
 
+  it("counts a healthy rollout as healthy and a stalled one as degraded (#660)", () => {
+    // A surge: more replicas ready than desired while the old ones still run.
+    const surge = { ...deploy(2, 3), total_replicas: 3, updated_replicas: 1, available_replicas: 3 };
+    const stalled = {
+      ...deploy(2, 2),
+      total_replicas: 3,
+      updated_replicas: 1,
+      available_replicas: 2,
+      conditions: [{ condition_type: "Progressing", status: "False", reason: "ProgressDeadlineExceeded" }],
+    };
+    expect(summarize({ ...fixture, deployments: [surge] }).deployments).toEqual({ total: 1, healthy: 1, degraded: 0 });
+    expect(summarize({ ...fixture, deployments: [stalled] }).deployments).toEqual({ total: 1, healthy: 0, degraded: 1 });
+  });
+
   it("keeps kinds that are not loaded as null", () => {
     const s = summarize({
       ...fixture,

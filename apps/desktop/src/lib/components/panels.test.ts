@@ -329,11 +329,48 @@ describe("DeploymentDrawer", () => {
     expect(hero()).toHaveAttribute("data-hero", "none");
   });
 
-  it("puts a progressing deployment in the attention hero with how many replicas are ready", () => {
+  it("puts a degraded deployment in the attention hero with how many replicas are ready", () => {
     render(DeploymentDrawer, { props: { deployment: dep({ ready_replicas: 1 }), onClose: vi.fn() } });
     expect(hero()).toHaveAttribute("data-hero", "warning");
-    expect(hero()).toHaveTextContent("Progressing");
+    expect(hero()).toHaveTextContent("Degraded");
     expect(hero()).toHaveTextContent("1 of 3 replicas ready");
+  });
+
+  // Mid-surge: one new replica up, the three old ones still ready (#660).
+  const rolling = (o: Partial<DeploymentInfo> = {}) =>
+    dep({ total_replicas: 4, updated_replicas: 1, available_replicas: 3, unavailable_replicas: 1, generation: 2, observed_generation: 2, ...o });
+
+  it("says a healthy rollout runs, and how far, as the row does, in a plain line", () => {
+    render(DeploymentDrawer, { props: { deployment: rolling(), onClose: vi.fn() } });
+    expect(hero()).toHaveAttribute("data-hero", "none");
+    expect(hero()).toHaveTextContent("Updating");
+    expect(hero()).toHaveTextContent("1 of 3 updated, 3 old replicas still running, 3 of 3 available");
+    expect(tile("Ready")).toHaveAttribute("data-tone", "none");
+  });
+
+  it("puts a rollout short of replicas in the attention hero, its Ready tile too", () => {
+    render(DeploymentDrawer, { props: { deployment: rolling({ ready_replicas: 2, available_replicas: 2 }), onClose: vi.fn() } });
+    expect(hero()).toHaveAttribute("data-hero", "warning");
+    expect(hero()).toHaveTextContent("Updating");
+    expect(hero()).toHaveTextContent("1 of 3 updated, 3 old replicas still running, 2 of 3 available");
+    expect(tile("Ready")).toHaveAttribute("data-tone", "warn");
+  });
+
+  it("puts a stalled rollout in the failure hero, its Ready tile too", () => {
+    const conditions = [{ condition_type: "Progressing", status: "False", reason: "ProgressDeadlineExceeded" }];
+    render(DeploymentDrawer, { props: { deployment: rolling({ conditions }), onClose: vi.fn() } });
+    expect(hero()).toHaveAttribute("data-hero", "error");
+    expect(hero()).toHaveTextContent("Stalled");
+    expect(hero()).toHaveTextContent("Progress deadline exceeded with 1 of 3 updated");
+    expect(tile("Ready")).toHaveAttribute("data-tone", "err");
+  });
+
+  it("shows a deployment scaled to 0 at rest, not as a warning", () => {
+    render(DeploymentDrawer, { props: { deployment: dep({ replicas: 0, ready_replicas: 0 }), onClose: vi.fn() } });
+    expect(hero()).toHaveAttribute("data-hero", "none");
+    expect(hero()).toHaveTextContent("Scaled to 0");
+    expect(hero()).toHaveTextContent("No replicas requested, none running");
+    expect(tile("Ready")).toHaveAttribute("data-tone", "none");
   });
 
   it("shows ready replicas and matched pods as the two tiles", async () => {

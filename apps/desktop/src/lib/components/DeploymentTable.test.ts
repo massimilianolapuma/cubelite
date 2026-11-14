@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, within } from "@testing-library/svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   deletePod: vi.fn(async () => undefined),
@@ -56,6 +56,33 @@ function dep(overrides: Partial<DeploymentInfo> = {}): DeploymentInfo {
   };
 }
 
+/** Mid-surge: one new replica up, both old ones still ready and available. */
+function surge(name: string, namespace = "default"): DeploymentInfo {
+  return dep({
+    name,
+    namespace,
+    replicas: 2,
+    ready_replicas: 2,
+    total_replicas: 3,
+    updated_replicas: 1,
+    available_replicas: 2,
+    unavailable_replicas: 1,
+    generation: 4,
+    observed_generation: 4,
+  });
+}
+
+function stalled(name: string, namespace = "default"): DeploymentInfo {
+  return {
+    ...surge(name, namespace),
+    conditions: [{ condition_type: "Progressing", status: "False", reason: "ProgressDeadlineExceeded" }],
+  };
+}
+
+function scaled(name: string): DeploymentInfo {
+  return dep({ name, replicas: 0, ready_replicas: 0, total_replicas: 0, updated_replicas: 0, available_replicas: 0 });
+}
+
 const badge = (label: string) => screen.getByText(label, { selector: "[data-state] *" }).closest("[data-state]")!;
 
 describe("DeploymentTable", () => {
@@ -88,9 +115,53 @@ describe("DeploymentTable", () => {
     expect(screen.getByText("3/3")).toBeInTheDocument();
   });
 
-  it("derives Progressing when replicas are missing", () => {
+  it("derives Degraded when replicas are missing and no rollout runs", () => {
     render(DeploymentTable, { props: { deployments: [dep({ ready_replicas: 1 })] } });
-    expect(badge("Progressing")).toHaveAttribute("data-state", "warn");
+    expect(badge("Degraded")).toHaveAttribute("data-state", "warn");
+  });
+
+  it("shows a rollout whose old replicas are all ready as Updating, with how far it is (#660)", () => {
+    render(DeploymentTable, { props: { deployments: [surge("api")] } });
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    // Updated of desired in the badge; the whole sentence is the cell's tooltip.
+    expect(badge("Updating 1/2")).toHaveAttribute("data-state", "ok");
+    expect(badge("Updating 1/2").closest("[title]")).toHaveAttribute(
+      "title",
+      "Updating: 1 of 2 updated, 2 old replicas still running, 2 of 2 available",
+    );
+  });
+
+  it("shows a stalled rollout as a failure and a deployment scaled to 0 at rest", () => {
+    render(DeploymentTable, { props: { deployments: [stalled("api"), scaled("idle")] } });
+    expect(badge("Stalled 1/2")).toHaveAttribute("data-state", "err");
+    expect(badge("Scaled to 0")).toHaveAttribute("data-state", "done");
+  });
+
+  it("gives every state its chip and sorts problems first, a healthy rollout after them (#660)", () => {
+    lists.clickHeader("deployments", "status");
+    render(DeploymentTable, {
+      props: { deployments: [dep({ name: "ok" }), surge("rolling"), scaled("idle"), dep({ name: "short", ready_replicas: 1 }), stalled("stuck")] },
+    });
+    const chips = within(screen.getByRole("group", { name: "Filter by status" }));
+    for (const label of ["Stalled", "Degraded", "Updating", "Available", "Scaled to 0"]) {
+      expect(chips.getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
+    }
+    const names = screen
+      .getAllByRole("button")
+      .map((b) => b.querySelector("[title]")?.getAttribute("title"))
+      .filter((t) => t && ["ok", "rolling", "idle", "short", "stuck"].includes(t));
+    // Stalled, then short of replicas; the two neutral states tie (by name); settled last.
+    expect(names).toEqual(["stuck", "short", "idle", "rolling", "ok"]);
+  });
+
+  it("does not mark a namespace for a healthy rollout, and does for a stalled one", () => {
+    lists.groupByNamespace = true;
+    render(DeploymentTable, { props: { deployments: [surge("api", "team-a"), stalled("db", "team-b"), surge("web", "team-b")] } });
+    const header = (name: RegExp) => screen.getByRole("button", { name });
+    expect(header(/^team-a,/)).toHaveAccessibleName("team-a, 1 deployment, expanded");
+    expect(header(/^team-a,/).querySelector("[data-marker]")).toBeNull();
+    expect(header(/^team-b,/)).toHaveAccessibleName("team-b, 2 deployments, 1 with problems, expanded");
+    expect(header(/^team-b,/).querySelector("[data-marker]")).toHaveAttribute("data-marker", "err");
   });
 
   it("batches stepper clicks and applies once after the debounce", async () => {

@@ -8,16 +8,23 @@ import { compareText, sortRows, TONE_RANK, type SortAccessors, type SortSpec } f
 import type { StatusTone } from "#lib/status.ts";
 
 /** Accessors of a list that has a Namespace column. */
-export type GroupAccessors<T> = SortAccessors<T> & { namespace: (row: T) => string };
+export type GroupAccessors<T> = SortAccessors<T> & {
+  namespace: (row: T) => string;
+  /**
+   * Rows the marker counts; without it, every row whose status is not `ok`.
+   * Deployments pass theirs: a healthy rollout is neutral but no problem (#660).
+   */
+  problem?: (row: T) => boolean;
+};
 
 export type NamespaceGroup<T> = {
   namespace: string;
   /** Rows in the current sort. */
   rows: T[];
   count: number;
-  /** Worst status among the rows; null when the list has no status. */
+  /** Worst status among the rows the marker counts (`ok` when none); null when the list has no status. */
   worst: StatusTone | null;
-  /** Rows whose status is not `ok`; 0 when the list has no status. */
+  /** Rows the marker counts (by default those not `ok`); 0 when the list has no status. */
   problems: number;
 };
 
@@ -46,13 +53,14 @@ export function groupByNamespace<T>(
   const sign = spec.field === "namespace" && spec.dir === "desc" ? -1 : 1;
   return [...byNamespace.keys()]
     .sort((a, b) => sign * compareText(a, b))
-    .map((namespace) => summarize(namespace, byNamespace.get(namespace) ?? [], acc.status));
+    .map((namespace) => summarize(namespace, byNamespace.get(namespace) ?? [], acc.status, acc.problem));
 }
 
 function summarize<T>(
   namespace: string,
   rows: T[],
   status: ((row: T) => StatusTone) | undefined,
+  problem: ((row: T) => boolean) | undefined,
 ): NamespaceGroup<T> {
   let worst: StatusTone | null = null;
   let problems = 0;
@@ -60,7 +68,8 @@ function summarize<T>(
     worst = "ok";
     for (const row of rows) {
       const tone = status(row);
-      if (tone !== "ok") problems++;
+      if (problem ? !problem(row) : tone === "ok") continue;
+      problems++;
       if (TONE_RANK[tone] < TONE_RANK[worst]) worst = tone;
     }
   }

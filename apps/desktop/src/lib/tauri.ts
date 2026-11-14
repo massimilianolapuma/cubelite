@@ -235,8 +235,23 @@ export type ResourceEvaluation = {
 export type DeploymentInfo = {
   name: string;
   namespace: string;
+  /** Desired replicas (`spec.replicas`). */
   replicas: number;
   ready_replicas: number;
+  // The rollout counts (#660), 0 when the API does not report them. Absent in a
+  // payload from an older core: the status then reads the deployment as settled.
+  /** Pods running now, old template and new (`status.replicas`); above `replicas` during a surge. */
+  total_replicas?: number;
+  /** Pods running the current template (`status.updatedReplicas`). */
+  updated_replicas?: number;
+  /** Pods ready for at least `minReadySeconds` (`status.availableReplicas`). */
+  available_replicas?: number;
+  /** Pods still missing for full availability (`status.unavailableReplicas`). */
+  unavailable_replicas?: number;
+  /** The spec's version (`metadata.generation`). */
+  generation?: number;
+  /** The spec version the controller last acted on (`status.observedGeneration`). */
+  observed_generation?: number;
   images: string[];
   selector: Record<string, string>;
   strategy: string | null;

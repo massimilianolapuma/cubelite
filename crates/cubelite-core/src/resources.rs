@@ -166,6 +166,30 @@ pub struct DeploymentInfo {
     pub replicas: i32,
     /// Number of replicas currently reporting as ready.
     pub ready_replicas: i32,
+    /// Pods the deployment runs now, old template and new (`status.replicas`);
+    /// above `replicas` while a rolling update surges. 0 when not reported.
+    #[serde(default)]
+    pub total_replicas: i32,
+    /// Pods that run the current template (`status.updatedReplicas`); 0 when
+    /// not reported.
+    #[serde(default)]
+    pub updated_replicas: i32,
+    /// Pods ready for at least `minReadySeconds` (`status.availableReplicas`);
+    /// 0 when not reported.
+    #[serde(default)]
+    pub available_replicas: i32,
+    /// Pods still needed for the deployment to be fully available
+    /// (`status.unavailableReplicas`); 0 when not reported.
+    #[serde(default)]
+    pub unavailable_replicas: i32,
+    /// The spec's version (`metadata.generation`); 0 when not reported.
+    #[serde(default)]
+    pub generation: i64,
+    /// The spec version the controller last acted on
+    /// (`status.observedGeneration`): below `generation` while a change has
+    /// not been picked up yet. 0 when not reported.
+    #[serde(default)]
+    pub observed_generation: i64,
     /// Container images from the pod template.
     #[serde(default)]
     pub images: Vec<String>,
@@ -424,6 +448,12 @@ mod tests {
         assert!(dep.containers.is_empty());
         assert_eq!(dep.manager, ManagerInfo::default());
         assert_eq!(dep.resources_override, None);
+        assert_eq!(dep.total_replicas, 0);
+        assert_eq!(dep.updated_replicas, 0);
+        assert_eq!(dep.available_replicas, 0);
+        assert_eq!(dep.unavailable_replicas, 0);
+        assert_eq!(dep.generation, 0);
+        assert_eq!(dep.observed_generation, 0);
     }
 
     #[test]
