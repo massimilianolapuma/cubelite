@@ -115,6 +115,39 @@ test("clicking another row and closing gives focus back to that row", async ({ p
   await expect(page.getByRole("button", { name: /^worker-0/ })).toBeFocused();
 });
 
+// #659: a watch event reloads the lists, which hand the panel a new object
+// with the same name; the panel stays where the reader scrolled it.
+test("a list reload leaves the open panel where it was scrolled", async ({ page }) => {
+  await boot(page, 1440, 600);
+  await open(page, "Deployments");
+  await page.getByText("api", { exact: true }).click();
+  const body = page.getByRole("dialog", { name: "api" }).locator("[data-panel-body]");
+  const scrollable = await body.evaluate((el) => el.scrollHeight - el.clientHeight);
+  expect(scrollable).toBeGreaterThan(100);
+  await body.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  const scrolled = await body.evaluate((el) => el.scrollTop);
+  expect(scrolled).toBeGreaterThan(100);
+
+  // Count the reloads: the event's reload is debounced, so wait for its call.
+  await page.evaluate(() => {
+    type Internals = { invoke: (cmd: string, args?: unknown) => Promise<unknown> };
+    const host = window as unknown as { __TAURI_INTERNALS__: Internals; __deploymentLists: number };
+    const inner = host.__TAURI_INTERNALS__.invoke;
+    host.__deploymentLists = 0;
+    host.__TAURI_INTERNALS__.invoke = (cmd, args) => {
+      if (cmd === "list_deployments") host.__deploymentLists++;
+      return inner(cmd, args);
+    };
+  });
+  await page.evaluate(() => window.__emitTauriEvent?.("resource-updated", {}));
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __deploymentLists: number }).__deploymentLists))
+    .toBeGreaterThan(0);
+  // Let the answer render: two frames after the call.
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  expect(await body.evaluate((el) => el.scrollTop)).toBe(scrolled);
+});
+
 // #648: the version of an image is what the reader looks for. In the narrowest
 // panel (360 px) a long reference truncates its repository, never its tag.
 const LONG_IMAGE = "registry.example.internal:5000/platform/team/backend-services/orders-api:2.14.3-rc.1";

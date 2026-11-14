@@ -11,6 +11,7 @@
 	let {
 		kind,
 		title,
+		identity,
 		onClose,
 		onPrimary,
 		children,
@@ -19,6 +20,11 @@
 		/** What the object is, e.g. "Pod"; shown above its name. */
 		kind?: string;
 		title: string;
+		/**
+		 * Which object the panel shows, when the title alone does not say it
+		 * (a name is unique only within its namespace). Defaults to the title.
+		 */
+		identity?: string;
 		onClose: () => void;
 		/**
 		 * The panel's primary action. Enter on the heading runs it: opening the
@@ -54,10 +60,15 @@
 	let opener: HTMLElement | null = null;
 	let opened = false;
 
+	// A list reload hands the panel a new object with the same name; a prop is
+	// a getter that reads the caller's object, so the effect below depends on
+	// the value, compared as a string, not on that object (#659).
+	const shown = $derived(identity ?? title);
+
 	// Another object in the same panel: start at its top, and its row is now
 	// the one focus goes back to.
 	$effect(() => {
-		void title;
+		void shown;
 		if (body) body.scrollTop = 0;
 		opener = document.querySelector<HTMLElement>('main [aria-current="true"]') ?? opener;
 	});

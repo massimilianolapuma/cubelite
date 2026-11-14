@@ -102,7 +102,13 @@
 	</span>
 {/snippet}
 
-<Drawer kind="Deployment" title={deployment.name} {onClose} onPrimary={openLogs}>
+<Drawer
+	kind="Deployment"
+	title={deployment.name}
+	identity="{deployment.namespace}/{deployment.name}"
+	{onClose}
+	onPrimary={openLogs}
+>
 	<div class="flex flex-col gap-4">
 		<!-- The row's state and its numbers (#660): a rollout says how far it is. -->
 		<StatusHero state={status.glyph} label={status.label} reason={status.detail ?? undefined} />

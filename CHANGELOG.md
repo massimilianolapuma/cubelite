@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An open Deployment or Pod panel no longer jumps back to its top each time the lists reload (during a rollout, every few seconds); it starts at the top only when it shows another object, also one of the same name in another namespace. A reload no longer asks Prometheus for the panel's metrics again, nor fetches its open YAML again (#659).
 - A rolling update shows in the Deployments list while the old replicas are still ready: the row says `Updating 1/2` (replicas updated of desired) with the whole progress in its tooltip, and the panel says the same. A healthy rollout is not counted as a problem; one past its progress deadline shows as `Stalled`, a failure; a deployment scaled to 0 reads `Scaled to 0` instead of a warning; missing replicas outside a rollout read `Degraded`. The status filters, the Status sort, the namespace markers and the Overview's healthy count follow the same reading (#660).
 
 ## [0.11.0] - 2026-11-13
