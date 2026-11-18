@@ -1,6 +1,10 @@
+pub mod clipboard;
 pub mod commands;
 pub mod env;
 
+use tauri::Manager;
+
+use clipboard::ClipboardState;
 use commands::elastic::{
     elastic_auth_method, elastic_close_cursor, elastic_detect, elastic_disconnect,
     elastic_save_auth, elastic_search, elastic_test, elastic_use_eck_credentials,
@@ -31,7 +35,7 @@ use commands::prometheus::{
 use commands::prometheus_cluster::{
     prometheus_alert_expr, prometheus_alerts, prometheus_cluster_usage, prometheus_node_metrics,
 };
-use commands::secrets::reveal_secret_value;
+use commands::secrets::{copy_secret_value, export_secret_env, reveal_secret_value};
 
 /// Entry point for the Tauri application.
 pub fn run() {
@@ -39,7 +43,7 @@ pub fn run() {
     env::fix_path();
     env::import_kubeconfig();
 
-    if let Err(e) = tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
@@ -51,6 +55,7 @@ pub fn run() {
         .manage(ExecState::default())
         .manage(ElasticState::default())
         .manage(PrometheusState::default())
+        .manage(ClipboardState::default())
         .invoke_handler(tauri::generate_handler![
             elastic_detect,
             integrations_detect,
@@ -89,6 +94,8 @@ pub fn run() {
             list_configmaps,
             list_secrets,
             reveal_secret_value,
+            copy_secret_value,
+            export_secret_env,
             list_events,
             list_helm_releases,
             list_pod_metrics,
@@ -131,9 +138,24 @@ pub fn run() {
             stop_port_forward,
             export_log,
         ])
-        .run(tauri::generate_context!())
-    {
-        eprintln!("error while running tauri application: {e}");
-        std::process::exit(1);
+        .build(tauri::generate_context!());
+    match app {
+        Ok(app) => app.run(|handle, event| {
+            // Every exit the app is told about, the restart after an update
+            // included: a pending clipboard clear runs now, on its condition
+            // (#661). A crash or a kill is not covered.
+            if let tauri::RunEvent::Exit = event {
+                handle
+                    .state::<ClipboardState>()
+                    .clear_pending_now(EXIT_CLEAR_WAIT);
+            }
+        }),
+        Err(e) => {
+            eprintln!("error while running tauri application: {e}");
+            std::process::exit(1);
+        }
     }
 }
+
+/// How long the exit waits for a pending clipboard clear.
+const EXIT_CLEAR_WAIT: std::time::Duration = std::time::Duration::from_secs(2);

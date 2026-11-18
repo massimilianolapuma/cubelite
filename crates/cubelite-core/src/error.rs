@@ -60,6 +60,14 @@ pub enum KubeconfigError {
         key: String,
         reason: crate::secrets::NotOffered,
     },
+
+    /// The Secret as a whole is not offered (a Helm release, for a `.env`).
+    #[error("Secret {namespace}/{name}: {reason}")]
+    SecretNotOffered {
+        namespace: String,
+        name: String,
+        reason: crate::secrets::NotOffered,
+    },
 }
 
 /// Errors that can occur during context selection or switching operations.

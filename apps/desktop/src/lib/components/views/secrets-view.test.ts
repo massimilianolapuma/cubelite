@@ -22,6 +22,8 @@ vi.mock("#lib/tauri.ts", () => ({
   listPvcs: vi.fn(async () => []),
   listNodes: vi.fn(async () => []),
   revealSecretValue: vi.fn(),
+  copySecretValue: vi.fn(),
+  exportSecretEnv: vi.fn(),
   watchResources: vi.fn(),
   unwatchResources: vi.fn(),
 }));
@@ -34,6 +36,7 @@ import { app } from "#lib/stores/app.svelte.ts";
 import { lists } from "#lib/stores/lists.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
 import { settings } from "#lib/stores/settings.svelte.ts";
+import { toasts } from "#lib/stores/toasts.svelte.ts";
 import { installLocalStorageMock } from "#lib/stores/storage-mock.ts";
 import * as tauri from "#lib/tauri.ts";
 import type { RevealedSecretValue, SecretInfo } from "#lib/tauri.ts";
@@ -77,6 +80,8 @@ function deferred<T>() {
 }
 
 const reveal = () => vi.mocked(tauri.revealSecretValue);
+const copy = () => vi.mocked(tauri.copySecretValue);
+const exportEnv = () => vi.mocked(tauri.exportSecretEnv);
 const serve = (rows: SecretInfo[]) => vi.mocked(tauri.listSecrets).mockResolvedValueOnce(rows);
 
 async function renderView(rows: SecretInfo[] = [apiCredentials(), helmRelease]) {
@@ -96,6 +101,10 @@ beforeEach(() => {
   vi.mocked(tauri.listSecrets).mockReset().mockResolvedValue([]);
   reveal().mockReset();
   reveal().mockImplementation(async (_kc, _ns, _name, key) => ({ value: VALUES[key], resource_version: "41" }));
+  copy().mockReset();
+  copy().mockImplementation(async (_kc, _ns, _name, key) => (key === "ca.crt" ? "base64" : "text"));
+  exportEnv().mockReset();
+  toasts.items = [];
   settings.secretHideAfter.value = 30;
   app.view = "secrets";
   app.activeCluster = "prod";
@@ -112,13 +121,12 @@ afterEach(() => {
 });
 
 describe("SecretsView (#661)", () => {
-  it("says a value is read only on reveal, and has no Reveal column", async () => {
+  it("says a value is read only on reveal or copy, and has an Export column", async () => {
     await renderView();
-    expect(screen.getByText("a value is read only when you reveal it")).toBeInTheDocument();
+    expect(screen.getByText("a value is read only when you reveal or copy it")).toBeInTheDocument();
     expect(screen.queryByText(/decoded on this machine/)).toBeNull();
-    for (const h of ["Type", "Data", "Age"]) expect(screen.getByText(h)).toBeInTheDocument();
+    for (const h of ["Type", "Data", "Age", "Export"]) expect(screen.getByText(h)).toBeInTheDocument();
     expect(screen.queryByText("Reveal", { selector: ".list-head *" })).toBeNull();
-    expect(screen.queryByText("Export")).toBeNull();
     // Data counts the keys.
     expect(within(screen.getByText("api-credentials").closest(".list-row")!).getByText("6")).toBeInTheDocument();
   });
@@ -135,8 +143,21 @@ describe("SecretsView (#661)", () => {
     expect(row("ca.crt")).toHaveTextContent("binary");
     expect(row("EMPTY")).toHaveTextContent("empty");
     expect(row("huge.json")).toHaveTextContent("too large to show");
-    for (const key of ["ca.crt", "EMPTY", "huge.json"]) expect(within(row(key)).queryByRole("button")).toBeNull();
-    expect(within(keys()).queryByRole("button", { name: /Copy/ })).toBeNull();
+    // Binary: no Reveal, Copy base64. Too large: Copy only. Empty: nothing.
+    expect(within(row("ca.crt")).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Copy ca.crt as base64",
+    ]);
+    expect(within(row("ca.crt")).getByRole("button")).toHaveTextContent("Copy base64");
+    expect(within(row("huge.json")).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Copy huge.json",
+    ]);
+    expect(within(row("EMPTY")).queryByRole("button")).toBeNull();
+    // Per key, Reveal then Copy.
+    expect(within(pw).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Reveal DB_PASSWORD",
+      "Copy DB_PASSWORD",
+    ]);
+    expect(within(pw).getByRole("button", { name: "Copy DB_PASSWORD" })).toHaveTextContent("Copy");
 
     const helm = screen.getByRole("group", { name: "Keys of sh.helm.release.v1.api.v7" });
     const release = helm.querySelector('[data-key-row="release"]') as HTMLElement;
@@ -147,6 +168,7 @@ describe("SecretsView (#661)", () => {
 
     for (const value of Object.values(VALUES)) expect(document.body).not.toHaveTextContent(value);
     expect(reveal()).not.toHaveBeenCalled();
+    expect(copy()).not.toHaveBeenCalled();
   });
 
   it("reveals one key: the backend is asked once, for that key, and no other value reaches the page", async () => {
@@ -327,6 +349,161 @@ describe("SecretsView (#661)", () => {
       await renderView();
       await fireEvent.click(within(row("API_KEY")).getByRole("button", { name: "Reveal API_KEY" }));
       expect(await within(row("API_KEY")).findByText("connection refused")).toBeInTheDocument();
+    });
+  });
+
+  describe("Copy (§3.1, §6.2)", () => {
+    it("copies through the backend with the Preferences time, and no value reaches the page", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await renderView();
+      const button = within(row("DB_PASSWORD")).getByRole("button", { name: "Copy DB_PASSWORD" });
+      button.focus();
+      await fireEvent.click(button);
+      expect(copy()).toHaveBeenCalledTimes(1);
+      expect(copy()).toHaveBeenCalledWith("/home/u/.kube/config", "shop", "api-credentials", "DB_PASSWORD", 30, "prod");
+      const copied = await within(row("DB_PASSWORD")).findByRole("button", { name: "Copied DB_PASSWORD" });
+      expect(copied).toBe(button);
+      expect(document.activeElement).toBe(button);
+      expect(copied).toHaveTextContent("Copied");
+      await vi.waitFor(() =>
+        expect(status()).toHaveTextContent("DB_PASSWORD copied, the clipboard is cleared in 30 seconds"),
+      );
+      // Copy does not reveal, and nothing read is in the page.
+      expect(within(row("DB_PASSWORD")).getByRole("button", { name: "Reveal DB_PASSWORD" })).toBeInTheDocument();
+      expect(reveal()).not.toHaveBeenCalled();
+      for (const value of Object.values(VALUES)) expect(document.body).not.toHaveTextContent(value);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(within(row("DB_PASSWORD")).getByRole("button", { name: "Copy DB_PASSWORD" })).toHaveTextContent("Copy");
+    });
+
+    it("with Never, sends no time and says only copied", async () => {
+      settings.secretHideAfter.value = 0;
+      await renderView();
+      await fireEvent.click(within(row("DB_USER")).getByRole("button", { name: "Copy DB_USER" }));
+      expect(copy()).toHaveBeenCalledWith("/home/u/.kube/config", "shop", "api-credentials", "DB_USER", 0, "prod");
+      await vi.waitFor(() => expect(status()).toHaveTextContent(/^DB_USER copied$/));
+    });
+
+    it("copies a binary value as base64", async () => {
+      await renderView();
+      await fireEvent.click(within(row("ca.crt")).getByRole("button", { name: "Copy ca.crt as base64" }));
+      expect(copy()).toHaveBeenCalledWith("/home/u/.kube/config", "shop", "api-credentials", "ca.crt", 30, "prod");
+      expect(await within(row("ca.crt")).findByRole("button", { name: "Copied ca.crt as base64" })).toBeInTheDocument();
+    });
+
+    it("a refused copy says so in the row, with the glyph", async () => {
+      copy().mockRejectedValueOnce({ kind: "forbidden", message: 'secrets "api-credentials" is forbidden' });
+      await renderView();
+      await fireEvent.click(within(row("ca.crt")).getByRole("button", { name: "Copy ca.crt as base64" }));
+      expect(await within(row("ca.crt")).findByText("Not allowed to read this Secret (403)")).toBeInTheDocument();
+      expect(row("ca.crt").querySelector('[data-glyph="err"]')).not.toBeNull();
+      expect(status()).toHaveTextContent("ca.crt: Not allowed to read this Secret (403)");
+      // The next copy clears it.
+      await fireEvent.click(within(row("ca.crt")).getByRole("button", { name: "Copy ca.crt as base64" }));
+      await vi.waitFor(() => expect(within(row("ca.crt")).queryByText(/Not allowed/)).toBeNull());
+    });
+  });
+
+  describe("Download as .env (§3.3)", () => {
+    const envButton = (name = "api-credentials") => screen.getByRole("button", { name: `Download ${name} as .env` });
+    const dialog = () => screen.getByRole("dialog", { name: "Download api-credentials as .env" });
+
+    it("offers .env per Secret, not for a Helm release", async () => {
+      await renderView();
+      expect(envButton()).toHaveTextContent(".env");
+      expect(screen.queryByRole("button", { name: "Download sh.helm.release.v1.api.v7 as .env" })).toBeNull();
+      // Its .env comes before its key rows.
+      const order = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
+      expect(order.indexOf("Download api-credentials as .env")).toBeLessThan(order.indexOf("Reveal API_KEY"));
+    });
+
+    it("draws the confirmation from the list, reading nothing, with the focus on Cancel", async () => {
+      await renderView();
+      await fireEvent.click(envButton());
+      const d = dialog();
+      expect(d).toHaveTextContent("4 values will be written to a file in plain text:");
+      expect(within(d).getByText("API_KEY, DB_PASSWORD, DB_USER, EMPTY")).toBeInTheDocument();
+      expect(d).toHaveTextContent("2 keys are left out:");
+      expect(within(d).getByText("ca.crt (binary), huge.json (not a variable name)")).toBeInTheDocument();
+      expect(d).toHaveTextContent("Written for a shell: set -a; . ./api-credentials.env");
+      expect(d).toHaveTextContent("Anyone who can read the file can read these values. CubeLite does not delete it.");
+      expect(d.querySelector('[data-glyph="warn"]')).not.toBeNull();
+      expect(document.activeElement).toBe(within(d).getByRole("button", { name: "Cancel" }));
+      expect(within(d).getByRole("button", { name: "Choose where to save…" })).toBeInTheDocument();
+      expect(exportEnv()).not.toHaveBeenCalled();
+      expect(reveal()).not.toHaveBeenCalled();
+      expect(copy()).not.toHaveBeenCalled();
+      await fireEvent.click(within(d).getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(exportEnv()).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(document.activeElement).toBe(envButton()));
+    });
+
+    it("saves through the backend and says how many values went where", async () => {
+      exportEnv().mockResolvedValueOnce({
+        saved: true,
+        path: "/home/u/api-credentials.env",
+        written: ["API_KEY", "DB_PASSWORD", "DB_USER", "EMPTY"],
+        left_out: [
+          { key: "ca.crt", reason: "binary" },
+          { key: "huge.json", reason: "not_a_name" },
+        ],
+      });
+      await renderView();
+      await fireEvent.click(envButton());
+      await fireEvent.click(within(dialog()).getByRole("button", { name: "Choose where to save…" }));
+      expect(exportEnv()).toHaveBeenCalledWith("/home/u/.kube/config", "shop", "api-credentials", "prod");
+      await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(toasts.items.map((t) => [t.message, t.tone])).toEqual([
+        ["4 values of api-credentials saved to /home/u/api-credentials.env", "ok"],
+      ]);
+    });
+
+    it("a cancelled save dialog says nothing", async () => {
+      exportEnv().mockResolvedValueOnce({ saved: false, path: null, written: [], left_out: [] });
+      await renderView();
+      await fireEvent.click(envButton());
+      await fireEvent.click(within(dialog()).getByRole("button", { name: "Choose where to save…" }));
+      await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(toasts.items).toEqual([]);
+    });
+
+    it("a refused export is a toast with the reason, never a value", async () => {
+      exportEnv().mockRejectedValueOnce({ kind: "forbidden", message: "secrets is forbidden" });
+      await renderView();
+      await fireEvent.click(envButton());
+      await fireEvent.click(within(dialog()).getByRole("button", { name: "Choose where to save…" }));
+      await vi.waitFor(() =>
+        expect(toasts.items.map((t) => [t.message, t.tone])).toEqual([
+          ["Could not save api-credentials as .env: Not allowed to read this Secret (403)", "err"],
+        ]),
+      );
+    });
+
+    it("with no key that can be written, says so and has only Close", async () => {
+      const certs: SecretInfo = {
+        name: "tls-only",
+        namespace: "shop",
+        secret_type: "kubernetes.io/tls",
+        keys: [
+          { key: "tls.crt", size: 1200, binary: false },
+          { key: "tls.key", size: 1700, binary: false },
+        ],
+        helm_release: false,
+        resource_version: "3",
+        creation_timestamp: null,
+      };
+      await renderView([apiCredentials(), certs]);
+      await fireEvent.click(envButton("tls-only"));
+      const d = screen.getByRole("dialog", { name: "Download tls-only as .env" });
+      expect(d).toHaveTextContent("No value of tls-only can be written to a .env file.");
+      expect(d).toHaveTextContent("2 keys are left out:");
+      expect(within(d).getByText("tls.crt (not a variable name), tls.key (not a variable name)")).toBeInTheDocument();
+      const buttons = within(d).getAllByRole("button").map((b) => b.textContent?.trim() || b.getAttribute("aria-label"));
+      // The header's Close (an icon) and the footer's.
+      expect(buttons).toEqual(["Close", "Close"]);
+      expect(document.activeElement).toBe(within(d).getAllByRole("button", { name: "Close" })[1]);
+      expect(within(d).queryByRole("button", { name: /Choose where to save/ })).toBeNull();
     });
   });
 });

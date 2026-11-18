@@ -271,11 +271,11 @@
 			<h3 id="prefs-secrets" class={groupHeading}>Secrets</h3>
 			<div class={row}>
 				<div class="min-w-0 flex-1">
-					<div class={name}>Hide a shown value after</div>
-					<p class={hint}>Counted from the reveal.</p>
+					<div class={name}>Hide a shown value, and clear a copied one, after</div>
+					<p class={hint}>Counted from the reveal or the copy.</p>
 				</div>
 				<SegmentedControl
-					label="Hide a shown value after"
+					label="Hide a shown value, and clear a copied one, after"
 					outlined
 					segments={hideAfterSegments}
 					bind:value={settings.secretHideAfter.value}

@@ -26,6 +26,14 @@ url = "2"
 # Elasticsearch credentials in the OS keychain (#500): macOS Keychain,
 # Windows Credential Manager, Secret Service on Linux.
 keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# A Secret value is copied from Rust, never through the webview (#661): text
+# only (the default features bring image support), Wayland through its
+# data-control protocol. No clipboard permission is given to the webview.
+arboard = { version = "3.7", default-features = false, features = ["wayland-data-control"] }
+# The digest of a copied value, kept to tell whether the clipboard still holds it.
+sha2 = "0.10"
+# A binary Secret value is copied as base64 (the core's version).
+base64 = "0.23"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -38,4 +46,12 @@ tempfile = "3"
 # stack into Cargo.lock.
 [target.'cfg(target_os = "linux")'.dependencies]
 dbus-secret-service = { version = "4", features = ["crypto-rust"] }
+
+# A copied Secret value is written to NSPasteboard as current-host-only, so it
+# does not reach Universal Clipboard (#661, src/clipboard/macos.rs). The same
+# versions arboard and Tauri already use.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSPasteboard"] }
 

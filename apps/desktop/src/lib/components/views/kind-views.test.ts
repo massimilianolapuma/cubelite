@@ -176,7 +176,7 @@ describe("SecretsView", () => {
         creation_timestamp: null,
       },
     ]);
-    expect(screen.getByText("a value is read only when you reveal it")).toBeInTheDocument();
+    expect(screen.getByText("a value is read only when you reveal or copy it")).toBeInTheDocument();
     expect(screen.getByText("password")).toBeInTheDocument();
     expect(screen.getByText("••••••••")).toBeInTheDocument();
   });
