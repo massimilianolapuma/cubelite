@@ -185,7 +185,9 @@ fn clear_after(secs: Option<u64>) -> Option<Duration> {
 /// Read the value of `key` in Secret `namespace/name` and write it to the
 /// clipboard (text as it is, binary as base64). With `clear_after_secs`, the
 /// clipboard is cleared after that time if it still holds the value. Answers
-/// the format used, never the value.
+/// the format used, never the value. When a copy asked for later was written
+/// first, this one writes nothing and answers an `other` error
+/// ([`crate::clipboard::SUPERSEDED`]).
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn copy_secret_value(
@@ -199,11 +201,14 @@ pub async fn copy_secret_value(
     context: Option<String>,
 ) -> Result<CopyFormat, SecretCommandError> {
     main_window_only(webview_window.label())?;
+    // Its place among the copies, before the read: a later copy whose read
+    // answers first is not overwritten by this one.
+    let ticket = clipboard.ticket();
     let client = KubeClient::new(&kubeconfig_path, context.as_deref()).await?;
     let revealed = client.secret_value(&namespace, &name, &key).await?;
     let (text, format) = clipboard_text(revealed.value);
     clipboard
-        .copy(text, clear_after(clear_after_secs))
+        .copy(ticket, text, clear_after(clear_after_secs))
         .await
         .map_err(SecretCommandError::other)?;
     Ok(format)

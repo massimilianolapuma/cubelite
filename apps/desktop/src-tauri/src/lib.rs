@@ -4,7 +4,7 @@ pub mod env;
 
 use tauri::Manager;
 
-use clipboard::ClipboardState;
+use clipboard::{ClearAtExit, ClipboardState, EXIT_WAIT};
 use commands::elastic::{
     elastic_auth_method, elastic_close_cursor, elastic_detect, elastic_disconnect,
     elastic_save_auth, elastic_search, elastic_test, elastic_use_eck_credentials,
@@ -56,6 +56,14 @@ pub fn run() {
         .manage(ElasticState::default())
         .manage(PrometheusState::default())
         .manage(ClipboardState::default())
+        .setup(|app| {
+            // The updater's Windows install path ends with its own
+            // process::exit after cleanup_before_exit, which drops the app's
+            // resources but sends no exit event: the drop runs the clear.
+            let clipboard = app.state::<ClipboardState>().inner().clone();
+            app.resources_table().add(ClearAtExit(clipboard));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             elastic_detect,
             integrations_detect,
@@ -147,7 +155,7 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 handle
                     .state::<ClipboardState>()
-                    .clear_pending_now(EXIT_CLEAR_WAIT);
+                    .clear_pending_now(EXIT_WAIT);
             }
         }),
         Err(e) => {
@@ -156,6 +164,3 @@ pub fn run() {
         }
     }
 }
-
-/// How long the exit waits for a pending clipboard clear.
-const EXIT_CLEAR_WAIT: std::time::Duration = std::time::Duration::from_secs(2);

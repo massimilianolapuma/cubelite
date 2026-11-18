@@ -391,6 +391,16 @@ describe("SecretsView (#661)", () => {
       expect(await within(row("ca.crt")).findByRole("button", { name: "Copied ca.crt as base64" })).toBeInTheDocument();
     });
 
+    it("a copy overtaken by a later one is not shown as copied", async () => {
+      copy().mockRejectedValueOnce({ kind: "other", message: "Not copied: a later copy took its place" });
+      await renderView();
+      await fireEvent.click(within(row("DB_USER")).getByRole("button", { name: "Copy DB_USER" }));
+      expect(await within(row("DB_USER")).findByText("Not copied: a later copy took its place")).toBeInTheDocument();
+      expect(within(row("DB_USER")).queryByRole("button", { name: /Copied/ })).toBeNull();
+      expect(status()).toHaveTextContent("DB_USER: Not copied: a later copy took its place");
+      expect(status()).not.toHaveTextContent(/copied, the clipboard/);
+    });
+
     it("a refused copy says so in the row, with the glyph", async () => {
       copy().mockRejectedValueOnce({ kind: "forbidden", message: 'secrets "api-credentials" is forbidden' });
       await renderView();
