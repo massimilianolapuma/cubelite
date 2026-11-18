@@ -3,7 +3,7 @@
 // rings only exist in a real browser: jsdom can emulate none of them.
 import { type Locator, type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { tauriMockScript } from "./tauri-mock";
+import { FIXTURES, SECRETS, tauriMockScript } from "./tauri-mock";
 
 type Theme = "dark" | "light";
 const THEMES: Theme[] = ["dark", "light"];
@@ -15,9 +15,14 @@ type HangWindow = { __hang: string[] };
  * screen. `window.__hang` can be changed later (`hangFrom`), once the app has
  * started; a held call answers as soon as its command leaves the list.
  */
-async function boot(page: Page, theme: Theme = "dark", hang: string[] = []) {
+async function boot(
+  page: Page,
+  theme: Theme = "dark",
+  hang: string[] = [],
+  overrides: Partial<typeof FIXTURES> = {},
+) {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.addInitScript(tauriMockScript());
+  await page.addInitScript(tauriMockScript(overrides));
   await page.addInitScript((cmds) => {
     type Internals = { invoke: (cmd: string, args: unknown) => unknown };
     const w = window as unknown as { __TAURI_INTERNALS__: Internals } & HangWindow;
@@ -94,6 +99,22 @@ async function podsWithPanel(page: Page) {
   const panel = page.getByRole("dialog", { name: "api-0" });
   await expect(panel).toBeVisible();
   return panel;
+}
+
+/**
+ * The Secrets list with api-credentials' DB_PASSWORD revealed (#661): its key
+ * rows, the sunken block they sit in and the Reveal / Hide button of a key.
+ */
+async function secretKeyRows(page: Page) {
+  const aside = page.getByRole("complementary");
+  const nav = aside.getByText("Secrets", { exact: true });
+  if (!(await nav.isVisible())) await aside.getByRole("button", { name: /^Config \d+$/ }).click();
+  await nav.click();
+  const block = page.getByRole("group", { name: "Keys of api-credentials" });
+  await expect(block).toBeVisible();
+  await block.getByRole("button", { name: "Reveal DB_PASSWORD" }).click();
+  await expect(block.getByRole("button", { name: "Hide DB_PASSWORD" })).toBeVisible();
+  return { block, hide: block.getByRole("button", { name: "Hide DB_PASSWORD" }), reveal: block.getByRole("button", { name: "Reveal API_KEY" }) };
 }
 
 /** The colour `value` resolves to inside `scope` (a tinted subtree resolves its own tint). */
@@ -180,6 +201,23 @@ test.describe("more contrast (prefers-contrast: more)", () => {
           color: await resolvedIn(el, "var(--color-outline-strong)"),
         });
       });
+    });
+  }
+
+  for (const theme of THEMES) {
+    test(`${theme}: a Secret's key rows get the card edge, and the hidden mark reads as muted text (#661)`, async ({ page }) => {
+      await page.emulateMedia({ contrast: "more" });
+      await boot(page, theme, [], { secrets: SECRETS });
+      const { block } = await secretKeyRows(page);
+      expect(await edge(block)).toEqual({
+        style: "solid",
+        width: "1px",
+        color: await resolvedIn(block, "var(--color-outline-strong)"),
+      });
+      const dots = block.locator('[data-key-row="API_KEY"]').getByText("••••••••");
+      expect(await dots.evaluate((el) => getComputedStyle(el).color)).toBe(
+        await resolvedIn(block, "var(--color-text-muted)"),
+      );
     });
   }
 
@@ -414,6 +452,32 @@ test.describe("forced colours (forced-colors: active)", () => {
       await page.getByRole("button", { name: /Search & switch/ }).click();
       const input = page.getByTestId("command-palette").getByRole("combobox");
       expect((await border(input)).width).toBe(0);
+    });
+
+    test(`${theme} app on a ${scheme} system palette: a Secret's key rows keep their block, buttons and words (#661)`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await boot(page, theme, [], { secrets: SECRETS });
+      const { block, hide, reveal } = await secretKeyRows(page);
+      const canvasText = await sys(page, "CanvasText");
+      // The sunken fill is gone: the block keeps an edge, each button its own.
+      expect((await edge(block)).style).toBe("solid");
+      for (const [name, button] of [
+        ["Hide", hide],
+        ["Reveal", reveal],
+      ] as const) {
+        // At rest: the button just pressed keeps the focus and the pointer.
+        await page.mouse.move(0, 0);
+        await button.evaluate((n) => (n as HTMLElement).blur());
+        expect([canvasText, await sys(page, "ButtonText")], `${name} has a system-colour edge`).toContain(
+          await systemEdge(button),
+        );
+      }
+      // The shown value and the words of the other rows take the system's text colour.
+      const value = block.locator('[data-key-row="DB_PASSWORD"] [data-key-shown]');
+      expect(await fg(value)).toBe(canvasText);
+      expect(await fg(block.locator('[data-key-row="ca.crt"]').getByText("binary"))).toBe(canvasText);
     });
 
     test(`${theme} app on a ${scheme} system palette: list and nav rows show hover`, async ({ page }) => {
@@ -724,6 +788,24 @@ test.describe("non-text contrast (WCAG 1.4.11) of the controls the token matrix 
       const dashCard = await bg(dashTrack.locator("xpath=ancestor::*[contains(@class,'card')][1]"));
       expect(await borderColour(dashTrack)).not.toBe("transparent");
       expect(await contrast(page, await borderColour(dashTrack), dashCard)).toBeGreaterThanOrEqual(3);
+    });
+
+    test(`${theme}: the Reveal and Hide buttons of a Secret's keys have a 3:1 edge on the sunken block (#661)`, async ({
+      page,
+    }) => {
+      await boot(page, theme, [], { secrets: SECRETS });
+      const { block, hide, reveal } = await secretKeyRows(page);
+      const ground = await bg(block);
+      for (const [name, button] of [
+        ["Hide", hide],
+        ["Reveal", reveal],
+      ] as const) {
+        const edgeColour = await borderColour(button);
+        expect(edgeColour, `${name} has an edge`).not.toBe("transparent");
+        expect(await contrast(page, edgeColour, ground), `${name} edge on the block`).toBeGreaterThanOrEqual(3);
+        // Its label reads on the block too.
+        expect(await contrast(page, await fg(button), ground), `${name} label`).toBeGreaterThanOrEqual(4.5);
+      }
     });
 
     test(`${theme}: a pressed log toolbar toggle has a ring, not a fill alone`, async ({ page }) => {

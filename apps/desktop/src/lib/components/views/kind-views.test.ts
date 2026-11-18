@@ -18,6 +18,7 @@ vi.mock("#lib/tauri.ts", () => ({
   listIngresses: vi.fn(async () => []),
   listConfigMaps: vi.fn(async () => []),
   listSecrets: vi.fn(async () => []),
+  revealSecretValue: vi.fn(),
   listHelmReleases: vi.fn(async () => []),
   listJobs: vi.fn(async () => []),
   listCronJobs: vi.fn(async () => []),
@@ -162,27 +163,22 @@ describe("ConfigMapsView", () => {
 });
 
 describe("SecretsView", () => {
-  const secret = {
-    name: "creds",
-    namespace: "default",
-    secret_type: "Opaque",
-    data: { password: "hunter2" },
-    creation_timestamp: null,
-  };
-
-  it("masks values and shows the local-only warning pill", async () => {
-    await renderList(SecretsView, "listSecrets", [secret]);
-    expect(screen.getByText(/decoded on this machine only/)).toBeInTheDocument();
+  // The rest of the view's behaviour is in secrets-view.test.ts (#661).
+  it("lists key names under the row, never a value", async () => {
+    await renderList(SecretsView, "listSecrets", [
+      {
+        name: "creds",
+        namespace: "default",
+        secret_type: "Opaque",
+        keys: [{ key: "password", size: 7, binary: false }],
+        helm_release: false,
+        resource_version: "1",
+        creation_timestamp: null,
+      },
+    ]);
+    expect(screen.getByText("a value is read only when you reveal it")).toBeInTheDocument();
+    expect(screen.getByText("password")).toBeInTheDocument();
     expect(screen.getByText("••••••••")).toBeInTheDocument();
-    expect(screen.queryByText("hunter2")).toBeNull();
-  });
-
-  it("reveals and hides values per row", async () => {
-    await renderList(SecretsView, "listSecrets", [secret]);
-    await fireEvent.click(screen.getByRole("button", { name: /Reveal/ }));
-    expect(screen.getByText("hunter2")).toBeInTheDocument();
-    await fireEvent.click(screen.getByRole("button", { name: /Hide/ }));
-    expect(screen.queryByText("hunter2")).toBeNull();
   });
 });
 
@@ -309,7 +305,7 @@ describe("Namespace column (#546)", () => {
     ["cronjobs", "listCronJobs", { name: "backup", namespace: ns, schedule: "0 3 * * *", suspend: false, active: 0, last_schedule: null, creation_timestamp: null }, () => import("./CronJobsView.svelte")],
     ["statefulsets", "listStatefulSets", { name: "db", namespace: ns, replicas: 1, ready_replicas: 1, creation_timestamp: null }, () => import("./StatefulSetsView.svelte")],
     ["pvcs", "listPvcs", { name: "data", namespace: ns, status: "Bound", volume: null, capacity: null, access_modes: [], storage_class: null, creation_timestamp: null }, () => import("./PvcsView.svelte")],
-    ["secrets", "listSecrets", { name: "creds", namespace: ns, secret_type: "Opaque", data: {}, creation_timestamp: null }, async () => ({ default: SecretsView })],
+    ["secrets", "listSecrets", { name: "creds", namespace: ns, secret_type: "Opaque", keys: [], helm_release: false, resource_version: null, creation_timestamp: null }, async () => ({ default: SecretsView })],
   ];
 
   it.each(cases)("%s shows the namespace with a sortable header", async (_kind, lister, row, load) => {

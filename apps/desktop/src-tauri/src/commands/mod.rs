@@ -6,5 +6,6 @@ pub mod kubernetes;
 pub mod limits;
 pub mod prometheus;
 pub mod prometheus_cluster;
+pub mod secrets;
 mod vault;
 mod web_ui;

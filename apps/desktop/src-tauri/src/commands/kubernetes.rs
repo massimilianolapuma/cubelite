@@ -351,10 +351,9 @@ pub async fn list_configmaps(
         .map_err(|e| e.to_string())
 }
 
-/// List secrets in the given namespace (all namespaces when `None`).
-///
-/// Secret values are base64-decoded locally in the Rust backend and never
-/// leave the machine.
+/// List secrets in the given namespace (all namespaces when `None`): key
+/// names, sizes and marks, never the values (#661). One value is read only
+/// when the user asks for it (`reveal_secret_value`).
 #[tauri::command]
 pub async fn list_secrets(
     kubeconfig_path: String,
