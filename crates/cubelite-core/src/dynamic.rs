@@ -956,18 +956,33 @@ mod tests {
         let (client, server) = mock_client(|_, _| {
             (
                 StatusCode::OK,
-                serde_json::json!({"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "system:controller:job-controller"}}),
+                serde_json::json!({"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "r"}}),
             )
         });
-        client
-            .get_dynamic_yaml(&cr, None, "system:controller:job-controller")
-            .await
-            .expect("yaml");
+        // Kubernetes accepts these as RBAC names (only `/`, `%`, `.` and
+        // `..` are refused for every kind): encoded, each stays one segment.
+        let names = [
+            (
+                "system:controller:job-controller",
+                "system%3Acontroller%3Ajob-controller",
+            ),
+            ("system:a?b#c", "system%3Aa%3Fb%23c"),
+            ("my role", "my%20role"),
+        ];
+        for (name, _) in names {
+            client
+                .get_dynamic_yaml(&cr, None, name)
+                .await
+                .expect("yaml");
+        }
         let seen = requests(client, server).await;
-        assert_eq!(
-            seen[0].uri,
-            "/apis/rbac.authorization.k8s.io/v1/clusterroles/system%3Acontroller%3Ajob-controller"
-        );
+        assert_eq!(seen.len(), names.len());
+        for ((_, encoded), request) in names.iter().zip(&seen) {
+            assert_eq!(
+                request.uri,
+                format!("/apis/rbac.authorization.k8s.io/v1/clusterroles/{encoded}")
+            );
+        }
     }
 
     #[tokio::test]

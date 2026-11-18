@@ -421,3 +421,70 @@ async fn real_namespaces_and_names_reach_the_api() {
     assert!(seen[1].starts_with("/api/v1/namespaces/default/secrets/sh.helm.release.v1.api.v7"));
     assert!(seen[2].starts_with("/api/v1/namespaces/kube-system/pods/coredns-787d4945fb-lmn2q"));
 }
+
+fn in_cluster(namespace: &str, service: &str) -> crate::integration::Target {
+    crate::integration::Target::InCluster {
+        namespace: namespace.into(),
+        service: service.into(),
+        port: 9090,
+        https: false,
+    }
+}
+
+#[tokio::test]
+async fn prometheus_refuses_a_crafted_in_cluster_target_without_a_request() {
+    for (ns, service, expected) in [
+        (CRAFTED[0], "prometheus-operated", CRAFTED[0]),
+        ("monitoring", "a%2Fb", "a%2Fb"),
+        ("monitoring", "..", ".."),
+    ] {
+        let (client, server) = apiserver();
+        let endpoint = crate::prometheus::PromEndpoint {
+            target: in_cluster(ns, service),
+            ..crate::test_support::prom_endpoint("http://unused")
+        };
+        let result = crate::prometheus::transport::connect(
+            Some(client.client()),
+            &endpoint,
+            &crate::prometheus::PromAuth::None,
+        )
+        .await;
+        // A connection that opened holds the client: drop it first.
+        let refused = result.err();
+        assert_no_request(client, server).await;
+        match refused {
+            Some(crate::prometheus::PromError::Config(message)) => {
+                assert!(message.contains(expected), "{message}");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn elasticsearch_refuses_a_crafted_in_cluster_target_without_a_request() {
+    for (ns, service, expected) in crafted_objects() {
+        let (client, server) = apiserver();
+        let endpoint = crate::elastic::EsEndpoint {
+            target: in_cluster(ns, service),
+            index_pattern: "logs-*".into(),
+            preset: Default::default(),
+            kibana_url: None,
+            kibana_service: None,
+            skip_tls_verify: false,
+            cluster_filter: None,
+            shared: false,
+        };
+        let result = crate::elastic::transport::connect(
+            Some(client.client()),
+            &endpoint,
+            &crate::elastic::EsAuth::None,
+        )
+        .await;
+        assert_no_request(client, server).await;
+        assert_eq!(
+            result.err(),
+            Some(crate::elastic::ElasticError::Config(expected))
+        );
+    }
+}

@@ -12,9 +12,9 @@
 //!   ConfigMap, Secret, Ingress) is a DNS-1123 subdomain: Kubernetes accepts
 //!   no other name for any of them.
 //! - The name of an object of any kind (the generic kind views, where a
-//!   ClusterRole may be called `system:controller:job-controller`) only has
-//!   to be one path segment: not `.` or `..`, no `/`, `?`, `#`, `%`, `\`,
-//!   whitespace or control character.
+//!   ClusterRole may be called `system:controller:job-controller`) follows
+//!   Kubernetes' rule for every kind: not empty, `.` or `..`, no `/` or `%`.
+//!   Those views percent-encode it, so `?`, `#` or a space stay in it.
 
 use std::fmt;
 
@@ -65,16 +65,12 @@ pub(crate) fn is_dns_subdomain(value: &str) -> bool {
     value.len() <= 253 && value.split('.').all(is_label_text)
 }
 
-/// One request path segment that names an object of any kind: what
-/// Kubernetes accepts for every kind (not `.` or `..`, no `/` or `%`),
-/// without `?`, `#`, `\`, whitespace or control characters either.
+/// One request path segment that names an object of any kind, exactly
+/// Kubernetes' rule for every kind: not empty, `.` or `..`, and no `/` or
+/// `%`. Anything else (`system:a?b#c`, `my role`) is a valid RBAC name, and
+/// the generic kind views percent-encode it.
 pub(crate) fn is_path_segment_name(value: &str) -> bool {
-    !value.is_empty()
-        && value != "."
-        && value != ".."
-        && !value.chars().any(|c| {
-            matches!(c, '/' | '?' | '#' | '%' | '\\') || c.is_whitespace() || c.is_control()
-        })
+    !value.is_empty() && value != "." && value != ".." && !value.contains(['/', '%'])
 }
 
 /// `value` for a message: its first [`SHOWN_CHARS`] characters, control
@@ -188,20 +184,22 @@ mod tests {
     ];
 
     /// Crafted values that would reach another object (a Secret) or another
-    /// path if they went into a request as they are.
-    const CRAFTED: &[&str] = &[
-        "shop/secrets/api?x=",
-        "a%2Fb",
-        "..",
-        ".",
-        "",
-        "a/b",
+    /// path if they went into a request as they are, even percent-encoded:
+    /// Kubernetes refuses these as the name of any kind.
+    const CRAFTED: &[&str] = &["shop/secrets/api?x=", "a%2Fb", "..", ".", "", "a/b", "a%b"];
+
+    /// Values that break a path only when they go into it as they are: no
+    /// namespace and no typed name, but a name of any kind may hold them
+    /// (RBAC kinds), and the generic kind views percent-encode it.
+    const ENCODED_ONLY: &[&str] = &[
         "a?b",
         "a#b",
         "a\\b",
         "a b",
         "a\nb",
         "a\tb",
+        "my role",
+        "system:a?b#c",
     ];
 
     #[test]
@@ -239,6 +237,15 @@ mod tests {
         ] {
             assert!(check_any_name(name).is_ok(), "{name}");
             assert!(check_name(name).is_err(), "{name}");
+        }
+    }
+
+    #[test]
+    fn names_of_any_kind_follow_the_kubernetes_path_segment_rule() {
+        for value in ENCODED_ONLY {
+            assert!(check_any_name(value).is_ok(), "{value:?}");
+            assert!(check_namespace(value).is_err(), "{value:?}");
+            assert!(check_name(value).is_err(), "{value:?}");
         }
     }
 
