@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The YAML of a Secret is redacted in the backend: every value under `data` and `stringData` reads `REDACTED (n bytes)`, and the `kubectl.kubernetes.io/last-applied-configuration` annotation (which holds the whole Secret after a `kubectl apply`), like any annotation that holds one of the values, reads `REDACTED`. Whether YAML is a Secret is decided by what the API server answered, so a Secret or a list of Secrets is redacted in the YAML of the generic kind views too. Applying a Secret from YAML is refused (#661).
 - The generic kind views check the group, version and plural of a resource reference before any request (lowercase letters, digits, `-` and `.`): such a reference can no longer reach another resource through a `/` in its plural (#661).
 - An error from listing, watching or reading Secrets no longer quotes an answer it could not read; it names the Secret instead (#661).
+- A namespace or object name that is not a valid Kubernetes name is refused before any request, with a message that names the value (its first 80 characters) and nothing else: lists, watches, YAML views and edits, logs, shells, port-forwards, scale, restart, delete, events, Helm releases, metrics, the resource limits editor, revealing a Secret value, the generic kind views and the in-cluster integration tunnels. A crafted namespace such as `shop/secrets/api?x=` could otherwise turn a pod's log request into a read of a Secret (#671).
 
 ## [0.12.0] - 2026-11-14
 

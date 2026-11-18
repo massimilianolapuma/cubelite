@@ -59,6 +59,7 @@ impl KubeClient {
         namespace: &str,
         name: &str,
     ) -> Result<ResourceFacts, KubeconfigError> {
+        crate::names::check_object(namespace, name)?;
         let client = self.client();
         let deployment = Api::<Deployment>::namespaced(client.clone(), namespace)
             .get(name)
