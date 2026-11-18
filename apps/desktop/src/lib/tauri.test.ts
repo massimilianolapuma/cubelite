@@ -29,6 +29,7 @@ import {
   evaluateResources,
   applyResources,
   clearResourcesOverride,
+  revealSecretValue,
 } from "#lib/tauri.ts";
 import type {
   EsEndpoint,
@@ -624,5 +625,24 @@ describe("resource limits commands", () => {
       name: "api",
       context: null,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// revealSecretValue (#661)
+// ---------------------------------------------------------------------------
+
+describe("revealSecretValue", () => {
+  it("asks the backend for one key of one Secret", async () => {
+    mockedInvoke.mockResolvedValueOnce({ value: "v", resource_version: "41" });
+    const answer = await revealSecretValue("/k", "shop", "api", "DB_PASSWORD", "prod");
+    expect(mockedInvoke).toHaveBeenCalledWith("reveal_secret_value", {
+      kubeconfigPath: "/k",
+      namespace: "shop",
+      name: "api",
+      key: "DB_PASSWORD",
+      context: "prod",
+    });
+    expect(answer).toEqual({ value: "v", resource_version: "41" });
   });
 });

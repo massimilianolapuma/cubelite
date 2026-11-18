@@ -44,6 +44,21 @@ describe("settings", () => {
     expect(settings.identityColors.value).toEqual({});
   });
 
+  it("hides a shown Secret value after 30 s by default, and keeps a valid choice (#661)", async () => {
+    expect((await freshSettings()).secretHideAfter.value).toBe(30);
+    const first = await freshSettings();
+    first.secretHideAfter.value = 0;
+    expect((await freshSettings()).secretHideAfter.value).toBe(0);
+    for (const bad of [45, "30", null, -1]) {
+      window.localStorage.setItem("cubelite.secretHideAfter", JSON.stringify(bad));
+      expect((await freshSettings()).secretHideAfter.value).toBe(30);
+    }
+    for (const good of [15, 30, 60, 300, 0]) {
+      window.localStorage.setItem("cubelite.secretHideAfter", JSON.stringify(good));
+      expect((await freshSettings()).secretHideAfter.value).toBe(good);
+    }
+  });
+
   it("validates the stored kubeconfigPaths list", async () => {
     window.localStorage.setItem("cubelite.kubeconfigPaths", JSON.stringify([1, "a"]));
     expect((await freshSettings()).kubeconfigPaths.value).toEqual([]);

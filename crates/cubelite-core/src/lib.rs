@@ -45,6 +45,7 @@ mod names;
 pub mod portforward;
 pub mod prometheus;
 pub mod resources;
+pub mod secrets;
 pub mod types;
 pub mod watcher;
 
@@ -65,9 +66,10 @@ pub use logs::{LogLevel, LogLine};
 pub use metrics::{ContainerUsageInfo, NodeCapacityInfo, PodMetricsInfo};
 pub use resources::{
     ConfigMapInfo, ContainerDetail, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo,
-    NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, ServiceInfo, StatefulSetInfo,
-    WorkloadRef,
+    NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, SecretKeyInfo, ServiceInfo,
+    StatefulSetInfo, WorkloadRef,
 };
+pub use secrets::{NotOffered, RevealedSecret, SecretValue, MAX_SHOWN_BYTES};
 pub use types::{
     ClusterDetails, ContextDetails, ContextInfo, KubeConfigFile, KubeconfigSource, NamedCluster,
     NamedContext, NamedUser, UserDetails,

@@ -255,6 +255,27 @@ describe("PreferencesModal", () => {
     expect(settings.refreshInterval.value).toBe(60);
   });
 
+  it("sets how long a shown Secret value stays, in a Secrets group after Connection (#661)", async () => {
+    settings.secretHideAfter.value = 30;
+    app.preferencesOpen = true;
+    render(PreferencesModal);
+    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(headings.indexOf("Secrets")).toBe(headings.indexOf("Connection") + 1);
+    const group = screen.getByRole("radiogroup", { name: "Hide a shown value after" });
+    expect(within(group).getAllByRole("radio").map((r) => r.textContent?.trim())).toEqual([
+      "15 s",
+      "30 s",
+      "1 min",
+      "5 min",
+      "Never",
+    ]);
+    expect(within(group).getByRole("radio", { name: "30 s" })).toHaveAttribute("aria-checked", "true");
+    await fireEvent.click(within(group).getByRole("radio", { name: "Never" }));
+    expect(settings.secretHideAfter.value).toBe(0);
+    await fireEvent.click(within(group).getByRole("radio", { name: "5 min" }));
+    expect(settings.secretHideAfter.value).toBe(300);
+  });
+
   it("toggles skip TLS", async () => {
     app.preferencesOpen = true;
     render(PreferencesModal);

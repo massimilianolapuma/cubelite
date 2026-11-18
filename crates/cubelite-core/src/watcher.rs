@@ -38,7 +38,8 @@ use crate::metrics::{parse_cpu_millis, parse_memory_bytes};
 use crate::resources::{
     ConfigMapInfo, ContainerInfo, ContainerResourcesInfo, CronJobInfo, DeploymentConditionInfo,
     DeploymentInfo, IngressInfo, JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, QuantityInfo,
-    ResourcePairInfo, SecretInfo, ServiceInfo, StatefulSetInfo, TemplateContainerInfo,
+    ResourcePairInfo, SecretInfo, SecretKeyInfo, ServiceInfo, StatefulSetInfo,
+    TemplateContainerInfo,
 };
 
 /// Selects which Kubernetes resource type to watch.
@@ -198,7 +199,11 @@ impl ResourceWatcher {
                     None => Api::all(client),
                 };
                 Box::pin(watcher::watcher(api, config).filter_map(|ev| async move {
-                    map_event(ev, secret_to_info, ResourceInfo::Secret)
+                    map_event(
+                        ev.map_err(secret_watch_error),
+                        secret_to_info,
+                        ResourceInfo::Secret,
+                    )
                 }))
             }
         }
@@ -229,6 +234,27 @@ where
         }
         Ok(watcher::Event::Init) | Ok(watcher::Event::InitDone) => None,
         Err(e) => Some(WatchEvent::Error(e.to_string())),
+    }
+}
+
+/// A watch error on Secrets that holds no part of a value: a reader's message
+/// may quote what it could not read, so such an error is named without it.
+fn secret_watch_error(error: watcher::Error) -> watcher::Error {
+    fn named(error: kube::Error) -> kube::Error {
+        match error {
+            kube::Error::SerdeError(_) => {
+                kube::Error::SerdeError(<serde_json::Error as serde::de::Error>::custom(
+                    "the API server's answer for Secrets could not be read",
+                ))
+            }
+            other => other,
+        }
+    }
+    match error {
+        watcher::Error::InitialListFailed(e) => watcher::Error::InitialListFailed(named(e)),
+        watcher::Error::WatchStartFailed(e) => watcher::Error::WatchStartFailed(named(e)),
+        watcher::Error::WatchFailed(e) => watcher::Error::WatchFailed(named(e)),
+        other => other,
     }
 }
 
@@ -503,27 +529,33 @@ pub(crate) fn configmap_to_info(cm: ConfigMap) -> Option<ConfigMapInfo> {
 /// Convert a raw [`Secret`] object into a [`SecretInfo`], returning `None`
 /// if there is no name.
 ///
-/// Values are decoded to UTF-8 locally; non-UTF-8 payloads are replaced with
-/// a `"(binary)"` placeholder so raw bytes never cross the IPC boundary.
+/// Each value is measured (decoded length, UTF-8 or not) and dropped: the
+/// result holds key names only (#661). `stringData` is not read: it is
+/// write-only, and the API server never returns it.
 pub(crate) fn secret_to_info(s: Secret) -> Option<SecretInfo> {
     let name = s.metadata.name.clone()?;
     let namespace = s.metadata.namespace.clone().unwrap_or_default();
     let creation = creation_timestamp(&s.metadata);
 
-    let mut data = std::collections::BTreeMap::new();
-    for (key, value) in s.data.unwrap_or_default() {
-        let decoded = String::from_utf8(value.0).unwrap_or_else(|_| "(binary)".to_string());
-        data.insert(key, decoded);
-    }
-    for (key, value) in s.string_data.unwrap_or_default() {
-        data.insert(key, value);
-    }
+    // A BTreeMap iterates in key order.
+    let keys = s
+        .data
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(key, value)| SecretKeyInfo {
+            key,
+            size: value.0.len() as u64,
+            binary: std::str::from_utf8(&value.0).is_err(),
+        })
+        .collect();
 
     Some(SecretInfo {
         name,
         namespace,
+        helm_release: s.type_.as_deref() == Some(crate::secrets::HELM_RELEASE_TYPE),
         secret_type: s.type_,
-        data,
+        keys,
+        resource_version: s.metadata.resource_version,
         creation_timestamp: creation,
     })
 }
@@ -1142,7 +1174,40 @@ mod tests {
     }
 
     #[test]
-    fn secret_to_info_decodes_utf8_and_masks_binary() {
+    fn a_secret_watch_error_does_not_quote_what_it_could_not_read() {
+        let unreadable = || {
+            kube::Error::SerdeError(
+                serde_json::from_str::<k8s_openapi::api::core::v1::Secret>(
+                    r#"{"data": "hunter2-in-the-answer"}"#,
+                )
+                .expect_err("data is not a map"),
+            )
+        };
+        for error in [
+            watcher::Error::InitialListFailed(unreadable()),
+            watcher::Error::WatchStartFailed(unreadable()),
+            watcher::Error::WatchFailed(unreadable()),
+        ] {
+            assert!(
+                error.to_string().contains("hunter2"),
+                "the reader quotes it"
+            );
+            let event = map_event::<k8s_openapi::api::core::v1::Secret, _, _, _>(
+                Err(secret_watch_error(error)),
+                secret_to_info,
+                ResourceInfo::Secret,
+            );
+            let text = serde_json::to_string(&event).expect("json");
+            assert!(!text.contains("hunter2"), "{text}");
+            assert!(text.contains("Secrets"), "{text}");
+        }
+        // Anything else keeps its message.
+        let other = secret_watch_error(watcher::Error::NoResourceVersion);
+        assert!(other.to_string().contains("resourceVersion"));
+    }
+
+    #[test]
+    fn secret_to_info_measures_each_value_and_keeps_none() {
         use k8s_openapi::api::core::v1::Secret;
         use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
         use k8s_openapi::ByteString;
@@ -1152,6 +1217,7 @@ mod tests {
             metadata: ObjectMeta {
                 name: Some("creds".to_string()),
                 namespace: Some("default".to_string()),
+                resource_version: Some("7".to_string()),
                 ..Default::default()
             },
             type_: Some("Opaque".to_string()),
@@ -1164,11 +1230,24 @@ mod tests {
 
         let info = secret_to_info(secret).unwrap();
         assert_eq!(info.secret_type.as_deref(), Some("Opaque"));
+        assert_eq!(info.resource_version.as_deref(), Some("7"));
+        assert!(!info.helm_release);
         assert_eq!(
-            info.data.get("password").map(String::as_str),
-            Some("hunter2")
+            info.keys,
+            vec![
+                SecretKeyInfo {
+                    key: "cert".to_string(),
+                    size: 2,
+                    binary: true
+                },
+                SecretKeyInfo {
+                    key: "password".to_string(),
+                    size: 7,
+                    binary: false
+                },
+            ]
         );
-        assert_eq!(info.data.get("cert").map(String::as_str), Some("(binary)"));
+        assert!(!serde_json::to_string(&info).unwrap().contains("hunter2"));
     }
 
     #[test]

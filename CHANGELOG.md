@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Secret values stay in the backend until you ask for one (#661). Opening the Secrets view or the Overview no longer sends any value to the window: the list carries each key's name, the size of its value and whether it is binary. Each key has its own Reveal, which reads that one value from the API server at that moment; a shown value hides itself after the time set in Preferences → Secrets (15 s, 30 s, 1 min, 5 min or Never; 30 s by default), and also on Hide, when you leave the view, switch namespace or cluster, or when the Secret changes. A new time applies to the values already shown, counted from when each was shown, and a value whose time passed while the computer slept hides as soon as the window is back. A binary value reads "binary" and a text over 64 KiB "too large to show", with no Reveal; a Helm release Secret's key reads "Helm release payload, shown in Helm". A shown value takes a line of its own under its key, as wide as the row. The per-Secret Reveal column is gone.
+
 ### Security
 
+- The YAML of a Secret is redacted in the backend: every value under `data` and `stringData` reads `REDACTED (n bytes)`, and the `kubectl.kubernetes.io/last-applied-configuration` annotation (which holds the whole Secret after a `kubectl apply`), like any annotation that holds one of the values, reads `REDACTED`. Whether YAML is a Secret is decided by what the API server answered, so a Secret or a list of Secrets is redacted in the YAML of the generic kind views too. Applying a Secret from YAML is refused (#661).
+- The generic kind views check the group, version and plural of a resource reference before any request (lowercase letters, digits, `-` and `.`): such a reference can no longer reach another resource through a `/` in its plural (#661).
+- An error from listing, watching or reading Secrets no longer quotes an answer it could not read; it names the Secret instead (#661).
 - A namespace or object name that is not a valid Kubernetes name is refused before any request, with a message that names the value (its first 80 characters) and nothing else: lists, watches, YAML views and edits, logs, shells, port-forwards, scale, restart, delete, events, Helm releases, metrics, the resource limits editor, the generic kind views and the in-cluster integration tunnels. A crafted namespace such as `shop/secrets/api?x=` could otherwise turn a pod's log request into a read of a Secret (#671).
 
 ## [0.12.0] - 2026-11-14

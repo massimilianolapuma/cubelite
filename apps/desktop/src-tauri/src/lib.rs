@@ -31,6 +31,7 @@ use commands::prometheus::{
 use commands::prometheus_cluster::{
     prometheus_alert_expr, prometheus_alerts, prometheus_cluster_usage, prometheus_node_metrics,
 };
+use commands::secrets::reveal_secret_value;
 
 /// Entry point for the Tauri application.
 pub fn run() {
@@ -87,6 +88,7 @@ pub fn run() {
             list_ingresses,
             list_configmaps,
             list_secrets,
+            reveal_secret_value,
             list_events,
             list_helm_releases,
             list_pod_metrics,
