@@ -748,10 +748,14 @@ mod tests {
             ("shop", "a..b", "Invalid name \"a..b\""),
             ("shop", long.as_str(), cut.as_str()),
         ] {
-            match client.secret_value(ns, name, "k").await {
-                Err(KubeconfigError::ClientError { reason }) => assert_eq!(reason, expected),
-                other => panic!("{ns}/{name}: expected a refusal, got {other:?}"),
-            }
+            // The result is not printed on failure: on a wrong Ok it would
+            // carry a Secret value into the test output.
+            let Err(KubeconfigError::ClientError { reason }) =
+                client.secret_value(ns, name, "k").await
+            else {
+                panic!("{ns}/{name}: expected a ClientError refusal");
+            };
+            assert_eq!(reason, expected);
         }
         assert!(requests(client, server).await.is_empty());
     }
