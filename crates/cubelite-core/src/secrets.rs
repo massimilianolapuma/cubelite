@@ -108,13 +108,6 @@ pub struct RevealedSecret {
     pub resource_version: Option<String>,
 }
 
-/// Whether `value` can be a namespace or an object name of a Secret (a DNS
-/// subdomain: lowercase letters, digits, `-` and `.`, starting and ending
-/// with a letter or digit): nothing else may reach the request path.
-fn is_object_name(value: &str) -> bool {
-    crate::dynamic::is_path_segment(value)
-}
-
 impl KubeClient {
     /// Read the value of `key` in Secret `namespace/name`, with the Secret's
     /// resource version.
@@ -133,11 +126,7 @@ impl KubeClient {
         name: &str,
         key: &str,
     ) -> Result<RevealedSecret, KubeconfigError> {
-        if !is_object_name(namespace) || !is_object_name(name) {
-            return Err(KubeconfigError::ClientError {
-                reason: format!("invalid Secret reference {namespace}/{name}"),
-            });
-        }
+        crate::names::check_object(namespace, name)?;
         let api: Api<Secret> = Api::namespaced(self.client(), namespace);
         let secret = api
             .get(name)
@@ -741,13 +730,32 @@ mod tests {
     #[tokio::test]
     async fn secret_value_rejects_a_name_that_is_not_a_name_without_a_request() {
         let (client, server) = mock_client(|_, _| (StatusCode::OK, secret_json()));
-        for (ns, name) in [
-            ("shop", "../configmaps/x"),
-            ("shop/x", "api"),
-            ("", "api"),
-            ("shop", ""),
+        // The shared check (#671): a namespace is a DNS label, a Secret's
+        // name a DNS subdomain, and the message shows the value refused, cut
+        // at 80 characters.
+        let long = "n".repeat(254);
+        let cut = format!("Invalid name \"{}…\"", "n".repeat(80));
+        for (ns, name, expected) in [
+            (
+                "shop",
+                "../configmaps/x",
+                "Invalid name \"../configmaps/x\"",
+            ),
+            ("shop/x", "api", "Invalid namespace \"shop/x\""),
+            ("", "api", "Invalid namespace \"\""),
+            ("shop", "", "Invalid name \"\""),
+            ("kube.system", "api", "Invalid namespace \"kube.system\""),
+            ("shop", "a..b", "Invalid name \"a..b\""),
+            ("shop", long.as_str(), cut.as_str()),
         ] {
-            assert!(client.secret_value(ns, name, "k").await.is_err());
+            // The result is not printed on failure: on a wrong Ok it would
+            // carry a Secret value into the test output.
+            let Err(KubeconfigError::ClientError { reason }) =
+                client.secret_value(ns, name, "k").await
+            else {
+                panic!("{ns}/{name}: expected a ClientError refusal");
+            };
+            assert_eq!(reason, expected);
         }
         assert!(requests(client, server).await.is_empty());
     }

@@ -30,6 +30,8 @@ import {
   applyResources,
   clearResourcesOverride,
   revealSecretValue,
+  copySecretValue,
+  exportSecretEnv,
 } from "#lib/tauri.ts";
 import type {
   EsEndpoint,
@@ -644,5 +646,48 @@ describe("revealSecretValue", () => {
       context: "prod",
     });
     expect(answer).toEqual({ value: "v", resource_version: "41" });
+  });
+});
+
+describe("copySecretValue (#661)", () => {
+  it("asks the backend to copy one key with the clearing time, and gets the format only", async () => {
+    mockedInvoke.mockResolvedValueOnce("text");
+    const format = await copySecretValue("/k", "shop", "api", "DB_PASSWORD", 30, "prod");
+    expect(mockedInvoke).toHaveBeenCalledWith("copy_secret_value", {
+      kubeconfigPath: "/k",
+      namespace: "shop",
+      name: "api",
+      key: "DB_PASSWORD",
+      clearAfterSecs: 30,
+      context: "prod",
+    });
+    expect(format).toBe("text");
+  });
+
+  it("sends no time for Never", async () => {
+    mockedInvoke.mockResolvedValueOnce("base64");
+    await copySecretValue("/k", "shop", "api", "ca.crt", 0);
+    expect(mockedInvoke).toHaveBeenCalledWith("copy_secret_value", {
+      kubeconfigPath: "/k",
+      namespace: "shop",
+      name: "api",
+      key: "ca.crt",
+      clearAfterSecs: null,
+      context: null,
+    });
+  });
+});
+
+describe("exportSecretEnv (#661)", () => {
+  it("names the Secret and no path: the backend asks for one", async () => {
+    const answer = { saved: true, path: "/home/u/api.env", written: ["K"], left_out: [] };
+    mockedInvoke.mockResolvedValueOnce(answer);
+    expect(await exportSecretEnv("/k", "shop", "api", "prod")).toEqual(answer);
+    expect(mockedInvoke).toHaveBeenCalledWith("export_secret_env", {
+      kubeconfigPath: "/k",
+      namespace: "shop",
+      name: "api",
+      context: "prod",
+    });
   });
 });

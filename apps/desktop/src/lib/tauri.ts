@@ -378,6 +378,21 @@ export type SecretErrorKind =
 /** A Secret command's error, as the backend answers it. */
 export type SecretCommandError = { kind: SecretErrorKind; message: string };
 
+/** How a copied value went to the clipboard: text as it is, binary as base64. Never the value. */
+export type CopyFormat = "text" | "base64";
+
+/** Why a key is not in a `.env` file. */
+export type EnvLeftOutReason = "not_a_name" | "binary" | "nul";
+
+/** What `exportSecretEnv` did: no value, only key names and where the file went. */
+export type EnvExport = {
+  /** false when the save dialog was cancelled: nothing was read or written. */
+  saved: boolean;
+  path: string | null;
+  written: string[];
+  left_out: { key: string; reason: EnvLeftOutReason }[];
+};
+
 // --- Invoke wrappers ---
 
 /** Resolve the kubeconfig list; a non-empty `customPaths` replaces KUBECONFIG. */
@@ -496,6 +511,50 @@ export function revealSecretValue(
     namespace,
     name,
     key,
+    context: context ?? null,
+  });
+}
+
+/**
+ * Copy one value of a Secret to the clipboard, from the backend: the value
+ * never reaches the webview. Text is copied as it is, binary as base64; the
+ * answer is the format used. With `clearAfterSecs` (0 is Never, sent as no
+ * time) the backend clears the clipboard after that time if it still holds
+ * the value. Rejects with a `SecretCommandError`.
+ */
+export function copySecretValue(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  key: string,
+  clearAfterSecs: number,
+  context?: string,
+): Promise<CopyFormat> {
+  return invoke<CopyFormat>("copy_secret_value", {
+    kubeconfigPath,
+    namespace,
+    name,
+    key,
+    clearAfterSecs: clearAfterSecs > 0 ? clearAfterSecs : null,
+    context: context ?? null,
+  });
+}
+
+/**
+ * Save a Secret as a `.env` file: the backend opens the system's save dialog,
+ * reads the Secret and writes the file. No path is sent; none can be. Rejects
+ * with a `SecretCommandError`.
+ */
+export function exportSecretEnv(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  context?: string,
+): Promise<EnvExport> {
+  return invoke<EnvExport>("export_secret_env", {
+    kubeconfigPath,
+    namespace,
+    name,
     context: context ?? null,
   });
 }

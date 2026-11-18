@@ -39,6 +39,10 @@ declare global {
     __integrationCalls?: { cmd: string; args: Record<string, unknown> }[];
     /** Test hook: the arguments of every `reveal_secret_value` call, in order (#661). */
     __secretReveals?: Record<string, unknown>[];
+    /** Test hook: the arguments of every `copy_secret_value` call, in order (#661). */
+    __secretCopies?: Record<string, unknown>[];
+    /** Test hook: the arguments of every `export_secret_env` call, in order (#661). */
+    __secretExports?: Record<string, unknown>[];
   }
 }
 
@@ -288,6 +292,8 @@ export const FIXTURES = {
   secrets: [] as SecretInfo[],
   /** `reveal_secret_value` answers from here; a missing entry is a vanished key. */
   secretValues: SECRET_VALUES,
+  /** Where `export_secret_env` "saves"; null is a cancelled save dialog. */
+  envExportDir: "/home/test/Downloads" as string | null,
   // Discovery (resource-kinds phase 2): every registry kind except Storage Classes.
   resourceKinds: [
     { group: "", version: "v1", kind: "Namespace", plural: "namespaces", namespaced: false, short_names: [] },
@@ -708,6 +714,29 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
         }
         const secret = fixtures.secrets.find((s) => s.namespace === args.namespace && s.name === args.name);
         return { value, resource_version: secret ? secret.resource_version : null };
+      }
+      case "copy_secret_value": {
+        // The backend writes the clipboard; the webview gets the format only.
+        (window.__secretCopies ??= []).push(args);
+        const secret = fixtures.secrets.find((s) => s.namespace === args.namespace && s.name === args.name);
+        const info = secret && secret.keys.find((k) => k.key === args.key);
+        if (!info) throw { kind: "key_missing", message: "Secret " + args.namespace + "/" + args.name + " has no key " + args.key };
+        return info.binary ? "base64" : "text";
+      }
+      case "export_secret_env": {
+        (window.__secretExports ??= []).push(args);
+        if (fixtures.envExportDir === null) return { saved: false, path: null, written: [], left_out: [] };
+        const secret = fixtures.secrets.find((s) => s.namespace === args.namespace && s.name === args.name);
+        const keys = secret ? secret.keys : [];
+        const name = (k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k);
+        return {
+          saved: true,
+          path: fixtures.envExportDir + "/" + args.name + ".env",
+          written: keys.filter((k) => !k.binary && name(k.key)).map((k) => k.key),
+          left_out: keys
+            .filter((k) => k.binary || !name(k.key))
+            .map((k) => ({ key: k.key, reason: k.binary ? "binary" : "not_a_name" })),
+        };
       }
       case "list_nodes":
         return [{ name: "node-1", status: "NotReady", roles: ["worker"], version: "v1.30.2", creation_timestamp: null }];

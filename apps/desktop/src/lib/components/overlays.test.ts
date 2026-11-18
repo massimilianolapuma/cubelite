@@ -255,13 +255,15 @@ describe("PreferencesModal", () => {
     expect(settings.refreshInterval.value).toBe(60);
   });
 
-  it("sets how long a shown Secret value stays, in a Secrets group after Connection (#661)", async () => {
+  it("sets how long a shown Secret value stays, and a copied one, in a Secrets group after Connection (#661)", async () => {
     settings.secretHideAfter.value = 30;
     app.preferencesOpen = true;
     render(PreferencesModal);
     const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
     expect(headings.indexOf("Secrets")).toBe(headings.indexOf("Connection") + 1);
-    const group = screen.getByRole("radiogroup", { name: "Hide a shown value after" });
+    expect(screen.getByText("Hide a shown value, and clear a copied one, after")).toBeInTheDocument();
+    expect(screen.getByText("Counted from the reveal or the copy.")).toBeInTheDocument();
+    const group = screen.getByRole("radiogroup", { name: "Hide a shown value, and clear a copied one, after" });
     expect(within(group).getAllByRole("radio").map((r) => r.textContent?.trim())).toEqual([
       "15 s",
       "30 s",
