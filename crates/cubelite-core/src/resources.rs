@@ -288,10 +288,12 @@ pub struct EventInfo {
     pub last_timestamp: Option<String>,
 }
 
-/// Lightweight representation of a Kubernetes Secret.
+/// Lightweight representation of a Kubernetes Secret: its keys, never its
+/// values (#661).
 ///
-/// Values are base64-decoded locally by the backend and never leave the
-/// machine; binary values are replaced with a `"(binary)"` placeholder.
+/// The backend reads whole Secret objects to build it, measures each value
+/// and drops it; one value reaches the webview only when it is asked for
+/// ([`crate::KubeClient::secret_value`]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretInfo {
     /// The secret name.
@@ -300,10 +302,25 @@ pub struct SecretInfo {
     pub namespace: String,
     /// The secret type (e.g. `"Opaque"`, `"kubernetes.io/tls"`).
     pub secret_type: Option<String>,
-    /// Decoded key/value entries, sorted by key.
-    pub data: std::collections::BTreeMap<String, String>,
+    /// One entry per key, sorted by key. Never the values.
+    pub keys: Vec<SecretKeyInfo>,
+    /// `type: helm.sh/release.v1`: its payload is a Helm release, not a value.
+    pub helm_release: bool,
+    /// Lets the view drop a shown value when the Secret changes.
+    pub resource_version: Option<String>,
     /// RFC 3339 creation timestamp, when reported by the API server.
     pub creation_timestamp: Option<String>,
+}
+
+/// One key of a Secret: its name and what its value is like, not the value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SecretKeyInfo {
+    /// The key.
+    pub key: String,
+    /// Length of the decoded value, in bytes.
+    pub size: u64,
+    /// The value is not valid UTF-8.
+    pub binary: bool,
 }
 
 /// Lightweight representation of a Kubernetes Job.

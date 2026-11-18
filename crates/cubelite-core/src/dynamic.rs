@@ -235,6 +235,43 @@ pub(crate) fn resource_path(resource: &ResourceRef, namespace: Option<&str>) -> 
     }
 }
 
+/// Whether `value` may go into a request path as it is: lowercase letters,
+/// digits, `-` and `.`, starting and ending with a letter or a digit (so no
+/// `/`, and neither `.` nor `..`). Discovery's groups, versions and plurals,
+/// and the names of namespaces and Secrets, are all of this form.
+pub(crate) fn is_path_segment(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let edge = |b: &u8| b.is_ascii_lowercase() || b.is_ascii_digit();
+    bytes.first().is_some_and(edge)
+        && bytes.last().is_some_and(edge)
+        && bytes.iter().all(|b| edge(b) || matches!(b, b'-' | b'.'))
+}
+
+/// Check a resource reference before its group, version and plural go into a
+/// request path as they are ([`resource_path`]): a reference that comes from
+/// the webview must not reach another resource through a `/` (#661).
+///
+/// # Errors
+///
+/// [`KubeconfigError::ClientError`] naming the first part that is not a
+/// [path segment](is_path_segment); the group may be empty (the core group).
+pub(crate) fn validate_ref(resource: &ResourceRef) -> Result<(), KubeconfigError> {
+    let parts = [
+        ("group", &resource.group, true),
+        ("version", &resource.version, false),
+        ("plural", &resource.plural, false),
+    ];
+    for (part, value, may_be_empty) in parts {
+        if (may_be_empty && value.is_empty()) || is_path_segment(value) {
+            continue;
+        }
+        return Err(client_error(format!(
+            "invalid resource reference: the {part} \"{value}\" may hold only lowercase letters, digits, '-' and '.'"
+        )));
+    }
+    Ok(())
+}
+
 /// `value` as one URL path segment: every byte outside the RFC 3986
 /// unreserved set is percent-encoded. Object names of some kinds
 /// (ClusterRoles, e.g.) may hold `?`, `#` or `:`.
@@ -352,6 +389,7 @@ impl KubeClient {
         resource: &ResourceRef,
         namespace: Option<&str>,
     ) -> Result<ResourceTable, KubeconfigError> {
+        validate_ref(resource)?;
         let path = resource_path(resource, namespace);
         let mut columns: Option<(Vec<TableColumn>, Vec<usize>)> = None;
         let mut rows = Vec::new();
@@ -417,6 +455,7 @@ impl KubeClient {
         namespace: Option<&str>,
         name: &str,
     ) -> Result<String, KubeconfigError> {
+        validate_ref(resource)?;
         if name.is_empty() {
             return Err(client_error("an object name is required"));
         }
@@ -431,6 +470,12 @@ impl KubeClient {
             resource_path(resource, namespace),
             path_segment(name)
         );
+        self.yaml_at(&path).await
+    }
+
+    /// The object at `path` as YAML: managedFields stripped, and redacted if
+    /// the answer is a Secret or a list of them, whatever the path asked for.
+    async fn yaml_at(&self, path: &str) -> Result<String, KubeconfigError> {
         let request = http::Request::get(path)
             .body(Vec::new())
             .map_err(client_error)?;
@@ -1084,6 +1129,175 @@ mod tests {
             .expect_err("not a table")
             .to_string();
         assert!(text.contains("Table"), "{text}");
+    }
+
+    /// References as discovery and the app's fixtures give them.
+    fn real_refs() -> Vec<ResourceRef> {
+        [
+            ("", "v1", "pods"),
+            ("", "v1", "persistentvolumes"),
+            ("apps", "v1", "daemonsets"),
+            ("autoscaling", "v2", "horizontalpodautoscalers"),
+            ("networking.k8s.io", "v1", "ingressclasses"),
+            ("rbac.authorization.k8s.io", "v1", "clusterrolebindings"),
+            ("monitoring.coreos.com", "v1alpha1", "alertmanagerconfigs"),
+            ("elasticsearch.k8s.elastic.co", "v1", "elasticsearches"),
+            ("cert-manager.io", "v1", "certificaterequests"),
+            ("acme.cert-manager.io", "v1beta1", "challenges"),
+            // A CRD's plural may hold a hyphen.
+            ("example.com", "v1", "backup-schedules"),
+        ]
+        .into_iter()
+        .map(|(group, version, plural)| ResourceRef {
+            group: group.into(),
+            version: version.into(),
+            plural: plural.into(),
+            namespaced: true,
+        })
+        .collect()
+    }
+
+    #[test]
+    fn validate_ref_accepts_what_discovery_returns() {
+        for r in real_refs() {
+            assert!(validate_ref(&r).is_ok(), "{r:?}");
+        }
+        assert!(validate_ref(&hpa_ref()).is_ok());
+    }
+
+    #[test]
+    fn validate_ref_rejects_anything_that_is_not_one_path_segment() {
+        let base = hpa_ref();
+        for bad in [
+            "",
+            ".",
+            "..",
+            "namespaces/shop/secrets",
+            "a b",
+            "Pods",
+            "-pods",
+            "pods-",
+            "pods.",
+            "a%2Fb",
+            "a?b",
+            "a#b",
+            "a\\b",
+        ] {
+            let plural = ResourceRef {
+                plural: bad.into(),
+                ..base.clone()
+            };
+            let version = ResourceRef {
+                version: bad.into(),
+                ..base.clone()
+            };
+            assert!(validate_ref(&plural).is_err(), "plural {bad:?}");
+            assert!(validate_ref(&version).is_err(), "version {bad:?}");
+            if !bad.is_empty() {
+                let group = ResourceRef {
+                    group: bad.into(),
+                    ..base.clone()
+                };
+                assert!(validate_ref(&group).is_err(), "group {bad:?}");
+            }
+        }
+        let text = validate_ref(&ResourceRef {
+            plural: "namespaces/shop/secrets".into(),
+            ..base
+        })
+        .expect_err("slash")
+        .to_string();
+        assert!(text.contains("plural"), "{text}");
+    }
+
+    /// A reference built to reach Secrets through its plural: one Secret,
+    /// and the SecretList of a namespace.
+    fn secret_reaching_refs() -> Vec<(ResourceRef, &'static str)> {
+        vec![
+            (
+                ResourceRef {
+                    group: "".into(),
+                    version: "v1".into(),
+                    plural: "namespaces/shop/secrets".into(),
+                    namespaced: false,
+                },
+                "api",
+            ),
+            (
+                ResourceRef {
+                    group: "".into(),
+                    version: "v1".into(),
+                    plural: "namespaces/shop".into(),
+                    namespaced: false,
+                },
+                "secrets",
+            ),
+        ]
+    }
+
+    const SENTINEL: &str = "dyn4mic-s3ntinel-v4lue";
+
+    fn sentinel_secret() -> serde_json::Value {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(SENTINEL);
+        serde_json::json!({
+            "apiVersion": "v1", "kind": "Secret",
+            "metadata": {"name": "api", "namespace": "shop", "annotations": {
+                "kubectl.kubernetes.io/last-applied-configuration":
+                    serde_json::json!({"apiVersion": "v1", "kind": "Secret", "data": {"K": b64}}).to_string()
+            }},
+            "data": {"K": b64},
+        })
+    }
+
+    fn assert_no_sentinel(yaml: &str) {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(SENTINEL);
+        assert!(!yaml.contains(SENTINEL), "{yaml}");
+        assert!(!yaml.contains(&b64), "{yaml}");
+    }
+
+    #[tokio::test]
+    async fn a_reference_built_to_reach_a_secret_is_refused_without_a_request() {
+        let (client, server) = mock_client(|_, _| (StatusCode::OK, sentinel_secret()));
+        for (r, name) in secret_reaching_refs() {
+            let err = client
+                .get_dynamic_yaml(&r, None, name)
+                .await
+                .expect_err("refused");
+            assert!(err.to_string().contains("plural"), "{err}");
+            assert!(client.list_table(&r, None).await.is_err());
+        }
+        assert!(requests(client, server).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn with_the_validation_out_of_the_way_the_answer_is_still_redacted() {
+        // The second layer: what the API server answered decides, not the path.
+        let (client, server) = mock_client(|_, uri| {
+            if uri.ends_with("/secrets") {
+                let mut item = sentinel_secret();
+                if let Some(o) = item.as_object_mut() {
+                    o.remove("apiVersion");
+                    o.remove("kind");
+                }
+                (
+                    StatusCode::OK,
+                    serde_json::json!({"apiVersion": "v1", "kind": "SecretList", "metadata": {}, "items": [item]}),
+                )
+            } else {
+                (StatusCode::OK, sentinel_secret())
+            }
+        });
+        for (r, name) in secret_reaching_refs() {
+            let path = format!("{}/{}", resource_path(&r, None), path_segment(name));
+            let yaml = client.yaml_at(&path).await.expect("yaml");
+            assert_no_sentinel(&yaml);
+            assert!(yaml.contains("REDACTED"), "{yaml}");
+        }
+        let seen = requests(client, server).await;
+        assert_eq!(seen[0].uri, "/api/v1/namespaces/shop/secrets/api");
+        assert_eq!(seen[1].uri, "/api/v1/namespaces/shop/secrets");
     }
 
     #[test]

@@ -54,7 +54,9 @@ const secret = (type: string | null): SecretInfo => ({
   name: `x-${type}`,
   namespace: "default",
   secret_type: type,
-  data: {},
+  keys: [],
+  helm_release: type === "helm.sh/release.v1",
+  resource_version: null,
   creation_timestamp: null,
 });
 const ingress = (tls: boolean): IngressInfo => ({

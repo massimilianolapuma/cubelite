@@ -336,14 +336,47 @@ export type EventInfo = {
   last_timestamp: string | null;
 };
 
+/** One key of a Secret: its name and what its value is like, never the value (#661). */
+export type SecretKeyInfo = {
+  key: string;
+  /** Length of the decoded value, in bytes. */
+  size: number;
+  /** The value is not valid UTF-8. */
+  binary: boolean;
+};
+
+/**
+ * A Secret as the list carries it: key names and sizes, never the values
+ * (#661). One value is read only when it is asked for (`revealSecretValue`).
+ */
 export type SecretInfo = {
   name: string;
   namespace: string;
   secret_type: string | null;
-  /** Values decoded locally by the backend — they never leave this machine. */
-  data: Record<string, string>;
+  /** One entry per key, sorted by key. */
+  keys: SecretKeyInfo[];
+  /** `type: helm.sh/release.v1`: its payload is a Helm release, not a value. */
+  helm_release: boolean;
+  /** Lets the view drop a shown value when the Secret changes. */
+  resource_version: string | null;
   creation_timestamp: string | null;
 };
+
+/** One value, and the resource version of the Secret it was read from. */
+export type RevealedSecretValue = { value: string; resource_version: string | null };
+
+/** What a Secret command's error is about; the view switches on it. */
+export type SecretErrorKind =
+  | "forbidden"
+  | "secret_missing"
+  | "key_missing"
+  | "not_a_value"
+  | "binary"
+  | "too_large"
+  | "other";
+
+/** A Secret command's error, as the backend answers it. */
+export type SecretCommandError = { kind: SecretErrorKind; message: string };
 
 // --- Invoke wrappers ---
 
@@ -442,6 +475,27 @@ export function listSecrets(
   return invoke<SecretInfo[]>("list_secrets", {
     kubeconfigPath,
     namespace: namespace ?? null,
+    context: context ?? null,
+  });
+}
+
+/**
+ * Read one value of a Secret, at this moment, from the API server. Text only:
+ * the backend refuses a binary value and a text over 64 KiB. Rejects with a
+ * `SecretCommandError` (read it with `secretCommandError` of `lib/secret-reveal.svelte.ts`).
+ */
+export function revealSecretValue(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  key: string,
+  context?: string,
+): Promise<RevealedSecretValue> {
+  return invoke<RevealedSecretValue>("reveal_secret_value", {
+    kubeconfigPath,
+    namespace,
+    name,
+    key,
     context: context ?? null,
   });
 }

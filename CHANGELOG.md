@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Secret values stay in the backend until you ask for one (#661). Opening the Secrets view or the Overview no longer sends any value to the window: the list carries each key's name, the size of its value and whether it is binary. Each key has its own Reveal, which reads that one value from the API server at that moment; a shown value hides itself after the time set in Preferences → Secrets (15 s, 30 s, 1 min, 5 min or Never; 30 s by default), and also on Hide, when you leave the view, switch namespace or cluster, or when the Secret changes. A binary value reads "binary" and a text over 64 KiB "too large to show", with no Reveal; a Helm release Secret shows one line, "Helm release payload, shown in Helm". The per-Secret Reveal column is gone.
+
+### Security
+
+- The YAML of a Secret is redacted in the backend: every value under `data` and `stringData` reads `REDACTED (n bytes)`, and the `kubectl.kubernetes.io/last-applied-configuration` annotation, which holds the whole Secret after a `kubectl apply`, reads `REDACTED`. The rule looks at what the API server answered, so a Secret, or a list of Secrets, reached through any resource reference is redacted too. Applying a Secret from YAML is refused (#661).
+- The group, version and plural of a resource reference are checked before any request (lowercase letters, digits, `-` and `.`): a reference can no longer reach another resource through a `/` in its plural (#661).
+- An error about Secrets never quotes what the API server sent: an answer that cannot be read is named without its content (#661).
+
 ## [0.12.0] - 2026-11-14
 
 ### Added
