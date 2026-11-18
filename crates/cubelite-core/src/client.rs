@@ -170,6 +170,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<PodInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<Pod> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -196,6 +197,7 @@ impl KubeClient {
         namespace: &str,
         pod: &str,
     ) -> Result<Vec<crate::resources::ContainerDetail>, KubeconfigError> {
+        crate::names::check_object(namespace, pod)?;
         let api: Api<Pod> = Api::namespaced(self.inner.clone(), namespace);
         let raw = api
             .get(pod)
@@ -237,6 +239,7 @@ impl KubeClient {
         &self,
         namespace: &str,
     ) -> Result<Vec<DeploymentInfo>, KubeconfigError> {
+        crate::names::check_namespace(namespace)?;
         let api: Api<Deployment> = Api::namespaced(self.inner.clone(), namespace);
 
         let deploy_list =
@@ -262,6 +265,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<ServiceInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<Service> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -284,6 +288,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<IngressInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<Ingress> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -306,6 +311,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<ConfigMapInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<ConfigMap> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -334,6 +340,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<SecretInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<Secret> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -357,6 +364,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<HelmReleaseInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<Secret> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -387,6 +395,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<PodMetricsInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let path = match namespace {
             Some(ns) => format!("/apis/metrics.k8s.io/v1beta1/namespaces/{ns}/pods"),
             None => "/apis/metrics.k8s.io/v1beta1/pods".to_string(),
@@ -482,6 +491,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<JobInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<Job> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -504,6 +514,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<CronJobInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<CronJob> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -526,6 +537,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<StatefulSetInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<StatefulSet> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -553,6 +565,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<WorkloadRef>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<DaemonSet> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -583,6 +596,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<PvcInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<PersistentVolumeClaim> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -625,6 +639,7 @@ impl KubeClient {
         namespace: &str,
         name: &str,
     ) -> Result<String, KubeconfigError> {
+        crate::names::check_object(namespace, name)?;
         let client = self.inner.clone();
         match resource_type {
             ResourceType::Pod => fetch_yaml::<Pod>(client, namespace, name).await,
@@ -659,6 +674,7 @@ impl KubeClient {
         name: &str,
         yaml: &str,
     ) -> Result<(), KubeconfigError> {
+        crate::names::check_object(namespace, name)?;
         let client = self.inner.clone();
         match resource_type {
             ResourceType::Pod => replace_yaml::<Pod>(client, namespace, name, yaml).await,
@@ -687,6 +703,7 @@ impl KubeClient {
         &self,
         namespace: Option<&str>,
     ) -> Result<Vec<EventInfo>, KubeconfigError> {
+        crate::names::check_scope(namespace)?;
         let api: Api<Event> = match namespace {
             Some(ns) => Api::namespaced(self.inner.clone(), ns),
             None => Api::all(self.inner.clone()),
@@ -708,6 +725,7 @@ impl KubeClient {
     ///
     /// Returns [`KubeconfigError::ClientError`] when the API call fails.
     pub async fn delete_pod(&self, namespace: &str, name: &str) -> Result<(), KubeconfigError> {
+        crate::names::check_object(namespace, name)?;
         let api: Api<Pod> = Api::namespaced(self.inner.clone(), namespace);
         api.delete(name, &DeleteParams::default())
             .await
@@ -729,6 +747,7 @@ impl KubeClient {
         namespace: &str,
         name: &str,
     ) -> Result<(), KubeconfigError> {
+        crate::names::check_object(namespace, name)?;
         let api: Api<Deployment> = Api::namespaced(self.inner.clone(), namespace);
         let now = k8s_openapi::jiff::Timestamp::now().to_string();
         let patch = serde_json::json!({
@@ -761,6 +780,7 @@ impl KubeClient {
         name: &str,
         replicas: i32,
     ) -> Result<(), KubeconfigError> {
+        crate::names::check_object(namespace, name)?;
         let api: Api<Deployment> = Api::namespaced(self.inner.clone(), namespace);
         let patch = serde_json::json!({ "spec": { "replicas": replicas } });
         api.patch(name, &PatchParams::default(), &Patch::Merge(&patch))

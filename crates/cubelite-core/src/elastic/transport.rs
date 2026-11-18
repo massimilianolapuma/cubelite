@@ -97,6 +97,8 @@ async fn eck_ca(
     namespace: &str,
     service: &str,
 ) -> Result<Option<Vec<u8>>, ElasticError> {
+    crate::names::check_object(namespace, service)
+        .map_err(|e| ElasticError::Config(e.to_string()))?;
     let name = format!("{service}-certs-public");
     let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
     let secret = secrets.get_opt(&name).await.map_err(|e| {
@@ -114,6 +116,8 @@ pub async fn eck_credentials(
     namespace: &str,
     service: &str,
 ) -> Result<EsAuth, ElasticError> {
+    crate::names::check_object(namespace, service)
+        .map_err(|e| ElasticError::Config(e.to_string()))?;
     let cluster = service.strip_suffix("-es-http").ok_or_else(|| {
         ElasticError::Config(format!(
             "\"{service}\" is not an ECK service (name-es-http)"

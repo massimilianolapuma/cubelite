@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- A namespace or object name that is not a valid Kubernetes name is refused before any request, with a message that names the value (its first 80 characters) and nothing else: lists, watches, YAML views and edits, logs, shells, port-forwards, scale, restart, delete, events, Helm releases, metrics, the resource limits editor, the generic kind views and the in-cluster integration tunnels. A crafted namespace such as `shop/secrets/api?x=` could otherwise turn a pod's log request into a read of a Secret (#671).
+
 ## [0.12.0] - 2026-11-14
 
 ### Added

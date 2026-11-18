@@ -353,6 +353,7 @@ impl KubeClient {
         namespace: Option<&str>,
     ) -> Result<ResourceTable, KubeconfigError> {
         let path = resource_path(resource, namespace);
+        crate::names::check_scope(namespace)?;
         let mut columns: Option<(Vec<TableColumn>, Vec<usize>)> = None;
         let mut rows = Vec::new();
         let mut cont: Option<String> = None;
@@ -408,7 +409,8 @@ impl KubeClient {
     /// # Errors
     ///
     /// [`KubeconfigError::ClientError`] when `name` is empty, a namespaced
-    /// kind has no `namespace` (both without a request), the API server
+    /// kind has no `namespace`, the namespace or name is not valid (#671)
+    /// (all without a request), the API server
     /// refuses (a 403 keeps its status in the message) or the object does
     /// not exist.
     pub async fn get_dynamic_yaml(
@@ -426,6 +428,8 @@ impl KubeClient {
                 resource.plural
             )));
         }
+        crate::names::check_scope(namespace)?;
+        crate::names::check_any_name(name)?;
         let path = format!(
             "{}/{}",
             resource_path(resource, namespace),
@@ -907,17 +911,17 @@ mod tests {
         let (client, server) = mock_client(|_, _| {
             (
                 StatusCode::OK,
-                serde_json::json!({"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "a?b#c"}}),
+                serde_json::json!({"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "system:controller:job-controller"}}),
             )
         });
         client
-            .get_dynamic_yaml(&cr, None, "system:a?b#c")
+            .get_dynamic_yaml(&cr, None, "system:controller:job-controller")
             .await
             .expect("yaml");
         let seen = requests(client, server).await;
         assert_eq!(
             seen[0].uri,
-            "/apis/rbac.authorization.k8s.io/v1/clusterroles/system%3Aa%3Fb%23c"
+            "/apis/rbac.authorization.k8s.io/v1/clusterroles/system%3Acontroller%3Ajob-controller"
         );
     }
 

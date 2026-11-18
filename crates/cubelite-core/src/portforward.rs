@@ -23,6 +23,9 @@ pub async fn bind_local(local_port: u16) -> std::io::Result<TcpListener> {
 /// Aborting the handle stops accepting new connections and drops the
 /// listener; connections already established keep relaying until either
 /// side closes.
+///
+/// A namespace or pod name that is not valid is refused
+/// ([`std::io::ErrorKind::InvalidInput`]) before anything is bound (#671).
 pub async fn forward_pod_port(
     client: Client,
     namespace: String,
@@ -30,6 +33,8 @@ pub async fn forward_pod_port(
     local_port: u16,
     remote_port: u16,
 ) -> std::io::Result<(u16, JoinHandle<()>)> {
+    crate::names::check_object(&namespace, &pod)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
     let listener = bind_local(local_port).await?;
     let bound = listener.local_addr()?.port();
 
