@@ -20,16 +20,19 @@ use crate::{KubeClient, KubeconfigError};
 const CRAFTED: [&str; 3] = ["shop/secrets/api?x=", "a%2Fb", ".."];
 
 /// A mock apiserver that answers every request with a Secret, as the API
-/// server would for the crafted path.
+/// server would for the crafted path. Its one value is a sentinel, base64
+/// encoded as the API server sends it.
 fn apiserver() -> (KubeClient, tokio::task::JoinHandle<Vec<Seen>>) {
-    mock_client(|_, _| {
+    let sentinel = serde_json::to_value(k8s_openapi::ByteString(b"SENTINEL-671".to_vec()))
+        .expect("base64 sentinel");
+    mock_client(move |_, _| {
         (
             StatusCode::OK,
             json!({
                 "apiVersion": "v1",
                 "kind": "Secret",
                 "metadata": { "name": "api", "namespace": "shop", "resourceVersion": "1" },
-                "data": { "password": "aHVudGVyMg==" },
+                "data": { "k": sentinel },
                 "items": [],
             }),
         )
