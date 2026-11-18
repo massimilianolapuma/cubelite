@@ -5,6 +5,7 @@
 import { type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { FIXTURES, SECRETS, SECRET_VALUES, tauriMockScript } from "./tauri-mock";
+import type { SecretInfo } from "../../src/lib/tauri.ts";
 
 /** The Secrets list, in the sidebar's Config section. */
 async function openSecrets(page: Page) {
@@ -250,7 +251,7 @@ test("at 800 px a shown value takes the row's width, under its key; Reveal and C
     expect(copyBox!.x + copyBox!.width).toBeLessThanOrEqual(blockBox!.x + blockBox!.width);
   }
   // The rows of a block keep their columns: sizes and Copy buttons line up, with a
-  // value shown or not, and the eight dots are whole.
+  // value shown or not.
   const creds = page.getByRole("group", { name: "Keys of api-credentials" });
   await creds.getByRole("button", { name: "Reveal DB_PASSWORD" }).click();
   await expect(creds.getByRole("button", { name: "Hide DB_PASSWORD" })).toBeVisible();
@@ -260,11 +261,76 @@ test("at 800 px a shown value takes the row's width, under its key; Reveal and C
   expect(new Set(sizes).size, `size columns ${sizes}`).toBe(1);
   const copiesAt = await rights("[data-key-copy]");
   expect(new Set(copiesAt).size, `Copy buttons ${copiesAt}`).toBe(1);
-  const dots = creds.locator('[data-key-row="API_KEY"] [data-key-value]');
-  expect(await dots.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   // The PEM keeps its four lines (a long one may wrap once at this width), all in view.
   const pem = block.locator('[data-key-row="tls.key"] [data-key-shown]');
   const lines = await pem.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
   expect(lines).toBeGreaterThanOrEqual(4);
   expect(lines).toBeLessThanOrEqual(8);
+});
+
+/** A Secret whose key names are long but ordinary. */
+const REPLICAS: SecretInfo = {
+  name: "db-replicas",
+  namespace: "default",
+  secret_type: "Opaque",
+  keys: [
+    { key: "DB_PASSWORD_PRIMARY", size: 24, binary: false },
+    { key: "DB_PASSWORD_REPLICA", size: 24, binary: false },
+    { key: "ca.crt", size: 1843, binary: true },
+  ],
+  helm_release: false,
+  resource_version: "5",
+  creation_timestamp: "2026-11-02T09:00:00Z",
+};
+
+test("at 800 x 600 every key name shows whole, Reveal and Copy stay on its line, and the columns line up", async ({
+  page,
+}) => {
+  await boot(page, 15, { secrets: [...SECRETS, REPLICAS] });
+  await page.setViewportSize({ width: 800, height: 600 });
+  for (const secret of [...SECRETS, REPLICAS].filter((s) => !s.helm_release)) {
+    const block = page.getByRole("group", { name: `Keys of ${secret.name}` });
+    await block.scrollIntoViewIfNeeded();
+    const blockBox = (await block.boundingBox())!;
+    for (const { key } of secret.keys) {
+      const row = block.locator(`[data-key-row="${key}"]`);
+      const name = row.locator("[data-key-name]");
+      expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth), `${secret.name}/${key}: name whole`).toBe(true);
+      await expect(name).toHaveAttribute("title", key);
+      const nameBox = (await name.boundingBox())!;
+      const middle = nameBox.y + nameBox.height / 2;
+      for (const button of await row.locator("[data-key-actions] button").all()) {
+        const box = (await button.boundingBox())!;
+        expect(Math.abs(box.y + box.height / 2 - middle), `${key}: button on the key's line`).toBeLessThan(4);
+        expect(box.x + box.width, `${key}: button inside the block`).toBeLessThanOrEqual(blockBox.x + blockBox.width);
+      }
+    }
+    // The value area gives way first: what it shows is whole, or not shown at all.
+    const cut = await block.locator("[data-key-row] > span[data-key-value]").evaluateAll((cells) =>
+      cells
+        .filter((cell) =>
+          [...cell.children].some(
+            (c) => getComputedStyle(c).visibility !== "hidden" && !c.classList.contains("sr-only") && c.getBoundingClientRect().width > cell.clientWidth + 0.5,
+          ),
+        )
+        .map((cell) => cell.parentElement?.getAttribute("data-key-row")),
+    );
+    expect(cut, `${secret.name}: value areas cut mid-glyph`).toEqual([]);
+    // A row is no taller than its line, unless a value is shown under it.
+    const tall = await block.locator("[data-key-row]").evaluateAll((rows) =>
+      rows.filter((r) => r.getBoundingClientRect().height > 48).map((r) => r.getAttribute("data-key-row")),
+    );
+    expect(tall, `${secret.name}: rows taller than their line`).toEqual([]);
+    const rights = (selector: string) =>
+      block.locator(selector).evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
+    const lefts = (selector: string) =>
+      block.locator(selector).evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
+    for (const [what, at] of [
+      ["sizes", await rights("[data-key-size]")],
+      ["values", await lefts("[data-key-row] > span[data-key-value]")],
+      ["Copy buttons", await rights("[data-key-copy]")],
+    ] as const) {
+      expect(new Set(at).size, `${secret.name}: ${what} ${at}`).toBe(1);
+    }
+  }
 });
