@@ -94,8 +94,9 @@ sh.helm.release.v1.api.v7 shop       helm.sh/release.v1       1    2d
   Copy stays.
 - **Helm release Secret** (`type: helm.sh/release.v1`): one line, "Helm release payload, shown in
   Helm", no actions, no `.env`.
-- **`.env`** (last column, where the per-Secret Reveal is today; the column header becomes
-  "Export"): a text button with the download icon, see §3.3.
+- **`.env`** (a last column headed "Export"; the per-Secret Reveal column of today is removed in
+  delivery 1 and this column comes with delivery 2, §9): a text button with the download icon,
+  see §3.3.
 - **The chip** in the toolbar changes from "values decoded on this machine only" to "a value is
   read only when you reveal or copy it", same warning-container chip.
 

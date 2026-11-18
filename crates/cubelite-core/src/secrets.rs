@@ -21,6 +21,9 @@ pub const HELM_RELEASE_TYPE: &str = "helm.sh/release.v1";
 /// The longest text shown as a value, in bytes (64 KiB).
 pub const MAX_SHOWN_BYTES: usize = 64 * 1024;
 
+/// Values shorter than this are not looked for in annotations (§5.3).
+const MIN_NEEDLE_BYTES: usize = 4;
+
 /// The annotation `kubectl apply` writes: after it, the whole Secret.
 const LAST_APPLIED: &str = "kubectl.kubernetes.io/last-applied-configuration";
 
@@ -211,8 +214,9 @@ pub(crate) fn secret_read_error(
 /// `SecretList` or a `List`), not by what was asked for.
 ///
 /// Each value under `data` and `stringData` becomes `REDACTED (12 bytes)`
-/// (the decoded length) and the `last-applied-configuration` annotation
-/// `REDACTED`.
+/// (the decoded length); the `last-applied-configuration` annotation, and any
+/// annotation holding one of the values (4 bytes or more, decoded or in
+/// base64), become `REDACTED`.
 pub(crate) fn redact_secrets(value: &mut Value) {
     // A typed Secret always carries `apiVersion: v1`; an answer without one is
     // taken as the core group's, so a Secret is never let through for lack of it.
@@ -255,32 +259,52 @@ fn redacted(bytes: usize) -> Value {
 
 /// Redact one Secret object, whatever its `kind` field says.
 fn redact_secret(secret: &mut Value) {
+    // What an annotation must not hold: each value, decoded and as written.
+    let mut needles: Vec<String> = Vec::new();
     if let Some(data) = secret.get_mut("data").and_then(Value::as_object_mut) {
         for value in data.values_mut() {
-            *value = match value.as_str().map(|b| {
-                base64::engine::general_purpose::STANDARD
-                    .decode(b)
-                    .map(|d| d.len())
-            }) {
-                Some(Ok(len)) => redacted(len),
+            let decoded = value
+                .as_str()
+                .map(|b| base64::engine::general_purpose::STANDARD.decode(b));
+            if let (Some(written), Some(Ok(bytes))) = (value.as_str(), &decoded) {
+                needles.push(written.to_string());
+                if let Ok(text) = std::str::from_utf8(bytes) {
+                    needles.push(text.to_string());
+                }
+            }
+            *value = match decoded {
+                Some(Ok(bytes)) => redacted(bytes.len()),
                 _ => Value::String("REDACTED".to_string()),
             };
         }
     }
     if let Some(data) = secret.get_mut("stringData").and_then(Value::as_object_mut) {
         for value in data.values_mut() {
+            if let Some(text) = value.as_str() {
+                needles.push(text.to_string());
+                needles.push(base64::engine::general_purpose::STANDARD.encode(text));
+            }
             *value = match value.as_str() {
                 Some(text) => redacted(text.len()),
                 None => Value::String("REDACTED".to_string()),
             };
         }
     }
-    if let Some(note) = secret
+    // A short value would match at random: it is not looked for.
+    needles.retain(|n| n.len() >= MIN_NEEDLE_BYTES);
+    if let Some(notes) = secret
         .get_mut("metadata")
         .and_then(|m| m.get_mut("annotations"))
-        .and_then(|a| a.get_mut(LAST_APPLIED))
+        .and_then(Value::as_object_mut)
     {
-        *note = Value::String("REDACTED".to_string());
+        for (name, note) in notes.iter_mut() {
+            let holds_a_value = note
+                .as_str()
+                .is_some_and(|text| needles.iter().any(|n| text.contains(n.as_str())));
+            if name == LAST_APPLIED || holds_a_value {
+                *note = Value::String("REDACTED".to_string());
+            }
+        }
     }
 }
 
@@ -401,6 +425,37 @@ mod tests {
         // What is not a value stays.
         assert!(yaml.contains("team: shop"), "{yaml}");
         assert!(yaml.contains("type: Opaque"), "{yaml}");
+    }
+
+    #[test]
+    fn an_annotation_that_holds_a_value_is_redacted_and_others_stay() {
+        let mut v = secret_json();
+        v["data"]["PIN"] = Value::String(b64("ab"));
+        v["metadata"]["annotations"] = serde_json::json!({
+            "example.com/copied-plain": format!("token={SENTINEL};"),
+            "example.com/copied-b64": format!("x {} y", b64(SENTINEL_2)),
+            "example.com/from-string-data": "holds nothing",
+            // A value shorter than 4 bytes is not looked for: "ab" is everywhere.
+            "example.com/short": "tab, cab, slab",
+            "team": "shop",
+        });
+        v["stringData"] = serde_json::json!({"EXTRA": "string-d4ta-v4lue"});
+        v["metadata"]["annotations"]["example.com/from-string-data"] =
+            Value::String("see string-d4ta-v4lue".into());
+        let yaml = crate::client::to_clean_yaml(&v).expect("yaml");
+        assert_no_sentinel(&yaml, "YAML");
+        assert!(!yaml.contains("string-d4ta-v4lue"), "{yaml}");
+        assert!(
+            yaml.contains("example.com/copied-plain: REDACTED"),
+            "{yaml}"
+        );
+        assert!(yaml.contains("example.com/copied-b64: REDACTED"), "{yaml}");
+        assert!(
+            yaml.contains("example.com/from-string-data: REDACTED"),
+            "{yaml}"
+        );
+        assert!(yaml.contains("example.com/short: tab, cab, slab"), "{yaml}");
+        assert!(yaml.contains("team: shop"), "{yaml}");
     }
 
     #[test]

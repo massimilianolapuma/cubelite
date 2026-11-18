@@ -63,7 +63,10 @@ test("binary, Helm and every key's row read as the spec says", async ({ page }) 
   await expect(crt).toContainText("binary");
   await expect(crt.getByRole("button")).toHaveCount(0);
   const helm = page.getByRole("group", { name: "Keys of sh.helm.release.v1.api.v7" });
-  await expect(helm).toHaveText("Helm release payload, shown in Helm");
+  const release = helm.locator('[data-key-row="release"]');
+  await expect(release).toContainText("release");
+  await expect(release).toContainText("48.2 KiB");
+  await expect(release).toContainText("Helm release payload, shown in Helm");
   await expect(helm.getByRole("button")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Copy/ })).toHaveCount(0);
 });
@@ -98,4 +101,31 @@ test("keyboard: Reveal buttons in key order, each with its ring; Enter keeps the
   await page.keyboard.press("Enter");
   await expect(keys.getByRole("button", { name: "Reveal DB_PASSWORD" })).toBeFocused();
   await expect(page.locator("body")).not.toContainText(SECRET_VALUES["default/api-credentials/DB_PASSWORD"]);
+});
+
+test("at 800 px a shown value takes the row's width, under its key; the action stays on the key's line", async ({ page }) => {
+  await boot(page);
+  await page.setViewportSize({ width: 800, height: 600 });
+  const block = page.getByRole("group", { name: "Keys of service-tokens" });
+  for (const key of ["SESSION_TOKEN", "tls.key"]) {
+    await block.getByRole("button", { name: `Reveal ${key}` }).click();
+    const row = block.locator(`[data-key-row="${key}"]`);
+    const value = row.locator("[data-key-shown]");
+    await expect(value).toBeVisible();
+    const [blockBox, valueBox, nameBox, buttonBox] = await Promise.all([
+      block.boundingBox(),
+      value.boundingBox(),
+      row.getByText(key, { exact: true }).boundingBox(),
+      row.getByRole("button", { name: `Hide ${key}` }).boundingBox(),
+    ]);
+    expect(valueBox!.width, `${key}: value width`).toBeGreaterThanOrEqual(0.6 * blockBox!.width);
+    // The value is under the key's line; the button is on it.
+    expect(valueBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height - 1);
+    expect(Math.abs(buttonBox!.y + buttonBox!.height / 2 - (nameBox!.y + nameBox!.height / 2))).toBeLessThan(4);
+  }
+  // The PEM keeps its four lines (a long one may wrap once at this width), all in view.
+  const pem = block.locator('[data-key-row="tls.key"] [data-key-shown]');
+  const lines = await pem.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
+  expect(lines).toBeGreaterThanOrEqual(4);
+  expect(lines).toBeLessThanOrEqual(8);
 });

@@ -35,7 +35,7 @@
 		keys: readonly KeyRowInfo[];
 		/** Accessible name of the block ("Keys of api-credentials"). */
 		label: string;
-		/** One line in place of the rows, with no action (a payload that is not values). */
+		/** Said in every row's value area, with no action (a payload that is not values). */
 		note?: string | null;
 		stateOf: (key: string) => KeyRowState;
 		/** Reveal a hidden key, hide a shown one. */
@@ -61,28 +61,21 @@
 	aria-label={label}
 	data-key-rows
 >
-	{#if note}
-		<p class="{cell} text-text-muted" data-key-note>{note}</p>
-	{:else}
-		{#each keys as info (info.key)}
-			{@const reason = unoffered(info)}
-			{@const shows = reason ? ({ kind: 'hidden' } as const) : stateOf(info.key)}
-			<div class="flex min-h-(--control-inline-h) items-center gap-3" data-key-row={info.key}>
+	{#each keys as info (info.key)}
+		{@const reason = note ?? unoffered(info)}
+		{@const shows = reason ? ({ kind: 'hidden' } as const) : stateOf(info.key)}
+		{@const below = shows.kind === 'shown' || shows.kind === 'error'}
+		<div class="flex flex-col" data-key-row={info.key}>
+			<!-- One line: name, size, the value area (or the reason there is none), the
+			     action. A shown value or an error takes a line of its own under it, as
+			     wide as the row: the action never wraps, the value is not squeezed. -->
+			<div class="flex min-h-(--control-inline-h) items-center gap-3">
 				<span class="{cell} w-44 shrink-0 truncate text-text-muted" title={info.key}>{info.key}</span>
 				<span class="{cell} w-16 shrink-0 text-right text-text-muted">{formatSize(info.size)}</span>
-				<span class="min-w-0 flex-1 py-1" data-key-value>
+				<span class="min-w-0 flex-1 py-1" data-key-value={below ? undefined : ''}>
 					{#if reason}
 						<span class="{cell} text-text-muted">{reason}</span>
-					{:else if shows.kind === 'shown'}
-						<!-- Line breaks kept; past eight lines it scrolls inside the row. -->
-						<span class="{cell} block max-h-[8lh] overflow-y-auto break-all whitespace-pre-wrap text-text select-text"
-							>{shows.value}</span
-						>
-					{:else if shows.kind === 'error'}
-						<span class="{cell} inline-flex items-center gap-1.5 text-error" data-key-error>
-							<StatusGlyph state="err" />{shows.message}
-						</span>
-					{:else}
+					{:else if !below}
 						<span class="{cell} text-text-subtle" aria-hidden="true">••••••••</span><span class="sr-only"
 							>hidden</span
 						>
@@ -112,6 +105,21 @@
 					</Button>
 				{/if}
 			</div>
-		{/each}
-	{/if}
+			{#if shows.kind === 'shown'}
+				<!-- Line breaks kept; past eight lines it scrolls inside the row. -->
+				<div class="pb-1.5" data-key-value>
+					<span
+						class="{cell} block max-h-[8lh] overflow-y-auto break-all whitespace-pre-wrap text-text select-text"
+						data-key-shown>{shows.value}</span
+					>
+				</div>
+			{:else if shows.kind === 'error'}
+				<div class="pb-1.5" data-key-value>
+					<span class="{cell} inline-flex items-center gap-1.5 text-error" data-key-error>
+						<StatusGlyph state="err" />{shows.message}
+					</span>
+				</div>
+			{/if}
+		</div>
+	{/each}
 </div>

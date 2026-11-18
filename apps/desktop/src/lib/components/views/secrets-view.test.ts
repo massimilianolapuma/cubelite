@@ -139,9 +139,11 @@ describe("SecretsView (#661)", () => {
     expect(within(keys()).queryByRole("button", { name: /Copy/ })).toBeNull();
 
     const helm = screen.getByRole("group", { name: "Keys of sh.helm.release.v1.api.v7" });
-    expect(helm).toHaveTextContent("Helm release payload, shown in Helm");
+    const release = helm.querySelector('[data-key-row="release"]') as HTMLElement;
+    expect(release).toHaveTextContent("release");
+    expect(release).toHaveTextContent("48.2 KiB");
+    expect(release).toHaveTextContent("Helm release payload, shown in Helm");
     expect(within(helm).queryByRole("button")).toBeNull();
-    expect(helm.querySelector("[data-key-row]")).toBeNull();
 
     for (const value of Object.values(VALUES)) expect(document.body).not.toHaveTextContent(value);
     expect(reveal()).not.toHaveBeenCalled();
@@ -204,9 +206,11 @@ describe("SecretsView (#661)", () => {
     await resources.loadKind("secrets");
     await vi.waitFor(() => expect(document.body).not.toHaveTextContent(VALUES.DB_PASSWORD));
 
+    // The Secret is at 42 now: so is what the backend reads.
+    reveal().mockImplementation(async (_kc, _ns, _name, key) => ({ value: VALUES[key], resource_version: "42" }));
     await fireEvent.click(within(row("DB_USER")).getByRole("button", { name: "Reveal DB_USER" }));
     await within(row("DB_USER")).findByText(VALUES.DB_USER);
-    serve([apiCredentials("41", ["API_KEY", "DB_PASSWORD"])]);
+    serve([apiCredentials("42", ["API_KEY", "DB_PASSWORD"])]);
     await resources.loadKind("secrets");
     await vi.waitFor(() => expect(document.body).not.toHaveTextContent(VALUES.DB_USER));
   });
@@ -241,6 +245,61 @@ describe("SecretsView (#661)", () => {
     await renderView();
     expect(document.body).not.toHaveTextContent(VALUES.DB_PASSWORD);
     expect(within(row("DB_PASSWORD")).getByRole("button", { name: "Reveal DB_PASSWORD" })).toBeInTheDocument();
+  });
+
+  it("announces the same words again for another Secret's key of the same name", async () => {
+    const other: SecretInfo = { ...apiCredentials(), name: "worker-credentials" };
+    await renderView([apiCredentials(), other]);
+    const heard: string[] = [];
+    const observer = new MutationObserver(() => heard.push(status().textContent ?? ""));
+    observer.observe(status(), { childList: true, characterData: true, subtree: true });
+    await fireEvent.click(within(row("DB_USER")).getByRole("button", { name: "Reveal DB_USER" }));
+    await vi.waitFor(() => expect(status()).toHaveTextContent("DB_USER shown"));
+    const second = screen.getByRole("group", { name: "Keys of worker-credentials" });
+    await fireEvent.click(within(second).getByRole("button", { name: "Reveal DB_USER" }));
+    await vi.waitFor(() => expect(heard.filter((t) => t === "DB_USER shown")).toHaveLength(2));
+    observer.disconnect();
+  });
+
+  it("a new time in Preferences applies to a value already shown", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await renderView();
+    await fireEvent.click(within(row("DB_USER")).getByRole("button", { name: "Reveal DB_USER" }));
+    await within(row("DB_USER")).findByText(VALUES.DB_USER);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(within(row("DB_USER")).getByText(VALUES.DB_USER)).toBeInTheDocument();
+    settings.secretHideAfter.value = 15;
+    await vi.waitFor(() => expect(document.body).not.toHaveTextContent(VALUES.DB_USER));
+  });
+
+  for (const [what, fire] of [
+    ["the window takes the focus", () => window.dispatchEvent(new Event("focus"))],
+    ["the page becomes visible", () => document.dispatchEvent(new Event("visibilitychange"))],
+  ] as const) {
+    it(`after a sleep, a value past its time hides when ${what}`, async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await renderView();
+      await fireEvent.click(within(row("DB_USER")).getByRole("button", { name: "Reveal DB_USER" }));
+      await within(row("DB_USER")).findByText(VALUES.DB_USER);
+      vi.setSystemTime(Date.now() + 31_000);
+      expect(within(row("DB_USER")).getByText(VALUES.DB_USER)).toBeInTheDocument();
+      fire();
+      await vi.waitFor(() => expect(document.body).not.toHaveTextContent(VALUES.DB_USER));
+    });
+  }
+
+  it("an answer read at an older version than the list is not shown, and the list reloads", async () => {
+    await renderView([apiCredentials("42")]);
+    const answer = deferred<RevealedSecretValue>();
+    reveal().mockReturnValueOnce(answer.promise);
+    serve([apiCredentials("42")]);
+    await fireEvent.click(within(row("DB_PASSWORD")).getByRole("button", { name: "Reveal DB_PASSWORD" }));
+    answer.resolve({ value: VALUES.DB_PASSWORD, resource_version: "41" });
+    await vi.waitFor(() => expect(vi.mocked(tauri.listSecrets)).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(within(row("DB_PASSWORD")).getByRole("button", { name: "Reveal DB_PASSWORD" })).toBeInTheDocument(),
+    );
+    expect(document.body).not.toHaveTextContent(VALUES.DB_PASSWORD);
   });
 
   describe("row errors (§3.5)", () => {

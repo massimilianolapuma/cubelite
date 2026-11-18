@@ -218,6 +218,14 @@ export const SECRET_VALUES: Record<string, string> = {
   "default/api-credentials/DB_PASSWORD": "s3cr3t-p4ss!",
   "default/api-credentials/DB_USER": "shop_app",
   "default/registry-pull/.dockerconfigjson": '{"auths":{"registry.example.com":{"auth":"ZGVtbzpkZW1v"}}}',
+  // A long token (432 B) and a PEM key: values that need the row's whole width.
+  "default/service-tokens/SESSION_TOKEN": "eyJhbGciOiJSUzI1NiJ9." + "c2Vzc2lvbi10b2tlbi1maXh0dXJl".repeat(14) + ".sig",
+  "default/service-tokens/tls.key": [
+    "-----BEGIN PRIVATE KEY-----",
+    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7fixturefixture",
+    "Zml4dHVyZS1rZXktbGluZS10d28tZm9yLXRoZS1lMmUtc3BlYy1vbmx5LW5vdC1yZWFs",
+    "-----END PRIVATE KEY-----",
+  ].join("\n"),
 };
 
 /** The decoded length of a value of SECRET_VALUES. */
@@ -251,6 +259,18 @@ export const SECRETS: SecretInfo[] = [
     helm_release: false,
     resource_version: "7",
     creation_timestamp: "2026-08-16T09:00:00Z",
+  },
+  {
+    name: "service-tokens",
+    namespace: "default",
+    secret_type: "Opaque",
+    keys: [
+      { key: "SESSION_TOKEN", size: sizeOf("default/service-tokens/SESSION_TOKEN"), binary: false },
+      { key: "tls.key", size: sizeOf("default/service-tokens/tls.key"), binary: false },
+    ],
+    helm_release: false,
+    resource_version: "3",
+    creation_timestamp: "2026-11-01T09:00:00Z",
   },
   {
     name: "sh.helm.release.v1.api.v7",

@@ -15,6 +15,13 @@
 	// The polite status region's message: a key's name and what happened, never a value.
 	let announcement = $state('');
 
+	// Emptied first, then set on the next microtask: the same words for another
+	// Secret's key of the same name are a change, and are announced again.
+	function announce(message: string) {
+		announcement = '';
+		queueMicrotask(() => (announcement = message));
+	}
+
 	// Shown values live for this view only (#661 §3.2): each is read when its key
 	// is revealed, and dropped on its timer, on Hide, on leaving the view, on a
 	// namespace or cluster change, and when a reload shows its Secret changed.
@@ -22,8 +29,8 @@
 		read: (namespace, name, key) =>
 			revealSecretValue(app.kubeconfigPath, namespace, name, key, app.activeCluster ?? undefined),
 		hideAfter: () => settings.secretHideAfter.value,
-		announce: (message) => (announcement = message),
-		onGone: () => void resources.loadKind('secrets')
+		announce,
+		reload: () => void resources.loadKind('secrets')
 	});
 	onDestroy(() => reveal.destroy());
 
@@ -32,6 +39,17 @@
 		untrack(() => reveal.reset());
 		void resources.loadKind('secrets');
 	});
+
+	// A new time in Preferences applies to the values already shown.
+	$effect(() => {
+		void settings.secretHideAfter.value;
+		untrack(() => reveal.recheck());
+	});
+
+	// A sleep stops timers, not the clock: check again when the window is back.
+	function recheck() {
+		if (document.visibilityState !== 'hidden') reveal.recheck();
+	}
 
 	// Every reload of the list: drop what it shows changed or gone.
 	$effect(() => {
@@ -91,5 +109,8 @@
 		{/if}
 	{/snippet}
 </ResourceList>
+
+<svelte:window onfocus={recheck} />
+<svelte:document onvisibilitychange={recheck} />
 
 <p class="sr-only" role="status" aria-live="polite" data-testid="secret-status">{announcement}</p>

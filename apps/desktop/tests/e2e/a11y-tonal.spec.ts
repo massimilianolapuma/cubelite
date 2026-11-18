@@ -475,7 +475,7 @@ test.describe("forced colours (forced-colors: active)", () => {
         );
       }
       // The shown value and the words of the other rows take the system's text colour.
-      const value = block.locator('[data-key-row="DB_PASSWORD"] [data-key-value] span').first();
+      const value = block.locator('[data-key-row="DB_PASSWORD"] [data-key-shown]');
       expect(await fg(value)).toBe(canvasText);
       expect(await fg(block.locator('[data-key-row="ca.crt"]').getByText("binary"))).toBe(canvasText);
     });
