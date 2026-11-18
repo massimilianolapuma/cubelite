@@ -97,6 +97,8 @@ async fn eck_ca(
     namespace: &str,
     service: &str,
 ) -> Result<Option<Vec<u8>>, ElasticError> {
+    crate::names::check_object(namespace, service)
+        .map_err(|e| ElasticError::Config(e.to_string()))?;
     let name = format!("{service}-certs-public");
     let secrets: Api<Secret> = Api::namespaced(client.clone(), namespace);
     let secret = secrets.get_opt(&name).await.map_err(|e| {
@@ -114,6 +116,8 @@ pub async fn eck_credentials(
     namespace: &str,
     service: &str,
 ) -> Result<EsAuth, ElasticError> {
+    crate::names::check_object(namespace, service)
+        .map_err(|e| ElasticError::Config(e.to_string()))?;
     let cluster = service.strip_suffix("-es-http").ok_or_else(|| {
         ElasticError::Config(format!(
             "\"{service}\" is not an ECK service (name-es-http)"
@@ -515,4 +519,31 @@ pub async fn detect(client: Client) -> Result<Vec<DetectedService>, ElasticError
         .await
         .map_err(connect_error)?;
     Ok(list.items.iter().filter_map(classify).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{mock_client, requests};
+
+    /// `connect` reaches `eck_ca` only after `open_service_tunnel` checked
+    /// the same values; the CA read keeps its own check (#671).
+    #[tokio::test]
+    async fn eck_ca_refuses_a_crafted_namespace_or_service_without_a_request() {
+        for (ns, service, expected) in [
+            (
+                "shop/secrets/api?x=",
+                "quickstart-es-http",
+                "Invalid namespace \"shop/secrets/api?x=\"",
+            ),
+            ("shop", "a%2Fb", "Invalid name \"a%2Fb\""),
+            ("shop", "..", "Invalid name \"..\""),
+        ] {
+            let (client, server) =
+                mock_client(|_, _| (http::StatusCode::OK, serde_json::json!({})));
+            let result = eck_ca(&client.client(), ns, service).await;
+            assert!(requests(client, server).await.is_empty(), "{ns}/{service}");
+            assert_eq!(result, Err(ElasticError::Config(expected.to_string())));
+        }
+    }
 }

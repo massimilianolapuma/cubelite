@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatBytes, formatCpu, percentOf } from "#lib/units.ts";
+import { formatBytes, formatCpu, formatSize, percentOf } from "#lib/units.ts";
 
 describe("formatCpu", () => {
   it("renders millicores below one core", () => {
@@ -36,5 +36,17 @@ describe("percentOf", () => {
   });
   it("returns null without a denominator", () => {
     expect(percentOf(10, 0)).toBeNull();
+  });
+});
+
+describe("formatSize (#661)", () => {
+  it("writes bytes, then KiB and MiB with one decimal", () => {
+    expect(formatSize(0)).toBe("0 B");
+    expect(formatSize(12)).toBe("12 B");
+    expect(formatSize(1023)).toBe("1023 B");
+    expect(formatSize(1024)).toBe("1 KiB");
+    expect(formatSize(1843)).toBe("1.8 KiB");
+    expect(formatSize(49357)).toBe("48.2 KiB");
+    expect(formatSize(5 * 1024 * 1024 + 300 * 1024)).toBe("5.3 MiB");
   });
 });

@@ -24,6 +24,23 @@ export function formatBytes(bytes: number): string {
   return `${rounded}${units[unit]}`;
 }
 
+/**
+ * A length in bytes as a person reads it (#661): "12 B" below 1 KiB, then
+ * one decimal in KiB or MiB ("1.8 KiB", "48.2 KiB"); a whole value drops its ".0".
+ */
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KiB", "MiB", "GiB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  const text = value.toFixed(1).replace(/\.0$/, "");
+  return `${text} ${units[unit]}`;
+}
+
 /** Safe percentage (0–100), null when the denominator is missing. */
 export function percentOf(used: number, total: number): number | null {
   if (total <= 0) return null;

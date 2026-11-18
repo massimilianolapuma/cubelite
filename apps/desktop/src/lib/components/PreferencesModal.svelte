@@ -33,6 +33,7 @@
 		settings,
 		type Density,
 		type RefreshInterval,
+		type SecretHideAfter,
 		type Theme
 	} from '#lib/stores/settings.svelte.ts';
 	import { updater } from '#lib/stores/updater.svelte.ts';
@@ -95,6 +96,14 @@
 		{ value: 30, label: '30s' },
 		{ value: 60, label: '1m' },
 		{ value: 0, label: 'off' }
+	];
+
+	const hideAfterSegments: { value: SecretHideAfter; label: string }[] = [
+		{ value: 15, label: '15 s' },
+		{ value: 30, label: '30 s' },
+		{ value: 60, label: '1 min' },
+		{ value: 300, label: '5 min' },
+		{ value: 0, label: 'Never' }
 	];
 
 	// One row per kubeconfig file; before sources load, show the spec path.
@@ -254,6 +263,22 @@
 					checked={settings.skipTls.value}
 					label="Skip TLS verification"
 					onChange={(v) => (settings.skipTls.value = v)}
+				/>
+			</div>
+		</section>
+
+		<section class={group} aria-labelledby="prefs-secrets">
+			<h3 id="prefs-secrets" class={groupHeading}>Secrets</h3>
+			<div class={row}>
+				<div class="min-w-0 flex-1">
+					<div class={name}>Hide a shown value, and clear a copied one, after</div>
+					<p class={hint}>Counted from the reveal or the copy.</p>
+				</div>
+				<SegmentedControl
+					label="Hide a shown value, and clear a copied one, after"
+					outlined
+					segments={hideAfterSegments}
+					bind:value={settings.secretHideAfter.value}
 				/>
 			</div>
 		</section>

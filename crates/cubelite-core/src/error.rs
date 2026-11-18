@@ -32,6 +32,42 @@ pub enum KubeconfigError {
     /// An error was returned from a Kubernetes watch stream.
     #[error("watch error: {reason}")]
     WatchError { reason: String },
+
+    /// The API server refused a request with an error status (a 403, e.g.),
+    /// kept with its code so a caller can tell the cases apart. Shown as a
+    /// client error.
+    #[error("kubernetes client error: {reason}")]
+    Api { code: u16, reason: String },
+
+    /// The Secret asked for does not exist.
+    #[error("Secret {namespace}/{name} no longer exists")]
+    SecretNotFound { namespace: String, name: String },
+
+    /// The Secret exists but has no such key.
+    #[error("Secret {namespace}/{name} has no key {key}")]
+    SecretKeyNotFound {
+        namespace: String,
+        name: String,
+        key: String,
+    },
+
+    /// The value exists but is not offered as a value (a Helm release
+    /// payload, a binary value, a text too large to show).
+    #[error("{key} of Secret {namespace}/{name}: {reason}")]
+    SecretValueNotOffered {
+        namespace: String,
+        name: String,
+        key: String,
+        reason: crate::secrets::NotOffered,
+    },
+
+    /// The Secret as a whole is not offered (a Helm release, for a `.env`).
+    #[error("Secret {namespace}/{name}: {reason}")]
+    SecretNotOffered {
+        namespace: String,
+        name: String,
+        reason: crate::secrets::NotOffered,
+    },
 }
 
 /// Errors that can occur during context selection or switching operations.

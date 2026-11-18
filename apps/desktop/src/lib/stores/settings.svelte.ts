@@ -12,6 +12,9 @@ export type Density = "default" | "compact";
 /** Auto-refresh interval in seconds; 0 = off. */
 export type RefreshInterval = 10 | 30 | 60 | 0;
 
+/** Seconds after which a shown Secret value hides itself, and a copied one is cleared from the clipboard; 0 = Never (#661). */
+export type SecretHideAfter = 15 | 30 | 60 | 300 | 0;
+
 const PREFIX = "cubelite.";
 
 interface Persisted<T> {
@@ -89,6 +92,9 @@ const isTheme = (v: unknown): v is Theme =>
 const isRefreshInterval = (v: unknown): v is RefreshInterval =>
   v === 10 || v === 30 || v === 60 || v === 0;
 
+const isSecretHideAfter = (v: unknown): v is SecretHideAfter =>
+  v === 15 || v === 30 || v === 60 || v === 300 || v === 0;
+
 const isBoolean = (v: unknown): v is boolean => typeof v === "boolean";
 
 const isDensity = (v: unknown): v is Density => v === "default" || v === "compact";
@@ -105,6 +111,8 @@ const isStringRecord = (v: unknown): v is Record<string, string> =>
 export const settings = {
   theme: persisted<Theme>("theme", "dark", isTheme),
   refreshInterval: persisted<RefreshInterval>("refreshInterval", 30, isRefreshInterval),
+  /** A preference, not a secret: how long a revealed Secret value stays shown, and a copied one on the clipboard. */
+  secretHideAfter: persisted<SecretHideAfter>("secretHideAfter", 30, isSecretHideAfter),
   density: persisted<Density>("density", "default", isDensity),
   skipTls: persisted<boolean>("skipTls", false, isBoolean),
   onboardingSeen: persisted<boolean>("onboardingSeen", false, isBoolean),

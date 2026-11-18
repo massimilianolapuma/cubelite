@@ -5,7 +5,7 @@
  * backend.
  */
 import type { Page } from "@playwright/test";
-import type { DeploymentInfo, Finding, ResourceFacts } from "../../src/lib/tauri.ts";
+import type { DeploymentInfo, Finding, ResourceFacts, SecretInfo } from "../../src/lib/tauri.ts";
 
 declare global {
   interface Window {
@@ -37,6 +37,12 @@ declare global {
     __detectedIntegrations?: Record<string, unknown>;
     /** Test hook: every integration command the banner's Enable sent, in order. */
     __integrationCalls?: { cmd: string; args: Record<string, unknown> }[];
+    /** Test hook: the arguments of every `reveal_secret_value` call, in order (#661). */
+    __secretReveals?: Record<string, unknown>[];
+    /** Test hook: the arguments of every `copy_secret_value` call, in order (#661). */
+    __secretCopies?: Record<string, unknown>[];
+    /** Test hook: the arguments of every `export_secret_env` call, in order (#661). */
+    __secretExports?: Record<string, unknown>[];
   }
 }
 
@@ -210,7 +216,84 @@ const RESOURCE_FINDINGS: Record<string, Finding[]> = {
   ],
 };
 
+/** What the backend would read for each `namespace/name/key` of SECRETS. */
+export const SECRET_VALUES: Record<string, string> = {
+  "default/api-credentials/API_KEY": "ak_test_4eC39HqLyjWDarjtT1zdp7dc",
+  "default/api-credentials/DB_PASSWORD": "s3cr3t-p4ss!",
+  "default/api-credentials/DB_USER": "shop_app",
+  "default/registry-pull/.dockerconfigjson": '{"auths":{"registry.example.com":{"auth":"ZGVtbzpkZW1v"}}}',
+  // A long token (432 B) and a PEM key: values that need the row's whole width.
+  "default/service-tokens/SESSION_TOKEN": "eyJhbGciOiJSUzI1NiJ9." + "c2Vzc2lvbi10b2tlbi1maXh0dXJl".repeat(14) + ".sig",
+  "default/service-tokens/tls.key": [
+    "-----BEGIN PRIVATE KEY-----",
+    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7fixturefixture",
+    "Zml4dHVyZS1rZXktbGluZS10d28tZm9yLXRoZS1lMmUtc3BlYy1vbmx5LW5vdC1yZWFs",
+    "-----END PRIVATE KEY-----",
+  ].join("\n"),
+};
+
+/** The decoded length of a value of SECRET_VALUES. */
+const sizeOf = (id: string) => new TextEncoder().encode(SECRET_VALUES[id]).length;
+
+/**
+ * Secrets as `list_secrets` sends them (#661): key names, sizes and marks,
+ * never a value. Not in the default fixtures (the Overview counts them): a
+ * spec passes `{ secrets: SECRETS }`.
+ */
+export const SECRETS: SecretInfo[] = [
+  {
+    name: "api-credentials",
+    namespace: "default",
+    secret_type: "Opaque",
+    keys: [
+      { key: "API_KEY", size: sizeOf("default/api-credentials/API_KEY"), binary: false },
+      { key: "DB_PASSWORD", size: sizeOf("default/api-credentials/DB_PASSWORD"), binary: false },
+      { key: "DB_USER", size: sizeOf("default/api-credentials/DB_USER"), binary: false },
+      { key: "ca.crt", size: 1843, binary: true },
+    ],
+    helm_release: false,
+    resource_version: "41",
+    creation_timestamp: "2026-10-04T09:00:00Z",
+  },
+  {
+    name: "registry-pull",
+    namespace: "default",
+    secret_type: "kubernetes.io/dockerconfigjson",
+    keys: [{ key: ".dockerconfigjson", size: sizeOf("default/registry-pull/.dockerconfigjson"), binary: false }],
+    helm_release: false,
+    resource_version: "7",
+    creation_timestamp: "2026-08-16T09:00:00Z",
+  },
+  {
+    name: "service-tokens",
+    namespace: "default",
+    secret_type: "Opaque",
+    keys: [
+      { key: "SESSION_TOKEN", size: sizeOf("default/service-tokens/SESSION_TOKEN"), binary: false },
+      { key: "tls.key", size: sizeOf("default/service-tokens/tls.key"), binary: false },
+    ],
+    helm_release: false,
+    resource_version: "3",
+    creation_timestamp: "2026-11-01T09:00:00Z",
+  },
+  {
+    name: "sh.helm.release.v1.api.v7",
+    namespace: "default",
+    secret_type: "helm.sh/release.v1",
+    keys: [{ key: "release", size: 49_357, binary: false }],
+    helm_release: true,
+    resource_version: "9",
+    creation_timestamp: "2026-11-12T09:00:00Z",
+  },
+];
+
 export const FIXTURES = {
+  /** `list_secrets` (#661); empty by default, see SECRETS. */
+  secrets: [] as SecretInfo[],
+  /** `reveal_secret_value` answers from here; a missing entry is a vanished key. */
+  secretValues: SECRET_VALUES,
+  /** Where `export_secret_env` "saves"; null is a cancelled save dialog. */
+  envExportDir: "/home/test/Downloads" as string | null,
   // Discovery (resource-kinds phase 2): every registry kind except Storage Classes.
   resourceKinds: [
     { group: "", version: "v1", kind: "Namespace", plural: "namespaces", namespaced: false, short_names: [] },
@@ -615,13 +698,46 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
       case "list_services":
       case "list_ingresses":
       case "list_configmaps":
-      case "list_secrets":
       case "list_helm_releases":
       case "list_jobs":
       case "list_cronjobs":
       case "list_statefulsets":
       case "list_pvcs":
         return [];
+      case "list_secrets":
+        return fixtures.secrets.filter((s) => !args.namespace || s.namespace === args.namespace);
+      case "reveal_secret_value": {
+        (window.__secretReveals ??= []).push(args);
+        const value = fixtures.secretValues[args.namespace + "/" + args.name + "/" + args.key];
+        if (value === undefined) {
+          throw { kind: "key_missing", message: "Secret " + args.namespace + "/" + args.name + " has no key " + args.key };
+        }
+        const secret = fixtures.secrets.find((s) => s.namespace === args.namespace && s.name === args.name);
+        return { value, resource_version: secret ? secret.resource_version : null };
+      }
+      case "copy_secret_value": {
+        // The backend writes the clipboard; the webview gets the format only.
+        (window.__secretCopies ??= []).push(args);
+        const secret = fixtures.secrets.find((s) => s.namespace === args.namespace && s.name === args.name);
+        const info = secret && secret.keys.find((k) => k.key === args.key);
+        if (!info) throw { kind: "key_missing", message: "Secret " + args.namespace + "/" + args.name + " has no key " + args.key };
+        return info.binary ? "base64" : "text";
+      }
+      case "export_secret_env": {
+        (window.__secretExports ??= []).push(args);
+        if (fixtures.envExportDir === null) return { saved: false, path: null, written: [], left_out: [] };
+        const secret = fixtures.secrets.find((s) => s.namespace === args.namespace && s.name === args.name);
+        const keys = secret ? secret.keys : [];
+        const name = (k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k);
+        return {
+          saved: true,
+          path: fixtures.envExportDir + "/" + args.name + ".env",
+          written: keys.filter((k) => !k.binary && name(k.key)).map((k) => k.key),
+          left_out: keys
+            .filter((k) => k.binary || !name(k.key))
+            .map((k) => ({ key: k.key, reason: k.binary ? "binary" : "not_a_name" })),
+        };
+      }
       case "list_nodes":
         return [{ name: "node-1", status: "NotReady", roles: ["worker"], version: "v1.30.2", creation_timestamp: null }];
       case "list_daemonsets":

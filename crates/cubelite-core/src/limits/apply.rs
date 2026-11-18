@@ -222,6 +222,7 @@ impl KubeClient {
         seen: &SeenState,
         dry_run: bool,
     ) -> Result<Evaluation, KubeconfigError> {
+        crate::names::check_object(namespace, name)?;
         // A write landed between the read and the patch: read, check and
         // write once more, from the read.
         for _ in 0..2 {
@@ -313,6 +314,7 @@ impl KubeClient {
         namespace: &str,
         name: &str,
     ) -> Result<(), KubeconfigError> {
+        crate::names::check_object(namespace, name)?;
         let body = json!({ "metadata": { "annotations": { OVERRIDE_ANNOTATION: null } } });
         let params = PatchParams {
             field_manager: Some(FIELD_MANAGER.to_string()),

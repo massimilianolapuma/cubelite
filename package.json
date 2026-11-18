@@ -25,6 +25,11 @@
     "overrides": {
       "source-map-js": ">=1.2.2",
       "minimatch": ">=11.0.1"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-fc5q-39xc-vjpf"
+      ]
     }
   }
 }

@@ -53,7 +53,8 @@ pub struct ExecSession {
 /// # Errors
 ///
 /// Returns [`KubeconfigError::ClientError`] when the exec connection cannot
-/// be established (RBAC, missing pod or container, unreachable cluster).
+/// be established (RBAC, missing pod or container, unreachable cluster), or
+/// without a request when the namespace or pod name is not valid (#671).
 pub async fn start_exec(
     client: Client,
     namespace: &str,
@@ -61,6 +62,7 @@ pub async fn start_exec(
     container: Option<String>,
     command: Vec<String>,
 ) -> Result<ExecSession, KubeconfigError> {
+    crate::names::check_object(namespace, pod)?;
     let client_error = |reason: String| KubeconfigError::ClientError { reason };
     let api: Api<Pod> = Api::namespaced(client, namespace);
     let mut params = AttachParams::default()

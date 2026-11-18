@@ -3,7 +3,7 @@
 // rings only exist in a real browser: jsdom can emulate none of them.
 import { type Locator, type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { tauriMockScript } from "./tauri-mock";
+import { FIXTURES, SECRETS, tauriMockScript } from "./tauri-mock";
 
 type Theme = "dark" | "light";
 const THEMES: Theme[] = ["dark", "light"];
@@ -15,9 +15,14 @@ type HangWindow = { __hang: string[] };
  * screen. `window.__hang` can be changed later (`hangFrom`), once the app has
  * started; a held call answers as soon as its command leaves the list.
  */
-async function boot(page: Page, theme: Theme = "dark", hang: string[] = []) {
+async function boot(
+  page: Page,
+  theme: Theme = "dark",
+  hang: string[] = [],
+  overrides: Partial<typeof FIXTURES> = {},
+) {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.addInitScript(tauriMockScript());
+  await page.addInitScript(tauriMockScript(overrides));
   await page.addInitScript((cmds) => {
     type Internals = { invoke: (cmd: string, args: unknown) => unknown };
     const w = window as unknown as { __TAURI_INTERNALS__: Internals } & HangWindow;
@@ -95,6 +100,48 @@ async function podsWithPanel(page: Page) {
   await expect(panel).toBeVisible();
   return panel;
 }
+
+/**
+ * The Secrets list with api-credentials' DB_PASSWORD revealed (#661): its key
+ * rows, the sunken block they sit in, the Reveal / Hide button of a key, the
+ * Copy buttons (text and base64) and the Secret's .env button.
+ */
+async function secretKeyRows(page: Page) {
+  const aside = page.getByRole("complementary");
+  const nav = aside.getByText("Secrets", { exact: true });
+  if (!(await nav.isVisible())) await aside.getByRole("button", { name: /^Config \d+$/ }).click();
+  await nav.click();
+  const block = page.getByRole("group", { name: "Keys of api-credentials" });
+  await expect(block).toBeVisible();
+  await block.getByRole("button", { name: "Reveal DB_PASSWORD" }).click();
+  await expect(block.getByRole("button", { name: "Hide DB_PASSWORD" })).toBeVisible();
+  return {
+    block,
+    hide: block.getByRole("button", { name: "Hide DB_PASSWORD" }),
+    reveal: block.getByRole("button", { name: "Reveal API_KEY" }),
+    copy: block.getByRole("button", { name: "Copy DB_USER" }),
+    base64: block.getByRole("button", { name: "Copy ca.crt as base64" }),
+    env: page.getByRole("button", { name: "Download api-credentials as .env" }),
+  };
+}
+
+/** The .env confirmation of api-credentials, open, and its warning. */
+async function envDialog(page: Page) {
+  await page.getByRole("button", { name: "Download api-credentials as .env" }).click();
+  const dialog = page.getByRole("dialog", { name: "Download api-credentials as .env" });
+  await expect(dialog).toBeVisible();
+  return { dialog, warning: dialog.locator("[data-env-warning]") };
+}
+
+/** The first background of `el` or an ancestor that is not transparent. */
+const ground = (el: Locator) =>
+  el.evaluate((n) => {
+    for (let at: Element | null = n; at; at = at.parentElement) {
+      const c = getComputedStyle(at).backgroundColor;
+      if (c !== "rgba(0, 0, 0, 0)" && c !== "transparent") return c;
+    }
+    return "rgb(255, 255, 255)";
+  });
 
 /** The colour `value` resolves to inside `scope` (a tinted subtree resolves its own tint). */
 async function resolvedIn(scope: Locator, value: string): Promise<string> {
@@ -180,6 +227,42 @@ test.describe("more contrast (prefers-contrast: more)", () => {
           color: await resolvedIn(el, "var(--color-outline-strong)"),
         });
       });
+    });
+  }
+
+  for (const theme of THEMES) {
+    test(`${theme}: a Secret's key rows get the card edge, and the hidden mark reads as muted text (#661)`, async ({ page }) => {
+      await page.emulateMedia({ contrast: "more" });
+      await boot(page, theme, [], { secrets: SECRETS });
+      const { block } = await secretKeyRows(page);
+      expect(await edge(block)).toEqual({
+        style: "solid",
+        width: "1px",
+        color: await resolvedIn(block, "var(--color-outline-strong)"),
+      });
+      const dots = block.locator('[data-key-row="API_KEY"]').getByText("••••••••");
+      expect(await dots.evaluate((el) => getComputedStyle(el).color)).toBe(
+        await resolvedIn(block, "var(--color-text-muted)"),
+      );
+    });
+  }
+
+  for (const theme of THEMES) {
+    test(`${theme}: the .env confirmation and its warning get the card edge (#661)`, async ({ page }) => {
+      await page.emulateMedia({ contrast: "more" });
+      await boot(page, theme, [], { secrets: SECRETS });
+      await secretKeyRows(page);
+      const { dialog, warning } = await envDialog(page);
+      for (const [name, el] of [
+        ["dialog", dialog],
+        ["warning", warning],
+      ] as const) {
+        expect(await edge(el), name).toEqual({
+          style: "solid",
+          width: "1px",
+          color: await resolvedIn(el, "var(--color-outline-strong)"),
+        });
+      }
     });
   }
 
@@ -414,6 +497,51 @@ test.describe("forced colours (forced-colors: active)", () => {
       await page.getByRole("button", { name: /Search & switch/ }).click();
       const input = page.getByTestId("command-palette").getByRole("combobox");
       expect((await border(input)).width).toBe(0);
+    });
+
+    test(`${theme} app on a ${scheme} system palette: a Secret's key rows keep their block, buttons and words (#661)`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await boot(page, theme, [], { secrets: SECRETS });
+      const { block, hide, reveal, copy, base64, env } = await secretKeyRows(page);
+      const canvasText = await sys(page, "CanvasText");
+      // The sunken fill is gone: the block keeps an edge, each button its own.
+      expect((await edge(block)).style).toBe("solid");
+      for (const [name, button] of [
+        ["Hide", hide],
+        ["Reveal", reveal],
+        ["Copy", copy],
+        ["Copy base64", base64],
+        [".env", env],
+      ] as const) {
+        // At rest: the button just pressed keeps the focus and the pointer.
+        await page.mouse.move(0, 0);
+        await button.evaluate((n) => (n as HTMLElement).blur());
+        expect([canvasText, await sys(page, "ButtonText")], `${name} has a system-colour edge`).toContain(
+          await systemEdge(button),
+        );
+      }
+      // The shown value and the words of the other rows take the system's text colour.
+      const value = block.locator('[data-key-row="DB_PASSWORD"] [data-key-shown]');
+      expect(await fg(value)).toBe(canvasText);
+      expect(await fg(block.locator('[data-key-row="ca.crt"]').getByText("binary"))).toBe(canvasText);
+    });
+
+    test(`${theme} app on a ${scheme} system palette: the .env warning keeps its edge, glyph and words (#661)`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await boot(page, theme, [], { secrets: SECRETS });
+      await secretKeyRows(page);
+      const { warning } = await envDialog(page);
+      const canvasText = await sys(page, "CanvasText");
+      // The warning container's fill is gone: an edge, the triangle and the words stay.
+      expect((await edge(warning)).style).toBe("solid");
+      expect(await fg(warning)).toBe(canvasText);
+      const glyph = warning.locator('[data-glyph="warn"]');
+      await expect(glyph).toBeVisible();
+      expect(await glyph.evaluate((n) => getComputedStyle(n).fill)).toBe(canvasText);
     });
 
     test(`${theme} app on a ${scheme} system palette: list and nav rows show hover`, async ({ page }) => {
@@ -724,6 +852,28 @@ test.describe("non-text contrast (WCAG 1.4.11) of the controls the token matrix 
       const dashCard = await bg(dashTrack.locator("xpath=ancestor::*[contains(@class,'card')][1]"));
       expect(await borderColour(dashTrack)).not.toBe("transparent");
       expect(await contrast(page, await borderColour(dashTrack), dashCard)).toBeGreaterThanOrEqual(3);
+    });
+
+    test(`${theme}: the Reveal, Hide, Copy and .env buttons of a Secret have a 3:1 edge on their ground (#661)`, async ({
+      page,
+    }) => {
+      await boot(page, theme, [], { secrets: SECRETS });
+      const { hide, reveal, copy, base64, env } = await secretKeyRows(page);
+      for (const [name, button] of [
+        ["Hide", hide],
+        ["Reveal", reveal],
+        ["Copy", copy],
+        ["Copy base64", base64],
+        [".env", env],
+      ] as const) {
+        // The sunken block for a key's buttons, the list's card for .env.
+        const under = await ground(button.locator("xpath=.."));
+        const edgeColour = await borderColour(button);
+        expect(edgeColour, `${name} has an edge`).not.toBe("transparent");
+        expect(await contrast(page, edgeColour, under), `${name} edge on its ground`).toBeGreaterThanOrEqual(3);
+        // Its label reads there too.
+        expect(await contrast(page, await fg(button), under), `${name} label`).toBeGreaterThanOrEqual(4.5);
+      }
     });
 
     test(`${theme}: a pressed log toolbar toggle has a ring, not a fill alone`, async ({ page }) => {
