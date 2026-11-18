@@ -149,13 +149,25 @@ pub fn stream_pod_logs(
 /// Follow (or statically fetch, for `previous`) one container's logs as a
 /// stream of parsed [`LogLine`] items, honoring [`LogStreamOptions`].
 ///
-/// Same error semantics as [`stream_pod_logs`].
+/// Same error semantics as [`stream_pod_logs`]; a namespace or pod name that
+/// is not valid yields its error line without a request (#671).
 pub fn stream_pod_logs_opts(
     client: Client,
     namespace: String,
     pod: String,
     opts: LogStreamOptions,
 ) -> Pin<Box<dyn Stream<Item = LogLine> + Send>> {
+    if let Err(invalid) = crate::names::check_object(&namespace, &pod) {
+        return Box::pin(futures::stream::once(async move {
+            LogLine {
+                pod,
+                namespace,
+                time: None,
+                level: LogLevel::Error,
+                message: invalid.to_string(),
+            }
+        }));
+    }
     Box::pin(
         futures::stream::once(async move {
             let api: Api<Pod> = Api::namespaced(client, &namespace);

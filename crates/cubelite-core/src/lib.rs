@@ -41,6 +41,7 @@ pub mod kubeconfig;
 pub mod limits;
 pub mod logs;
 pub mod metrics;
+mod names;
 pub mod portforward;
 pub mod prometheus;
 pub mod resources;

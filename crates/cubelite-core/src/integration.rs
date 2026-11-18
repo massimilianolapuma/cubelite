@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 
 use crate::elastic::transport::{self as es, DetectedService};
+use crate::names::{check_object, is_dns_label, is_dns_subdomain};
 use crate::portforward::forward_pod_port;
 use crate::prometheus::transport::{self as prom, DetectedPrometheus};
 
@@ -97,18 +98,6 @@ pub fn binding(target: &Target, skip_tls_verify: bool) -> Result<String, String>
     } else {
         origin
     })
-}
-
-/// A DNS-1123 label (namespace and service names): it also keeps names out
-/// of other API server paths (`/`, `..`).
-fn is_dns_label(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= 63
-        && name
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-        && !name.starts_with('-')
-        && !name.ends_with('-')
 }
 
 /// Checks an in-cluster target's names; external targets are checked when
@@ -217,6 +206,9 @@ pub fn ready_pod(pods: &[Pod]) -> Option<&Pod> {
 /// Whether `pod` still exists, runs and is ready (a forward to it is still
 /// usable; a rollout or eviction replaces the pod).
 pub async fn pod_ready(client: &Client, namespace: &str, pod: &str) -> bool {
+    if check_object(namespace, pod).is_err() {
+        return false;
+    }
     let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
     match pods.get_opt(pod).await {
         Ok(Some(p)) => ready_pod(std::slice::from_ref(&p)).is_some(),
@@ -280,6 +272,7 @@ pub async fn open_service_tunnel(
     service: &str,
     port: u16,
 ) -> Result<ServiceTunnel, TunnelError> {
+    check_object(namespace, service).map_err(|e| TunnelError::Config(e.to_string()))?;
     let connect = |e: kube::Error| TunnelError::Connect(e.to_string());
     let services: Api<Service> = Api::namespaced(client.clone(), namespace);
     let svc = services.get(service).await.map_err(connect)?;
@@ -477,16 +470,6 @@ fn owner_claim<'a>(service: &'a Service, operator: &Operator) -> Option<&'a Owne
         })
 }
 
-/// A resource name (DNS subdomain): keeps it out of other API paths.
-fn is_resource_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= 253
-        && !name.contains("..")
-        && name
-            .split('.')
-            .all(|part| is_dns_label(part) || part.bytes().all(|b| b.is_ascii_digit()))
-}
-
 /// What ranking needs from a detected service.
 trait Found: Clone {
     fn kind(&self) -> &str;
@@ -673,7 +656,7 @@ async fn owner_exists(
     namespace: &str,
     owner: &OwnerReference,
 ) -> bool {
-    if !is_dns_label(namespace) || !is_resource_name(&owner.name) {
+    if !is_dns_label(namespace) || !is_dns_subdomain(&owner.name) {
         return false;
     }
     let resource = ApiResource {
@@ -1344,10 +1327,10 @@ mod tests {
 
     #[test]
     fn owner_names_must_be_resource_names() {
-        assert!(is_resource_name("quickstart"));
-        assert!(is_resource_name("kps.prometheus-1"));
+        assert!(is_dns_subdomain("quickstart"));
+        assert!(is_dns_subdomain("kps.prometheus-1"));
         for bad in ["", "a/b", "..", "a..b", "Up", "-a"] {
-            assert!(!is_resource_name(bad), "{bad}");
+            assert!(!is_dns_subdomain(bad), "{bad}");
         }
     }
 }

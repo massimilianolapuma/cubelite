@@ -391,6 +391,7 @@ impl KubeClient {
     ) -> Result<ResourceTable, KubeconfigError> {
         validate_ref(resource)?;
         let path = resource_path(resource, namespace);
+        crate::names::check_scope(namespace)?;
         let mut columns: Option<(Vec<TableColumn>, Vec<usize>)> = None;
         let mut rows = Vec::new();
         let mut cont: Option<String> = None;
@@ -446,7 +447,8 @@ impl KubeClient {
     /// # Errors
     ///
     /// [`KubeconfigError::ClientError`] when `name` is empty, a namespaced
-    /// kind has no `namespace` (both without a request), the API server
+    /// kind has no `namespace`, the namespace or name is not valid (#671)
+    /// (all without a request), the API server
     /// refuses (a 403 keeps its status in the message) or the object does
     /// not exist.
     pub async fn get_dynamic_yaml(
@@ -465,6 +467,8 @@ impl KubeClient {
                 resource.plural
             )));
         }
+        crate::names::check_scope(namespace)?;
+        crate::names::check_any_name(name)?;
         let path = format!(
             "{}/{}",
             resource_path(resource, namespace),
@@ -952,18 +956,33 @@ mod tests {
         let (client, server) = mock_client(|_, _| {
             (
                 StatusCode::OK,
-                serde_json::json!({"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "a?b#c"}}),
+                serde_json::json!({"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole", "metadata": {"name": "r"}}),
             )
         });
-        client
-            .get_dynamic_yaml(&cr, None, "system:a?b#c")
-            .await
-            .expect("yaml");
+        // Kubernetes accepts these as RBAC names (only `/`, `%`, `.` and
+        // `..` are refused for every kind): encoded, each stays one segment.
+        let names = [
+            (
+                "system:controller:job-controller",
+                "system%3Acontroller%3Ajob-controller",
+            ),
+            ("system:a?b#c", "system%3Aa%3Fb%23c"),
+            ("my role", "my%20role"),
+        ];
+        for (name, _) in names {
+            client
+                .get_dynamic_yaml(&cr, None, name)
+                .await
+                .expect("yaml");
+        }
         let seen = requests(client, server).await;
-        assert_eq!(
-            seen[0].uri,
-            "/apis/rbac.authorization.k8s.io/v1/clusterroles/system%3Aa%3Fb%23c"
-        );
+        assert_eq!(seen.len(), names.len());
+        for ((_, encoded), request) in names.iter().zip(&seen) {
+            assert_eq!(
+                request.uri,
+                format!("/apis/rbac.authorization.k8s.io/v1/clusterroles/{encoded}")
+            );
+        }
     }
 
     #[tokio::test]

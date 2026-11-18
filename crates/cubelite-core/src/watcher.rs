@@ -127,6 +127,12 @@ impl ResourceWatcher {
         namespace: Option<&str>,
         resource_type: ResourceType,
     ) -> Pin<Box<dyn Stream<Item = WatchEvent> + Send>> {
+        // A namespace that is not valid ends the stream on its error, without
+        // a request (#671).
+        if let Err(invalid) = crate::names::check_scope(namespace) {
+            let error = WatchEvent::Error(invalid.to_string());
+            return Box::pin(futures::stream::once(async move { error }));
+        }
         let client = self.client.clone();
         let config = watcher::Config::default();
         // Own the namespace string so the returned stream is 'static.
