@@ -239,28 +239,77 @@ fn proposed_file_name(name: &str) -> String {
     }
 }
 
-/// Write `text` to `path`, readable by its owner only on Unix (`0600`),
-/// whether the file is created or overwritten: the mode is set on the open
-/// file before anything is written. On Windows the file takes the folder's
-/// permissions.
+/// Write `text` to `path`, readable by its owner only on Unix (`0600`).
+///
+/// The text goes to a new temporary file in the same folder, created with
+/// that mode, then renamed over `path`: a symlink or a hard link at `path` is
+/// replaced, not written through, and a failure leaves what was there as it
+/// was (the temporary file is removed). On Windows the file takes the
+/// folder's permissions.
 fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
-    use std::io::Write;
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
+    write_via(path, text, |from, to| std::fs::rename(from, to))
+}
+
+/// [`write_private`], with the final rename given (a test makes it fail).
+fn write_via(
+    path: &Path,
+    text: &str,
+    rename: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    let (temp, mut file) = create_temp(path)?;
+    let written = (|| {
+        use std::io::Write;
+        file.write_all(text.as_bytes())?;
+        file.sync_all()?;
+        drop(file);
+        rename(&temp, path)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
     }
-    let mut file = options.open(path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    written
+}
+
+/// A new file next to `path`, named after it, that did not exist before
+/// (`create_new`), readable by its owner only on Unix.
+fn create_temp(path: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let base = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "secret.env".to_string());
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let mut last = std::io::Error::other("no temporary file could be created");
+    for n in 0..16u32 {
+        let temp = dir.join(format!(".{base}.{}.{stamp}.{n}.tmp", std::process::id()));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&temp) {
+            Ok(file) => {
+                // The umask can only take bits away; say it outright anyway.
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Err(e) = file.set_permissions(std::fs::Permissions::from_mode(0o600)) {
+                        let _ = std::fs::remove_file(&temp);
+                        return Err(e);
+                    }
+                }
+                return Ok((temp, file));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = e,
+            Err(e) => return Err(e),
+        }
     }
-    file.set_len(0)?;
-    file.write_all(text.as_bytes())?;
-    file.sync_all()
+    Err(last)
 }
 
 /// The path the user chooses in the system's save dialog, a child of
@@ -568,6 +617,54 @@ mod tests {
         write_private(&existing, "K=v\n").expect("write");
         assert_eq!(mode(&existing), 0o600);
         assert_eq!(std::fs::read_to_string(&existing).expect("read"), "K=v\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_at_the_path_is_replaced_and_its_target_left_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("dir");
+        let target = dir.path().join("elsewhere.txt");
+        std::fs::write(&target, "keep me\n").expect("write");
+        let link = dir.path().join("api.env");
+        std::os::unix::fs::symlink(&target, &link).expect("symlink");
+        write_private(&link, "K=v\n").expect("write");
+        let meta = std::fs::symlink_metadata(&link).expect("meta");
+        assert!(meta.file_type().is_file(), "the link is now a file");
+        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read_to_string(&link).expect("read"), "K=v\n");
+        assert_eq!(std::fs::read_to_string(&target).expect("read"), "keep me\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_hard_link_to_the_path_keeps_the_old_text() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("api.env");
+        std::fs::write(&path, "OLD=1\n").expect("write");
+        let other = dir.path().join("other-name");
+        std::fs::hard_link(&path, &other).expect("hard link");
+        write_private(&path, "K=v\n").expect("write");
+        assert_eq!(std::fs::read_to_string(&path).expect("read"), "K=v\n");
+        assert_eq!(std::fs::read_to_string(&other).expect("read"), "OLD=1\n");
+    }
+
+    #[test]
+    fn a_failed_write_leaves_the_old_file_and_no_temporary_file() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("api.env");
+        std::fs::write(&path, "OLD=1\n").expect("write");
+        let err = write_via(&path, "K=v\n", |_, _| {
+            Err(std::io::Error::other("disk full"))
+        })
+        .expect_err("fails");
+        assert_eq!(err.to_string(), "disk full");
+        assert_eq!(std::fs::read_to_string(&path).expect("read"), "OLD=1\n");
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .expect("dir")
+            .map(|e| e.expect("entry").file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("api.env")]);
     }
 
     #[test]
