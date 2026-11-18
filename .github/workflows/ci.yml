@@ -151,6 +151,10 @@ jobs:
       - name: pnpm audit (moderate and above)
         # Low-severity advisories that are blocked upstream (e.g. `cookie`
         # pinned by @sveltejs/kit) are reported but do not fail the build.
+        # Ignored in package.json (pnpm.auditConfig.ignoreGhsas):
+        # GHSA-fc5q-39xc-vjpf, picomatch <= 4.0.7 ReDoS, no fix published;
+        # reached only through dev tooling (vite, vitest) with patterns from
+        # the project's own config. Remove when a fixed picomatch ships (#674).
         run: pnpm audit --audit-level moderate
       - uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
         with:
