@@ -87,9 +87,13 @@
 			     actions. A shown value or an error takes a line of its own under it, as
 			     wide as the row: the actions never wrap, the value is not squeezed. -->
 			<div class="flex min-h-(--control-inline-h) items-center gap-3">
-				<span class="{cell} w-44 shrink-0 truncate text-text-muted" title={info.key}>{info.key}</span>
-				<span class="{cell} w-16 shrink-0 text-right text-text-muted">{formatSize(info.size)}</span>
-				<span class="min-w-0 flex-1 truncate py-1" data-key-value={below ? undefined : ''}>
+				<!-- When the row is narrow the name gives way first (it truncates, its full
+				     text in the title), then the value area, down to its eight dots. Every
+				     row of the block has the same actions area, so they give way alike and
+				     the columns line up. -->
+				<span class="{cell} w-44 min-w-14 shrink truncate text-text-muted" title={info.key}>{info.key}</span>
+				<span class="{cell} w-16 shrink-0 text-right text-text-muted" data-key-size>{formatSize(info.size)}</span>
+				<span class="min-w-15 flex-1 py-1" data-key-value={below ? undefined : ''}>
 					{#if reason}
 						<span class="{cell} text-text-muted">{reason}</span>
 					{:else if !below}
@@ -98,9 +102,10 @@
 						>
 					{/if}
 				</span>
-				{#if acts}
-					<span class="flex shrink-0 items-center gap-2" data-key-actions>
-						{#if !reason}
+				{#if note === null}
+					<!-- Wide enough for Reveal and Copy at rest; an empty value's row keeps it empty. -->
+					<span class="flex {onCopy ? 'min-w-52' : 'min-w-24'} shrink-0 items-center justify-end gap-2" data-key-actions>
+						{#if acts && !reason}
 							{@const shown = shows.kind === 'shown'}
 							{@const reading = shows.kind === 'reading'}
 							<!-- One button, Reveal then Hide: its name changes, the focus stays on it. -->
@@ -122,14 +127,15 @@
 								{reading ? 'Reading…' : shown ? 'Hide' : 'Reveal'}
 							</Button>
 						{/if}
-						{#if onCopy}
+						{#if acts && onCopy}
 							{@const copy = copyStateOf(info.key)}
 							{@const base64 = info.binary ? ' as base64' : ''}
-							<!-- Never reveals. "Copied" for a moment, with the same focus. -->
+							<!-- Never reveals. "Copied" for a moment, with the same focus; as wide as
+							     "Copied", so the word changing moves nothing on the line. -->
 							<Button
 								variant="text"
 								size="inline"
-								class={edge}
+								class="{edge} min-w-25"
 								pending={copy === 'copying'}
 								aria-label="{copy === 'copied' ? 'Copied' : 'Copy'} {info.key}{base64}"
 								data-key-copy
