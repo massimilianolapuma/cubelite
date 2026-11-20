@@ -4,7 +4,9 @@
 // timer, nothing masked.
 import { type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
+import { wholeShown } from "./key-rows";
 import { CONFIGMAPS, CONFIGMAP_VALUES, FIXTURES, tauriMockScript } from "./tauri-mock";
+import type { ConfigMapInfo } from "../../src/lib/tauri.ts";
 
 /** The ConfigMaps list, in the sidebar's Config section. */
 async function openConfigMaps(page: Page) {
@@ -148,4 +150,55 @@ test("a vanished key says so in its row", async ({ page }) => {
   await keys.getByRole("button", { name: "Show LOG_LEVEL" }).click();
   await expect(keys.locator('[data-key-row="LOG_LEVEL"]')).toContainText("No longer exists");
   await expect(keys.locator('[data-key-row="LOG_LEVEL"] [data-glyph="err"]')).toBeVisible();
+});
+
+/** A ConfigMap whose keys only say why they are not shown, beside one that can be. */
+const BUNDLE: ConfigMapInfo = {
+  name: "grafana-dashboards",
+  namespace: "default",
+  keys: [
+    { key: "LOG_LEVEL", size: 4, binary: false },
+    { key: "cluster-overview.json", size: 900_000, binary: false },
+    { key: "empty.json", size: 0, binary: false },
+    { key: "font.woff2", size: 20_480, binary: true },
+    { key: "rules.yaml", size: 70_000, binary: false },
+  ],
+  resource_version: "12",
+  creation_timestamp: "2026-11-01T09:00:00Z",
+};
+
+test("at 800 x 600 every reason stays whole on screen: too large, binary, empty", async ({ page }) => {
+  await boot(page, { configmaps: [...CONFIGMAPS, BUNDLE] });
+  await page.setViewportSize({ width: 800, height: 600 });
+  for (const [name, key, reason] of [
+    ["grafana-dashboards", "cluster-overview.json", "too large to show"],
+    ["grafana-dashboards", "rules.yaml", "too large to show"],
+    ["grafana-dashboards", "empty.json", "empty"],
+    ["grafana-dashboards", "font.woff2", "binary"],
+    ["app-config", "logo.png", "binary"],
+    ["app-config", "unused", "empty"],
+  ] as const) {
+    const block = page.getByRole("group", { name: `Keys of ${name}` });
+    await block.scrollIntoViewIfNeeded();
+    const row = block.locator(`[data-key-row="${key}"]`);
+    expect(await wholeShown(row, reason), `${key}: "${reason}" shown whole`).toBe(1);
+  }
+});
+
+test("at 1280 a size of hundreds of KiB stays on one line, and the sizes line up", async ({ page }) => {
+  await boot(page, { configmaps: [...CONFIGMAPS, BUNDLE] });
+  const block = page.getByRole("group", { name: "Keys of grafana-dashboards" });
+  const size = block.locator('[data-key-row="cluster-overview.json"] [data-key-size]');
+  await expect(size).toHaveText("878.9 KiB");
+  const lines = await size.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+  });
+  expect(lines, "878.9 KiB on one line").toBe(1);
+  expect(await wholeShown(block.locator('[data-key-row="cluster-overview.json"]'), "878.9 KiB")).toBe(1);
+  const rights = await block
+    .locator("[data-key-size]")
+    .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().right)));
+  expect(new Set(rights).size, `size columns ${rights}`).toBe(1);
 });
