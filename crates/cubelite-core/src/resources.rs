@@ -256,17 +256,37 @@ pub struct IngressInfo {
     pub creation_timestamp: Option<String>,
 }
 
-/// Lightweight representation of a Kubernetes ConfigMap.
+/// Lightweight representation of a Kubernetes ConfigMap: its keys and the
+/// size of each value, not the values (#668).
+///
+/// A ConfigMap can hold files of up to 1 MiB: the list stays light, and one
+/// value is read only when it is asked for
+/// ([`crate::KubeClient::configmap_value`]).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigMapInfo {
     /// The config map name.
     pub name: String,
     /// The namespace the config map belongs to.
     pub namespace: String,
-    /// Number of data entries (`data` + `binaryData` keys).
-    pub data_count: usize,
+    /// One entry per key of `data` and `binaryData`, sorted by key. Never
+    /// the values.
+    pub keys: Vec<ConfigMapKeyInfo>,
+    /// Lets the view drop a shown value when the ConfigMap changes.
+    pub resource_version: Option<String>,
     /// RFC 3339 creation timestamp, when reported by the API server.
     pub creation_timestamp: Option<String>,
+}
+
+/// One key of a ConfigMap: its name and what its value is like, not the value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfigMapKeyInfo {
+    /// The key.
+    pub key: String,
+    /// Length of the value as stored, in bytes (UTF-8 text for `data`, the
+    /// decoded bytes for `binaryData`).
+    pub size: u64,
+    /// The key is under `binaryData`.
+    pub binary: bool,
 }
 
 /// Lightweight representation of a Kubernetes Event.

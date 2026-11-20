@@ -26,12 +26,14 @@
 	import { formatSize } from '#lib/units.ts';
 
 	// The keys of an object whose values are read one at a time, on request
-	// (#661 §3.1): a Secret's today, a ConfigMap's next (#668). It knows only
-	// what its props tell it. One row per key, in the order given: name, size,
-	// the value area, Reveal / Hide, then Copy when the caller offers it.
+	// (#661 §3.1): a Secret's, masked, and a ConfigMap's (#668), not. It knows
+	// only what its props tell it. One row per key, in the order given: name,
+	// size, the value area, Reveal / Hide (Show / Hide), then Copy when the
+	// caller offers it.
 	let {
 		keys,
 		label,
+		masked = true,
 		note = null,
 		stateOf,
 		onToggle,
@@ -42,6 +44,12 @@
 		keys: readonly KeyRowInfo[];
 		/** Accessible name of the block ("Keys of api-credentials"). */
 		label: string;
+		/**
+		 * A value not shown is hidden (a Secret's): dots, "hidden" for screen
+		 * readers, Reveal / Hide. Without it (a ConfigMap's) nothing is hidden,
+		 * only not read yet: an empty value area, Show / Hide.
+		 */
+		masked?: boolean;
 		/** Said in every row's value area, with no action (a payload that is not values). */
 		note?: string | null;
 		stateOf: (key: string) => KeyRowState;
@@ -99,7 +107,7 @@
 			<span class="@container min-w-0 overflow-hidden py-1" data-key-value={below ? undefined : ''}>
 				{#if reason}
 					<span class="{cell} text-text-muted [overflow-wrap:anywhere] @max-[4.25rem]:hidden">{reason}</span>
-				{:else if !below}
+				{:else if !below && masked}
 					<span class="{cell} whitespace-nowrap text-text-subtle @max-[3.75rem]:hidden" aria-hidden="true"
 						>••••••••</span
 					><span
@@ -112,13 +120,14 @@
 					{#if acts && !reason}
 						{@const shown = shows.kind === 'shown'}
 						{@const reading = shows.kind === 'reading'}
-						<!-- One button, Reveal then Hide: its name changes, the focus stays on it. -->
+						{@const show = masked ? 'Reveal' : 'Show'}
+						<!-- One button, Reveal (Show) then Hide: its name changes, the focus stays on it. -->
 						<Button
 							variant="text"
 							size="inline"
 							class={edge}
 							pending={reading}
-							aria-label="{reading ? 'Reading' : shown ? 'Hide' : 'Reveal'} {info.key}"
+							aria-label="{reading ? 'Reading' : shown ? 'Hide' : show} {info.key}"
 							onclick={() => onToggle(info.key)}
 						>
 							{#snippet icon()}
@@ -128,7 +137,7 @@
 									<Eye class="h-3 w-3" aria-hidden="true" />
 								{/if}
 							{/snippet}
-							{reading ? 'Reading…' : shown ? 'Hide' : 'Reveal'}
+							{reading ? 'Reading…' : shown ? 'Hide' : show}
 						</Button>
 					{/if}
 					{#if acts && onCopy}

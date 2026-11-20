@@ -173,14 +173,24 @@ pub(crate) fn secret_read_error(
         Some(name) => format!("Secret {namespace}/{name}"),
         None => format!("the Secrets of {namespace}"),
     };
-    match error {
-        kube::Error::Api(status) if status.code == 404 && name.is_some() => {
-            KubeconfigError::SecretNotFound {
-                namespace: namespace.to_string(),
-                name: name.unwrap_or_default().to_string(),
-            }
-        }
-        kube::Error::Api(status) => KubeconfigError::Api {
+    let missing = name.map(|name| KubeconfigError::SecretNotFound {
+        namespace: namespace.to_string(),
+        name: name.to_string(),
+    });
+    read_error(error, &what, missing)
+}
+
+/// A failed read as an error that holds no part of what was read: the API
+/// server's status as it is (a 404 is `missing`, when given), and an answer
+/// that could not be read named as `what`, without what the reader saw in it.
+pub(crate) fn read_error(
+    error: kube::Error,
+    what: &str,
+    missing: Option<KubeconfigError>,
+) -> KubeconfigError {
+    match (error, missing) {
+        (kube::Error::Api(status), Some(missing)) if status.code == 404 => missing,
+        (kube::Error::Api(status), _) => KubeconfigError::Api {
             code: status.code,
             reason: if status.message.is_empty() {
                 format!("the API server refused to read {what} ({})", status.code)
@@ -189,10 +199,10 @@ pub(crate) fn secret_read_error(
             },
         },
         // A reader's message may quote what it could not read: a value.
-        kube::Error::SerdeError(_) => KubeconfigError::ClientError {
+        (kube::Error::SerdeError(_), _) => KubeconfigError::ClientError {
             reason: format!("the API server's answer for {what} could not be read"),
         },
-        other => KubeconfigError::ClientError {
+        (other, _) => KubeconfigError::ClientError {
             reason: other.to_string(),
         },
     }

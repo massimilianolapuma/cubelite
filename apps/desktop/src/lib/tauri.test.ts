@@ -7,6 +7,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import {
+  copyConfigMapValue,
+  readConfigMapValue,
   elasticCloseCursor,
   elasticSaveAuth,
   elasticSearch,
@@ -689,5 +691,35 @@ describe("exportSecretEnv (#661)", () => {
       name: "api",
       context: "prod",
     });
+  });
+});
+
+describe("readConfigMapValue (#668)", () => {
+  it("asks the backend for one key of one ConfigMap", async () => {
+    mockedInvoke.mockResolvedValueOnce({ value: "info", resource_version: "77" });
+    const answer = await readConfigMapValue("/k", "shop", "app-config", "LOG_LEVEL", "prod");
+    expect(mockedInvoke).toHaveBeenCalledWith("read_configmap_value", {
+      kubeconfigPath: "/k",
+      namespace: "shop",
+      name: "app-config",
+      key: "LOG_LEVEL",
+      context: "prod",
+    });
+    expect(answer).toEqual({ value: "info", resource_version: "77" });
+  });
+});
+
+describe("copyConfigMapValue (#668)", () => {
+  it("asks the backend to copy one key, with no clearing time, and gets the format only", async () => {
+    mockedInvoke.mockResolvedValueOnce("base64");
+    const format = await copyConfigMapValue("/k", "shop", "app-config", "logo.png");
+    expect(mockedInvoke).toHaveBeenCalledWith("copy_configmap_value", {
+      kubeconfigPath: "/k",
+      namespace: "shop",
+      name: "app-config",
+      key: "logo.png",
+      context: null,
+    });
+    expect(format).toBe("base64");
   });
 });

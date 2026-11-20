@@ -87,7 +87,7 @@ const fixture: OverviewInput = {
   ],
   services: [service("ClusterIP"), service("ClusterIP"), service("NodePort"), service("LoadBalancer"), service("ExternalName")],
   secrets: [secret("Opaque"), secret("kubernetes.io/tls"), secret("kubernetes.io/dockerconfigjson"), secret("kubernetes.io/service-account-token")],
-  configmaps: [{ name: "c", namespace: "default", data_count: 1, creation_timestamp: null }],
+  configmaps: [{ name: "c", namespace: "default", keys: [{ key: "k", size: 1, binary: false }], resource_version: "1", creation_timestamp: null }],
   ingresses: [ingress(true), ingress(false)],
   helm: [helm("deployed"), helm("failed"), helm("superseded")],
   nodes: 3,

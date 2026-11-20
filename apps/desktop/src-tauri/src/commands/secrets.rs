@@ -24,9 +24,6 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::clipboard::ClipboardState;
 
-/// The label of the app's main window; the log pop-outs are `logs-…`.
-const MAIN_WINDOW: &str = "main";
-
 /// What the view switches on when a Secret command fails.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -87,7 +84,8 @@ impl From<KubeconfigError> for SecretCommandError {
     }
 }
 
-/// One value as the webview gets it, with the Secret's resource version.
+/// One value as the webview gets it, with the resource version of the Secret
+/// (or the ConfigMap, #668) it was read from.
 ///
 /// `Serialize`, since it is the answer; its `Debug` prints the length only.
 #[derive(Clone, PartialEq, Eq, Serialize)]
@@ -110,7 +108,7 @@ impl fmt::Debug for RevealedValue {
 /// The log pop-out windows share the main window's capability, and they have
 /// no business with Secrets.
 fn main_window_only(label: &str) -> Result<(), SecretCommandError> {
-    if label == MAIN_WINDOW {
+    if super::is_main_window(label) {
         Ok(())
     } else {
         Err(SecretCommandError::other(

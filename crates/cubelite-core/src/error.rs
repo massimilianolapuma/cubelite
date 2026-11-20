@@ -68,6 +68,18 @@ pub enum KubeconfigError {
         name: String,
         reason: crate::secrets::NotOffered,
     },
+
+    /// The ConfigMap asked for does not exist.
+    #[error("ConfigMap {namespace}/{name} no longer exists")]
+    ConfigMapNotFound { namespace: String, name: String },
+
+    /// The ConfigMap exists but has no such key.
+    #[error("ConfigMap {namespace}/{name} has no key {key}")]
+    ConfigMapKeyNotFound {
+        namespace: String,
+        name: String,
+        key: String,
+    },
 }
 
 /// Errors that can occur during context selection or switching operations.

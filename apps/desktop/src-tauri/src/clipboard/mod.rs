@@ -6,6 +6,11 @@
 //! digest (the value itself is not kept). A new copy replaces the pending
 //! clear; Never leaves the clipboard alone.
 //!
+//! A ConfigMap value (#668) is written plain ([`ClipboardState::copy_plain`]):
+//! no mark, nothing kept off other devices, no clear. It also drops any
+//! pending clear: the clipboard no longer holds the Secret value, and the new
+//! content must not be touched, even when it is the same text.
+//!
 //! The time is kept twice: on the monotonic clock, and on the wall clock,
 //! which also runs while the computer sleeps; the worker looks at least every
 //! [`POLL`], so a clear due during a sleep runs soon after waking. A read or a
@@ -48,6 +53,9 @@ pub const SUPERSEDED: &str = "Not copied: a later copy took its place";
 pub trait Board {
     /// Write `text`, with the platform's "do not keep" marks.
     fn write(&mut self, text: &str) -> Result<(), String>;
+    /// Write `text` as any copy is written: no mark, nothing kept off other
+    /// devices (a ConfigMap value, #668).
+    fn write_plain(&mut self, text: &str) -> Result<(), String>;
     /// The text the clipboard holds now; `None` when it holds no text. An
     /// error is a read that failed, which says nothing about what it holds.
     fn read(&mut self) -> Result<Option<String>, String>;
@@ -134,6 +142,16 @@ impl<B: Board> Keeper<B> {
         Ok(())
     }
 
+    /// Write `text` plain, with no clear of its own. The clipboard no longer
+    /// holds what a pending clear was for, so that clear is dropped: it must
+    /// not touch the new content, even the same text. A failed write leaves
+    /// the pending clear as it was.
+    pub fn copy_plain(&mut self, text: &str) -> Result<(), String> {
+        self.board.write_plain(text)?;
+        self.pending = None;
+        Ok(())
+    }
+
     /// Whether a clear is pending.
     pub fn is_pending(&self) -> bool {
         self.pending.is_some()
@@ -200,13 +218,21 @@ impl<B: Board> Keeper<B> {
     }
 }
 
+/// How a copy is written.
+enum How {
+    /// With the "do not keep" marks and, with a time, its clear (a Secret).
+    Concealed { clear_after: Option<Duration> },
+    /// As any copy, no clear (a ConfigMap value).
+    Plain,
+}
+
 /// A request to the worker.
 enum Job {
     Copy {
         /// The order in which the copy was asked for.
         ticket: u64,
         text: String,
-        clear_after: Option<Duration>,
+        how: How,
         done: tokio::sync::oneshot::Sender<Result<(), String>>,
     },
     ClearNow {
@@ -242,7 +268,7 @@ fn serve<B: Board>(jobs: mpsc::Receiver<Job>, mut open: impl FnMut() -> Result<B
             Job::Copy {
                 ticket,
                 text,
-                clear_after,
+                how,
                 done,
             } => {
                 if ticket < newest {
@@ -259,9 +285,12 @@ fn serve<B: Board>(jobs: mpsc::Receiver<Job>, mut open: impl FnMut() -> Result<B
                         }
                     }
                 }
-                let result = match keeper.as_mut() {
-                    Some(k) => k.copy(&text, clear_after, Instant::now(), SystemTime::now()),
-                    None => Err("The clipboard is not available".to_string()),
+                let result = match (keeper.as_mut(), how) {
+                    (Some(k), How::Concealed { clear_after }) => {
+                        k.copy(&text, clear_after, Instant::now(), SystemTime::now())
+                    }
+                    (Some(k), How::Plain) => k.copy_plain(&text),
+                    (None, _) => Err("The clipboard is not available".to_string()),
                 };
                 drop(text);
                 let _ = done.send(result);
@@ -335,13 +364,25 @@ impl ClipboardState {
         text: String,
         clear_after: Option<Duration>,
     ) -> Result<(), String> {
+        self.send_copy(ticket, text, How::Concealed { clear_after })
+            .await
+    }
+
+    /// Write `text` to the clipboard as any copy is written: no mark, no
+    /// clear. Drops any pending clear (the clipboard no longer holds what it
+    /// was for). Ordered with the other copies by `ticket`, as [`Self::copy`].
+    pub async fn copy_plain(&self, ticket: u64, text: String) -> Result<(), String> {
+        self.send_copy(ticket, text, How::Plain).await
+    }
+
+    async fn send_copy(&self, ticket: u64, text: String, how: How) -> Result<(), String> {
         let unavailable = || "The clipboard is not available".to_string();
         let jobs = self.sender().ok_or_else(unavailable)?;
         let (done, answer) = tokio::sync::oneshot::channel();
         jobs.send(Job::Copy {
             ticket,
             text,
-            clear_after,
+            how,
             done,
         })
         .map_err(|_| unavailable())?;
@@ -416,6 +457,14 @@ impl Board for SystemBoard {
             .map_err(|e| format!("Could not write the clipboard: {e}"))
     }
 
+    /// An ordinary write on every platform, macOS included: no mark, and
+    /// Universal Clipboard may carry it, as any copy.
+    fn write_plain(&mut self, text: &str) -> Result<(), String> {
+        self.clipboard
+            .set_text(text)
+            .map_err(|e| format!("Could not write the clipboard: {e}"))
+    }
+
     fn read(&mut self) -> Result<Option<String>, String> {
         match self.clipboard.get_text() {
             Ok(text) => Ok(Some(text)),
@@ -442,6 +491,8 @@ mod tests {
     #[derive(Clone, Default)]
     struct Fake {
         held: Arc<StdMutex<Option<String>>>,
+        /// Whether the last write carried the "do not keep" marks.
+        marked: Arc<StdMutex<Option<bool>>>,
         clears: Arc<StdMutex<u32>>,
         failing_reads: Arc<StdMutex<u32>>,
         failing_clears: Arc<StdMutex<u32>>,
@@ -458,6 +509,9 @@ mod tests {
         /// The user copies an image: no text.
         fn user_copies_an_image(&self) {
             *self.held.lock().expect("lock") = None;
+        }
+        fn last_write_marked(&self) -> Option<bool> {
+            *self.marked.lock().expect("lock")
         }
         fn clears(&self) -> u32 {
             *self.clears.lock().expect("lock")
@@ -481,6 +535,12 @@ mod tests {
     impl Board for Fake {
         fn write(&mut self, text: &str) -> Result<(), String> {
             *self.held.lock().expect("lock") = Some(text.to_string());
+            *self.marked.lock().expect("lock") = Some(true);
+            Ok(())
+        }
+        fn write_plain(&mut self, text: &str) -> Result<(), String> {
+            *self.held.lock().expect("lock") = Some(text.to_string());
+            *self.marked.lock().expect("lock") = Some(false);
             Ok(())
         }
         fn read(&mut self) -> Result<Option<String>, String> {
@@ -663,6 +723,9 @@ mod tests {
             fn write(&mut self, _: &str) -> Result<(), String> {
                 Err("no".into())
             }
+            fn write_plain(&mut self, _: &str) -> Result<(), String> {
+                Err("no".into())
+            }
             fn read(&mut self) -> Result<Option<String>, String> {
                 self.0.read()
             }
@@ -785,6 +848,86 @@ mod tests {
         assert_eq!(*tries.lock().expect("lock"), 2);
         // Nothing pending: exit does not wait.
         state.clear_pending_now(EXIT_WAIT);
+    }
+
+    #[test]
+    fn a_plain_copy_has_no_mark_and_drops_the_pending_secret_clear() {
+        let fake = Fake::default();
+        let mut keeper = Keeper::new(fake.clone());
+        let (t0, w0) = clocks();
+        keeper.copy("s3cr3t", S30, t0, w0).expect("copy");
+        assert_eq!(fake.last_write_marked(), Some(true));
+        // The ConfigMap value happens to be the same text: a clear that
+        // compares digests would wipe it.
+        keeper.copy_plain("s3cr3t").expect("plain copy");
+        assert_eq!(fake.last_write_marked(), Some(false));
+        assert!(!keeper.is_pending());
+        keeper.run_due(t0 + 30 * SEC, w0 + 30 * SEC);
+        keeper.clear_now(|| {});
+        assert_eq!(fake.holds().as_deref(), Some("s3cr3t"));
+        assert_eq!(fake.clears(), 0);
+    }
+
+    #[test]
+    fn a_failed_plain_write_keeps_the_pending_clear() {
+        struct Broken(Fake);
+        impl Board for Broken {
+            fn write(&mut self, text: &str) -> Result<(), String> {
+                self.0.write(text)
+            }
+            fn write_plain(&mut self, _: &str) -> Result<(), String> {
+                Err("no".into())
+            }
+            fn read(&mut self) -> Result<Option<String>, String> {
+                self.0.read()
+            }
+            fn clear(&mut self) -> Result<(), String> {
+                self.0.clear()
+            }
+        }
+        let fake = Fake::default();
+        let mut keeper = Keeper::new(Broken(fake.clone()));
+        let (t0, w0) = clocks();
+        keeper.copy("s3cr3t", S30, t0, w0).expect("copy");
+        assert!(keeper.copy_plain("note").is_err());
+        // The clipboard still holds the Secret value: its clear stays.
+        assert!(keeper.is_pending());
+        keeper.clear_now(|| {});
+        assert_eq!(fake.holds(), None);
+    }
+
+    #[tokio::test]
+    async fn the_worker_writes_a_plain_copy_in_order_and_drops_the_pending_clear() {
+        let (state, fake) = state();
+        let t = state.ticket();
+        state
+            .copy(t, "s3cr3t".into(), Some(Duration::from_secs(3600)))
+            .await
+            .expect("copy");
+        let t = state.ticket();
+        state
+            .copy_plain(t, "server:\n  port: 8080\n".into())
+            .await
+            .expect("plain copy");
+        assert_eq!(fake.last_write_marked(), Some(false));
+        // At exit: nothing pending, the plain copy stays.
+        state.clear_pending_now(EXIT_WAIT);
+        assert_eq!(fake.holds().as_deref(), Some("server:\n  port: 8080\n"));
+        assert_eq!(fake.clears(), 0);
+
+        // Copies keep one order, plain or concealed.
+        let older = state.ticket();
+        let newer = state.ticket();
+        state
+            .copy(newer, "newer".into(), None)
+            .await
+            .expect("newer");
+        let err = state
+            .copy_plain(older, "older".into())
+            .await
+            .expect_err("older");
+        assert_eq!(err, SUPERSEDED);
+        assert_eq!(fake.holds().as_deref(), Some("newer"));
     }
 
     #[test]

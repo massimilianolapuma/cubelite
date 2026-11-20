@@ -319,12 +319,35 @@ export type IngressInfo = {
   creation_timestamp: string | null;
 };
 
+/** One key of a ConfigMap: its name and what its value is like, not the value (#668). */
+export type ConfigMapKeyInfo = {
+  key: string;
+  /** Length of the value as stored, in bytes. */
+  size: number;
+  /** The key is under `binaryData`. */
+  binary: boolean;
+};
+
+/**
+ * A ConfigMap as the list carries it: key names and sizes, not the values
+ * (#668), so the list stays light. One value is read when it is asked for
+ * (`readConfigMapValue`).
+ */
 export type ConfigMapInfo = {
   name: string;
   namespace: string;
-  data_count: number;
+  /** One entry per key of `data` and `binaryData`, sorted by key. */
+  keys: ConfigMapKeyInfo[];
+  /** Lets the view drop a shown value when the ConfigMap changes. */
+  resource_version: string | null;
   creation_timestamp: string | null;
 };
+
+/** What a ConfigMap command's error is about; the view switches on it. */
+export type ConfigMapErrorKind = "forbidden" | "configmap_missing" | "key_missing" | "binary" | "too_large" | "other";
+
+/** A ConfigMap command's error, as the backend answers it. */
+export type ConfigMapCommandError = { kind: ConfigMapErrorKind; message: string };
 
 export type EventInfo = {
   event_type: string | null;
@@ -362,7 +385,7 @@ export type SecretInfo = {
   creation_timestamp: string | null;
 };
 
-/** One value, and the resource version of the Secret it was read from. */
+/** One value, and the resource version of the Secret (or the ConfigMap) it was read from. */
 export type RevealedSecretValue = { value: string; resource_version: string | null };
 
 /** What a Secret command's error is about; the view switches on it. */
@@ -536,6 +559,49 @@ export function copySecretValue(
     name,
     key,
     clearAfterSecs: clearAfterSecs > 0 ? clearAfterSecs : null,
+    context: context ?? null,
+  });
+}
+
+/**
+ * Read one value of a ConfigMap, at this moment, from the API server, with
+ * the resource version it was read at. Text only: the backend refuses a
+ * `binaryData` value and a text over 64 KiB. Rejects with a
+ * `ConfigMapCommandError` (read it with `configMapCommandError` of `lib/configmap-values.ts`).
+ */
+export function readConfigMapValue(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  key: string,
+  context?: string,
+): Promise<RevealedSecretValue> {
+  return invoke<RevealedSecretValue>("read_configmap_value", {
+    kubeconfigPath,
+    namespace,
+    name,
+    key,
+    context: context ?? null,
+  });
+}
+
+/**
+ * Copy one value of a ConfigMap to the clipboard, from the backend: text as
+ * it is, `binaryData` as base64, written plain (no clear). The answer is the
+ * format used, never the value. Rejects with a `ConfigMapCommandError`.
+ */
+export function copyConfigMapValue(
+  kubeconfigPath: string,
+  namespace: string,
+  name: string,
+  key: string,
+  context?: string,
+): Promise<CopyFormat> {
+  return invoke<CopyFormat>("copy_configmap_value", {
+    kubeconfigPath,
+    namespace,
+    name,
+    key,
     context: context ?? null,
   });
 }
