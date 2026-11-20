@@ -334,7 +334,9 @@ pub async fn list_ingresses(
         .map_err(|e| e.to_string())
 }
 
-/// List config maps in the given namespace (all namespaces when `None`).
+/// List config maps in the given namespace (all namespaces when `None`): key
+/// names and sizes, not the values (#668). One value is read only when the
+/// user asks for it (`read_configmap_value`).
 #[tauri::command]
 pub async fn list_configmaps(
     kubeconfig_path: String,

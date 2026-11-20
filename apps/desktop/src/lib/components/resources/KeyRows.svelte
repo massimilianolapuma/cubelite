@@ -17,6 +17,7 @@
 </script>
 
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import Check from '@lucide/svelte/icons/check';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Eye from '@lucide/svelte/icons/eye';
@@ -26,12 +27,14 @@
 	import { formatSize } from '#lib/units.ts';
 
 	// The keys of an object whose values are read one at a time, on request
-	// (#661 §3.1): a Secret's today, a ConfigMap's next (#668). It knows only
-	// what its props tell it. One row per key, in the order given: name, size,
-	// the value area, Reveal / Hide, then Copy when the caller offers it.
+	// (#661 §3.1): a Secret's, masked, and a ConfigMap's (#668), not. It knows
+	// only what its props tell it. One row per key, in the order given: name,
+	// size, the value area, Reveal / Hide (Show / Hide), then Copy when the
+	// caller offers it.
 	let {
 		keys,
 		label,
+		masked = true,
 		note = null,
 		stateOf,
 		onToggle,
@@ -42,6 +45,12 @@
 		keys: readonly KeyRowInfo[];
 		/** Accessible name of the block ("Keys of api-credentials"). */
 		label: string;
+		/**
+		 * A value not shown is hidden (a Secret's): dots, "hidden" for screen
+		 * readers, Reveal / Hide. Without it (a ConfigMap's) nothing is hidden,
+		 * only not read yet: an empty value area, Show / Hide.
+		 */
+		masked?: boolean;
 		/** Said in every row's value area, with no action (a payload that is not values). */
 		note?: string | null;
 		stateOf: (key: string) => KeyRowState;
@@ -64,6 +73,29 @@
 		return null;
 	}
 
+	// Keys whose reason does not fit their value area: it goes on a line of its
+	// own under the key, as wide as the row, rather than not being drawn.
+	let cramped = $state<Record<string, boolean>>({});
+
+	/** Watch a key's value area: whether its reason, on one line, fits in it. */
+	function fit(key: string) {
+		return (area: HTMLElement) => {
+			const check = () =>
+				untrack(() => {
+					const words = area.querySelector<HTMLElement>('[data-key-reason-inline]');
+					const narrow = words !== null && words.getBoundingClientRect().width > area.clientWidth + 0.5;
+					if ((cramped[key] ?? false) !== narrow) cramped[key] = narrow;
+				});
+			check();
+			if (typeof ResizeObserver === 'undefined') return;
+			const observer = new ResizeObserver(check);
+			observer.observe(area);
+			const words = area.querySelector('[data-key-reason-inline]');
+			if (words) observer.observe(words);
+			return () => observer.disconnect();
+		};
+	}
+
 	// The data face, in the block's sunken surface (Tonal §7).
 	const cell = 'type-data-sm';
 	// Its outline-strong edge identifies a button on the sunken block (WCAG 1.4.11).
@@ -72,10 +104,11 @@
 
 <!-- One grid for the block, shared by its rows (subgrid), so the columns line up:
      the name as wide as the longest (at most 11rem; longer ones truncate, their full
-     text in the title), the size, the value area, which takes what is left and
-     gives way first, and the actions, which never wrap. -->
+     text in the title), the size, as wide as the longest and never wrapped, the
+     value area, which takes what is left and gives way first, and the actions,
+     which never wrap. -->
 <div
-	class="card grid grid-cols-[minmax(0,max-content)_4rem_minmax(0,1fr)_auto] gap-x-2 gap-y-1 rounded-md bg-surface-sunken px-3 py-2 {klass}"
+	class="card grid grid-cols-[minmax(0,max-content)_minmax(4rem,max-content)_minmax(0,1fr)_auto] gap-x-2 gap-y-1 rounded-md bg-surface-sunken px-3 py-2 {klass}"
 	role="group"
 	aria-label={label}
 	data-key-rows
@@ -91,15 +124,25 @@
 		     wide as the row: the actions never wrap, the value is not squeezed. -->
 		<div class="col-span-full grid grid-cols-subgrid items-center" data-key-row={info.key}>
 			<span class="{cell} max-w-44 truncate text-text-muted" title={info.key} data-key-name>{info.key}</span>
-			<span class="{cell} flex min-h-(--control-inline-h) items-center justify-end text-text-muted" data-key-size
+			<span class="{cell} flex min-h-(--control-inline-h) items-center justify-end whitespace-nowrap text-text-muted" data-key-size
 				>{formatSize(info.size)}</span
 			>
-			<!-- A container: in a row too narrow for them, the words or the dots are not
-			     drawn at all rather than cut mid-glyph (the actions still say binary). -->
-			<span class="@container min-w-0 overflow-hidden py-1" data-key-value={below ? undefined : ''}>
+			<!-- A container: in a row too narrow for them, the dots are not drawn at all
+			     rather than cut mid-glyph. A reason that does not fit is kept here, unseen,
+			     to be measured, and said on a line of its own under the key. -->
+			<span
+				class="@container min-w-0 overflow-hidden py-1"
+				data-key-value={below ? undefined : ''}
+				{@attach fit(info.key)}
+			>
 				{#if reason}
-					<span class="{cell} text-text-muted [overflow-wrap:anywhere] @max-[4.25rem]:hidden">{reason}</span>
-				{:else if !below}
+					{@const away = cramped[info.key] ?? false}
+					<span
+						class="{cell} whitespace-nowrap text-text-muted {away ? 'invisible' : ''}"
+						aria-hidden={away ? 'true' : undefined}
+						data-key-reason-inline>{reason}</span
+					>
+				{:else if !below && masked}
 					<span class="{cell} whitespace-nowrap text-text-subtle @max-[3.75rem]:hidden" aria-hidden="true"
 						>••••••••</span
 					><span
@@ -112,13 +155,14 @@
 					{#if acts && !reason}
 						{@const shown = shows.kind === 'shown'}
 						{@const reading = shows.kind === 'reading'}
-						<!-- One button, Reveal then Hide: its name changes, the focus stays on it. -->
+						{@const show = masked ? 'Reveal' : 'Show'}
+						<!-- One button, Reveal (Show) then Hide: its name changes, the focus stays on it. -->
 						<Button
 							variant="text"
 							size="inline"
 							class={edge}
 							pending={reading}
-							aria-label="{reading ? 'Reading' : shown ? 'Hide' : 'Reveal'} {info.key}"
+							aria-label="{reading ? 'Reading' : shown ? 'Hide' : show} {info.key}"
 							onclick={() => onToggle(info.key)}
 						>
 							{#snippet icon()}
@@ -128,7 +172,7 @@
 									<Eye class="h-3 w-3" aria-hidden="true" />
 								{/if}
 							{/snippet}
-							{reading ? 'Reading…' : shown ? 'Hide' : 'Reveal'}
+							{reading ? 'Reading…' : shown ? 'Hide' : show}
 						</Button>
 					{/if}
 					{#if acts && onCopy}
@@ -156,6 +200,11 @@
 						</Button>
 					{/if}
 				</span>
+			{/if}
+			{#if reason && cramped[info.key]}
+				<div class="col-span-full pb-1.5">
+					<span class="{cell} text-text-muted [overflow-wrap:anywhere]" data-key-reason>{reason}</span>
+				</div>
 			{/if}
 			{#if shows.kind === 'shown'}
 				<!-- Line breaks kept; past eight lines it scrolls inside the row. -->

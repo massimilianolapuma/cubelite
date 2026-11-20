@@ -3,7 +3,7 @@
 // rings only exist in a real browser: jsdom can emulate none of them.
 import { type Locator, type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
-import { FIXTURES, SECRETS, tauriMockScript } from "./tauri-mock";
+import { CONFIGMAPS, FIXTURES, SECRETS, tauriMockScript } from "./tauri-mock";
 
 type Theme = "dark" | "light";
 const THEMES: Theme[] = ["dark", "light"];
@@ -122,6 +122,28 @@ async function secretKeyRows(page: Page) {
     copy: block.getByRole("button", { name: "Copy DB_USER" }),
     base64: block.getByRole("button", { name: "Copy ca.crt as base64" }),
     env: page.getByRole("button", { name: "Download api-credentials as .env" }),
+  };
+}
+
+/**
+ * The ConfigMaps list with app-config's application.yaml shown (#668): its
+ * key rows, unmasked, and the Show / Hide and Copy buttons of its keys.
+ */
+async function configMapKeyRows(page: Page) {
+  const aside = page.getByRole("complementary");
+  const nav = aside.getByText("ConfigMaps", { exact: true });
+  if (!(await nav.isVisible())) await aside.getByRole("button", { name: /^Config \d+$/ }).click();
+  await nav.click();
+  const block = page.getByRole("group", { name: "Keys of app-config" });
+  await expect(block).toBeVisible();
+  await block.getByRole("button", { name: "Show application.yaml" }).click();
+  await expect(block.getByRole("button", { name: "Hide application.yaml" })).toBeVisible();
+  return {
+    block,
+    hide: block.getByRole("button", { name: "Hide application.yaml" }),
+    show: block.getByRole("button", { name: "Show LOG_LEVEL" }),
+    copy: block.getByRole("button", { name: "Copy LOG_LEVEL" }),
+    base64: block.getByRole("button", { name: "Copy logo.png as base64" }),
   };
 }
 
@@ -244,6 +266,19 @@ test.describe("more contrast (prefers-contrast: more)", () => {
       expect(await dots.evaluate((el) => getComputedStyle(el).color)).toBe(
         await resolvedIn(block, "var(--color-text-muted)"),
       );
+    });
+  }
+
+  for (const theme of THEMES) {
+    test(`${theme}: a ConfigMap's key rows get the card edge (#668)`, async ({ page }) => {
+      await page.emulateMedia({ contrast: "more" });
+      await boot(page, theme, [], { configmaps: CONFIGMAPS });
+      const { block } = await configMapKeyRows(page);
+      expect(await edge(block)).toEqual({
+        style: "solid",
+        width: "1px",
+        color: await resolvedIn(block, "var(--color-outline-strong)"),
+      });
     });
   }
 
@@ -526,6 +561,31 @@ test.describe("forced colours (forced-colors: active)", () => {
       const value = block.locator('[data-key-row="DB_PASSWORD"] [data-key-shown]');
       expect(await fg(value)).toBe(canvasText);
       expect(await fg(block.locator('[data-key-row="ca.crt"]').getByText("binary"))).toBe(canvasText);
+    });
+
+    test(`${theme} app on a ${scheme} system palette: a ConfigMap's key rows keep their block, buttons and words (#668)`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ forcedColors: "active", colorScheme: scheme });
+      await boot(page, theme, [], { configmaps: CONFIGMAPS });
+      const { block, hide, show, copy, base64 } = await configMapKeyRows(page);
+      const canvasText = await sys(page, "CanvasText");
+      expect((await edge(block)).style).toBe("solid");
+      for (const [name, button] of [
+        ["Hide", hide],
+        ["Show", show],
+        ["Copy", copy],
+        ["Copy base64", base64],
+      ] as const) {
+        await page.mouse.move(0, 0);
+        await button.evaluate((n) => (n as HTMLElement).blur());
+        expect([canvasText, await sys(page, "ButtonText")], `${name} has a system-colour edge`).toContain(
+          await systemEdge(button),
+        );
+      }
+      const value = block.locator('[data-key-row="application.yaml"] [data-key-shown]');
+      expect(await fg(value)).toBe(canvasText);
+      expect(await fg(block.locator('[data-key-row="logo.png"]').getByText("binary"))).toBe(canvasText);
     });
 
     test(`${theme} app on a ${scheme} system palette: the .env warning keeps its edge, glyph and words (#661)`, async ({
@@ -872,6 +932,25 @@ test.describe("non-text contrast (WCAG 1.4.11) of the controls the token matrix 
         expect(edgeColour, `${name} has an edge`).not.toBe("transparent");
         expect(await contrast(page, edgeColour, under), `${name} edge on its ground`).toBeGreaterThanOrEqual(3);
         // Its label reads there too.
+        expect(await contrast(page, await fg(button), under), `${name} label`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    test(`${theme}: the Show, Hide and Copy buttons of a ConfigMap have a 3:1 edge on their ground (#668)`, async ({
+      page,
+    }) => {
+      await boot(page, theme, [], { configmaps: CONFIGMAPS });
+      const { hide, show, copy, base64 } = await configMapKeyRows(page);
+      for (const [name, button] of [
+        ["Hide", hide],
+        ["Show", show],
+        ["Copy", copy],
+        ["Copy base64", base64],
+      ] as const) {
+        const under = await ground(button.locator("xpath=.."));
+        const edgeColour = await borderColour(button);
+        expect(edgeColour, `${name} has an edge`).not.toBe("transparent");
+        expect(await contrast(page, edgeColour, under), `${name} edge on its ground`).toBeGreaterThanOrEqual(3);
         expect(await contrast(page, await fg(button), under), `${name} label`).toBeGreaterThanOrEqual(4.5);
       }
     });

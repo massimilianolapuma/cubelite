@@ -5,6 +5,7 @@ pub mod env;
 use tauri::Manager;
 
 use clipboard::{ClearAtExit, ClipboardState, EXIT_WAIT};
+use commands::configmaps::{copy_configmap_value, read_configmap_value};
 use commands::elastic::{
     elastic_auth_method, elastic_close_cursor, elastic_detect, elastic_disconnect,
     elastic_save_auth, elastic_search, elastic_test, elastic_use_eck_credentials,
@@ -100,6 +101,8 @@ pub fn run() {
             list_services,
             list_ingresses,
             list_configmaps,
+            read_configmap_value,
+            copy_configmap_value,
             list_secrets,
             reveal_secret_value,
             copy_secret_value,

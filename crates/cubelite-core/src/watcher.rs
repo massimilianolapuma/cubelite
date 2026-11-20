@@ -36,10 +36,10 @@ use serde::{Deserialize, Serialize};
 use crate::limits::{active_override, detect_manager, OVERRIDE_ANNOTATION};
 use crate::metrics::{parse_cpu_millis, parse_memory_bytes};
 use crate::resources::{
-    ConfigMapInfo, ContainerInfo, ContainerResourcesInfo, CronJobInfo, DeploymentConditionInfo,
-    DeploymentInfo, IngressInfo, JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, QuantityInfo,
-    ResourcePairInfo, SecretInfo, SecretKeyInfo, ServiceInfo, StatefulSetInfo,
-    TemplateContainerInfo,
+    ConfigMapInfo, ConfigMapKeyInfo, ContainerInfo, ContainerResourcesInfo, CronJobInfo,
+    DeploymentConditionInfo, DeploymentInfo, IngressInfo, JobInfo, NamespaceInfo, NodeInfo,
+    PodInfo, PvcInfo, QuantityInfo, ResourcePairInfo, SecretInfo, SecretKeyInfo, ServiceInfo,
+    StatefulSetInfo, TemplateContainerInfo,
 };
 
 /// Selects which Kubernetes resource type to watch.
@@ -512,16 +512,41 @@ pub(crate) fn ingress_to_info(i: Ingress) -> Option<IngressInfo> {
 
 /// Convert a raw [`ConfigMap`] object into a [`ConfigMapInfo`], returning
 /// `None` if there is no name.
+///
+/// Each value is measured and dropped: the result holds key names and sizes
+/// only (#668). `data` and `binaryData` are listed together, sorted by key
+/// (the API server refuses a key in both).
 pub(crate) fn configmap_to_info(cm: ConfigMap) -> Option<ConfigMapInfo> {
     let name = cm.metadata.name.clone()?;
     let namespace = cm.metadata.namespace.clone().unwrap_or_default();
     let creation = creation_timestamp(&cm.metadata);
-    let data_count = cm.data.map_or(0, |d| d.len()) + cm.binary_data.map_or(0, |d| d.len());
+
+    let text = cm
+        .data
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(key, value)| ConfigMapKeyInfo {
+            key,
+            size: value.len() as u64,
+            binary: false,
+        });
+    let bytes = cm
+        .binary_data
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(key, value)| ConfigMapKeyInfo {
+            key,
+            size: value.0.len() as u64,
+            binary: true,
+        });
+    let mut keys: Vec<ConfigMapKeyInfo> = text.chain(bytes).collect();
+    keys.sort_by(|a, b| a.key.cmp(&b.key));
 
     Some(ConfigMapInfo {
         name,
         namespace,
-        data_count,
+        keys,
+        resource_version: cm.metadata.resource_version,
         creation_timestamp: creation,
     })
 }
@@ -1144,33 +1169,6 @@ mod tests {
         assert_eq!(info.hosts, vec!["app.example.com"]);
         assert!(info.tls);
         assert!(info.addresses.is_empty());
-    }
-
-    #[test]
-    fn configmap_to_info_counts_data_and_binary_data() {
-        use k8s_openapi::api::core::v1::ConfigMap;
-        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
-        use k8s_openapi::ByteString;
-        use std::collections::BTreeMap;
-
-        let cm = ConfigMap {
-            metadata: ObjectMeta {
-                name: Some("settings".to_string()),
-                ..Default::default()
-            },
-            data: Some(BTreeMap::from([(
-                "config.yaml".to_string(),
-                "a: 1".to_string(),
-            )])),
-            binary_data: Some(BTreeMap::from([(
-                "blob".to_string(),
-                ByteString(vec![0xff]),
-            )])),
-            ..Default::default()
-        };
-
-        let info = configmap_to_info(cm).unwrap();
-        assert_eq!(info.data_count, 2);
     }
 
     #[test]

@@ -9,6 +9,7 @@
 //! | [`kubeconfig`] | Load and manipulate kubeconfig files |
 //! | [`context`]    | List and switch Kubernetes contexts |
 //! | [`client`]     | Async `kube-rs` client wrapper |
+//! | [`configmaps`] | Read one ConfigMap value on request |
 //! | [`resources`]  | Lightweight resource info types |
 //! | [`types`]      | Domain types mirroring the kubeconfig spec |
 //! | [`error`]      | Error types: [`KubeconfigError`], [`ContextError`] |
@@ -30,6 +31,7 @@
 //! ```
 
 pub mod client;
+pub mod configmaps;
 pub mod context;
 pub mod dynamic;
 pub mod elastic;
@@ -55,6 +57,7 @@ mod test_support;
 
 // Re-export the most commonly used items at the crate root.
 pub use client::KubeClient;
+pub use configmaps::{ConfigMapRead, ConfigMapValue};
 pub use dynamic::{ResourceKindInfo, ResourceRef, ResourceTable, TableColumn, TableRow};
 pub use error::{ContextError, KubeconfigError};
 pub use helm::HelmReleaseInfo;
@@ -66,9 +69,9 @@ pub use limits::{
 pub use logs::{LogLevel, LogLine};
 pub use metrics::{ContainerUsageInfo, NodeCapacityInfo, PodMetricsInfo};
 pub use resources::{
-    ConfigMapInfo, ContainerDetail, CronJobInfo, DeploymentInfo, EventInfo, IngressInfo, JobInfo,
-    NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, SecretKeyInfo, ServiceInfo,
-    StatefulSetInfo, WorkloadRef,
+    ConfigMapInfo, ConfigMapKeyInfo, ContainerDetail, CronJobInfo, DeploymentInfo, EventInfo,
+    IngressInfo, JobInfo, NamespaceInfo, NodeInfo, PodInfo, PvcInfo, SecretInfo, SecretKeyInfo,
+    ServiceInfo, StatefulSetInfo, WorkloadRef,
 };
 pub use secret_env::{EnvFile, LeftOut, LeftOutKey};
 pub use secrets::{NotOffered, RevealedSecret, SecretValue, MAX_SHOWN_BYTES};

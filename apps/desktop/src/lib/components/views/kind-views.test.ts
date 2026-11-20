@@ -155,7 +155,7 @@ describe("IngressesView", () => {
 describe("ConfigMapsView", () => {
   it("renders name and data count", async () => {
     await renderList(ConfigMapsView, "listConfigMaps", [
-      { name: "settings", namespace: "default", data_count: 3, creation_timestamp: null },
+      { name: "settings", namespace: "default", keys: ["a", "b", "c"].map((key) => ({ key, size: 1, binary: false })), resource_version: "1", creation_timestamp: null },
     ]);
     expect(screen.getByText("settings")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
@@ -300,7 +300,7 @@ describe("Namespace column (#546)", () => {
   const cases: [string, Lister, unknown, () => Promise<{ default: unknown }>][] = [
     ["services", "listServices", { name: "web", namespace: ns, service_type: "ClusterIP", cluster_ip: null, external_ips: [], ports: [], creation_timestamp: null }, () => import("./ServicesView.svelte")],
     ["ingresses", "listIngresses", { name: "web", namespace: ns, class: null, hosts: [], addresses: [], tls: false, creation_timestamp: null }, () => import("./IngressesView.svelte")],
-    ["configmaps", "listConfigMaps", { name: "settings", namespace: ns, data_count: 1, creation_timestamp: null }, () => import("./ConfigMapsView.svelte")],
+    ["configmaps", "listConfigMaps", { name: "settings", namespace: ns, keys: [{ key: "k", size: 1, binary: false }], resource_version: "1", creation_timestamp: null }, () => import("./ConfigMapsView.svelte")],
     ["jobs", "listJobs", { name: "migrate", namespace: ns, completions: 1, succeeded: 1, active: 0, failed: 0, creation_timestamp: null }, () => import("./JobsView.svelte")],
     ["cronjobs", "listCronJobs", { name: "backup", namespace: ns, schedule: "0 3 * * *", suspend: false, active: 0, last_schedule: null, creation_timestamp: null }, () => import("./CronJobsView.svelte")],
     ["statefulsets", "listStatefulSets", { name: "db", namespace: ns, replicas: 1, ready_replicas: 1, creation_timestamp: null }, () => import("./StatefulSetsView.svelte")],

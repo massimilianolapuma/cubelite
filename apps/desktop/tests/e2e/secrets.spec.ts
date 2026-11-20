@@ -5,6 +5,7 @@
 import { type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { FIXTURES, SECRETS, SECRET_VALUES, tauriMockScript } from "./tauri-mock";
+import { wholeShown } from "./key-rows";
 import type { SecretInfo } from "../../src/lib/tauri.ts";
 
 /** The Secrets list, in the sidebar's Config section. */
@@ -316,9 +317,12 @@ test("at 800 x 600 every key name shows whole, Reveal and Copy stay on its line,
         .map((cell) => cell.parentElement?.getAttribute("data-key-row")),
     );
     expect(cut, `${secret.name}: value areas cut mid-glyph`).toEqual([]);
-    // A row is no taller than its line, unless a value is shown under it.
+    // A row is no taller than its line, unless a value, or a reason too wide for
+    // its value area (#668), is said under it.
     const tall = await block.locator("[data-key-row]").evaluateAll((rows) =>
-      rows.filter((r) => r.getBoundingClientRect().height > 48).map((r) => r.getAttribute("data-key-row")),
+      rows
+        .filter((r) => r.getBoundingClientRect().height > 48 && !r.querySelector("[data-key-reason]"))
+        .map((r) => r.getAttribute("data-key-row")),
     );
     expect(tall, `${secret.name}: rows taller than their line`).toEqual([]);
     const rights = (selector: string) =>
@@ -332,5 +336,15 @@ test("at 800 x 600 every key name shows whole, Reveal and Copy stay on its line,
     ] as const) {
       expect(new Set(at).size, `${secret.name}: ${what} ${at}`).toBe(1);
     }
+  }
+});
+
+test("at 800 x 600 the binary mark of a Secret's key stays whole on screen", async ({ page }) => {
+  await boot(page, 15, { secrets: [...SECRETS, REPLICAS] });
+  await page.setViewportSize({ width: 800, height: 600 });
+  for (const name of ["api-credentials", "db-replicas"]) {
+    const block = page.getByRole("group", { name: `Keys of ${name}` });
+    await block.scrollIntoViewIfNeeded();
+    expect(await wholeShown(block.locator('[data-key-row="ca.crt"]'), "binary"), `${name}: binary shown whole`).toBe(1);
   }
 });

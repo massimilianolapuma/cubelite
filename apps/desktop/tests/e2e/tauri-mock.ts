@@ -5,7 +5,7 @@
  * backend.
  */
 import type { Page } from "@playwright/test";
-import type { DeploymentInfo, Finding, ResourceFacts, SecretInfo } from "../../src/lib/tauri.ts";
+import type { ConfigMapInfo, DeploymentInfo, Finding, ResourceFacts, SecretInfo } from "../../src/lib/tauri.ts";
 
 declare global {
   interface Window {
@@ -43,6 +43,10 @@ declare global {
     __secretCopies?: Record<string, unknown>[];
     /** Test hook: the arguments of every `export_secret_env` call, in order (#661). */
     __secretExports?: Record<string, unknown>[];
+    /** Test hook: the arguments of every `read_configmap_value` call, in order (#668). */
+    __configMapReads?: Record<string, unknown>[];
+    /** Test hook: the arguments of every `copy_configmap_value` call, in order (#668). */
+    __configMapCopies?: Record<string, unknown>[];
   }
 }
 
@@ -287,7 +291,64 @@ export const SECRETS: SecretInfo[] = [
   },
 ];
 
+/** What the backend would read for each `namespace/name/key` of CONFIGMAPS (text keys only). */
+export const CONFIGMAP_VALUES: Record<string, string> = {
+  "default/app-config/LOG_LEVEL": "info",
+  "default/app-config/application.yaml": [
+    "server:",
+    "  port: 8080",
+    "  shutdown: graceful",
+    "spring:",
+    "  datasource:",
+    "    url: jdbc:postgresql://db.shop.svc:5432/shop",
+    "    pool-size: 12",
+    "logging:",
+    "  level:",
+    "    root: INFO",
+    "    com.example.shop: DEBUG",
+  ].join("\n"),
+  "default/kube-root-ca.crt/ca.crt": [
+    "-----BEGIN CERTIFICATE-----",
+    "MIIC/jCCAeagAwIBAgIBADANBgkqhkiG9w0BAQsFADAVMRMwEQYDVQQDEwprdWJlcm5ldGVz",
+    "-----END CERTIFICATE-----",
+  ].join("\n"),
+};
+
+/** The length in bytes of a value of CONFIGMAP_VALUES. */
+const configMapSize = (id: string) => new TextEncoder().encode(CONFIGMAP_VALUES[id]).length;
+
+/**
+ * ConfigMaps as `list_configmaps` sends them (#668): key names, sizes and the
+ * binary mark, not the values. Not in the default fixtures (the Overview
+ * counts them): a spec passes `{ configmaps: CONFIGMAPS }`.
+ */
+export const CONFIGMAPS: ConfigMapInfo[] = [
+  {
+    name: "app-config",
+    namespace: "default",
+    keys: [
+      { key: "LOG_LEVEL", size: configMapSize("default/app-config/LOG_LEVEL"), binary: false },
+      { key: "application.yaml", size: configMapSize("default/app-config/application.yaml"), binary: false },
+      { key: "logo.png", size: 14_336, binary: true },
+      { key: "unused", size: 0, binary: false },
+    ],
+    resource_version: "77",
+    creation_timestamp: "2026-10-10T09:00:00Z",
+  },
+  {
+    name: "kube-root-ca.crt",
+    namespace: "default",
+    keys: [{ key: "ca.crt", size: configMapSize("default/kube-root-ca.crt/ca.crt"), binary: false }],
+    resource_version: "3",
+    creation_timestamp: "2026-08-22T09:00:00Z",
+  },
+];
+
 export const FIXTURES = {
+  /** `list_configmaps` (#668); empty by default, see CONFIGMAPS. */
+  configmaps: [] as ConfigMapInfo[],
+  /** `read_configmap_value` answers from here; a missing text key is a vanished key. */
+  configMapValues: CONFIGMAP_VALUES,
   /** `list_secrets` (#661); empty by default, see SECRETS. */
   secrets: [] as SecretInfo[],
   /** `reveal_secret_value` answers from here; a missing entry is a vanished key. */
@@ -695,9 +756,31 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
       case "cluster_capacity":
         if (fixtures.nodeCapacity === null) throw new Error("nodes is forbidden: User cannot list resource nodes");
         return fixtures.nodeCapacity;
+      case "list_configmaps":
+        return fixtures.configmaps.filter((c) => !args.namespace || c.namespace === args.namespace);
+      case "read_configmap_value": {
+        (window.__configMapReads ??= []).push(args);
+        const configmap = fixtures.configmaps.find((c) => c.namespace === args.namespace && c.name === args.name);
+        const info = configmap && configmap.keys.find((k) => k.key === args.key);
+        const where = args.key + " of ConfigMap " + args.namespace + "/" + args.name;
+        if (info && info.binary) throw { kind: "binary", message: where + ": a binary value is not shown" };
+        const value = fixtures.configMapValues[args.namespace + "/" + args.name + "/" + args.key];
+        if (!configmap) throw { kind: "configmap_missing", message: "ConfigMap " + args.namespace + "/" + args.name + " no longer exists" };
+        if (value === undefined) {
+          throw { kind: "key_missing", message: "ConfigMap " + args.namespace + "/" + args.name + " has no key " + args.key };
+        }
+        return { value, resource_version: configmap.resource_version };
+      }
+      case "copy_configmap_value": {
+        // The backend writes the clipboard, plain; the webview gets the format only.
+        (window.__configMapCopies ??= []).push(args);
+        const configmap = fixtures.configmaps.find((c) => c.namespace === args.namespace && c.name === args.name);
+        const info = configmap && configmap.keys.find((k) => k.key === args.key);
+        if (!info) throw { kind: "key_missing", message: "ConfigMap " + args.namespace + "/" + args.name + " has no key " + args.key };
+        return info.binary ? "base64" : "text";
+      }
       case "list_services":
       case "list_ingresses":
-      case "list_configmaps":
       case "list_helm_releases":
       case "list_jobs":
       case "list_cronjobs":
