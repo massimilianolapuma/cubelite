@@ -11,7 +11,7 @@ import {
 } from "#lib/tauri.ts";
 import { readOnlyRefusal } from "#lib/access.ts";
 import { errorMessage } from "#lib/errors.ts";
-import { app } from "./app.svelte";
+import { activeClusterRef, elsewhere, onScreen, refKey, type ClusterRef } from "./cluster-ref";
 import { clusterSettings } from "./cluster-settings.svelte";
 import { resources } from "./resources.svelte";
 import { toasts } from "./toasts.svelte";
@@ -19,15 +19,11 @@ import { toasts } from "./toasts.svelte";
 /** Idle time after the last stepper click before the scale is applied. */
 export const SCALE_DEBOUNCE_MS = 800;
 
-function key(namespace: string, name: string): string {
-  return `${namespace}/${name}`;
-}
-
 /**
  * Whether `cluster` takes a write (#662). A read-only one takes none: no call
  * goes to the backend, and the toast says why in the backend's words, the
  * same error the user would see had the backend refused it (a scale whose
- * debounce outlived the unlock).
+ * debounce outlived the unlock). The reason names the cluster.
  */
 function writable(cluster: string, failed: string): boolean {
   const reason = clusterSettings.lockReason(cluster);
@@ -36,8 +32,15 @@ function writable(cluster: string, failed: string): boolean {
   return false;
 }
 
+/**
+ * Every action runs on the cluster it was started on (#685): the caller hands
+ * it the kubeconfig and context taken when its dialog opened or its button was
+ * used, and the active ones are taken otherwise. What is in flight is keyed by
+ * that cluster, so it never shows on the same-named object of another one; an
+ * outcome that lands after a switch names its cluster and reloads nothing.
+ */
 class MutationsStore {
-  /** Keys of pods with a delete in flight. */
+  /** Keys (`refKey`) of pods with a delete in flight. */
   pendingPodDeletes = $state<Record<string, boolean>>({});
   /** Keys of deployments with a restart in flight. */
   pendingRestarts = $state<Record<string, boolean>>({});
@@ -47,23 +50,33 @@ class MutationsStore {
   draftScales = $state<Record<string, number>>({});
   readonly #draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /** The key of `namespace/name` on the active cluster; null when there is none. */
+  #activeKey(namespace: string, name: string): string | null {
+    const ref = activeClusterRef();
+    return ref === null ? null : refKey(ref, namespace, name);
+  }
+
   isDeleting(namespace: string, name: string): boolean {
-    return this.pendingPodDeletes[key(namespace, name)] ?? false;
+    const k = this.#activeKey(namespace, name);
+    return k !== null && (this.pendingPodDeletes[k] ?? false);
   }
 
   isRestarting(namespace: string, name: string): boolean {
-    return this.pendingRestarts[key(namespace, name)] ?? false;
+    const k = this.#activeKey(namespace, name);
+    return k !== null && (this.pendingRestarts[k] ?? false);
   }
 
   /** Target replicas while a scale is being edited or applied; null when idle. */
   pendingScale(namespace: string, name: string): number | null {
-    const k = key(namespace, name);
+    const k = this.#activeKey(namespace, name);
+    if (k === null) return null;
     return this.draftScales[k] ?? this.pendingScales[k] ?? null;
   }
 
   /** True while a scale request is in flight (the stepper is locked). */
   isApplyingScale(namespace: string, name: string): boolean {
-    return this.pendingScales[key(namespace, name)] !== undefined;
+    const k = this.#activeKey(namespace, name);
+    return k !== null && this.pendingScales[k] !== undefined;
   }
 
   /**
@@ -74,13 +87,12 @@ class MutationsStore {
    * whatever is active when it is sent (#682).
    */
   nudgeScale(namespace: string, name: string, current: number, delta: number): void {
-    const k = key(namespace, name);
+    const ref = activeClusterRef();
+    if (ref === null) return;
+    const k = refKey(ref, namespace, name);
     if (this.pendingScales[k] !== undefined) return;
-    const kc = app.kubeconfigPath;
-    const cluster = app.activeCluster;
-    if (!kc || !cluster) return;
     // A read-only cluster's stepper is off; nothing to hold either.
-    if (clusterSettings.lockReason(cluster) !== null) return;
+    if (clusterSettings.lockReason(ref.cluster) !== null) return;
     const target = Math.max(0, (this.draftScales[k] ?? current) + delta);
     const existing = this.#draftTimers.get(k);
     if (existing) clearTimeout(existing);
@@ -100,15 +112,14 @@ class MutationsStore {
         const rest = { ...this.draftScales };
         delete rest[k];
         this.draftScales = rest;
-        void this.#scale(kc, cluster, namespace, name, target);
+        void this.#scale(ref, namespace, name, target);
       }, SCALE_DEBOUNCE_MS),
     );
   }
 
   /**
    * Drop every scale still held in the debounce: nothing is sent. Called when
-   * the active cluster changes, since a draft is keyed by namespace and name
-   * only and would show on the same-named deployment of the next cluster.
+   * the active cluster changes: a step is not sent once its cluster is left (#682).
    */
   cancelDrafts(): void {
     for (const timer of this.#draftTimers.values()) clearTimeout(timer);
@@ -116,19 +127,18 @@ class MutationsStore {
     this.draftScales = {};
   }
 
-  async deletePod(namespace: string, name: string): Promise<boolean> {
-    const kc = app.kubeconfigPath;
-    const cluster = app.activeCluster;
-    if (!kc || !cluster || !writable(cluster, "Delete")) return false;
-    const k = key(namespace, name);
+  /** Delete a pod on `on`: the cluster its dialog was opened on, the active one by default. */
+  async deletePod(namespace: string, name: string, on: ClusterRef | null = activeClusterRef()): Promise<boolean> {
+    if (on === null || !writable(on.cluster, "Delete")) return false;
+    const k = refKey(on, namespace, name);
     this.pendingPodDeletes = { ...this.pendingPodDeletes, [k]: true };
     try {
-      await deletePodCmd(kc, namespace, name, cluster);
-      toasts.push(`Pod ${name} deleted`, "ok");
-      void resources.load();
+      await deletePodCmd(on.kubeconfig, namespace, name, on.cluster);
+      toasts.push(`Pod ${name} deleted${elsewhere(on)}`, "ok");
+      if (onScreen(on)) void resources.load();
       return true;
     } catch (e) {
-      toasts.push(`Delete failed: ${errorMessage(e)}`, "err");
+      toasts.push(`Delete${elsewhere(on)} failed: ${errorMessage(e)}`, "err");
       return false;
     } finally {
       const rest = { ...this.pendingPodDeletes };
@@ -137,19 +147,22 @@ class MutationsStore {
     }
   }
 
-  async restartDeployment(namespace: string, name: string): Promise<boolean> {
-    const kc = app.kubeconfigPath;
-    const cluster = app.activeCluster;
-    if (!kc || !cluster || !writable(cluster, "Restart")) return false;
-    const k = key(namespace, name);
+  /** Restart a deployment on `on`, the active cluster by default. */
+  async restartDeployment(
+    namespace: string,
+    name: string,
+    on: ClusterRef | null = activeClusterRef(),
+  ): Promise<boolean> {
+    if (on === null || !writable(on.cluster, "Restart")) return false;
+    const k = refKey(on, namespace, name);
     this.pendingRestarts = { ...this.pendingRestarts, [k]: true };
     try {
-      await restartDeploymentCmd(kc, namespace, name, cluster);
-      toasts.push(`Rollout restart of ${name} triggered`, "ok");
-      void resources.load();
+      await restartDeploymentCmd(on.kubeconfig, namespace, name, on.cluster);
+      toasts.push(`Rollout restart of ${name} triggered${elsewhere(on)}`, "ok");
+      if (onScreen(on)) void resources.load();
       return true;
     } catch (e) {
-      toasts.push(`Restart failed: ${errorMessage(e)}`, "err");
+      toasts.push(`Restart${elsewhere(on)} failed: ${errorMessage(e)}`, "err");
       return false;
     } finally {
       const rest = { ...this.pendingRestarts };
@@ -158,25 +171,29 @@ class MutationsStore {
     }
   }
 
-  async scaleDeployment(namespace: string, name: string, replicas: number): Promise<boolean> {
-    const kc = app.kubeconfigPath;
-    const cluster = app.activeCluster;
-    if (!kc || !cluster) return false;
-    return this.#scale(kc, cluster, namespace, name, replicas);
+  /** Scale a deployment on `on`, the active cluster by default. */
+  async scaleDeployment(
+    namespace: string,
+    name: string,
+    replicas: number,
+    on: ClusterRef | null = activeClusterRef(),
+  ): Promise<boolean> {
+    if (on === null) return false;
+    return this.#scale(on, namespace, name, replicas);
   }
 
   /** Scale on the given kubeconfig and context, which need not be the active ones. */
-  async #scale(kc: string, cluster: string, namespace: string, name: string, replicas: number): Promise<boolean> {
-    if (replicas < 0 || !writable(cluster, "Scale")) return false;
-    const k = key(namespace, name);
+  async #scale(on: ClusterRef, namespace: string, name: string, replicas: number): Promise<boolean> {
+    if (replicas < 0 || !writable(on.cluster, "Scale")) return false;
+    const k = refKey(on, namespace, name);
     this.pendingScales = { ...this.pendingScales, [k]: replicas };
     try {
-      await scaleDeploymentCmd(kc, namespace, name, replicas, cluster);
-      toasts.push(`${name} scaled to ${replicas}`, "ok");
-      await resources.load();
+      await scaleDeploymentCmd(on.kubeconfig, namespace, name, replicas, on.cluster);
+      toasts.push(`${name} scaled to ${replicas}${elsewhere(on)}`, "ok");
+      if (onScreen(on)) await resources.load();
       return true;
     } catch (e) {
-      toasts.push(`Scale failed: ${errorMessage(e)}`, "err");
+      toasts.push(`Scale${elsewhere(on)} failed: ${errorMessage(e)}`, "err");
       return false;
     } finally {
       const rest = { ...this.pendingScales };

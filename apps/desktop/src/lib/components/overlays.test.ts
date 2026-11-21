@@ -92,7 +92,7 @@ describe("Toaster", () => {
 describe("DeletePodDialog", () => {
   it("names the pod, its namespace and the cluster, and disables confirm by default", () => {
     app.activeCluster = "prod";
-    render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
+    render(DeletePodDialog, { props: { pod, cluster: "prod", onCancel: vi.fn(), onConfirm: vi.fn() } });
     const dialog = screen.getByRole("dialog", { name: "Delete Pod" });
     const facts = within(dialog).getByRole("list", { name: "Pod to delete" });
     expect(within(facts).getByText("Pod").nextElementSibling).toHaveTextContent("api-0");
@@ -101,9 +101,16 @@ describe("DeletePodDialog", () => {
     expect(screen.getByRole("button", { name: "Delete Pod" })).toBeDisabled();
   });
 
+  it("names the cluster it was opened on, not the one active now (#685)", () => {
+    app.activeCluster = "staging";
+    render(DeletePodDialog, { props: { pod, cluster: "prod", onCancel: vi.fn(), onConfirm: vi.fn() } });
+    const facts = within(screen.getByRole("dialog", { name: "Delete Pod" })).getByRole("list", { name: "Pod to delete" });
+    expect(within(facts).getByText("Cluster").nextElementSibling).toHaveTextContent(/^prod$/);
+  });
+
   it("confirms with the destructive solid button, the only one of its kind", () => {
     // The colour pairing (`on-error-solid` on `error-solid`) is read on the rendered page (overlays-tonal.spec.ts).
-    render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
+    render(DeletePodDialog, { props: { pod, cluster: "prod", onCancel: vi.fn(), onConfirm: vi.fn() } });
     const confirm = screen.getByRole("button", { name: "Delete Pod" });
     expect(confirm).toHaveAttribute("data-variant", "danger-solid");
     expect(screen.getByRole("button", { name: "Cancel" })).toHaveAttribute("data-variant", "text");
@@ -112,7 +119,7 @@ describe("DeletePodDialog", () => {
   it("registers with the overlay stack so Esc closes it before the drawer", () => {
     const onCancel = vi.fn();
     app.selectedPod = pod;
-    const { unmount } = render(DeletePodDialog, { props: { pod, onCancel, onConfirm: vi.fn() } });
+    const { unmount } = render(DeletePodDialog, { props: { pod, cluster: "prod", onCancel, onConfirm: vi.fn() } });
     expect(app.closeTopOverlay()).toBe(true);
     expect(onCancel).toHaveBeenCalledOnce();
     expect(app.selectedPod).not.toBeNull();
@@ -124,13 +131,13 @@ describe("DeletePodDialog", () => {
 
   it("cancels via the Cancel button", async () => {
     const onCancel = vi.fn();
-    render(DeletePodDialog, { props: { pod, onCancel, onConfirm: vi.fn() } });
+    render(DeletePodDialog, { props: { pod, cluster: "prod", onCancel, onConfirm: vi.fn() } });
     await fireEvent.click(screen.getByText("Cancel"));
     expect(onCancel).toHaveBeenCalled();
   });
 
   it("keeps a plain title: only a dialog that asks for it gets a focusable one", () => {
-    render(DeletePodDialog, { props: { pod, onCancel: vi.fn(), onConfirm: vi.fn() } });
+    render(DeletePodDialog, { props: { pod, cluster: "prod", onCancel: vi.fn(), onConfirm: vi.fn() } });
     expect(screen.getByRole("heading", { name: "Delete Pod" })).not.toHaveAttribute("tabindex");
   });
 });

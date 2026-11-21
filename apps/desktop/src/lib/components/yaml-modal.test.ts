@@ -175,4 +175,42 @@ describe("YamlModal", () => {
       expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     });
   });
+  describe("bound to the cluster it was opened on (#685)", () => {
+    const YAML = "kind: Pod\nmetadata:\n  name: api-0\n";
+
+    it("a switch reads nothing from the new cluster, and Apply goes to the cluster it was opened on", async () => {
+      vi.mocked(getResourceYaml).mockResolvedValue(YAML);
+      vi.mocked(applyResourceYaml).mockResolvedValue(undefined);
+      render(YamlModal, { props: { resourceType: "pod", namespace: "default", name: "api-0", onClose: vi.fn() } });
+      await screen.findByText(/kind: Pod/);
+      await fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      const editor = screen.getByRole("textbox", { name: "Manifest YAML" }) as HTMLTextAreaElement;
+      await fireEvent.input(editor, { target: { value: YAML + "  labels: {a: b}\n" } });
+
+      app.activeCluster = "staging";
+      app.kubeconfigPath = "/other/kubeconfig";
+      await tick();
+
+      expect(getResourceYaml).toHaveBeenCalledTimes(1);
+      await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+      expect(applyResourceYaml).toHaveBeenCalledWith(
+        "/home/u/.kube/config",
+        "pod",
+        "default",
+        "api-0",
+        YAML + "  labels: {a: b}\n",
+        "prod",
+      );
+    });
+
+    it("follows the lock of the cluster it was opened on, not of the active one", async () => {
+      setAccess("staging", "read_only");
+      vi.mocked(getResourceYaml).mockResolvedValue(YAML);
+      render(YamlModal, { props: { resourceType: "pod", namespace: "default", name: "api-0", onClose: vi.fn() } });
+      await screen.findByText(/kind: Pod/);
+      app.activeCluster = "staging";
+      await tick();
+      expect(screen.getByRole("button", { name: "Edit" })).not.toHaveAttribute("aria-disabled");
+    });
+  });
 });

@@ -17,7 +17,6 @@
 		rolloutSentence
 	} from '#lib/resource-editor.ts';
 	import { PANEL_CARD, PANEL_SECTION } from '#lib/ui-classes.ts';
-	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { resourceEditor } from '#lib/stores/resourceEditor.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
@@ -46,7 +45,8 @@
 	const context = $derived(
 		[
 			target?.namespace ?? null,
-			app.activeCluster,
+			// The editor's cluster: an apply that runs through a switch stays on it (#685).
+			ed.cluster,
 			replicas === null ? null : replicas === 1 ? '1 replica' : `${replicas} replicas`,
 			manager === null ? null : managerLabel(manager)
 		].filter((part): part is string => part !== null && part !== '')
@@ -78,8 +78,9 @@
 	const stepError = $derived(ed.applyError ?? ed.dryRunError);
 	// Review (its dry run) and Apply are writes: off, with the reason, on a
 	// read-only cluster (#662), also when an unlock ends with the editor open.
-	// The editor closes when the active cluster changes: it is the editor's.
-	const lockReason = $derived(clusterSettings.lockReason(app.activeCluster));
+	// The lock is the editor's cluster's: the editor closes when the active
+	// cluster changes, but not while an apply runs, which stays on it (#685).
+	const lockReason = $derived(clusterSettings.lockReason(ed.cluster));
 
 	// Focus: each step starts at its heading, and at the top of its body (the body
 	// is the same element across the steps and would keep step 1's scroll);

@@ -4,17 +4,27 @@
 	import PodDrawer from '#lib/components/pods/PodDrawer.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
+	import { activeClusterRef, type ClusterRef } from '#lib/stores/cluster-ref.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import type { PodInfo } from '#lib/tauri.ts';
 	import { SEARCH_FIELD } from '#lib/ui-classes.ts';
 
-	let deleteTarget = $state<PodInfo | null>(null);
+	// The pod to delete and the cluster the dialog was opened on (#685): the
+	// dialog stays through a cluster switch, and its delete still goes there,
+	// never to the pod of the same name on the cluster switched to.
+	let deleteTarget = $state<{ pod: PodInfo; on: ClusterRef } | null>(null);
+
+	function askDelete(pod: PodInfo) {
+		const on = activeClusterRef();
+		if (on !== null) deleteTarget = { pod, on };
+	}
 
 	async function confirmDelete() {
 		if (!deleteTarget) return;
-		const ok = await mutations.deletePod(deleteTarget.namespace, deleteTarget.name);
+		const { pod, on } = deleteTarget;
+		const ok = await mutations.deletePod(pod.namespace, pod.name, on);
 		if (ok) {
 			deleteTarget = null;
 			app.selectedPod = null;
@@ -70,15 +80,16 @@
 	<PodDrawer
 		pod={current}
 		onClose={() => (app.selectedPod = null)}
-		onDelete={(pod) => (deleteTarget = pod)}
+		onDelete={askDelete}
 	/>
 {/if}
 
 {#if deleteTarget}
 	<DeletePodDialog
-		pod={deleteTarget}
+		pod={deleteTarget.pod}
+		cluster={deleteTarget.on.cluster}
 		confirmDisabled={false}
-		blockedReason={clusterSettings.lockReason(app.activeCluster)}
+		blockedReason={clusterSettings.lockReason(deleteTarget.on.cluster)}
 		onCancel={() => (deleteTarget = null)}
 		onConfirm={() => void confirmDelete()}
 	/>

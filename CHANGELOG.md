@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A scale made with the replica stepper goes to the cluster it was made on: switching cluster before it is sent drops it, where it used to scale the deployment of the same name on the new cluster (#682).
+- An action goes to the cluster it was started on, whatever cluster is active when it is confirmed or ends (#685). A Delete pod dialog left open through a cluster switch (⌘1–5 or the rail) names and deletes the pod of the cluster it was opened on, where it used to delete the pod of the same name on the new cluster; a YAML editor reads and applies to the cluster it was opened on. A delete, restart, scale or resources apply still running no longer shows as running on the same-named object of the next cluster, nor locks its replica stepper; when it ends on a cluster that is no longer on screen, its toast names that cluster and the lists on screen are not reloaded for it.
 - The namespace chip in the top bar shows a namespace of up to about 16 characters whole from a 1100 px window, in both densities: its "Namespace" label gives way first (still read out by a screen reader), where the value used to be cut, `kube-system` reading "kube-sy…" (#683).
 
 ### Security
