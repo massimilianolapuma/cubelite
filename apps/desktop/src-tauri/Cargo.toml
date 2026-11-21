@@ -40,6 +40,9 @@ tauri-build = { version = "2", features = [] }
 
 [dev-dependencies]
 tempfile = "3"
+# The mock runtime, to drive the write guard through a real invoke (#662).
+# A feature of the same crate: no new dependency, test builds only.
+tauri = { version = "2", features = ["test"] }
 
 # Encrypted Secret Service sessions on Linux, enabled on the store crate
 # itself: keyring's own `crypto-rust` feature also locks the unused zbus

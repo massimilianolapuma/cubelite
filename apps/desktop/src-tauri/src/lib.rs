@@ -42,6 +42,7 @@ use commands::prometheus_cluster::{
     prometheus_alert_expr, prometheus_alerts, prometheus_cluster_usage, prometheus_node_metrics,
 };
 use commands::secrets::{copy_secret_value, export_secret_env, reveal_secret_value};
+use commands::write_guard::{self, ExecContexts};
 
 /// The cluster settings (#662), read from the app config directory. Without
 /// one they are kept in memory only, never a reason not to start.
@@ -82,6 +83,7 @@ pub fn run() {
         .manage(LogState::default())
         .manage(PortForwardState::default())
         .manage(ExecState::default())
+        .manage(ExecContexts::default())
         .manage(ElasticState::default())
         .manage(PrometheusState::default())
         .manage(ClipboardState::default())
@@ -96,7 +98,9 @@ pub fn run() {
             tauri::async_runtime::spawn(run_ticker(app.handle().clone()));
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        // Every command is classified in write_guard::COMMANDS; a write to a
+        // read-only cluster is refused before it runs (#662).
+        .invoke_handler(write_guard::guarded(tauri::generate_handler![
             elastic_detect,
             integrations_detect,
             kibana_port_forward,
@@ -185,7 +189,7 @@ pub fn run() {
             make_cluster_writable,
             make_cluster_read_only,
             set_cluster_access_preferences,
-        ])
+        ]))
         .build(tauri::generate_context!());
     match app {
         Ok(app) => app.run(|handle, event| {
