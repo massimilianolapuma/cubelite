@@ -10,6 +10,7 @@
 //! | [`context`]    | List and switch Kubernetes contexts |
 //! | [`client`]     | Async `kube-rs` client wrapper |
 //! | [`configmaps`] | Read one ConfigMap value on request |
+//! | [`environment`] | A context's environment, read from its name |
 //! | [`resources`]  | Lightweight resource info types |
 //! | [`types`]      | Domain types mirroring the kubeconfig spec |
 //! | [`error`]      | Error types: [`KubeconfigError`], [`ContextError`] |
@@ -35,6 +36,7 @@ pub mod configmaps;
 pub mod context;
 pub mod dynamic;
 pub mod elastic;
+pub mod environment;
 pub mod error;
 pub mod exec;
 pub mod helm;
