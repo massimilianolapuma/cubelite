@@ -6,7 +6,9 @@ use tauri::Manager;
 
 use clipboard::{ClearAtExit, ClipboardState, EXIT_WAIT};
 use commands::cluster_access::{
-    cluster_settings, set_cluster_environment, set_environment_variants, ClusterAccessState,
+    cluster_settings, make_cluster_read_only, make_cluster_writable, run_ticker,
+    set_cluster_access_preferences, set_cluster_environment, set_environment_variants,
+    ClusterAccessState,
 };
 use commands::configmaps::{copy_configmap_value, read_configmap_value};
 use commands::elastic::{
@@ -90,6 +92,8 @@ pub fn run() {
             let clipboard = app.state::<ClipboardState>().inner().clone();
             app.resources_table().add(ClearAtExit(clipboard));
             app.manage(cluster_access_state(app.path().app_config_dir()));
+            // Ends timed unlocks and follows other instances' changes (#662).
+            tauri::async_runtime::spawn(run_ticker(app.handle().clone()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -178,6 +182,9 @@ pub fn run() {
             cluster_settings,
             set_cluster_environment,
             set_environment_variants,
+            make_cluster_writable,
+            make_cluster_read_only,
+            set_cluster_access_preferences,
         ])
         .build(tauri::generate_context!());
     match app {

@@ -1,33 +1,40 @@
 //! Per-context cluster settings (#662), kept by the backend in
 //! `cluster-access.json` in the app config directory, never in the webview.
 //!
-//! This first part holds each context's environment label (detected from its
-//! name or set by hand) and the variants detection reads. The read-only state
-//! of the second part goes in the same file: every field defaults, and fields
-//! this version does not know are kept as they were, so a file written by
-//! either version reads, and survives a save, in the other.
+//! Each context has an environment label (detected from its name or set by
+//! hand) and an access: read-only or writable. The access is decided the
+//! first time a context is seen (read-only when its label is in
+//! `read_only_from_start`, writable otherwise) and never changes with the
+//! label afterwards. A read-only context can be made writable for a while: the
+//! end of that unlock is kept in memory only, by the wall clock, so it never
+//! survives a restart and never outlasts a machine's sleep. Every field of the
+//! file defaults, and fields this version does not know are kept as they
+//! were, so a file written by either version reads, and survives a save, in
+//! the other.
 //!
-//! Several instances of the app may run at once: before each change, and
-//! before answering, the file is read again when it changed on disk (its
-//! modification time or length), and the one change is applied to what was
-//! read. Writes are atomic: a temp file of a unique name, synced, renamed over
-//! the old one. A file that cannot be read is set aside as
-//! `cluster-access.json.bad` (a later one gets a timestamp, never overwriting
-//! an earlier one) and replaced by defaults; the next answer says so once.
+//! Several instances of the app may run at once: before each change, before
+//! each write check and before answering, the file is read again when it
+//! changed on disk (its modification time or length), and the one change is
+//! applied to what was read. Writes are atomic: a temp file of a unique name,
+//! synced, renamed over the old one. A file that cannot be read is set aside
+//! as `cluster-access.json.bad` (a later one gets a timestamp, never
+//! overwriting an earlier one) and replaced by defaults; the next answer says
+//! so once. A file deleted or broken while the app runs leaves the settings in
+//! memory as they were, so a read-only context stays read-only.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use cubelite_core::environment::{detect, validate_variants, Environment, Variants};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// The settings file's name in the app config directory.
 pub const FILE_NAME: &str = "cluster-access.json";
@@ -52,6 +59,10 @@ pub struct SettingsFile {
     pub contexts: BTreeMap<String, ContextRecord>,
     /// The words that name each environment.
     pub variants: Variants,
+    /// Ask before a context is made writable.
+    pub confirm_unlock: bool,
+    /// The environments whose contexts start read-only at first sight.
+    pub read_only_from_start: BTreeSet<Environment>,
     /// Fields this version does not know (a newer one's), written back as read.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -63,8 +74,28 @@ impl Default for SettingsFile {
             version: VERSION,
             contexts: BTreeMap::new(),
             variants: Variants::default(),
+            confirm_unlock: true,
+            read_only_from_start: default_read_only_from_start(),
             extra: Map::new(),
         }
+    }
+}
+
+/// Production only.
+fn default_read_only_from_start() -> BTreeSet<Environment> {
+    BTreeSet::from([Environment::Production])
+}
+
+/// A list of environments as read from the file: a value that is not a list
+/// reads as the default, an item this version does not know is skipped.
+fn lenient_environments(value: &Value) -> BTreeSet<Environment> {
+    match value {
+        Value::Array(items) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .filter_map(Environment::parse)
+            .collect(),
+        _ => default_read_only_from_start(),
     }
 }
 
@@ -88,10 +119,19 @@ impl<'de> Deserialize<'de> for SettingsFile {
             .remove("variants")
             .and_then(|v| Variants::deserialize(v).ok())
             .unwrap_or_default();
+        let confirm_unlock = map
+            .remove("confirm_unlock")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let read_only_from_start = map
+            .remove("read_only_from_start")
+            .map_or_else(default_read_only_from_start, |v| lenient_environments(&v));
         Ok(SettingsFile {
             version,
             contexts,
             variants,
+            confirm_unlock,
+            read_only_from_start,
             extra: map,
         })
     }
@@ -111,6 +151,10 @@ fn lenient_version(value: &Value) -> u32 {
 pub struct ContextRecord {
     /// Where its environment label comes from.
     pub environment: EnvironmentSetting,
+    /// The saved access; `None` until first sight decides it (a record of
+    /// the first part, or a value this version cannot read).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access: Option<Access>,
     /// Fields this version does not know (a newer one's), written back as read.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -119,7 +163,7 @@ pub struct ContextRecord {
 impl ContextRecord {
     /// A record as read from the file: anything but an object reads as a new
     /// record, a setting this version cannot read (an unknown `source`) as
-    /// detected.
+    /// detected, an access it cannot read as not decided yet.
     fn lenient(value: Value) -> Self {
         let Value::Object(mut map) = value else {
             return ContextRecord::default();
@@ -128,10 +172,66 @@ impl ContextRecord {
             .remove("environment")
             .and_then(|v| EnvironmentSetting::deserialize(v).ok())
             .unwrap_or_default();
+        let access = map
+            .remove("access")
+            .and_then(|v| Access::deserialize(v).ok());
         ContextRecord {
             environment,
+            access,
             extra: map,
         }
+    }
+}
+
+/// A context's saved access. "Writable for a while" is not saved: it is a
+/// read-only context with an unlock in memory.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Access {
+    /// Every write command is refused.
+    ReadOnly,
+    /// No write command is refused.
+    Writable,
+}
+
+impl Access {
+    /// As the webview reads it.
+    fn as_str(self) -> &'static str {
+        match self {
+            Access::ReadOnly => "read_only",
+            Access::Writable => "writable",
+        }
+    }
+}
+
+/// The unlock durations offered, in minutes.
+const DURATIONS: [u32; 3] = [5, 15, 60];
+
+/// The refusal of any other duration.
+const BAD_DURATION: &str = "5, 15 or 60 minutes, or always";
+
+/// How long a context is made writable: JSON `5`, `15`, `60` or `"always"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnlockFor {
+    /// For this many minutes (one of [`DURATIONS`]), in memory only.
+    Minutes(u32),
+    /// Until it is made read-only again, saved.
+    Always,
+}
+
+impl<'de> Deserialize<'de> for UnlockFor {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = Value::deserialize(deserializer)?;
+        let parsed = match &value {
+            Value::Number(n) => n
+                .as_u64()
+                .and_then(|m| u32::try_from(m).ok())
+                .filter(|m| DURATIONS.contains(m))
+                .map(UnlockFor::Minutes),
+            Value::String(text) if text == "always" => Some(UnlockFor::Always),
+            _ => None,
+        };
+        parsed.ok_or_else(|| D::Error::custom(BAD_DURATION))
     }
 }
 
@@ -183,9 +283,14 @@ pub struct ContextEnvironmentView {
     /// What detection reads in the name, whatever the source: the menu's
     /// "Detect from name (Production)" shows it before it is chosen.
     pub detected: Option<Environment>,
+    /// The access in force now: `"read_only"` or `"writable"` (a running
+    /// timed unlock included).
+    pub access: &'static str,
+    /// The end of a running timed unlock, in Unix milliseconds.
+    pub writable_until: Option<u64>,
 }
 
-/// The answer of `cluster_settings` and `set_cluster_environment`.
+/// The answer of every cluster-settings command.
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct ClusterSettingsView {
     /// In the order of the names asked for.
@@ -194,7 +299,14 @@ pub struct ClusterSettingsView {
     pub variants: Variants,
     /// True once, on the first answer after the file was set aside.
     pub recovered: bool,
+    /// Ask before a context is made writable.
+    pub confirm_unlock: bool,
+    /// The environments whose contexts start read-only, in the app's order.
+    pub read_only_from_start: Vec<Environment>,
 }
+
+/// Where the state reads the time: the wall clock, injected in tests.
+type Clock = Arc<dyn Fn() -> SystemTime + Send + Sync>;
 
 /// What tells that the file changed on disk: its modification time and length.
 type Stamp = (Option<SystemTime>, u64);
@@ -212,11 +324,15 @@ struct Inner {
     recovered_pending: bool,
     /// The file as last read or written; `None` when there was none.
     stamp: Option<Stamp>,
+    /// The end of each running timed unlock, by the wall clock. Never saved.
+    unlocks: HashMap<String, SystemTime>,
 }
 
-/// The managed state: the settings in memory and where they are saved.
+/// The managed state: the settings in memory, where they are saved, and the
+/// timed unlocks.
 pub struct ClusterAccessState {
     inner: Mutex<Inner>,
+    clock: Clock,
 }
 
 impl ClusterAccessState {
@@ -254,8 +370,24 @@ impl ClusterAccessState {
                 path,
                 recovered_pending,
                 stamp: None,
+                unlocks: HashMap::new(),
             }),
+            clock: Arc::new(SystemTime::now),
         }
+    }
+
+    /// The same state reading the time from `clock`.
+    #[cfg(test)]
+    pub(crate) fn with_clock(
+        mut self,
+        clock: impl Fn() -> SystemTime + Send + Sync + 'static,
+    ) -> Self {
+        self.clock = Arc::new(clock);
+        self
+    }
+
+    fn now(&self) -> SystemTime {
+        (self.clock)()
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner> {
@@ -274,20 +406,19 @@ impl ClusterAccessState {
         read(&inner.file)
     }
 
-    /// The view for `names`, recording every name not seen before.
+    /// The view for `names`, recording every name not seen before (first
+    /// sight, one save for all of them).
     ///
     /// A failed save is logged, not returned: the labels are still answered,
     /// and the records are written with the next change.
     pub fn settings(&self, names: &[String]) -> ClusterSettingsView {
+        let now = self.now();
         let mut inner = self.lock();
         inner.refresh();
         let mut next = inner.file.clone();
         let mut added = false;
         for name in names {
-            if !next.contexts.contains_key(name) {
-                next.contexts.insert(name.clone(), ContextRecord::default());
-                added = true;
-            }
+            added |= first_sight(&mut next, name);
         }
         if added {
             if let Err(e) = inner.save(&next) {
@@ -296,18 +427,22 @@ impl ClusterAccessState {
             inner.file = next;
         }
         let recovered = std::mem::take(&mut inner.recovered_pending);
-        inner.view(names, recovered)
+        inner.view(names, recovered, now)
     }
 
     /// Set the environment of `context`; answers the view for that context.
+    /// A context not seen before gets its access from the label it had
+    /// before this change: a label change never changes access.
     pub fn set_environment(
         &self,
         context: &str,
         setting: EnvironmentSetting,
     ) -> Result<ClusterSettingsView, String> {
+        let now = self.now();
         let mut inner = self.lock();
         inner.refresh();
         let mut next = inner.file.clone();
+        first_sight(&mut next, context);
         // Only the environment: the rest of the record is kept.
         next.contexts
             .entry(context.to_string())
@@ -315,7 +450,111 @@ impl ClusterAccessState {
             .environment = setting;
         inner.save(&next).map_err(|e| e.to_string())?;
         inner.file = next;
-        Ok(inner.view(&[context.to_string()], false))
+        Ok(inner.view(&[context.to_string()], false, now))
+    }
+
+    /// Whether a write to `context` may run now. Reads the file again when
+    /// it changed on disk, records a context not seen before (first sight,
+    /// saved), then: saved writable → yes; saved read-only → only while a
+    /// timed unlock runs. An ended unlock is left for [`Self::tick`] to
+    /// remove, so the end is always told to the webview.
+    pub fn write_allowed(&self, context: &str) -> bool {
+        let now = self.now();
+        let mut inner = self.lock();
+        inner.refresh();
+        let mut next = inner.file.clone();
+        if first_sight(&mut next, context) {
+            if let Err(e) = inner.save(&next) {
+                // Kept in memory: the decision holds for this run.
+                eprintln!("cluster settings: could not save: {e}");
+            }
+            inner.file = next;
+        }
+        inner.effective(context, now).0 == Access::Writable
+    }
+
+    /// Make `context` writable: `Always` saves it writable; a number of
+    /// minutes saves it read-only and unlocks it in memory until now plus
+    /// that time (choosing again restarts the time from now).
+    pub fn make_writable(
+        &self,
+        context: &str,
+        how: UnlockFor,
+    ) -> Result<ClusterSettingsView, String> {
+        let until = match how {
+            UnlockFor::Always => None,
+            UnlockFor::Minutes(m) if DURATIONS.contains(&m) => {
+                Some(Duration::from_secs(u64::from(m) * 60))
+            }
+            UnlockFor::Minutes(_) => return Err(BAD_DURATION.to_string()),
+        };
+        let now = self.now();
+        let mut inner = self.lock();
+        inner.refresh();
+        let saved = match until {
+            None => Access::Writable,
+            Some(_) => Access::ReadOnly,
+        };
+        inner.set_access(context, saved)?;
+        match until {
+            None => {
+                inner.unlocks.remove(context);
+            }
+            Some(duration) => {
+                // An end past what the clock can hold is no unlock at all.
+                let end = now.checked_add(duration).unwrap_or(now);
+                inner.unlocks.insert(context.to_string(), end);
+            }
+        }
+        Ok(inner.view(&[context.to_string()], false, now))
+    }
+
+    /// Make `context` read-only (saved), ending any timed unlock.
+    pub fn make_read_only(&self, context: &str) -> Result<ClusterSettingsView, String> {
+        let now = self.now();
+        let mut inner = self.lock();
+        inner.refresh();
+        inner.set_access(context, Access::ReadOnly)?;
+        inner.unlocks.remove(context);
+        Ok(inner.view(&[context.to_string()], false, now))
+    }
+
+    /// Change the access preferences; `None` keeps a value. Answers the view
+    /// with no contexts.
+    pub fn set_access_preferences(
+        &self,
+        confirm_unlock: Option<bool>,
+        read_only_from_start: Option<Vec<Environment>>,
+    ) -> Result<ClusterSettingsView, String> {
+        let now = self.now();
+        let mut inner = self.lock();
+        inner.refresh();
+        let mut next = inner.file.clone();
+        if let Some(confirm) = confirm_unlock {
+            next.confirm_unlock = confirm;
+        }
+        if let Some(environments) = read_only_from_start {
+            next.read_only_from_start = environments.into_iter().collect();
+        }
+        if next != inner.file {
+            inner.save(&next).map_err(|e| e.to_string())?;
+            inner.file = next;
+        }
+        Ok(inner.view(&[], false, now))
+    }
+
+    /// Called every second: ends the timed unlocks whose time has come and
+    /// reads the file again when another instance changed it. True when
+    /// either happened, so the webview is told.
+    pub fn tick(&self) -> bool {
+        let now = self.now();
+        let mut inner = self.lock();
+        let running = inner.unlocks.len();
+        inner.unlocks.retain(|_, end| *end > now);
+        let ended = inner.unlocks.len() != running;
+        let stamp = inner.stamp;
+        inner.refresh();
+        ended || inner.stamp != stamp
     }
 
     /// Replace the variants after validating them; answers what was saved.
@@ -365,7 +604,35 @@ impl Inner {
         Ok(())
     }
 
-    fn view(&self, names: &[String], recovered: bool) -> ClusterSettingsView {
+    /// Save `access` for `context`; nothing is written when it is already so.
+    fn set_access(&mut self, context: &str, access: Access) -> Result<(), String> {
+        let mut next = self.file.clone();
+        next.contexts.entry(context.to_string()).or_default().access = Some(access);
+        if next != self.file {
+            self.save(&next).map_err(|e| e.to_string())?;
+            self.file = next;
+        }
+        Ok(())
+    }
+
+    /// The access of `name` in force at `now`, and the end of its unlock
+    /// while one runs. A context without a decided access reads as first
+    /// sight would decide it.
+    fn effective(&self, name: &str, now: SystemTime) -> (Access, Option<SystemTime>) {
+        let saved = self
+            .file
+            .contexts
+            .get(name)
+            .and_then(|r| r.access)
+            .unwrap_or_else(|| initial_access(&self.file, name));
+        match (saved, self.unlocks.get(name)) {
+            (Access::ReadOnly, Some(end)) if *end > now => (Access::Writable, Some(*end)),
+            (Access::ReadOnly, _) => (Access::ReadOnly, None),
+            (Access::Writable, _) => (Access::Writable, None),
+        }
+    }
+
+    fn view(&self, names: &[String], recovered: bool, now: SystemTime) -> ClusterSettingsView {
         let variants = &self.file.variants;
         ClusterSettingsView {
             contexts: names
@@ -377,13 +644,56 @@ impl Inner {
                         .get(name)
                         .map(|r| r.environment)
                         .unwrap_or_default();
-                    view_of(name, setting, variants)
+                    view_of(name, setting, variants, self.effective(name, now))
                 })
                 .collect(),
             variants: complete(variants),
             recovered,
+            confirm_unlock: self.file.confirm_unlock,
+            read_only_from_start: self.file.read_only_from_start.iter().copied().collect(),
         }
     }
+}
+
+/// The label `name` has under `setting`.
+fn label_of(name: &str, setting: EnvironmentSetting, variants: &Variants) -> Option<Environment> {
+    match setting {
+        EnvironmentSetting::Detected => detect(name, variants),
+        EnvironmentSetting::Manual { value } => value,
+    }
+}
+
+/// The access first sight gives `name`: read-only when its current label is
+/// in `read_only_from_start`, writable otherwise.
+fn initial_access(file: &SettingsFile, name: &str) -> Access {
+    let setting = file
+        .contexts
+        .get(name)
+        .map(|r| r.environment)
+        .unwrap_or_default();
+    match label_of(name, setting, &file.variants) {
+        Some(env) if file.read_only_from_start.contains(&env) => Access::ReadOnly,
+        _ => Access::Writable,
+    }
+}
+
+/// Record `name` with its first-sight access when it has none yet (no
+/// record, a record of the first part, or an access this version cannot
+/// read). True when `file` changed.
+fn first_sight(file: &mut SettingsFile, name: &str) -> bool {
+    if file.contexts.get(name).is_some_and(|r| r.access.is_some()) {
+        return false;
+    }
+    let access = initial_access(file, name);
+    file.contexts.entry(name.to_string()).or_default().access = Some(access);
+    true
+}
+
+/// `time` in Unix milliseconds.
+fn unix_ms(time: SystemTime) -> u64 {
+    time.duration_since(UNIX_EPOCH)
+        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
 }
 
 /// The file at `path` and its stamp; `None` when there is no file.
@@ -455,18 +765,24 @@ fn save(path: &Path, file: &SettingsFile) -> io::Result<()> {
     written
 }
 
-/// The environment of the context `name` under `setting`.
-fn view_of(name: &str, setting: EnvironmentSetting, variants: &Variants) -> ContextEnvironmentView {
-    let detected = detect(name, variants);
-    let (environment, source) = match setting {
-        EnvironmentSetting::Detected => (detected, "detected"),
-        EnvironmentSetting::Manual { value } => (value, "manual"),
+/// The context `name` under `setting`, with its access in force.
+fn view_of(
+    name: &str,
+    setting: EnvironmentSetting,
+    variants: &Variants,
+    (access, until): (Access, Option<SystemTime>),
+) -> ContextEnvironmentView {
+    let source = match setting {
+        EnvironmentSetting::Detected => "detected",
+        EnvironmentSetting::Manual { .. } => "manual",
     };
     ContextEnvironmentView {
         name: name.to_string(),
-        environment,
+        environment: label_of(name, setting, variants),
         source,
-        detected,
+        detected: detect(name, variants),
+        access: access.as_str(),
+        writable_until: until.map(unix_ms),
     }
 }
 
@@ -518,6 +834,92 @@ pub async fn set_environment_variants(
     let saved = state.set_variants(&variants)?;
     changed(&app);
     Ok(saved)
+}
+
+/// Make a context writable for 5, 15 or 60 minutes, or `"always"`.
+#[tauri::command]
+pub async fn make_cluster_writable(
+    app: AppHandle,
+    state: tauri::State<'_, ClusterAccessState>,
+    context: String,
+    duration: UnlockFor,
+) -> Result<ClusterSettingsView, String> {
+    let view = state.make_writable(&context, duration)?;
+    changed(&app);
+    Ok(view)
+}
+
+/// Make a context read-only, ending any timed unlock.
+#[tauri::command]
+pub async fn make_cluster_read_only(
+    app: AppHandle,
+    state: tauri::State<'_, ClusterAccessState>,
+    context: String,
+) -> Result<ClusterSettingsView, String> {
+    let view = state.make_read_only(&context)?;
+    changed(&app);
+    Ok(view)
+}
+
+/// Change the confirmation before an unlock and the environments that start
+/// read-only; a value left out is kept.
+#[tauri::command]
+pub async fn set_cluster_access_preferences(
+    app: AppHandle,
+    state: tauri::State<'_, ClusterAccessState>,
+    confirm_unlock: Option<bool>,
+    read_only_from_start: Option<Vec<Environment>>,
+) -> Result<ClusterSettingsView, String> {
+    let view = state.set_access_preferences(confirm_unlock, read_only_from_start)?;
+    changed(&app);
+    Ok(view)
+}
+
+/// Once a second for the life of the app: ends the timed unlocks by the wall
+/// clock (a tick late after a sleep ends them at once) and notices changes
+/// another instance made to the file; tells every window when either
+/// happened.
+pub async fn run_ticker(app: AppHandle) {
+    let mut every = tokio::time::interval(Duration::from_secs(1));
+    every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        every.tick().await;
+        let Some(state) = app.try_state::<ClusterAccessState>() else {
+            continue;
+        };
+        if state.tick() {
+            changed(&app);
+        }
+    }
+}
+
+/// A clock a test sets by hand.
+#[cfg(test)]
+#[derive(Clone)]
+pub(crate) struct TestClock(Arc<Mutex<SystemTime>>);
+
+#[cfg(test)]
+impl TestClock {
+    /// A clock at `unix_secs`.
+    pub(crate) fn at(unix_secs: u64) -> Self {
+        TestClock(Arc::new(Mutex::new(
+            UNIX_EPOCH + Duration::from_secs(unix_secs),
+        )))
+    }
+
+    pub(crate) fn now(&self) -> SystemTime {
+        *self.0.lock().expect("clock")
+    }
+
+    pub(crate) fn set(&self, time: SystemTime) {
+        *self.0.lock().expect("clock") = time;
+    }
+
+    /// What the state calls to read the time.
+    pub(crate) fn reader(&self) -> impl Fn() -> SystemTime + Send + Sync + 'static {
+        let clock = self.clone();
+        move || clock.now()
+    }
 }
 
 #[cfg(test)]
@@ -973,10 +1375,12 @@ mod tests {
             environment: Some(Production),
             source: "manual",
             detected: None,
+            access: "read_only",
+            writable_until: None,
         };
         assert_eq!(
             serde_json::to_string(&view).expect("json"),
-            r#"{"name":"a","environment":"production","source":"manual","detected":null}"#
+            r#"{"name":"a","environment":"production","source":"manual","detected":null,"access":"read_only","writable_until":null}"#
         );
     }
 
@@ -991,5 +1395,403 @@ mod tests {
         let view = state.settings(&names(&["minikube", "aks-prod-01-emm"]));
         assert_eq!(view.contexts[0].detected, None);
         assert_eq!(view.contexts[1].detected, Some(Production));
+    }
+
+    // Access (#662, part 2).
+
+    const PROD: &str = "aks-prod-01-emm";
+
+    /// The effective access of `name` in `view` and the end of its unlock.
+    fn access(view: &ClusterSettingsView, name: &str) -> (&'static str, Option<u64>) {
+        let found = view
+            .contexts
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("{name} in view"));
+        (found.access, found.writable_until)
+    }
+
+    /// The access saved on disk for `name`.
+    fn saved_access(path: &Path, name: &str) -> Value {
+        let on_disk: Value = serde_json::from_slice(&fs::read(path).expect("read")).expect("json");
+        on_disk["contexts"][name]["access"].clone()
+    }
+
+    fn ms(time: SystemTime) -> u64 {
+        u64::try_from(
+            time.duration_since(UNIX_EPOCH)
+                .expect("after epoch")
+                .as_millis(),
+        )
+        .expect("fits")
+    }
+
+    const MINUTE: Duration = Duration::from_secs(60);
+
+    #[test]
+    fn first_sight_production_read_only_others_writable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        let (state, _) = ClusterAccessState::load(path.clone());
+        let view = state.settings(&names(&[PROD, "aks-test-01-emm", "minikube"]));
+        assert_eq!(access(&view, PROD), ("read_only", None));
+        assert_eq!(access(&view, "aks-test-01-emm"), ("writable", None));
+        assert_eq!(access(&view, "minikube"), ("writable", None));
+        assert_eq!(saved_access(&path, PROD), serde_json::json!("read_only"));
+        assert_eq!(
+            saved_access(&path, "aks-test-01-emm"),
+            serde_json::json!("writable")
+        );
+        assert_eq!(
+            saved_access(&path, "minikube"),
+            serde_json::json!("writable")
+        );
+    }
+
+    #[test]
+    fn pr1_record_without_access_is_first_sight() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        fs::write(
+            &path,
+            r#"{"version":1,"contexts":{"aks-prod-01-emm":{"environment":{"source":"detected"}}}}"#,
+        )
+        .expect("write");
+        let (state, outcome) = ClusterAccessState::load(path.clone());
+        assert_eq!(outcome, LoadOutcome::Loaded);
+        let view = state.settings(&names(&[PROD]));
+        assert_eq!(access(&view, PROD), ("read_only", None));
+        assert_eq!(saved_access(&path, PROD), serde_json::json!("read_only"));
+    }
+
+    #[test]
+    fn unknown_access_value_is_first_sight_again() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        fs::write(
+            &path,
+            r#"{"contexts":{"aks-prod-01-emm":{"access":"sealed"},"minikube":{"access":7}}}"#,
+        )
+        .expect("write");
+        let (state, outcome) = ClusterAccessState::load(path);
+        assert_eq!(outcome, LoadOutcome::Loaded);
+        let view = state.settings(&names(&[PROD, "minikube"]));
+        assert_eq!(access(&view, PROD), ("read_only", None));
+        assert_eq!(access(&view, "minikube"), ("writable", None));
+    }
+
+    #[test]
+    fn vanished_context_keeps_its_record() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        state.settings(&names(&["minikube"]));
+        state.make_read_only("minikube").expect("read-only");
+        state.settings(&names(&["aks-test-01-emm"]));
+        let view = state.settings(&names(&["minikube"]));
+        assert_eq!(access(&view, "minikube"), ("read_only", None));
+    }
+
+    #[test]
+    fn label_change_never_changes_access() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        state.settings(&names(&[PROD, "kub3-dev"]));
+        let view = state
+            .set_environment(PROD, manual(Some(Environment::Test)))
+            .expect("test");
+        assert_eq!(access(&view, PROD), ("read_only", None));
+        let view = state
+            .set_environment("kub3-dev", manual(Some(Production)))
+            .expect("production");
+        assert_eq!(access(&view, "kub3-dev"), ("writable", None));
+        let view = state.settings(&names(&[PROD, "kub3-dev"]));
+        assert_eq!(access(&view, PROD), ("read_only", None));
+        assert_eq!(access(&view, "kub3-dev"), ("writable", None));
+    }
+
+    #[test]
+    fn first_label_set_by_hand_on_an_unseen_context_keeps_first_sight() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        // Never listed: first sight reads the detected label, before the change.
+        let view = state
+            .set_environment(PROD, manual(Some(Environment::Test)))
+            .expect("test");
+        assert_eq!(access(&view, PROD), ("read_only", None));
+    }
+
+    #[test]
+    fn read_only_from_start_applies_to_new_contexts_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        state.settings(&names(&["aks-test-01-emm"]));
+        let view = state
+            .set_access_preferences(None, Some(vec![Environment::Test]))
+            .expect("preferences");
+        assert!(view.contexts.is_empty(), "no contexts in the answer");
+        assert_eq!(view.read_only_from_start, vec![Environment::Test]);
+        let view = state.settings(&names(&["aks-test-01-emm", "qa-02", PROD]));
+        assert_eq!(access(&view, "aks-test-01-emm"), ("writable", None));
+        assert_eq!(access(&view, "qa-02"), ("read_only", None));
+        assert_eq!(
+            access(&view, PROD),
+            ("writable", None),
+            "no longer in the set"
+        );
+    }
+
+    #[test]
+    fn timed_unlock_ends_by_clock() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let clock = TestClock::at(1_800_000_000);
+        let t = clock.now();
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        let state = state.with_clock(clock.reader());
+        state.settings(&names(&[PROD]));
+        assert!(!state.write_allowed(PROD));
+
+        let view = state
+            .make_writable(PROD, UnlockFor::Minutes(5))
+            .expect("unlock");
+        assert_eq!(access(&view, PROD), ("writable", Some(ms(t + 5 * MINUTE))));
+
+        clock.set(t + 5 * MINUTE - Duration::from_secs(1));
+        assert!(state.write_allowed(PROD), "before the end");
+        assert!(!state.tick(), "nothing ended yet");
+        clock.set(t + 5 * MINUTE);
+        assert!(!state.write_allowed(PROD), "at the end");
+        assert!(state.tick(), "the end is told");
+        assert!(!state.tick(), "only once");
+        let view = state.settings(&names(&[PROD]));
+        assert_eq!(access(&view, PROD), ("read_only", None));
+    }
+
+    #[test]
+    fn view_shows_an_ended_unlock_as_read_only_before_the_tick() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let clock = TestClock::at(1_800_000_000);
+        let t = clock.now();
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        let state = state.with_clock(clock.reader());
+        state
+            .make_writable(PROD, UnlockFor::Minutes(5))
+            .expect("unlock");
+        clock.set(t + 6 * MINUTE);
+        let view = state.settings(&names(&[PROD]));
+        assert_eq!(access(&view, PROD), ("read_only", None));
+    }
+
+    #[test]
+    fn duration_again_restarts() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let clock = TestClock::at(1_800_000_000);
+        let t = clock.now();
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        let state = state.with_clock(clock.reader());
+        state
+            .make_writable(PROD, UnlockFor::Minutes(15))
+            .expect("15");
+        clock.set(t + 10 * MINUTE);
+        let view = state.make_writable(PROD, UnlockFor::Minutes(5)).expect("5");
+        assert_eq!(access(&view, PROD), ("writable", Some(ms(t + 15 * MINUTE))));
+        clock.set(t + 15 * MINUTE - Duration::from_secs(1));
+        assert!(state.write_allowed(PROD));
+        clock.set(t + 15 * MINUTE);
+        assert!(!state.write_allowed(PROD));
+    }
+
+    #[test]
+    fn timed_unlock_is_not_saved() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        let (state, _) = ClusterAccessState::load(path.clone());
+        state.settings(&names(&[PROD]));
+        state
+            .make_writable(PROD, UnlockFor::Minutes(15))
+            .expect("unlock");
+        assert!(state.write_allowed(PROD));
+        assert_eq!(saved_access(&path, PROD), serde_json::json!("read_only"));
+        let (fresh, _) = ClusterAccessState::load(path);
+        assert!(!fresh.write_allowed(PROD));
+        let view = fresh.settings(&names(&[PROD]));
+        assert_eq!(access(&view, PROD), ("read_only", None));
+    }
+
+    #[test]
+    fn always_is_saved() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        let (state, _) = ClusterAccessState::load(path.clone());
+        state.settings(&names(&[PROD]));
+        state
+            .make_writable(PROD, UnlockFor::Minutes(5))
+            .expect("timed");
+        let view = state
+            .make_writable(PROD, UnlockFor::Always)
+            .expect("always");
+        assert_eq!(access(&view, PROD), ("writable", None), "the timer is gone");
+        assert_eq!(saved_access(&path, PROD), serde_json::json!("writable"));
+        let (fresh, _) = ClusterAccessState::load(path.clone());
+        assert!(fresh.write_allowed(PROD));
+        // The timer is gone, not just hidden: read-only again from another
+        // instance means read-only here too.
+        fresh.make_read_only(PROD).expect("other instance locks");
+        assert!(!state.write_allowed(PROD));
+    }
+
+    #[test]
+    fn make_read_only_drops_unlock() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        let (state, _) = ClusterAccessState::load(path.clone());
+        state
+            .make_writable(PROD, UnlockFor::Minutes(60))
+            .expect("unlock");
+        let view = state.make_read_only(PROD).expect("read-only");
+        assert_eq!(access(&view, PROD), ("read_only", None));
+        assert!(!state.write_allowed(PROD));
+
+        state
+            .make_writable("minikube", UnlockFor::Always)
+            .expect("always");
+        state.make_read_only("minikube").expect("read-only");
+        assert!(!state.write_allowed("minikube"));
+        assert_eq!(
+            saved_access(&path, "minikube"),
+            serde_json::json!("read_only")
+        );
+    }
+
+    #[test]
+    fn bad_duration_refused() {
+        // Review Focus 3.
+        for bad in [
+            serde_json::json!(0),
+            serde_json::json!(7),
+            serde_json::json!(-5),
+            serde_json::json!(5.5),
+            serde_json::json!("forever"),
+            serde_json::json!("5"),
+            serde_json::json!(null),
+            serde_json::json!({}),
+        ] {
+            let err = serde_json::from_value::<UnlockFor>(bad.clone())
+                .expect_err(&format!("{bad} refused"));
+            assert_eq!(err.to_string(), "5, 15 or 60 minutes, or always");
+        }
+        for (good, want) in [
+            (serde_json::json!(5), UnlockFor::Minutes(5)),
+            (serde_json::json!(15), UnlockFor::Minutes(15)),
+            (serde_json::json!(60), UnlockFor::Minutes(60)),
+            (serde_json::json!("always"), UnlockFor::Always),
+        ] {
+            assert_eq!(
+                serde_json::from_value::<UnlockFor>(good).expect("accepted"),
+                want
+            );
+        }
+    }
+
+    #[test]
+    fn preferences_round_trip_and_lenient() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        let (state, _) = ClusterAccessState::load(path.clone());
+        let view = state.settings(&[]);
+        assert!(view.confirm_unlock);
+        assert_eq!(view.read_only_from_start, vec![Production]);
+
+        let view = state
+            .set_access_preferences(
+                Some(false),
+                Some(vec![Production, Environment::Staging, Production]),
+            )
+            .expect("set");
+        assert!(!view.confirm_unlock);
+        assert_eq!(
+            view.read_only_from_start,
+            vec![Environment::Staging, Production]
+        );
+        let view = state
+            .set_access_preferences(None, None)
+            .expect("nothing changes");
+        assert!(!view.confirm_unlock, "None keeps the value");
+
+        let (reloaded, _) = ClusterAccessState::load(path.clone());
+        let view = reloaded.settings(&[]);
+        assert!(!view.confirm_unlock);
+        assert_eq!(
+            view.read_only_from_start,
+            vec![Environment::Staging, Production]
+        );
+
+        fs::write(
+            &path,
+            r#"{"confirm_unlock":"yes","read_only_from_start":["production","nope",3]}"#,
+        )
+        .expect("write");
+        let (lenient, outcome) = ClusterAccessState::load(path.clone());
+        assert_eq!(outcome, LoadOutcome::Loaded);
+        let view = lenient.settings(&[]);
+        assert!(view.confirm_unlock, "a bad value reads as the default");
+        assert_eq!(view.read_only_from_start, vec![Production]);
+
+        fs::write(&path, r#"{"read_only_from_start":"production"}"#).expect("write");
+        let (lenient, _) = ClusterAccessState::load(path);
+        assert_eq!(
+            lenient.settings(&[]).read_only_from_start,
+            vec![Production],
+            "not a list reads as the default"
+        );
+    }
+
+    #[test]
+    fn other_instance_change_seen_at_next_write() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (a, _) = ClusterAccessState::load(file_in(&dir));
+        let (b, _) = ClusterAccessState::load(file_in(&dir));
+        a.settings(&names(&["x"]));
+        assert!(a.write_allowed("x"));
+        assert!(!a.tick(), "its own save is not a change");
+        b.make_read_only("x").expect("b locks");
+        assert!(!a.write_allowed("x"), "A reads B's change");
+        let (c, _) = ClusterAccessState::load(file_in(&dir));
+        c.make_writable("x", UnlockFor::Always).expect("c unlocks");
+        assert!(a.tick(), "A notices the file changed");
+        assert!(!a.tick(), "once");
+    }
+
+    #[test]
+    fn view_serialises_access() {
+        let view = ContextEnvironmentView {
+            name: "a".to_string(),
+            environment: None,
+            source: "detected",
+            detected: None,
+            access: "writable",
+            writable_until: Some(1_800_000_300_000),
+        };
+        assert_eq!(
+            serde_json::to_string(&view).expect("json"),
+            r#"{"name":"a","environment":null,"source":"detected","detected":null,"access":"writable","writable_until":1800000300000}"#
+        );
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        let json = serde_json::to_value(state.settings(&[])).expect("json");
+        assert_eq!(json["confirm_unlock"], serde_json::json!(true));
+        assert_eq!(
+            json["read_only_from_start"],
+            serde_json::json!(["production"])
+        );
+    }
+
+    #[test]
+    fn in_memory_access_works_without_a_file() {
+        let state = ClusterAccessState::in_memory();
+        assert!(!state.write_allowed(PROD));
+        state
+            .make_writable(PROD, UnlockFor::Always)
+            .expect("kept in memory");
+        assert!(state.write_allowed(PROD));
     }
 }
