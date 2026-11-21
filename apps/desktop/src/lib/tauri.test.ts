@@ -37,6 +37,9 @@ import {
   clusterSettings,
   setClusterEnvironment,
   setEnvironmentVariants,
+  makeClusterWritable,
+  makeClusterReadOnly,
+  setClusterAccessPreferences,
 } from "#lib/tauri.ts";
 import type {
   EsEndpoint,
@@ -439,6 +442,30 @@ describe("cluster settings bindings (#662)", () => {
     mockedInvoke.mockResolvedValueOnce(variants);
     await setEnvironmentVariants(variants);
     expect(mockedInvoke).toHaveBeenCalledWith("set_environment_variants", { variants });
+  });
+
+  it("makeClusterWritable passes the context and the duration as the backend reads it", async () => {
+    mockedInvoke.mockResolvedValueOnce({}).mockResolvedValueOnce({});
+    await makeClusterWritable("a", 15);
+    expect(mockedInvoke).toHaveBeenLastCalledWith("make_cluster_writable", { context: "a", duration: 15 });
+    await makeClusterWritable("a", "always");
+    expect(mockedInvoke).toHaveBeenLastCalledWith("make_cluster_writable", { context: "a", duration: "always" });
+  });
+
+  it("makeClusterReadOnly passes the context", async () => {
+    mockedInvoke.mockResolvedValueOnce({ contexts: [], variants: {}, recovered: false });
+    await makeClusterReadOnly("a");
+    expect(mockedInvoke).toHaveBeenCalledWith("make_cluster_read_only", { context: "a" });
+  });
+
+  it("setClusterAccessPreferences sends only what is set, in the names Tauri maps to snake case", async () => {
+    mockedInvoke.mockResolvedValueOnce({}).mockResolvedValueOnce({});
+    await setClusterAccessPreferences({ confirmUnlock: false });
+    expect(mockedInvoke).toHaveBeenLastCalledWith("set_cluster_access_preferences", { confirmUnlock: false });
+    await setClusterAccessPreferences({ readOnlyFromStart: ["production", "test"] });
+    expect(mockedInvoke).toHaveBeenLastCalledWith("set_cluster_access_preferences", {
+      readOnlyFromStart: ["production", "test"],
+    });
   });
 });
 

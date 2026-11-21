@@ -18,6 +18,7 @@ import {
   clusterSettings as fetchClusterSettings,
   setClusterEnvironment,
   setEnvironmentVariants,
+  type ClusterSettings,
   type ContextEnvironment,
   type ContextInfo,
   type EnvironmentVariants,
@@ -30,11 +31,14 @@ const context = (name: string): ContextInfo => ({
   is_active: false,
 });
 
+const ro = { access: "read_only", writable_until: null } as const;
+const rw = { access: "writable", writable_until: null } as const;
 const entries: ContextEnvironment[] = [
-  { name: "aks-prod-01-emm", environment: "production", source: "detected", detected: "production" },
-  { name: "minikube", environment: "development", source: "manual", detected: null },
-  { name: "dol-lab-aks", environment: null, source: "detected", detected: null },
+  { name: "aks-prod-01-emm", environment: "production", source: "detected", detected: "production", ...ro },
+  { name: "minikube", environment: "development", source: "manual", detected: null, ...rw },
+  { name: "dol-lab-aks", environment: null, source: "detected", detected: null, ...rw },
 ];
+const PREFS = { confirm_unlock: true, read_only_from_start: ["production"] } satisfies Partial<ClusterSettings>;
 
 const table = () => screen.getByRole("table", { name: "Cluster environments" });
 const rowNames = () =>
@@ -69,6 +73,7 @@ beforeEach(() => {
     contexts: entries.filter((e) => names.includes(e.name)),
     variants: clusterSettings.variants,
     recovered: false,
+    ...PREFS,
   }));
 });
 
@@ -104,6 +109,7 @@ describe("ClustersPreferences (#662)", () => {
       contexts: [{ ...entries[0], environment: "test", source: "manual" }],
       variants: defaultVariants(),
       recovered: false,
+      ...PREFS,
     });
     render(ClustersPreferences);
     await fireEvent.change(selectOf("aks-prod-01-emm"), { target: { value: "test" } });

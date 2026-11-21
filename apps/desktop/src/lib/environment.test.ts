@@ -3,12 +3,13 @@ import { choiceOf, environmentChoices, settingOf } from "#lib/environment.ts";
 
 describe("environment choices (#662)", () => {
   it("checks detection, a value set by hand, or Not set", () => {
+    const access = { access: "writable", writable_until: null } as const;
     expect(choiceOf(undefined)).toBe("detected");
-    expect(choiceOf({ name: "a", environment: "production", source: "detected", detected: "production" })).toBe(
+    expect(choiceOf({ name: "a", environment: "production", source: "detected", detected: "production", ...access })).toBe(
       "detected",
     );
-    expect(choiceOf({ name: "a", environment: "test", source: "manual", detected: "production" })).toBe("test");
-    expect(choiceOf({ name: "a", environment: null, source: "manual", detected: "production" })).toBe("none");
+    expect(choiceOf({ name: "a", environment: "test", source: "manual", detected: "production", ...access })).toBe("test");
+    expect(choiceOf({ name: "a", environment: null, source: "manual", detected: "production", ...access })).toBe("none");
   });
 
   it("sends the setting the backend reads", () => {

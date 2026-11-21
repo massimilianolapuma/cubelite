@@ -43,7 +43,7 @@ import { profiles } from "#lib/stores/profiles.svelte.ts";
 import { clusterSettings } from "#lib/stores/cluster-settings.svelte.ts";
 import { defaultVariants } from "#lib/environment.ts";
 import { discoverResourceKinds, setClusterEnvironment } from "#lib/tauri.ts";
-import type { ContextEnvironment, PodInfo } from "#lib/tauri.ts";
+import type { ClusterSettings, ContextEnvironment, PodInfo } from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
   return {
@@ -96,7 +96,12 @@ const prodDetected: ContextEnvironment = {
   environment: "production",
   source: "detected",
   detected: "production",
+  access: "writable",
+  writable_until: null,
 };
+
+/** What every answer of the backend carries besides the contexts. */
+const PREFS = { confirm_unlock: true, read_only_from_start: ["production"] } satisfies Partial<ClusterSettings>;
 
 const warning = {
   event_type: "Warning",
@@ -226,6 +231,7 @@ describe("TopBar", () => {
       contexts: [{ ...prodDetected, environment: "test", source: "manual" }],
       variants: defaultVariants(),
       recovered: false,
+      ...PREFS,
     });
     render(TopBar);
     await openEnvironmentMenu();
@@ -256,6 +262,7 @@ describe("TopBar", () => {
       contexts: [prodDetected],
       variants: defaultVariants(),
       recovered: false,
+      ...PREFS,
     });
     render(TopBar);
     await openEnvironmentMenu();
@@ -367,7 +374,7 @@ describe("ClusterRail", () => {
   });
 
   it("adds the environment to the tooltip, before the defining file (#662)", () => {
-    labelled([prodDetected, { name: "staging", environment: null, source: "detected", detected: null }]);
+    labelled([prodDetected, { name: "staging", environment: null, source: "detected", detected: null, access: "writable", writable_until: null }]);
     const { unmount } = render(ClusterRail);
     expect(screen.getByTitle("prod-aks · Production")).toBeInTheDocument();
     expect(screen.getByTitle("staging")).toBeInTheDocument();

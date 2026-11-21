@@ -1,5 +1,6 @@
 <script lang="ts">
 	import X from '@lucide/svelte/icons/x';
+	import Button from './Button.svelte';
 	import StatusGlyph from './StatusGlyph.svelte';
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
 
@@ -17,6 +18,17 @@
 			>
 				<StatusGlyph state={toast.tone} class={tone[toast.tone]} />
 				<span class="type-body-sm min-w-0 break-words text-text">{toast.message}</span>
+				{#if toast.action}
+					{@const action = toast.action}
+					<Button
+						variant="text"
+						size="inline"
+						onclick={() => {
+							toasts.dismiss(toast.id);
+							action.run();
+						}}>{action.label}</Button
+					>
+				{/if}
 				<button
 					type="button"
 					aria-label="Dismiss"

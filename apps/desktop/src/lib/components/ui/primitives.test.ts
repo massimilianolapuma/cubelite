@@ -255,6 +255,27 @@ describe("Toaster", () => {
     expect(glyphOf(screen.getByText("Could not delete").closest("[data-tone]")!)).toBe("err");
     toasts.items = [];
   });
+
+  it("renders a toast's action as a text button that runs it and dismisses the toast (#662)", async () => {
+    toasts.items = [];
+    const run = vi.fn();
+    toasts.push("Production clusters are usually read-only", "warn", { label: "Make read-only", run });
+    render(Toaster);
+    const action = screen.getByRole("button", { name: "Make read-only" });
+    expect(action).toHaveAttribute("data-variant", "text");
+    await fireEvent.click(action);
+    expect(run).toHaveBeenCalledOnce();
+    expect(toasts.items).toHaveLength(0);
+    expect(screen.queryByText("Production clusters are usually read-only")).not.toBeInTheDocument();
+  });
+
+  it("a toast without an action has only its dismiss button", () => {
+    toasts.items = [];
+    toasts.push("Pod deleted", "ok");
+    render(Toaster);
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Dismiss"]);
+    toasts.items = [];
+  });
 });
 
 describe("icon toggles", () => {
