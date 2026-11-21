@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
+	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Search from '@lucide/svelte/icons/search';
 	import Kbd from '#lib/components/ui/Kbd.svelte';
 	import NamespaceDropdown from '#lib/components/ui/NamespaceDropdown.svelte';
@@ -8,6 +10,14 @@
 	import { tintStyle } from '#lib/appearance.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusters, type ConnectionState } from '#lib/stores/clusters.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
+	import {
+		choiceOf,
+		environmentChoices,
+		environmentLabel,
+		settingOf,
+		type EnvironmentChoice
+	} from '#lib/environment.ts';
 	import { health } from '#lib/stores/health.svelte.ts';
 	import { lists } from '#lib/stores/lists.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
@@ -30,6 +40,12 @@
 	const server = $derived(activeContext?.cluster_server ?? null);
 	const version = $derived(app.activeCluster ? health.for(app.activeCluster).version : null);
 	const warningCount = $derived(resources.warningEvents.length);
+	// The environment label (#662): a property of the cluster, so a neutral tag.
+	const environmentEntry = $derived(
+		app.activeCluster ? clusterSettings.byName[app.activeCluster] : undefined
+	);
+	const environment = $derived(environmentEntry?.environment ?? null);
+	const choices = $derived(environmentChoices(environmentEntry?.detected ?? null));
 
 	// The connection state is a shape and a word, never a colour alone.
 	const connection: Record<ConnectionState, { glyph: GlyphState; tone: string; word: string }> = {
@@ -82,6 +98,15 @@
 				{#if version}
 					<span class="type-data-sm shrink-0 text-text-subtle @max-[60rem]:hidden">{version}</span>
 				{/if}
+				<!-- One step above the chip's own surface, so the tag shows on it; it stays at
+				     any width: it is what tells production from test at a glance. -->
+				{#if environment}
+					<span
+						class="type-micro shrink-0 rounded-xs bg-surface-container-top px-1.5 py-px text-text-muted"
+						data-badge
+						data-testid="environment-tag">{environmentLabel(environment)}</span
+					>
+				{/if}
 				<span class="flex shrink-0 items-center gap-1.5 {state.tone}" data-testid="connection-state">
 					<StatusGlyph state={state.glyph} size={8} />
 					<span class="type-body-sm text-text-muted @max-[44rem]:sr-only">{state.word}</span>
@@ -106,6 +131,38 @@
 					<DropdownMenu.Item class={MENU_ITEM} onSelect={() => void clusters.retry()}>
 						Reconnect
 					</DropdownMenu.Item>
+					<DropdownMenu.Separator class="mx-3 my-1.5 h-px bg-outline" />
+					<DropdownMenu.Sub>
+						<DropdownMenu.SubTrigger class={MENU_ITEM}>
+							<span class="flex-1">Environment</span>
+							<ChevronRight class="h-4 w-4 shrink-0 text-text-subtle" aria-hidden="true" />
+						</DropdownMenu.SubTrigger>
+						<DropdownMenu.SubContent sideOffset={6} class="{MENU_CONTENT} min-w-60">
+							<DropdownMenu.RadioGroup
+								value={choiceOf(environmentEntry)}
+								onValueChange={(value) => {
+									if (activeContext) {
+										void clusterSettings.setEnvironment(
+											activeContext.name,
+											settingOf(value as EnvironmentChoice)
+										);
+									}
+								}}
+							>
+								{#each choices as choice (choice.value)}
+									<DropdownMenu.RadioItem value={choice.value} class={MENU_ITEM}>
+										{#snippet children({ checked })}
+											<span class="flex-1 {checked ? 'font-semibold text-text' : ''}">{choice.label}</span>
+											<Check
+												class="h-4 w-4 shrink-0 text-primary {checked ? '' : 'invisible'}"
+												aria-hidden="true"
+											/>
+										{/snippet}
+									</DropdownMenu.RadioItem>
+								{/each}
+							</DropdownMenu.RadioGroup>
+						</DropdownMenu.SubContent>
+					</DropdownMenu.Sub>
 				</DropdownMenu.Content>
 			</DropdownMenu.Portal>
 		</DropdownMenu.Root>

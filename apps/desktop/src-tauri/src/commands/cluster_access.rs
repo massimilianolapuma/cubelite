@@ -113,6 +113,9 @@ pub struct ContextEnvironmentView {
     pub environment: Option<Environment>,
     /// `"detected"` or `"manual"`.
     pub source: &'static str,
+    /// What detection reads in the name, whatever the source: the menu's
+    /// "Detect from name (Production)" shows it before it is chosen.
+    pub detected: Option<Environment>,
 }
 
 /// The answer of `cluster_settings` and `set_cluster_environment`.
@@ -289,17 +292,16 @@ fn save(path: &Path, file: &SettingsFile) -> io::Result<()> {
 
 /// The environment of the context `name` under `setting`.
 fn view_of(name: &str, setting: EnvironmentSetting, variants: &Variants) -> ContextEnvironmentView {
-    match setting {
-        EnvironmentSetting::Detected => ContextEnvironmentView {
-            name: name.to_string(),
-            environment: detect(name, variants),
-            source: "detected",
-        },
-        EnvironmentSetting::Manual { value } => ContextEnvironmentView {
-            name: name.to_string(),
-            environment: value,
-            source: "manual",
-        },
+    let detected = detect(name, variants);
+    let (environment, source) = match setting {
+        EnvironmentSetting::Detected => (detected, "detected"),
+        EnvironmentSetting::Manual { value } => (value, "manual"),
+    };
+    ContextEnvironmentView {
+        name: name.to_string(),
+        environment,
+        source,
+        detected,
     }
 }
 
@@ -639,10 +641,24 @@ mod tests {
             name: "a".to_string(),
             environment: Some(Production),
             source: "manual",
+            detected: None,
         };
         assert_eq!(
             serde_json::to_string(&view).expect("json"),
-            r#"{"name":"a","environment":"production","source":"manual"}"#
+            r#"{"name":"a","environment":"production","source":"manual","detected":null}"#
         );
+    }
+
+    #[test]
+    fn view_says_what_detection_reads_even_when_set_by_hand() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        let view = state
+            .set_environment("aks-prod-01-emm", manual(Some(Development)))
+            .expect("manual");
+        assert_eq!(view.contexts[0].detected, Some(Production));
+        let view = state.settings(&names(&["minikube", "aks-prod-01-emm"]));
+        assert_eq!(view.contexts[0].detected, None);
+        assert_eq!(view.contexts[1].detected, Some(Production));
     }
 }

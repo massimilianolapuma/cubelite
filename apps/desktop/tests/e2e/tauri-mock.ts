@@ -722,8 +722,70 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
     }
   };
 
+  // --- Cluster settings (#662): the backend's environment labels, in memory.
+  // Detection is a port of cubelite_core::environment::detect.
+  const ENVIRONMENTS = ["development", "test", "staging", "production"];
+  let envVariants = {
+    development: ["dev", "develop", "development", "svil", "sviluppo"],
+    test: ["test", "tst", "qa"],
+    staging: ["stg", "stage", "staging", "coll", "collaudo", "uat", "preprod"],
+    production: ["prod", "prd", "production", "produzione"],
+  };
+  const envSettings = {};
+  const detectEnvironment = (name) => {
+    for (const raw of name.split(/[^A-Za-z0-9]+/)) {
+      if (!/[A-Za-z]/.test(raw)) continue;
+      const word = raw.toLowerCase();
+      for (const env of ENVIRONMENTS) {
+        for (const v of envVariants[env]) {
+          if (v && word.startsWith(v) && /^[0-9]*$/.test(word.slice(v.length))) return env;
+        }
+      }
+    }
+    return null;
+  };
+  const environmentView = (name) => {
+    const setting = envSettings[name] ?? { source: "detected" };
+    const detected = detectEnvironment(name);
+    return {
+      name,
+      environment: setting.source === "manual" ? (setting.value ?? null) : detected,
+      source: setting.source,
+      detected,
+    };
+  };
+  const settingsChanged = () =>
+    setTimeout(() => window.__emitTauriEvent?.("cluster-settings-changed", null), 0);
+
   const responses = (cmd, args) => {
     switch (cmd) {
+      case "cluster_settings":
+        for (const name of args.contexts) envSettings[name] ??= { source: "detected" };
+        return { contexts: args.contexts.map(environmentView), variants: envVariants, recovered: false };
+      case "set_cluster_environment":
+        envSettings[args.context] = args.setting;
+        settingsChanged();
+        return { contexts: [environmentView(args.context)], variants: envVariants, recovered: false };
+      case "set_environment_variants": {
+        const seen = {};
+        const next = {};
+        for (const env of ENVIRONMENTS) {
+          next[env] = [];
+          for (const raw of args.variants[env] ?? []) {
+            const word = raw.trim().toLowerCase();
+            if (!word) continue;
+            if (!/^[a-z0-9]+$/.test(word) || !/[a-z]/.test(word)) throw '"' + word + '" is not a single word';
+            if (seen[word] && seen[word] !== env) {
+              throw '"' + word + '" is already in ' + seen[word][0].toUpperCase() + seen[word].slice(1);
+            }
+            if (!seen[word]) next[env].push(word);
+            seen[word] = env;
+          }
+        }
+        envVariants = next;
+        settingsChanged();
+        return envVariants;
+      }
       case "kubeconfig_sources": {
         const custom = Array.isArray(args.customPaths) ? args.customPaths : [];
         if (!custom.length) {

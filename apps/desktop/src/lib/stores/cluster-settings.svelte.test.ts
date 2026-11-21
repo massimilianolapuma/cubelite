@@ -30,8 +30,13 @@ function answer(contexts: ContextEnvironment[], recovered = false): ClusterSetti
   return { contexts, variants: defaultVariants(), recovered };
 }
 
-const prod: ContextEnvironment = { name: "aks-prod-01-emm", environment: "production", source: "detected" };
-const mini: ContextEnvironment = { name: "minikube", environment: null, source: "detected" };
+const prod: ContextEnvironment = {
+  name: "aks-prod-01-emm",
+  environment: "production",
+  source: "detected",
+  detected: "production",
+};
+const mini: ContextEnvironment = { name: "minikube", environment: null, source: "detected", detected: null };
 
 /** A promise and the function that resolves it. */
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {

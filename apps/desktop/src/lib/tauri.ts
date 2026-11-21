@@ -1270,6 +1270,8 @@ export interface ContextEnvironment {
   name: string;
   environment: Environment | null;
   source: "detected" | "manual";
+  /** What detection reads in the name, whatever the source. */
+  detected: Environment | null;
 }
 export interface ClusterSettings {
   /** In the order of the names asked for. */
