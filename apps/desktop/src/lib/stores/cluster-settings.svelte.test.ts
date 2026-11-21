@@ -314,9 +314,28 @@ describe("clusterSettings access (#662)", () => {
 
   it("requestUnlock with confirm on sets pendingUnlock and calls nothing", async () => {
     await clusterSettings.requestUnlock("aks-prod-01-emm", 15);
-    expect(clusterSettings.pendingUnlock).toEqual({ name: "aks-prod-01-emm", duration: 15 });
+    // Nothing has the focus here: nowhere to give it back to.
+    expect(clusterSettings.pendingUnlock).toEqual({ name: "aks-prod-01-emm", duration: 15, returnFocus: null });
     expect(makeClusterWritable).not.toHaveBeenCalled();
     expect(setClusterAccessPreferences).not.toHaveBeenCalled();
+  });
+
+  it("requestUnlock records where the focus goes back, the opener of a menu", async () => {
+    const trigger = document.createElement("button");
+    trigger.setAttribute("aria-controls", "durations");
+    const menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    menu.id = "durations";
+    const item = document.createElement("div");
+    item.setAttribute("role", "menuitem");
+    item.tabIndex = -1;
+    menu.append(item);
+    document.body.append(trigger, menu);
+    item.focus();
+    await clusterSettings.requestUnlock("aks-prod-01-emm", 5);
+    expect(clusterSettings.pendingUnlock?.returnFocus).toBe(trigger);
+    trigger.remove();
+    menu.remove();
   });
 
   it("confirmPendingUnlock(true) sends makeClusterWritable then setClusterAccessPreferences({confirmUnlock:false})", async () => {
@@ -374,6 +393,20 @@ describe("clusterSettings access (#662)", () => {
     expect(makeClusterReadOnly).toHaveBeenCalledWith("minikube");
     expect(clusterSettings.accessOf("minikube")).toBe("read_only");
     expect(clusterSettings.accessOf("aks-prod-01-emm")).toBe("read_only");
+  });
+
+  it("makeReadOnly that could not be saved holds for the session and says so", async () => {
+    vi.mocked(fetchClusterSettings).mockResolvedValue(answer([mini]));
+    await clusterSettings.load(["minikube"]);
+    vi.mocked(makeClusterReadOnly).mockResolvedValue({
+      ...answer([{ ...mini, access: "read_only" }]),
+      save_error: "Read-only file system (os error 30)",
+    });
+    expect(await clusterSettings.makeReadOnly("minikube")).toBe(true);
+    expect(clusterSettings.accessOf("minikube")).toBe("read_only");
+    expect(toasts.items.map((t) => [t.message, t.tone])).toEqual([
+      ["Made read-only for this session; could not save: Read-only file system (os error 30)", "warn"],
+    ]);
   });
 
   it("makeReadOnly drops an older load still in flight", async () => {

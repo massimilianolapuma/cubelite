@@ -27,6 +27,7 @@ import {
 } from "#lib/tauri.ts";
 import { defaultVariants } from "#lib/environment.ts";
 import { errorMessage } from "#lib/errors.ts";
+import { focusOrigin } from "#lib/focus-origin.ts";
 import { clock } from "./clock.svelte";
 import { toasts } from "./toasts.svelte";
 
@@ -40,8 +41,12 @@ class ClusterSettingsStore {
   confirmUnlock = $state(true);
   /** The environments whose contexts start read-only when first seen. */
   readOnlyFromStart = $state<Environment[]>(["production"]);
-  /** The unlock waiting for the confirmation dialog. */
-  pendingUnlock = $state<{ name: string; duration: UnlockFor } | null>(null);
+  /**
+   * The unlock waiting for the confirmation dialog, and where the focus goes
+   * back when the dialog closes (recorded when asked, while a menu that asked
+   * is still open).
+   */
+  pendingUnlock = $state<{ name: string; duration: UnlockFor; returnFocus?: HTMLElement | null } | null>(null);
 
   /** The names of the last load, for a reload on the event. */
   #names: string[] = [];
@@ -124,7 +129,7 @@ class ClusterSettingsStore {
    */
   async requestUnlock(name: string, duration: UnlockFor): Promise<void> {
     if (this.confirmUnlock) {
-      this.pendingUnlock = { name, duration };
+      this.pendingUnlock = { name, duration, returnFocus: focusOrigin() };
       return;
     }
     await this.#makeWritable(name, duration);
@@ -143,7 +148,11 @@ class ClusterSettingsStore {
     this.pendingUnlock = null;
   }
 
-  /** Make `name` read-only; never asks. Answers whether the backend saved it. */
+  /**
+   * Make `name` read-only; never asks. Answers whether the backend made it
+   * so: also when it could not save it, which holds for this session and is
+   * told with a warning.
+   */
   async makeReadOnly(name: string): Promise<boolean> {
     const seq = ++this.#seq;
     let answer: ClusterSettings;
@@ -152,6 +161,9 @@ class ClusterSettingsStore {
     } catch (e) {
       toasts.push(`Could not make ${name} read-only: ${errorMessage(e)}`, "err");
       return false;
+    }
+    if (typeof answer?.save_error === "string") {
+      toasts.push(`Made read-only for this session; could not save: ${answer.save_error}`, "warn");
     }
     this.#apply(answer, seq);
     return true;

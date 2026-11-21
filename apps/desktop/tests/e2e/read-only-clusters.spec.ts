@@ -216,6 +216,30 @@ test("keyboard: Tab reaches the disabled Shell and Restart, each described by th
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog", { name: "api-0 shell" })).toHaveCount(0);
   await expect(page.getByText(/Pod api-0 deleted/)).toHaveCount(0);
+
+  // The confirmation gives the focus back to what opened it: the notice's
+  // button, whose menu has closed with the choice.
+  const notice = panel.getByTestId("read-only-notice").getByRole("button", { name: "Make writable" });
+  await notice.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menuitem", { name: "5 minutes", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Make aks-prod-01-emm writable?" });
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(notice).toBeFocused();
+  // Made writable, the notice and its button go: the focus lands on the cluster chip.
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menuitem", { name: "5 minutes", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(dialog.getByRole("button", { name: "Make writable" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(access(page)).toHaveAttribute("data-access", "timed");
+  await expect(chip(page)).toBeFocused();
 });
 
 test("Preferences → Clusters shows each context's access and the two switches", async ({ page }) => {
@@ -242,6 +266,51 @@ test("Preferences → Clusters shows each context's access and the two switches"
   // Made read-only from here, the chip follows.
   await row("minikube").getByRole("button", { name: "Make read-only: minikube" }).click();
   await expect(row("minikube").getByTestId("access-state")).toHaveText("Read-only");
+});
+
+test("the confirmation opened from Preferences stacks above it: Preferences is dimmed and out of reach", async ({ page }) => {
+  await boot(page);
+  await page.getByRole("button", { name: "Preferences" }).click();
+  const prefs = page.getByRole("dialog", { name: "Preferences" });
+  const section = prefs.getByRole("region", { name: "Clusters" });
+  await section.scrollIntoViewIfNeeded();
+  const unlock = section.getByRole("button", { name: "Make writable: aks-prod-01-emm" });
+  await unlock.click();
+  await page.getByRole("menuitem", { name: "5 minutes", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Make aks-prod-01-emm writable?" });
+  await expect(dialog).toBeVisible();
+  // Settled: the menu's exit and the dialog's entrance are over.
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running"));
+
+  // Preferences' own close button, away from the confirmation's card: what the
+  // pointer meets there is the confirmation's backdrop.
+  const close = prefs.getByRole("button", { name: "Close" });
+  const box = (await close.boundingBox())!;
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const hit = await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    const paint = el ? getComputedStyle(el).backgroundColor : "";
+    return {
+      inPreferences: el?.closest('[aria-label="Preferences"]') !== null,
+      // The confirmation's backdrop, one level above Preferences'.
+      role: el?.getAttribute("role") ?? null,
+      depth: el?.getAttribute("data-modal-depth") ?? null,
+      dimmed: paint !== "" && paint !== "transparent" && paint !== "rgba(0, 0, 0, 0)",
+      // Named on a failure: what was there instead.
+      html: el?.outerHTML.slice(0, 200),
+    };
+  }, at);
+  expect(hit).toMatchObject({ inPreferences: false, role: "presentation", depth: "1", dimmed: true });
+
+  // A click there reaches the backdrop only: the confirmation is cancelled,
+  // Preferences stays open, and the focus goes back to the row's button.
+  await page.mouse.click(at.x, at.y);
+  await expect(dialog).toHaveCount(0);
+  await expect(prefs).toBeVisible();
+  await expect(unlock).toBeFocused();
+  await expect(section.getByRole("table").getByRole("row").filter({ hasText: "aks-prod-01-emm" }).getByTestId("access-state")).toHaveText(
+    "Read-only",
+  );
 });
 
 // --- How the chip, the rail badge and the drawer line read in each theme and

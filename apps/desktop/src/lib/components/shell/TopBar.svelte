@@ -77,7 +77,7 @@
 		unreachable: { glyph: 'err', tone: 'text-error', word: 'Unreachable' },
 		unknown: { glyph: 'unknown', tone: 'text-text-subtle', word: 'Not connected' }
 	};
-	const state = $derived(connection[clusters.connectionState]);
+	const linkState = $derived(connection[clusters.connectionState]);
 
 	async function copyServer(server: string) {
 		try {
@@ -87,6 +87,69 @@
 			toasts.push('Could not copy the server address', 'err');
 		}
 	}
+
+	// The countdown of a timed unlock, as the chip shows it.
+	const countdown = $derived(
+		access === 'timed' && writableUntil !== null ? remainingText(writableUntil - clock.now) : ''
+	);
+	const accessWords = $derived(
+		access === 'read_only' ? 'Read-only' : access === 'timed' ? `Writable · ${countdown}` : ''
+	);
+
+	// The name wins (#662): it keeps about 14ch while what sits beside it gives way,
+	// in this order: the connection word (its glyph stays), the version, the access
+	// word (its icon stays, in the same container), the provider tag. The
+	// environment tag stays. What gives way depends on how long the name is, which
+	// no width query can see, so it is measured: from nothing dropped, one more
+	// thing at a time while the name is cut under its minimum. A word that goes is
+	// still read out (sr-only) and in the title.
+	const GIVE_WAY = ['connection', 'version', 'access', 'provider'] as const;
+	let header = $state<HTMLElement | null>(null);
+	let nameEl = $state<HTMLElement | null>(null);
+	/** 14ch in the name's font, measured once per font. */
+	let fourteenCh = { font: '', width: 0 };
+
+	function minimumOf(el: HTMLElement): number {
+		const font = getComputedStyle(el).font;
+		if (fourteenCh.font !== font) {
+			const probe = document.createElement('span');
+			probe.style.cssText = 'position:absolute;visibility:hidden;width:14ch';
+			el.append(probe);
+			fourteenCh = { font, width: probe.getBoundingClientRect().width };
+			probe.remove();
+		}
+		return fourteenCh.width;
+	}
+
+	function fit() {
+		const chipEl = header?.querySelector<HTMLElement>('[data-cluster-chip]');
+		const name = nameEl;
+		if (!chipEl || !name) return;
+		const least = minimumOf(name);
+		let dropped = 0;
+		const drop = (n: number) =>
+			GIVE_WAY.forEach((what, i) => chipEl.toggleAttribute(`data-drop-${what}`, i < n));
+		drop(0);
+		// Cut (it has more to show than it has room for) and under its minimum.
+		while (dropped < GIVE_WAY.length && name.clientWidth + 1 < Math.min(least, name.scrollWidth)) {
+			dropped += 1;
+			drop(dropped);
+		}
+	}
+
+	// Again whenever the room changes: the window, or what shares the row.
+	$effect(() => {
+		void [activeContext?.name, provider, version, environment, accessWords, linkState.word, app.namespace, warningCount];
+		fit();
+	});
+	$effect(() => {
+		const el = header;
+		if (el === null || typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver(() => fit());
+		observer.observe(el);
+		void document.fonts?.ready.then(() => fit());
+		return () => observer.disconnect();
+	});
 
 	// Chips may shrink: a long context name truncates rather than pushing the bar
 	// out of the window. What follows the name never shrinks.
@@ -102,8 +165,10 @@
      version goes; below 44rem the provider tag and the words beside a glyph go too. What
      is hidden stays in the accessible name. The namespace chip never takes more than a
      quarter of the row (a third once the labels are gone), so a long namespace cannot squeeze the cluster's name away, and
-     the cluster chip is the one that gives way to a long context name. -->
+     the cluster chip is the one that gives way to a long context name. Inside it, what sits
+     beside the name gives way first, measured (see `fit`). -->
 <header
+	bind:this={header}
 	data-tauri-drag-region
 	onmousedown={beginWindowDrag}
 	class="@container -mt-3 flex min-w-0 shrink-0 items-center gap-2 pt-3"
@@ -111,16 +176,22 @@
 	{#if activeContext}
 		<DropdownMenu.Root>
 			<!-- The chip keeps its cluster's tint even where the window does not (dashboard). -->
-			<DropdownMenu.Trigger class={chip} data-tint style={tintStyle(identity)}>
+			<DropdownMenu.Trigger class="{chip} group/chip" data-tint data-cluster-chip style={tintStyle(identity)}>
 				<span class="h-2.5 w-2.5 shrink-0 rounded-[3px] bg-primary" data-testid="identity-dot"></span>
-				<span class="type-body truncate font-semibold text-text">{activeContext.name}</span>
+				<span bind:this={nameEl} class="type-body truncate font-semibold text-text" title={activeContext.name}
+					>{activeContext.name}</span
+				>
 				{#if provider}
-					<span class="type-micro shrink-0 rounded-xs bg-primary-container px-1.5 py-px font-mono text-on-primary-container @max-[44rem]:hidden">
+					<span
+						class="type-micro shrink-0 rounded-xs bg-primary-container px-1.5 py-px font-mono text-on-primary-container @max-[44rem]:hidden group-data-[drop-provider]/chip:hidden"
+					>
 						{provider}
 					</span>
 				{/if}
 				{#if version}
-					<span class="type-data-sm shrink-0 text-text-subtle @max-[60rem]:hidden">{version}</span>
+					<span class="type-data-sm shrink-0 text-text-subtle @max-[60rem]:hidden group-data-[drop-version]/chip:hidden"
+						>{version}</span
+					>
 				{/if}
 				<!-- One step above the chip's own surface, so the tag shows on it; it stays at
 				     any width: it is what tells production from test at a glance. -->
@@ -139,9 +210,10 @@
 						class="flex shrink-0 items-center gap-1 text-text-muted"
 						data-testid="access-state"
 						data-access="read_only"
+						title={accessWords}
 					>
 						<Lock class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-						<span class="type-body-sm @max-[44rem]:sr-only">Read-only</span>
+						<span class="type-body-sm @max-[44rem]:sr-only group-data-[drop-access]/chip:sr-only">Read-only</span>
 					</span>
 				{:else if access === 'timed' && writableUntil !== null}
 					<span
@@ -149,14 +221,19 @@
 						data-badge
 						data-testid="access-state"
 						data-access="timed"
+						title={accessWords}
 					>
 						<Timer class="h-3 w-3 shrink-0" aria-hidden="true" />
-						<span><span class="@max-[44rem]:sr-only">Writable ·</span> {remainingText(writableUntil - clock.now)}</span>
+						<span class="group-data-[drop-access]/chip:sr-only"
+							><span class="@max-[44rem]:sr-only">Writable ·</span> {countdown}</span
+						>
 					</span>
 				{/if}
-				<span class="flex shrink-0 items-center gap-1.5 {state.tone}" data-testid="connection-state">
-					<StatusGlyph state={state.glyph} size={8} />
-					<span class="type-body-sm text-text-muted @max-[44rem]:sr-only">{state.word}</span>
+				<span class="flex shrink-0 items-center gap-1.5 {linkState.tone}" data-testid="connection-state" title={linkState.word}>
+					<StatusGlyph state={linkState.glyph} size={8} />
+					<span class="type-body-sm text-text-muted @max-[44rem]:sr-only group-data-[drop-connection]/chip:sr-only"
+						>{linkState.word}</span
+					>
 				</span>
 				<ChevronDown class="h-3.5 w-3.5 shrink-0 text-text-subtle" aria-hidden="true" />
 			</DropdownMenu.Trigger>

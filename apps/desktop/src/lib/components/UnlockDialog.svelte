@@ -1,9 +1,11 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import Button from '#lib/components/ui/Button.svelte';
 	import KeepTogether from '#lib/components/ui/KeepTogether.svelte';
 	import Modal from '#lib/components/ui/Modal.svelte';
 	import { durationWords } from '#lib/access.ts';
 	import { environmentLabel } from '#lib/environment.ts';
+	import { focusOrigin } from '#lib/focus-origin.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { CHECKBOX } from '#lib/ui-classes.ts';
 
@@ -14,17 +16,54 @@
 	const pending = $derived(clusterSettings.pendingUnlock);
 	let dontAskAgain = $state(false);
 
+	// Where the focus goes back when the dialog closes (Esc, Cancel, Make writable):
+	// what had it when the unlock was asked for (for a menu item, the button that
+	// opened the menu; the store records it while that menu is still open), else
+	// what has it before the dialog takes it. When that is gone, or nothing had
+	// the focus, the top bar's cluster chip, whose menu offers the unlock.
+	let opener: HTMLElement | null = null;
+
 	// Each opening starts unchecked.
 	$effect.pre(() => {
-		if (clusterSettings.pendingUnlock) dontAskAgain = false;
+		const asked = clusterSettings.pendingUnlock;
+		if (!asked) return;
+		dontAskAgain = false;
+		if (opener === null) opener = asked.returnFocus ?? focusOrigin() ?? document.body;
 	});
+
+	function giveFocusBack(back: HTMLElement) {
+		const target =
+			back !== document.body && back.isConnected
+				? back
+				: document.querySelector<HTMLElement>('[data-cluster-chip]');
+		target?.focus();
+	}
+
+	// Esc and Cancel: once the dialog has left the page, so its buttons are gone.
+	$effect(() => {
+		if (clusterSettings.pendingUnlock || opener === null) return;
+		const back = opener;
+		opener = null;
+		giveFocusBack(back);
+	});
+
+	// Make writable: once the answer is in, as what opened the dialog may go with
+	// it (the read-only notice of a drawer).
+	async function confirm() {
+		const back = opener;
+		opener = null;
+		await clusterSettings.confirmPendingUnlock(dontAskAgain);
+		await tick();
+		if (back) giveFocusBack(back);
+	}
 
 	const summary = $derived.by(() => {
 		if (!pending) return '';
 		const environment = clusterSettings.environmentOf(pending.name);
 		const how = pending.duration === 'always' ? 'always' : `for ${durationWords(pending.duration)}`;
 		if (environment) return `${environmentLabel(environment)} · ${how}`;
-		return pending.duration === 'always' ? 'Always' : how;
+		// It starts the line: a capital.
+		return how.charAt(0).toUpperCase() + how.slice(1);
 	});
 
 	const ending = $derived(
@@ -56,7 +95,7 @@
 			<Button variant="text" onclick={() => clusterSettings.cancelPendingUnlock()} {@attach focusOnOpen}>
 				Cancel
 			</Button>
-			<Button variant="tonal" onclick={() => void clusterSettings.confirmPendingUnlock(dontAskAgain)}>
+			<Button variant="tonal" onclick={() => void confirm()}>
 				Make writable
 			</Button>
 		{/snippet}

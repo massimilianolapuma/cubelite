@@ -1287,6 +1287,11 @@ export interface ClusterSettings {
   confirm_unlock: boolean;
   /** The environments whose contexts start read-only when first seen. */
   read_only_from_start: Environment[];
+  /**
+   * Only on the answer of "make read-only" when the file could not be saved:
+   * why. The context is read-only for this session anyway.
+   */
+  save_error?: string;
 }
 /** How long a context is made writable: minutes, or until it is made read-only again. */
 export type UnlockFor = 5 | 15 | 60 | "always";

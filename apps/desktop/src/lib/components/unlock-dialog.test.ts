@@ -79,8 +79,21 @@ describe("UnlockDialog (#662, spec §5.3)", () => {
     render(UnlockDialog);
     pending("dol-lab-aks", 60);
     await tick();
-    expect(screen.getByText("for 1 hour")).toBeInTheDocument();
+    // It starts the line: a capital, as "Always" has.
+    expect(screen.getByText("For 1 hour")).toBeInTheDocument();
     expect(screen.getByText(wholeText("It goes back to read-only after 1 hour or when CubeLite quits."))).toBeInTheDocument();
+  });
+
+  it("starts a summary without a label with a capital", async () => {
+    render(UnlockDialog);
+    pending("dol-lab-aks", 5);
+    await tick();
+    expect(screen.getByText("For 5 minutes")).toBeInTheDocument();
+    clusterSettings.pendingUnlock = null;
+    await tick();
+    pending("dol-lab-aks", "always");
+    await tick();
+    expect(screen.getByText("Always")).toBeInTheDocument();
   });
 
   it("says Always stays until made read-only", async () => {
@@ -148,5 +161,69 @@ describe("UnlockDialog (#662, spec §5.3)", () => {
     pending("aks-prod-01-emm", 5);
     await tick();
     expect(screen.getByRole("checkbox", { name: "Don't ask again" })).not.toBeChecked();
+  });
+});
+
+describe("UnlockDialog focus on close (#662)", () => {
+  let opener: HTMLButtonElement;
+  let chip: HTMLButtonElement;
+
+  beforeEach(() => {
+    // The top bar's cluster chip, the fallback when the opener is gone.
+    chip = document.createElement("button");
+    chip.setAttribute("data-cluster-chip", "");
+    chip.textContent = "aks-prod-01-emm";
+    document.body.append(chip);
+    opener = document.createElement("button");
+    opener.textContent = "Make writable for";
+    document.body.append(opener);
+    opener.focus();
+  });
+
+  afterEach(() => {
+    chip.remove();
+    opener.remove();
+  });
+
+  async function open(): Promise<void> {
+    pending("aks-prod-01-emm", 5);
+    await tick();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus());
+  }
+
+  it("Esc gives the focus back to what opened it", async () => {
+    render(UnlockDialog);
+    await open();
+    app.closeTopOverlay();
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it("Cancel gives the focus back to what opened it", async () => {
+    render(UnlockDialog);
+    await open();
+    await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it("Make writable gives the focus back to what opened it", async () => {
+    vi.mocked(makeClusterWritable).mockResolvedValue({
+      contexts: [{ ...prod, access: "writable", writable_until: Date.now() + 300_000 }],
+      variants: clusterSettings.variants,
+      recovered: false,
+      confirm_unlock: true,
+      read_only_from_start: ["production"],
+    });
+    render(UnlockDialog);
+    await open();
+    await fireEvent.click(screen.getByRole("button", { name: "Make writable" }));
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it("falls back to the cluster chip when the opener is gone (a menu that closed)", async () => {
+    render(UnlockDialog);
+    await open();
+    opener.remove();
+    await fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(chip).toHaveFocus());
   });
 });

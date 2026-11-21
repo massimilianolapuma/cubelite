@@ -52,6 +52,15 @@
 	// this modal before any drawer underneath it.
 	onMount(() => app.pushModal(() => onClose()));
 
+	// A modal opened from another (an unlock confirmation from Preferences) stacks
+	// above it: its backdrop covers the card below, which is dimmed and out of the
+	// pointer's reach. The first one keeps the z-40 / z-50 pair; each one above
+	// takes the next pair over the card below it. Read once, before this modal
+	// registers: the modals open now are the ones below it.
+	const depth = app.openModals;
+	const backdropZ = depth === 0 ? 40 : 49 + 2 * depth;
+	const cardZ = 50 + 2 * depth;
+
 	// The pinned region takes the keyboard only when there is something to scroll.
 	let pinnedEl = $state<HTMLElement | null>(null);
 	let pinnedOverflows = $state(false);
@@ -76,14 +85,20 @@
 </script>
 
 <!-- Backdrop: black at 50 % (Tonal §7). -->
-<div class="animate-fadein fixed inset-0 z-40 bg-black/50" role="presentation" onclick={onClose}></div>
 <div
-	class="card animate-popin fixed left-1/2 z-50 flex max-h-[80vh] max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay {placement ===
+	class="animate-fadein fixed inset-0 bg-black/50"
+	style="z-index: {backdropZ};"
+	role="presentation"
+	data-modal-depth={depth}
+	onclick={onClose}
+></div>
+<div
+	class="card animate-popin fixed left-1/2 flex max-h-[80vh] max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col overflow-hidden rounded-xl bg-surface-overlay shadow-overlay {placement ===
 	'top'
 		? 'top-[10vh]'
 		: 'top-1/2 -translate-y-1/2'}"
 	data-placement={placement}
-	style="width: {width}px;"
+	style="width: {width}px; z-index: {cardZ};"
 	role="dialog"
 	aria-modal="true"
 	aria-label={title}

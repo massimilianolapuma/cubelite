@@ -116,6 +116,11 @@ class AppState {
     if (this.view === "dashboard") this.view = "overview";
   }
 
+  /** How many modals are open now: the depth a modal opening now stacks at. */
+  get openModals(): number {
+    return this.#modalStack.length;
+  }
+
   /** Register a mounted modal's close handler; returns the unregister function. */
   pushModal(close: () => void): () => void {
     this.#modalStack.push(close);
