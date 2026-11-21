@@ -17,6 +17,10 @@ import ClustersPreferences from "./ClustersPreferences.svelte";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
 import { clusterSettings } from "#lib/stores/cluster-settings.svelte.ts";
 import { clock } from "#lib/stores/clock.svelte.ts";
+
+/** The element whose whole text is `text`, read across the spans that keep "read-only" on one line. */
+const wholeText = (text: string) => (_: string, el: Element | null) =>
+  el?.textContent === text && !Array.from(el.children).some((c) => c.textContent === text);
 import { defaultVariants } from "#lib/environment.ts";
 import {
   clusterSettings as fetchClusterSettings,
@@ -329,7 +333,7 @@ describe("ClustersPreferences access (#662, spec §6.1–6.3)", () => {
     };
     const readOnly = vi.spyOn(clusterSettings, "makeReadOnly").mockResolvedValue(true);
     render(ClustersPreferences);
-    const lines = screen.getAllByText("Production clusters are usually read-only");
+    const lines = screen.getAllByText(wholeText("Production clusters are usually read-only"));
     expect(lines).toHaveLength(1);
     const line = lines[0].closest("tr")!;
     // The line follows the row it is about.
@@ -345,9 +349,9 @@ describe("ClustersPreferences access (#662, spec §6.1–6.3)", () => {
       minikube: { ...entries[1], environment: "production", source: "manual" },
     };
     render(ClustersPreferences);
-    expect(screen.getByText("Production clusters are usually read-only")).toBeInTheDocument();
+    expect(screen.getByText(wholeText("Production clusters are usually read-only"))).toBeInTheDocument();
     clusterSettings.byName = { ...clusterSettings.byName, minikube: { ...clusterSettings.byName.minikube, access: "read_only" } };
-    await waitFor(() => expect(screen.queryByText("Production clusters are usually read-only")).toBeNull());
+    await waitFor(() => expect(screen.queryByText(wholeText("Production clusters are usually read-only"))).toBeNull());
   });
 
   it("the switch asks before an unlock, and saves through the store", async () => {

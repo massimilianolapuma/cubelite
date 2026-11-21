@@ -18,6 +18,7 @@
 	} from '#lib/resource-editor.ts';
 	import { PANEL_CARD, PANEL_SECTION } from '#lib/ui-classes.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { resourceEditor } from '#lib/stores/resourceEditor.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 
@@ -75,6 +76,10 @@
 				]
 	);
 	const stepError = $derived(ed.applyError ?? ed.dryRunError);
+	// Review (its dry run) and Apply are writes: off, with the reason, on a
+	// read-only cluster (#662), also when an unlock ends with the editor open.
+	// The editor closes when the active cluster changes: it is the editor's.
+	const lockReason = $derived(clusterSettings.lockReason(app.activeCluster));
 
 	// Focus: each step starts at its heading, and at the top of its body (the body
 	// is the same element across the steps and would keep step 1's scroll);
@@ -273,13 +278,20 @@
 					size="primary"
 					pending={ed.applying}
 					disabled={ed.dryRun !== 'ok'}
+					blockedReason={lockReason}
 					onclick={() => void ed.apply()}
 				>
 					{primaryLabel}
 				</Button>
 			{:else}
 				<Button variant="text" size="inline" onclick={() => ed.close()}>Cancel</Button>
-				<Button variant="primary" size="primary" disabled={!ed.canReview} onclick={() => void ed.review()}>
+				<Button
+					variant="primary"
+					size="primary"
+					disabled={!ed.canReview}
+					blockedReason={lockReason}
+					onclick={() => void ed.review()}
+				>
 					Review
 				</Button>
 			{/if}

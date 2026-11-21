@@ -19,6 +19,10 @@ vi.mock("#lib/tauri.ts", () => ({
 import ShellModal from "./ShellModal.svelte";
 import { execSend, startExec, stopExec } from "#lib/tauri.ts";
 import { app } from "#lib/stores/app.svelte.ts";
+import { clock } from "#lib/stores/clock.svelte.ts";
+import { clusterSettings } from "#lib/stores/cluster-settings.svelte.ts";
+import { setAccess } from "#lib/stores/access-mock.ts";
+import { tick } from "svelte";
 
 function emit(prefix: "exec-output" | "exec-end", payload: unknown = null) {
   const name = [...handlers.keys()].find((k) => k.startsWith(`${prefix}:`));
@@ -29,6 +33,7 @@ function emit(prefix: "exec-output" | "exec-end", payload: unknown = null) {
 beforeEach(() => {
   vi.clearAllMocks();
   handlers.clear();
+  clusterSettings.reset();
   app.kubeconfigPath = "/home/u/.kube/config";
   app.activeCluster = "prod";
   vi.mocked(startExec).mockResolvedValue(undefined);
@@ -105,5 +110,79 @@ describe("ShellModal (#488)", () => {
     view.unmount();
     expect(stopExec).toHaveBeenCalledWith(sessionId);
     expect(handlers.size).toBe(0);
+  });
+});
+
+describe("ShellModal on a read-only cluster (#662, spec §4.4)", () => {
+  const LINE = "prod is read-only again. Input is off.";
+  const input = () => screen.getByRole("textbox", { name: "Shell command" }) as HTMLInputElement;
+
+  async function type(line: string) {
+    await fireEvent.input(input(), { target: { value: line } });
+    await fireEvent.submit(input().closest("form") as HTMLFormElement);
+  }
+
+  it("starts no shell on a read-only cluster and says why", async () => {
+    setAccess("prod", "read_only");
+    render(ShellModal, { props: { namespace: "default", pod: "api-0", onClose: vi.fn() } });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "prod is read-only. Make it writable from the cluster menu.",
+    );
+    expect(startExec).not.toHaveBeenCalled();
+  });
+
+  it("when the unlock ends: one line, the input off with the reason, and Close still works", async () => {
+    const entry = setAccess("prod", "timed", 5);
+    const onClose = vi.fn();
+    render(ShellModal, { props: { namespace: "default", pod: "api-0", onClose } });
+    await screen.findByText("connected: line-based shell (/bin/sh, no TTY)");
+    expect(input()).not.toHaveAttribute("aria-disabled");
+
+    clock.now = (entry.writable_until ?? 0) + 1;
+    await tick();
+    clock.now += 1_000;
+    await tick();
+
+    expect(screen.getAllByText(LINE)).toHaveLength(1);
+    expect(screen.getByText(LINE)).toHaveAttribute("data-kind", "status");
+    // Off, not natively disabled: it keeps its place and its reason.
+    expect(input()).toHaveAttribute("aria-disabled", "true");
+    expect(input()).not.toBeDisabled();
+    expect(input()).toHaveAccessibleDescription("prod is read-only");
+    expect(input()).toHaveAttribute("title", "prod is read-only");
+    await type("rm -rf /data");
+    expect(execSend).not.toHaveBeenCalled();
+    expect(screen.queryByText("$ rm -rf /data")).toBeNull();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("follows the cluster it started on, not the one made active since", async () => {
+    setAccess("lab", "read_only");
+    await openShell();
+    app.activeCluster = "lab";
+    await tick();
+    expect(input()).not.toHaveAttribute("aria-disabled");
+    await type("ls");
+    expect(execSend).toHaveBeenCalledOnce();
+
+    setAccess("prod", "read_only");
+    await tick();
+    expect(screen.getAllByText(LINE)).toHaveLength(1);
+    expect(input()).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("takes input again once the cluster is writable again", async () => {
+    setAccess("prod", "timed", 5);
+    await openShell();
+    setAccess("prod", "read_only");
+    await tick();
+    expect(input()).toHaveAttribute("aria-disabled", "true");
+    setAccess("prod", "timed", 15);
+    await tick();
+    expect(input()).not.toHaveAttribute("aria-disabled");
+    await type("ls");
+    expect(execSend).toHaveBeenCalledOnce();
   });
 });

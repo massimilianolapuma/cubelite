@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from '#lib/components/ui/Button.svelte';
+	import KeepTogether from '#lib/components/ui/KeepTogether.svelte';
 	import Modal from '#lib/components/ui/Modal.svelte';
 	import { durationWords } from '#lib/access.ts';
 	import { environmentLabel } from '#lib/environment.ts';
@@ -45,7 +46,7 @@
 		<div class="type-body-sm flex flex-col gap-2 text-text-muted">
 			<p class="font-semibold text-text">{summary}</p>
 			<p>Actions in CubeLite will change this cluster: apply, delete, restart, scale, resources, shell.</p>
-			<p>{ending}</p>
+			<p><KeepTogether text={ending} /></p>
 			<label class="mt-2 flex items-center gap-2 text-text">
 				<input type="checkbox" class={CHECKBOX} bind:checked={dontAskAgain} />
 				Don't ask again

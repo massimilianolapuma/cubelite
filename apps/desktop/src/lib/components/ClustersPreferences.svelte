@@ -6,6 +6,7 @@
 	import Timer from '@lucide/svelte/icons/timer';
 	import AccessMenuItems from '#lib/components/shell/AccessMenuItems.svelte';
 	import Button from '#lib/components/ui/Button.svelte';
+	import KeepTogether from '#lib/components/ui/KeepTogether.svelte';
 	import Switch from '#lib/components/ui/Switch.svelte';
 	import { remainingText } from '#lib/access.ts';
 	import {
@@ -239,7 +240,7 @@
 					<tr class="border-b border-outline last:border-b-0">
 						<td colspan="3" class="pb-2">
 							<p class="type-body-sm flex items-center gap-1.5 text-text-muted">
-								<span>Production clusters are usually read-only</span>
+								<span><KeepTogether text="Production clusters are usually read-only" /></span>
 								<span aria-hidden="true">·</span>
 								<button
 									type="button"
@@ -272,7 +273,9 @@
 
 <fieldset class="min-w-0">
 	<legend class="type-body text-text">Read-only from the start</legend>
-	<p class={hint}>A cluster with one of these environments is read-only the first time CubeLite sees it.</p>
+	<p class={hint}>
+		<KeepTogether text="A cluster with one of these environments is read-only the first time CubeLite sees it." />
+	</p>
 	<div class="mt-2 flex flex-wrap gap-x-5 gap-y-2">
 		{#each ENVIRONMENTS as env (env)}
 			<label class="type-body-sm flex items-center gap-2 text-text">

@@ -8,7 +8,11 @@
 	// Scale a deployment: minus, the target, plus, and one segment per target
 	// replica (filled = ready, outlined = not yet). In the list row while the
 	// list has its full width, and always in the detail panel (Tonal §3 #11).
-	let { deployment }: { deployment: DeploymentInfo } = $props();
+	// `blockedReason` (a read-only cluster, #662) keeps both steps in place and
+	// in the tab order, as Button does: aria-disabled, the reason as their
+	// tooltip and description, and a press does nothing.
+	let { deployment, blockedReason = null }: { deployment: DeploymentInfo; blockedReason?: string | null } =
+		$props();
 
 	/** Replica segments shown next to the stepper (more render as "+N"). */
 	const MAX_SEGMENTS = 8;
@@ -16,15 +20,19 @@
 	const pendingScale = $derived(mutations.pendingScale(deployment.namespace, deployment.name));
 	const applying = $derived(mutations.isApplyingScale(deployment.namespace, deployment.name));
 	const target = $derived(pendingScale ?? deployment.replicas);
+	const blocked = $derived(typeof blockedReason === 'string' && blockedReason !== '');
+	const reasonId = $props.id();
 
 	function scale(event: MouseEvent, delta: number) {
 		// Inside a list row: the click is the stepper's, not the row's.
 		event.stopPropagation();
+		if (blocked) return;
 		mutations.nudgeScale(deployment.namespace, deployment.name, deployment.replicas, delta);
 	}
 
 	const STEP =
-		'focus-ring-inset hover-layer flex h-(--control-inline-h) w-(--control-inline-h) items-center justify-center text-text-muted disabled:opacity-45';
+		'focus-ring-inset flex h-(--control-inline-h) w-(--control-inline-h) items-center justify-center text-text-muted disabled:opacity-45';
+	const step = $derived(`${STEP} ${blocked ? 'cursor-default aria-disabled:opacity-45' : 'hover-layer'}`);
 </script>
 
 <span class="flex min-w-0 items-center gap-2">
@@ -33,7 +41,11 @@
 			type="button"
 			aria-label="Scale down"
 			disabled={applying || target <= 0}
-			class={STEP}
+			aria-disabled={blocked ? 'true' : undefined}
+			aria-describedby={blocked ? reasonId : undefined}
+			title={blocked ? blockedReason : undefined}
+			data-blocked={blocked ? 'true' : undefined}
+			class={step}
 			onclick={(e) => scale(e, -1)}
 		>
 			<Minus class="h-3 w-3" aria-hidden="true" />
@@ -48,10 +60,24 @@
 			{#if pendingScale !== null}<StatusGlyph state="warn" size={8} class="text-warning" />{/if}
 			{target}
 		</span>
-		<button type="button" aria-label="Scale up" disabled={applying} class={STEP} onclick={(e) => scale(e, 1)}>
+		<button
+			type="button"
+			aria-label="Scale up"
+			disabled={applying}
+			aria-disabled={blocked ? 'true' : undefined}
+			aria-describedby={blocked ? reasonId : undefined}
+			title={blocked ? blockedReason : undefined}
+			data-blocked={blocked ? 'true' : undefined}
+			class={step}
+			onclick={(e) => scale(e, 1)}
+		>
 			<Plus class="h-3 w-3" aria-hidden="true" />
 		</button>
 	</span>
+	{#if blocked}
+		<!-- The reason, read as both steps' description. -->
+		<span id={reasonId} hidden>{blockedReason}</span>
+	{/if}
 	<span
 		class="flex shrink-0 items-center gap-0.5"
 		aria-label="{deployment.ready_replicas} of {target} replicas ready"

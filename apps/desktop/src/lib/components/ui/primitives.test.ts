@@ -313,6 +313,18 @@ describe("Toaster", () => {
     expect(screen.queryByText("Production clusters are usually read-only")).not.toBeInTheDocument();
   });
 
+  it("keeps read-only on one line, read as the one word (#662)", () => {
+    toasts.items = [];
+    toasts.push("Production clusters are usually read-only", "warn", { label: "Make read-only", run: vi.fn() });
+    render(Toaster);
+    const toast = document.querySelector<HTMLElement>("[data-tone]")!;
+    const message = toast.querySelector<HTMLElement>(".type-body-sm")!;
+    // The same characters for a screen reader; "read-" never ends a line.
+    expect(message.textContent).toBe("Production clusters are usually read-only");
+    expect(message.querySelector(".whitespace-nowrap")).toHaveTextContent(/^read-only$/);
+    toasts.items = [];
+  });
+
   it("a toast without an action has only its dismiss button", () => {
     toasts.items = [];
     toasts.push("Pod deleted", "ok");

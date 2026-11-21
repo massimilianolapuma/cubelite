@@ -11,12 +11,15 @@
 		pod,
 		onCancel,
 		onConfirm,
-		confirmDisabled = true
+		confirmDisabled = true,
+		blockedReason = null
 	}: {
 		pod: PodInfo;
 		onCancel: () => void;
 		onConfirm: () => void;
 		confirmDisabled?: boolean;
+		/** Why the delete is off (a read-only cluster, #662): the button says so and does nothing. */
+		blockedReason?: string | null;
 	} = $props();
 
 	// What is deleted, and where (Tonal §8.6): the pod, its namespace and the
@@ -48,6 +51,7 @@
 			size="primary"
 			disabled={confirmDisabled}
 			title={confirmDisabled ? 'Requires backend support' : undefined}
+			{blockedReason}
 			onclick={onConfirm}
 		>
 			Delete Pod

@@ -7,6 +7,7 @@
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { errorMessage } from '#lib/errors.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { applyResourceYaml, getResourceYaml, type YamlResourceType } from '#lib/tauri.ts';
 
 	let {
@@ -30,6 +31,9 @@
 	let draft = $state('');
 	let applying = $state(false);
 	let applyError = $state<string | null>(null);
+	// Edit and Apply are writes: off, with the reason, on a read-only cluster
+	// (#662). A draft stays when an unlock ends under it: it can be copied.
+	const lockReason = $derived(clusterSettings.lockReason(app.activeCluster));
 
 	// The object by value: a list reload hands the panel that opened this a new
 	// object with the same name, and that is no reason to fetch again (#659).
@@ -60,7 +64,7 @@
 	}
 
 	function startEditing() {
-		if (yaml === null) return;
+		if (yaml === null || lockReason !== null) return;
 		draft = yaml;
 		applyError = null;
 		editing = true;
@@ -74,7 +78,7 @@
 	async function apply() {
 		const kc = app.kubeconfigPath;
 		const cluster = app.activeCluster;
-		if (!kc || !cluster || applying) return;
+		if (!kc || !cluster || applying || lockReason !== null) return;
 		applying = true;
 		applyError = null;
 		try {
@@ -114,11 +118,17 @@
 		<div class="flex items-center justify-end gap-2">
 			{#if editing}
 				<Button variant="text" size="inline" disabled={applying} onclick={cancelEditing}>Cancel</Button>
-				<Button variant="primary" size="primary" pending={applying} onclick={() => void apply()}>
+				<Button
+					variant="primary"
+					size="primary"
+					pending={applying}
+					blockedReason={lockReason}
+					onclick={() => void apply()}
+				>
 					Apply
 				</Button>
 			{:else}
-				<Button variant="tonal" size="inline" disabled={!yaml} onclick={startEditing}>
+				<Button variant="tonal" size="inline" disabled={!yaml} blockedReason={lockReason} onclick={startEditing}>
 					{#snippet icon()}<Pencil class="h-3.5 w-3.5" aria-hidden="true" />{/snippet}
 					Edit
 				</Button>

@@ -18,6 +18,10 @@ import { app } from "#lib/stores/app.svelte.ts";
 import { clusterSettings } from "#lib/stores/cluster-settings.svelte.ts";
 import { makeClusterWritable, type ContextEnvironment, type UnlockFor } from "#lib/tauri.ts";
 
+/** The element whose whole text is `text`, read across the spans that keep "read-only" on one line. */
+const wholeText = (text: string) => (_: string, el: Element | null) =>
+  el?.textContent === text && !Array.from(el.children).some((c) => c.textContent === text);
+
 const prod: ContextEnvironment = {
   name: "aks-prod-01-emm",
   environment: "production",
@@ -60,7 +64,11 @@ describe("UnlockDialog (#662, spec §5.3)", () => {
     expect(screen.getByRole("heading", { name: "Make aks-prod-01-emm writable?" })).toBeInTheDocument();
     expect(screen.getByText("Production · for 15 minutes")).toBeInTheDocument();
     expect(screen.getByText(ACTIONS)).toBeInTheDocument();
-    expect(screen.getByText("It goes back to read-only after 15 minutes or when CubeLite quits.")).toBeInTheDocument();
+    expect(screen.getByText(wholeText("It goes back to read-only after 15 minutes or when CubeLite quits."))).toBeInTheDocument();
+    // "read-" never ends a line.
+    expect(
+      screen.getByText(wholeText("It goes back to read-only after 15 minutes or when CubeLite quits.")).querySelector(".whitespace-nowrap"),
+    ).toHaveTextContent(/^read-only$/);
     expect(screen.getByRole("checkbox", { name: "Don't ask again" })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     // The action is allowed and chosen: tonal, not danger.
@@ -72,7 +80,7 @@ describe("UnlockDialog (#662, spec §5.3)", () => {
     pending("dol-lab-aks", 60);
     await tick();
     expect(screen.getByText("for 1 hour")).toBeInTheDocument();
-    expect(screen.getByText("It goes back to read-only after 1 hour or when CubeLite quits.")).toBeInTheDocument();
+    expect(screen.getByText(wholeText("It goes back to read-only after 1 hour or when CubeLite quits."))).toBeInTheDocument();
   });
 
   it("says Always stays until made read-only", async () => {
@@ -80,8 +88,8 @@ describe("UnlockDialog (#662, spec §5.3)", () => {
     pending("aks-prod-01-emm", "always");
     await tick();
     expect(screen.getByText("Production · always")).toBeInTheDocument();
-    expect(screen.getByText("It stays writable until you make it read-only.")).toBeInTheDocument();
-    expect(screen.queryByText(/goes back to read-only/)).toBeNull();
+    expect(screen.getByText(wholeText("It stays writable until you make it read-only."))).toBeInTheDocument();
+    expect(screen.queryByText(/goes back to/)).toBeNull();
   });
 
   it("starts with the focus on Cancel", async () => {

@@ -40,6 +40,9 @@ import { EVALUATE_DEBOUNCE_MS, resourceEditor } from "#lib/stores/resourceEditor
 import { app } from "#lib/stores/app.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
 import { toasts } from "#lib/stores/toasts.svelte.ts";
+import { clock } from "#lib/stores/clock.svelte.ts";
+import { clusterSettings } from "#lib/stores/cluster-settings.svelte.ts";
+import { setAccess } from "#lib/stores/access-mock.ts";
 import { EMPTY } from "#lib/empty.ts";
 
 const Mi = 1024 * 1024;
@@ -231,6 +234,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resourceEditor.close();
+  clusterSettings.reset();
   vi.useRealTimers();
 });
 
@@ -797,5 +801,43 @@ describe("ResourceEditor: what decides the primary button stays in view", () => 
     await fireEvent.click(screen.getByRole("button", { name: "Review" }));
     await settle();
     expect(within(pinned()).getByRole("alert")).toHaveTextContent("You are not allowed to change this deployment.");
+  });
+});
+
+describe("ResourceEditor on a read-only cluster (#662, spec §4.4)", () => {
+  /** Off with the reason, in place and focusable. */
+  function expectBlocked(button: HTMLElement) {
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveAccessibleDescription("prod-aks is read-only");
+    expect(button).toHaveAttribute("title", "prod-aks is read-only");
+  }
+
+  it("step 1: Review is off with the reason once the cluster is read-only, and runs no dry run", async () => {
+    await openEditor();
+    await typeInto("worker memory limit", "768Mi");
+    expect(screen.getByRole("button", { name: "Review" })).toBeEnabled();
+    setAccess("prod-aks", "read_only");
+    await settle();
+    const review = screen.getByRole("button", { name: "Review" });
+    expectBlocked(review);
+    await fireEvent.click(review);
+    await settle();
+    expect(applyResources).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Adjust resources · api" })).toBeInTheDocument();
+  });
+
+  it("step 2: Apply is off with the reason when the unlock ends, and sends nothing", async () => {
+    const entry = setAccess("prod-aks", "timed", 5);
+    await toReview();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+    clock.now = (entry.writable_until ?? 0) + 1;
+    await settle();
+    const apply = screen.getByRole("button", { name: "Apply" });
+    expectBlocked(apply);
+    await fireEvent.click(apply);
+    await settle();
+    expect(dryRuns(false)).toHaveLength(0);
+    expect(screen.getByRole("dialog", { name: "Review · api" })).toBeInTheDocument();
   });
 });

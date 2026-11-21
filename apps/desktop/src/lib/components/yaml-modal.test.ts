@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/svelte";
+import { tick } from "svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   getResourceYaml: vi.fn(),
@@ -23,9 +24,13 @@ vi.mock("@tauri-apps/api/event", () => ({
 import YamlModal from "./YamlModal.svelte";
 import { applyResourceYaml, getResourceYaml } from "#lib/tauri.ts";
 import { app } from "#lib/stores/app.svelte.ts";
+import { clock } from "#lib/stores/clock.svelte.ts";
+import { clusterSettings } from "#lib/stores/cluster-settings.svelte.ts";
+import { setAccess } from "#lib/stores/access-mock.ts";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clusterSettings.reset();
   app.kubeconfigPath = "/home/u/.kube/config";
   app.activeCluster = "prod";
 });
@@ -121,6 +126,53 @@ describe("YamlModal", () => {
       editor.setSelectionRange(0, 0);
       await fireEvent.keyDown(editor, { key: "Tab" });
       expect(editor.value).toBe("  " + YAML);
+    });
+  });
+
+  describe("on a read-only cluster (#662)", () => {
+    const YAML = "kind: Pod\nmetadata:\n  name: api-0\n";
+
+    function expectBlocked(button: HTMLElement) {
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      expect(button).not.toBeDisabled();
+      expect(button).toHaveAccessibleDescription("prod is read-only");
+      expect(button).toHaveAttribute("title", "prod is read-only");
+    }
+
+    it("shows the YAML and Copy, and Edit says why it is off and opens no editor", async () => {
+      setAccess("prod", "read_only");
+      vi.mocked(getResourceYaml).mockResolvedValue(YAML);
+      render(YamlModal, { props: { resourceType: "pod", namespace: "default", name: "api-0", onClose: vi.fn() } });
+      await screen.findByText(/kind: Pod/);
+      expect(screen.getByRole("button", { name: "Copy" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Copy" })).not.toHaveAttribute("aria-disabled");
+      const edit = screen.getByRole("button", { name: "Edit" });
+      expectBlocked(edit);
+      await fireEvent.click(edit);
+      expect(screen.queryByRole("textbox", { name: "Manifest YAML" })).toBeNull();
+    });
+
+    it("keeps the draft when the unlock ends while editing; Apply says why and sends nothing", async () => {
+      const entry = setAccess("prod", "timed", 5);
+      vi.mocked(getResourceYaml).mockResolvedValue(YAML);
+      render(YamlModal, { props: { resourceType: "pod", namespace: "default", name: "api-0", onClose: vi.fn() } });
+      await screen.findByText(/kind: Pod/);
+      await fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      const editor = screen.getByRole("textbox", { name: "Manifest YAML" }) as HTMLTextAreaElement;
+      await fireEvent.input(editor, { target: { value: YAML + "  labels: {a: b}\n" } });
+
+      clock.now = (entry.writable_until ?? 0) + 1;
+      await tick();
+
+      expect((screen.getByRole("textbox", { name: "Manifest YAML" }) as HTMLTextAreaElement).value).toBe(
+        YAML + "  labels: {a: b}\n",
+      );
+      const apply = screen.getByRole("button", { name: "Apply" });
+      expectBlocked(apply);
+      await fireEvent.click(apply);
+      expect(applyResourceYaml).not.toHaveBeenCalled();
+      // Leaving the editor still works.
+      expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
     });
   });
 });

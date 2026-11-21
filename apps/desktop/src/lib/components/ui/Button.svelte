@@ -50,8 +50,14 @@
 	} & Omit<HTMLButtonAttributes, 'disabled' | 'children' | 'class' | 'onclick'> = $props();
 
 	// A busy, blocked or disabled button does nothing, however the click reaches it.
+	// A blocked press does not reach what holds the button either (a list row
+	// would open its panel), as a natively disabled button's never does.
 	function click(event: MouseEvent) {
-		if (pending || disabled || blocked) return;
+		if (blocked) {
+			event.stopPropagation();
+			return;
+		}
+		if (pending || disabled) return;
 		onclick?.(event);
 	}
 

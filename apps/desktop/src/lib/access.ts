@@ -24,3 +24,12 @@ export function remainingText(ms: number): string {
   const seconds = Math.max(0, Math.ceil(ms / 1000));
   return seconds >= 60 ? `${Math.ceil(seconds / 60)} min` : `${seconds} s`;
 }
+
+/**
+ * What a write refused on a read-only cluster says, from its lock reason
+ * ("<name> is read-only"): the backend's own words, so a write the webview
+ * stops reads as one the backend refused.
+ */
+export function readOnlyRefusal(reason: string): string {
+  return `${reason}. Make it writable from the cluster menu.`;
+}

@@ -13,6 +13,7 @@
 	import { matchesSelector } from '#lib/k8s-match.ts';
 	import { sumPoints } from '#lib/metrics.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { layout } from '#lib/stores/layout.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { prometheus } from '#lib/stores/prometheus.svelte.ts';
@@ -80,6 +81,8 @@
 		return out;
 	});
 
+	// Restart and scale are writes: off, with the reason, on a read-only cluster (#662).
+	const lockReason = $derived(clusterSettings.lockReason(app.activeCluster));
 </script>
 
 <ResourceList
@@ -145,11 +148,12 @@
 				<span class="flex items-center"><Sparkline points={cpuByDeployment[`${dep.namespace}/${dep.name}`] ?? null} label="CPU, last hour" /></span>
 			{/if}
 			<span class="flex min-w-0 items-center gap-2">
-				<ReplicaStepper deployment={dep} />
+				<ReplicaStepper deployment={dep} blockedReason={lockReason} />
 				<Button
 					variant="text"
 					size="inline"
 					pending={restarting}
+					blockedReason={lockReason}
 					onclick={(e) => {
 						e.stopPropagation();
 						void mutations.restartDeployment(dep.namespace, dep.name);

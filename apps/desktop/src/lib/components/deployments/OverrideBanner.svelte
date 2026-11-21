@@ -4,6 +4,8 @@
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { EMPTY } from '#lib/empty.ts';
 	import { overrideChanges, overrideDate } from '#lib/resource-editor.ts';
+	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { resourceEditor } from '#lib/stores/resourceEditor.svelte.ts';
 	import type { DeploymentInfo, OverrideInfo } from '#lib/tauri.ts';
 	import { PANEL_CARD } from '#lib/ui-classes.ts';
@@ -15,6 +17,8 @@
 
 	const changes = $derived(overrideChanges(override));
 	const when = $derived(overrideDate(override.at));
+	// All three ways out write: off, with the reason, on a read-only cluster (#662).
+	const lockReason = $derived(clusterSettings.lockReason(app.activeCluster));
 
 	let asking = $state(false);
 	let removing = $state(false);
@@ -32,7 +36,7 @@
 	// until the reload drops the banner. A refusal (its toast says why) puts the
 	// two buttons back, the focus on the one that asked.
 	async function removeMark() {
-		if (removing) return;
+		if (removing || lockReason !== null) return;
 		removing = true;
 		const ok = await resourceEditor.keepValues(deployment);
 		if (ok) return;
@@ -94,17 +98,26 @@
 			<span bind:this={cancelButton} class="contents">
 				<Button variant="text" size="inline" disabled={removing} onclick={() => void ask(false)}>Cancel</Button>
 			</span>
-			<Button variant="tonal" size="inline" pending={removing} onclick={() => void removeMark()}>Remove mark</Button>
+			<Button
+				variant="tonal"
+				size="inline"
+				pending={removing}
+				blockedReason={lockReason}
+				onclick={() => void removeMark()}>Remove mark</Button
+			>
 		</div>
 	{:else}
 		<div class="flex flex-wrap items-center justify-end gap-2">
 			<span bind:this={keepButton} class="contents">
-				<Button variant="text" size="inline" onclick={() => void ask(true)}>Keep these values</Button>
+				<Button variant="text" size="inline" blockedReason={lockReason} onclick={() => void ask(true)}
+					>Keep these values</Button
+				>
 			</span>
 			<Button
 				variant="tonal"
 				size="inline"
 				disabled={resourceEditor.isApplying(deployment.namespace, deployment.name)}
+				blockedReason={lockReason}
 				onclick={() => void resourceEditor.open(deployment, 'restore')}
 			>
 				Restore
