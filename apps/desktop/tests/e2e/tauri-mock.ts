@@ -733,8 +733,9 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
   };
   const envSettings = {};
   const detectEnvironment = (name) => {
-    for (const raw of name.split(/[^A-Za-z0-9]+/)) {
-      if (!/[A-Za-z]/.test(raw)) continue;
+    // Spec §3.2: words split on anything that is not a letter or a digit, in any script.
+    for (const raw of name.split(/[^\\p{L}\\p{N}]+/u)) {
+      if (!/\\p{L}/u.test(raw)) continue;
       const word = raw.toLowerCase();
       for (const env of ENVIRONMENTS) {
         for (const v of envVariants[env]) {

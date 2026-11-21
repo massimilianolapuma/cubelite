@@ -3,21 +3,30 @@
 //!
 //! This first part holds each context's environment label (detected from its
 //! name or set by hand) and the variants detection reads. The read-only state
-//! of the second part goes in the same file: every field defaults, so a file
-//! written by either version reads in the other.
+//! of the second part goes in the same file: every field defaults, and fields
+//! this version does not know are kept as they were, so a file written by
+//! either version reads, and survives a save, in the other.
 //!
-//! Writes are atomic (a temp file renamed over the old one). A file that
-//! cannot be read is set aside as `cluster-access.json.bad` and replaced by
-//! defaults; the next answer to the webview says so once.
+//! Several instances of the app may run at once: before each change, and
+//! before answering, the file is read again when it changed on disk (its
+//! modification time or length), and the one change is applied to what was
+//! read. Writes are atomic: a temp file of a unique name, synced, renamed over
+//! the old one. A file that cannot be read is set aside as
+//! `cluster-access.json.bad` (a later one gets a timestamp, never overwriting
+//! an earlier one) and replaced by defaults; the next answer says so once.
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use cubelite_core::environment::{detect, validate_variants, Environment, Variants};
+use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::{Map, Value};
 use tauri::{AppHandle, Emitter};
 
 /// The settings file's name in the app config directory.
@@ -26,12 +35,16 @@ pub const FILE_NAME: &str = "cluster-access.json";
 /// Emitted to every window after a change, payload `()`.
 pub const CLUSTER_SETTINGS_CHANGED: &str = "cluster-settings-changed";
 
-/// The version written in the file.
+/// The version written in a new file.
 const VERSION: u32 = 1;
 
 /// The whole settings file.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(default)]
+///
+/// Read leniently: one bad context entry reads as detected, a bad variant
+/// list or item is skipped, a version that is not a number reads as ours.
+/// Only a file that is not JSON, not an object, or whose `contexts` is not a
+/// map is unreadable as a whole.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct SettingsFile {
     /// The format version.
     pub version: u32,
@@ -39,6 +52,9 @@ pub struct SettingsFile {
     pub contexts: BTreeMap<String, ContextRecord>,
     /// The words that name each environment.
     pub variants: Variants,
+    /// Fields this version does not know (a newer one's), written back as read.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
 }
 
 impl Default for SettingsFile {
@@ -47,17 +63,76 @@ impl Default for SettingsFile {
             version: VERSION,
             contexts: BTreeMap::new(),
             variants: Variants::default(),
+            extra: Map::new(),
         }
     }
 }
 
+impl<'de> Deserialize<'de> for SettingsFile {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let Value::Object(mut map) = Value::deserialize(deserializer)? else {
+            return Err(D::Error::custom("the settings are not an object"));
+        };
+        let version = map
+            .remove("version")
+            .map_or(VERSION, |v| lenient_version(&v));
+        let contexts = match map.remove("contexts") {
+            None | Some(Value::Null) => BTreeMap::new(),
+            Some(Value::Object(entries)) => entries
+                .into_iter()
+                .map(|(name, record)| (name, ContextRecord::lenient(record)))
+                .collect(),
+            Some(_) => return Err(D::Error::custom("contexts is not a map")),
+        };
+        let variants = map
+            .remove("variants")
+            .and_then(|v| Variants::deserialize(v).ok())
+            .unwrap_or_default();
+        Ok(SettingsFile {
+            version,
+            contexts,
+            variants,
+            extra: map,
+        })
+    }
+}
+
+/// A version written as a number or as a numeric string; anything else is ours.
+fn lenient_version(value: &Value) -> u32 {
+    value
+        .as_u64()
+        .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))
+        .and_then(|n| u32::try_from(n).ok())
+        .unwrap_or(VERSION)
+}
+
 /// What is kept for one context.
-#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
-#[serde(default)]
+#[derive(Serialize, Debug, Clone, Default, PartialEq, Eq)]
 pub struct ContextRecord {
     /// Where its environment label comes from.
-    #[serde(deserialize_with = "lenient_setting")]
     pub environment: EnvironmentSetting,
+    /// Fields this version does not know (a newer one's), written back as read.
+    #[serde(flatten)]
+    pub extra: Map<String, Value>,
+}
+
+impl ContextRecord {
+    /// A record as read from the file: anything but an object reads as a new
+    /// record, a setting this version cannot read (an unknown `source`) as
+    /// detected.
+    fn lenient(value: Value) -> Self {
+        let Value::Object(mut map) = value else {
+            return ContextRecord::default();
+        };
+        let environment = map
+            .remove("environment")
+            .and_then(|v| EnvironmentSetting::deserialize(v).ok())
+            .unwrap_or_default();
+        ContextRecord {
+            environment,
+            extra: map,
+        }
+    }
 }
 
 /// A context's environment: detected from its name, or chosen by hand.
@@ -80,19 +155,11 @@ pub enum EnvironmentSetting {
 fn lenient_environment<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Environment>, D::Error> {
-    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    let value = Option::<Value>::deserialize(deserializer)?;
     Ok(match value {
-        Some(serde_json::Value::String(text)) => Environment::parse(&text),
+        Some(Value::String(text)) => Environment::parse(&text),
         _ => None,
     })
-}
-
-/// A setting this version cannot read (an unknown `source`) reads as detected.
-fn lenient_setting<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> Result<EnvironmentSetting, D::Error> {
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(EnvironmentSetting::deserialize(value).unwrap_or_default())
 }
 
 /// How the settings file was found at start.
@@ -129,11 +196,22 @@ pub struct ClusterSettingsView {
     pub recovered: bool,
 }
 
+/// What tells that the file changed on disk: its modification time and length.
+type Stamp = (Option<SystemTime>, u64);
+
+fn stamp_of(path: &Path) -> Option<Stamp> {
+    fs::metadata(path)
+        .ok()
+        .map(|meta| (meta.modified().ok(), meta.len()))
+}
+
 struct Inner {
     file: SettingsFile,
     /// `None`: kept in memory only (no config directory).
     path: Option<PathBuf>,
     recovered_pending: bool,
+    /// The file as last read or written; `None` when there was none.
+    stamp: Option<Stamp>,
 }
 
 /// The managed state: the settings in memory and where they are saved.
@@ -144,28 +222,18 @@ pub struct ClusterAccessState {
 impl ClusterAccessState {
     /// Read the settings from `path`, setting an unreadable file aside.
     pub fn load(path: PathBuf) -> (Self, LoadOutcome) {
-        let read = match fs::read(&path) {
-            Ok(bytes) => serde_json::from_slice::<SettingsFile>(&bytes).map_err(|e| e.to_string()),
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                return (
-                    Self::with(SettingsFile::default(), Some(path), false),
-                    LoadOutcome::Fresh,
-                );
+        match read_file(&path) {
+            Ok(None) => (
+                Self::with(SettingsFile::default(), Some(path), false),
+                LoadOutcome::Fresh,
+            ),
+            Ok(Some((file, stamp))) => {
+                let state = Self::with(file, Some(path), false);
+                state.lock().stamp = stamp;
+                (state, LoadOutcome::Loaded)
             }
-            Err(e) => Err(e.to_string()),
-        };
-        match read {
-            Ok(file) => (Self::with(file, Some(path), false), LoadOutcome::Loaded),
             Err(reason) => {
-                let bad = path.with_file_name(format!("{FILE_NAME}.bad"));
-                eprintln!(
-                    "cluster settings: {} could not be read ({reason}); set aside as {}",
-                    path.display(),
-                    bad.display()
-                );
-                if let Err(e) = fs::rename(&path, &bad) {
-                    eprintln!("cluster settings: could not set the file aside: {e}");
-                }
+                set_aside(&path, &reason);
                 (
                     Self::with(SettingsFile::default(), Some(path), true),
                     LoadOutcome::Recovered,
@@ -185,6 +253,7 @@ impl ClusterAccessState {
                 file,
                 path,
                 recovered_pending,
+                stamp: None,
             }),
         }
     }
@@ -196,26 +265,35 @@ impl ClusterAccessState {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// The saved settings as they are on disk now: read again when another
+    /// instance changed the file since this one last read or wrote it. The
+    /// write guard of the read-only state reads through this.
+    pub fn with_fresh<R>(&self, read: impl FnOnce(&SettingsFile) -> R) -> R {
+        let mut inner = self.lock();
+        inner.refresh();
+        read(&inner.file)
+    }
+
     /// The view for `names`, recording every name not seen before.
     ///
     /// A failed save is logged, not returned: the labels are still answered,
     /// and the records are written with the next change.
     pub fn settings(&self, names: &[String]) -> ClusterSettingsView {
         let mut inner = self.lock();
+        inner.refresh();
+        let mut next = inner.file.clone();
         let mut added = false;
         for name in names {
-            if !inner.file.contexts.contains_key(name) {
-                inner
-                    .file
-                    .contexts
-                    .insert(name.clone(), ContextRecord::default());
+            if !next.contexts.contains_key(name) {
+                next.contexts.insert(name.clone(), ContextRecord::default());
                 added = true;
             }
         }
         if added {
-            if let Err(e) = inner.save(&inner.file) {
+            if let Err(e) = inner.save(&next) {
                 eprintln!("cluster settings: could not save: {e}");
             }
+            inner.file = next;
         }
         let recovered = std::mem::take(&mut inner.recovered_pending);
         inner.view(names, recovered)
@@ -228,13 +306,13 @@ impl ClusterAccessState {
         setting: EnvironmentSetting,
     ) -> Result<ClusterSettingsView, String> {
         let mut inner = self.lock();
+        inner.refresh();
         let mut next = inner.file.clone();
-        next.contexts.insert(
-            context.to_string(),
-            ContextRecord {
-                environment: setting,
-            },
-        );
+        // Only the environment: the rest of the record is kept.
+        next.contexts
+            .entry(context.to_string())
+            .or_default()
+            .environment = setting;
         inner.save(&next).map_err(|e| e.to_string())?;
         inner.file = next;
         Ok(inner.view(&[context.to_string()], false))
@@ -244,6 +322,7 @@ impl ClusterAccessState {
     pub fn set_variants(&self, variants: &Variants) -> Result<Variants, String> {
         let valid = validate_variants(variants).map_err(|e| e.to_string())?;
         let mut inner = self.lock();
+        inner.refresh();
         let mut next = inner.file.clone();
         next.variants = valid.clone();
         inner.save(&next).map_err(|e| e.to_string())?;
@@ -253,11 +332,37 @@ impl ClusterAccessState {
 }
 
 impl Inner {
-    fn save(&self, file: &SettingsFile) -> io::Result<()> {
-        match &self.path {
-            Some(path) => save(path, file),
-            None => Ok(()),
+    /// Read the file again if it changed on disk since it was last read or
+    /// written. A file that vanished leaves the settings in memory as they
+    /// are; one that became unreadable is set aside, memory kept.
+    fn refresh(&mut self) {
+        let Some(path) = self.path.clone() else {
+            return;
+        };
+        let now = stamp_of(&path);
+        if now.is_none() || now == self.stamp {
+            return;
         }
+        match read_file(&path) {
+            Ok(Some((file, stamp))) => {
+                self.file = file;
+                self.stamp = stamp;
+            }
+            Ok(None) => self.stamp = None,
+            Err(reason) => {
+                set_aside(&path, &reason);
+                self.recovered_pending = true;
+                self.stamp = None;
+            }
+        }
+    }
+
+    fn save(&mut self, file: &SettingsFile) -> io::Result<()> {
+        if let Some(path) = &self.path {
+            save(path, file)?;
+            self.stamp = stamp_of(path);
+        }
+        Ok(())
     }
 
     fn view(&self, names: &[String], recovered: bool) -> ClusterSettingsView {
@@ -281,13 +386,73 @@ impl Inner {
     }
 }
 
-/// Write `file` to `path` atomically: a temp file in the same directory,
-/// renamed over the old one.
+/// The file at `path` and its stamp; `None` when there is no file.
+fn read_file(path: &Path) -> Result<Option<(SettingsFile, Option<Stamp>)>, String> {
+    let stamp = stamp_of(path);
+    match fs::read(path) {
+        Ok(bytes) => serde_json::from_slice::<SettingsFile>(&bytes)
+            .map(|file| Some((file, stamp)))
+            .map_err(|e| e.to_string()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Move an unreadable file out of the way, never over an earlier one.
+fn set_aside(path: &Path, reason: &str) {
+    let bad = bad_path(path);
+    eprintln!(
+        "cluster settings: {} could not be read ({reason}); set aside as {}",
+        path.display(),
+        bad.display()
+    );
+    if let Err(e) = fs::rename(path, &bad) {
+        eprintln!("cluster settings: could not set the file aside: {e}");
+    }
+}
+
+/// `cluster-access.json.bad` when free, else the same with a timestamp (and a
+/// counter if that is taken too).
+fn bad_path(path: &Path) -> PathBuf {
+    let first = path.with_file_name(format!("{FILE_NAME}.bad"));
+    if !first.exists() {
+        return first;
+    }
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    (0..u32::MAX)
+        .map(|n| match n {
+            0 => path.with_file_name(format!("{FILE_NAME}.bad.{secs}")),
+            n => path.with_file_name(format!("{FILE_NAME}.bad.{secs}-{n}")),
+        })
+        .find(|candidate| !candidate.exists())
+        .unwrap_or(first)
+}
+
+/// Distinguishes the temp files of one process's saves.
+static SAVES: AtomicU64 = AtomicU64::new(0);
+
+/// Write `file` to `path` atomically: a temp file of a name no other save
+/// uses (process id and a counter), synced to disk, renamed over the old one.
 fn save(path: &Path, file: &SettingsFile) -> io::Result<()> {
     let text = serde_json::to_vec_pretty(file).map_err(io::Error::other)?;
-    let tmp = path.with_file_name(format!("{FILE_NAME}.tmp"));
-    fs::write(&tmp, text)?;
-    fs::rename(&tmp, path)
+    let n = SAVES.fetch_add(1, Ordering::Relaxed);
+    let tmp = path.with_file_name(format!("{FILE_NAME}.{}.{n}.tmp", std::process::id()));
+    let written = (|| {
+        let mut out = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
+        out.write_all(&text)?;
+        out.sync_all()?;
+        fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    written
 }
 
 /// The environment of the context `name` under `setting`.
@@ -602,6 +767,172 @@ mod tests {
         let saved = state.set_variants(&variants).expect("normalised");
         assert_eq!(saved.of(Production), names(&["prod", "live"]));
         assert_eq!(saved.0.len(), 4);
+    }
+
+    #[test]
+    fn two_instances_keep_each_others_changes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (a, _) = ClusterAccessState::load(file_in(&dir));
+        let (b, _) = ClusterAccessState::load(file_in(&dir));
+        a.settings(&names(&["minikube"]));
+        a.set_environment("minikube", manual(Some(Development)))
+            .expect("a sets");
+        // B, started before A's change, records a context of its own.
+        let view = b.settings(&names(&["new-ctx", "minikube"]));
+        assert_eq!(
+            one(&view, "minikube"),
+            (Some(Development), "manual"),
+            "B reads A's change"
+        );
+        let mut variants = Variants::default();
+        variants.0.insert(Production, names(&["prod", "live"]));
+        b.set_variants(&variants).expect("b saves");
+        a.set_environment("other", manual(None)).expect("a again");
+
+        let (reloaded, _) = ClusterAccessState::load(file_in(&dir));
+        let file = reloaded.lock().file.clone();
+        assert_eq!(
+            file.contexts.get("minikube").map(|r| r.environment),
+            Some(manual(Some(Development)))
+        );
+        assert!(file.contexts.contains_key("new-ctx"));
+        assert!(file.contexts.contains_key("other"));
+        assert_eq!(file.variants.of(Production), names(&["prod", "live"]));
+    }
+
+    #[test]
+    fn with_fresh_reads_another_instances_change() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (a, _) = ClusterAccessState::load(file_in(&dir));
+        let (b, _) = ClusterAccessState::load(file_in(&dir));
+        a.set_environment("aks-prod-01-emm", manual(None))
+            .expect("a sets");
+        let seen = b.with_fresh(|file| file.contexts.get("aks-prod-01-emm").map(|r| r.environment));
+        assert_eq!(seen, Some(manual(None)));
+    }
+
+    #[test]
+    fn unknown_fields_survive_a_save() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        fs::write(
+            &path,
+            r#"{"version":1,"confirm_unlock":false,"read_only_from_start":["production"],
+               "contexts":{"aks-prod-01-emm":{"access":"read_only","environment":{"source":"detected"}}}}"#,
+        )
+        .expect("write");
+        let (state, _) = ClusterAccessState::load(path.clone());
+        state.settings(&names(&["new-ctx"]));
+        state
+            .set_environment("aks-prod-01-emm", manual(Some(Production)))
+            .expect("set");
+        let on_disk: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).expect("read")).expect("json");
+        assert_eq!(on_disk["confirm_unlock"], serde_json::json!(false));
+        assert_eq!(
+            on_disk["read_only_from_start"],
+            serde_json::json!(["production"])
+        );
+        assert_eq!(
+            on_disk["contexts"]["aks-prod-01-emm"]["access"],
+            serde_json::json!("read_only")
+        );
+        assert_eq!(
+            on_disk["contexts"]["aks-prod-01-emm"]["environment"],
+            serde_json::json!({"source": "manual", "value": "production"})
+        );
+        assert!(on_disk["contexts"]["new-ctx"].is_object());
+    }
+
+    #[test]
+    fn a_leftover_temp_name_does_not_block_a_save() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Another writer's temp file (or one left by a crash) under the old fixed name.
+        fs::create_dir(dir.path().join(format!("{FILE_NAME}.tmp"))).expect("dir");
+        let (state, _) = ClusterAccessState::load(file_in(&dir));
+        state
+            .set_environment("minikube", manual(Some(Development)))
+            .expect("saved beside it");
+        let leftovers = fs::read_dir(dir.path())
+            .expect("read dir")
+            .filter(|e| {
+                let name = e.as_ref().expect("entry").file_name();
+                let name = name.to_string_lossy();
+                name.ends_with(".tmp") && name != format!("{FILE_NAME}.tmp")
+            })
+            .count();
+        assert_eq!(leftovers, 0, "no temp file of ours left");
+    }
+
+    #[test]
+    fn second_recovery_keeps_the_first_bad_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        fs::write(&path, b"first").expect("write");
+        ClusterAccessState::load(path.clone());
+        fs::write(&path, b"second").expect("write");
+        ClusterAccessState::load(path.clone());
+        let mut kept: Vec<Vec<u8>> = fs::read_dir(dir.path())
+            .expect("read dir")
+            .map(|e| e.expect("entry").path())
+            .filter(|p| p.to_string_lossy().contains(".bad"))
+            .map(|p| fs::read(p).expect("read bad"))
+            .collect();
+        kept.sort();
+        assert_eq!(kept, vec![b"first".to_vec(), b"second".to_vec()]);
+        assert_eq!(
+            fs::read(dir.path().join(format!("{FILE_NAME}.bad"))).expect("first"),
+            b"first"
+        );
+    }
+
+    #[test]
+    fn bad_entries_are_read_one_by_one() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        fs::write(
+            &path,
+            r#"{"version":"2","contexts":{"a":null,"b":{"environment":{"source":"manual","value":"test"}},"c":7},
+               "variants":{"production":["prod",1,"live"],"test":"qa"}}"#,
+        )
+        .expect("write");
+        let (state, outcome) = ClusterAccessState::load(path);
+        assert_eq!(outcome, LoadOutcome::Loaded);
+        let file = state.lock().file.clone();
+        assert_eq!(file.version, 2);
+        assert_eq!(
+            file.contexts.get("a").map(|r| r.environment),
+            Some(EnvironmentSetting::Detected)
+        );
+        assert_eq!(
+            file.contexts.get("b").map(|r| r.environment),
+            Some(manual(Some(Environment::Test)))
+        );
+        assert_eq!(
+            file.contexts.get("c").map(|r| r.environment),
+            Some(EnvironmentSetting::Detected)
+        );
+        assert_eq!(file.variants.of(Production), names(&["prod", "live"]));
+        assert!(file.variants.of(Environment::Test).is_empty());
+    }
+
+    #[test]
+    fn a_version_that_is_not_a_number_reads_as_ours() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        fs::write(&path, r#"{"version":"next","contexts":{}}"#).expect("write");
+        let (state, outcome) = ClusterAccessState::load(path);
+        assert_eq!(outcome, LoadOutcome::Loaded);
+        assert_eq!(state.lock().file.version, 1);
+    }
+
+    #[test]
+    fn contexts_that_are_not_a_map_set_the_file_aside() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = file_in(&dir);
+        fs::write(&path, r#"{"contexts":["a","b"]}"#).expect("write");
+        let (_, outcome) = ClusterAccessState::load(path);
+        assert_eq!(outcome, LoadOutcome::Recovered);
     }
 
     #[test]

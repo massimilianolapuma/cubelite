@@ -27,6 +27,15 @@
 		);
 	}
 
+	/** Set a context's environment; a choice the backend did not save goes back. */
+	async function choose(name: string, select: HTMLSelectElement) {
+		const saved = await clusterSettings.setEnvironment(
+			name,
+			settingOf(select.value as EnvironmentChoice)
+		);
+		if (!saved) select.value = choiceOf(clusterSettings.byName[name]);
+	}
+
 	let namesOpen = $state(false);
 
 	const joined = (words: string[]) => words.join(', ');
@@ -39,12 +48,17 @@
 	let notes = $state<Partial<Record<Environment, { text: string; refused: boolean }>>>({});
 	/** The field being typed in: a change from elsewhere does not overwrite it. */
 	let editing = $state<Environment | null>(null);
+	/** Fields whose save is on its way: their text stays until the answer. */
+	let pending = $state<Partial<Record<Environment, boolean>>>({});
 
-	// Follow the saved words, except where the user is typing or was refused.
+	// Follow the saved words, except where the user is typing, a save is on its
+	// way, or the backend refused what was typed.
 	$effect(() => {
 		const saved = clusterSettings.variants;
 		for (const env of ENVIRONMENTS) {
-			if (env !== editing && !notes[env]?.refused) drafts[env] = joined(saved[env] ?? []);
+			if (env !== editing && !pending[env] && !notes[env]?.refused) {
+				drafts[env] = joined(saved[env] ?? []);
+			}
 		}
 	});
 
@@ -52,7 +66,16 @@
 	const SINGLE_WORD = /^(?=.*[a-z])[a-z0-9]+$/;
 
 	async function save(env: Environment) {
-		editing = null;
+		pending[env] = true;
+		if (editing === env) editing = null;
+		try {
+			await saveField(env);
+		} finally {
+			pending[env] = false;
+		}
+	}
+
+	async function saveField(env: Environment) {
 		const text = drafts[env];
 		const words = text
 			.split(',')
@@ -123,11 +146,7 @@
 							aria-label="Environment of {ctx.name}"
 							class="{FIELD_BASE} w-56 max-w-full pr-2"
 							value={choiceOf(clusterSettings.byName[ctx.name])}
-							onchange={(e) =>
-								void clusterSettings.setEnvironment(
-									ctx.name,
-									settingOf(e.currentTarget.value as EnvironmentChoice)
-								)}
+							onchange={(e) => void choose(ctx.name, e.currentTarget)}
 						>
 							{#each options(ctx.name) as option (option.value)}
 								<option value={option.value}>{option.label}</option>

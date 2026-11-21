@@ -127,6 +127,20 @@ describe("clusterSettings store", () => {
     ]);
   });
 
+  it("the reset toast is not lost with an answer that came too late", async () => {
+    const first = deferred<ClusterSettings>();
+    vi.mocked(fetchClusterSettings)
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(answer([mini]));
+    const a = clusterSettings.load(["minikube"]);
+    await clusterSettings.load(["minikube"]);
+    first.resolve(answer([mini], true));
+    await a;
+    expect(toasts.items).toEqual([
+      expect.objectContaining({ message: "Cluster settings could not be read and were reset", tone: "err" }),
+    ]);
+  });
+
   it("a failed load keeps what was shown", async () => {
     vi.mocked(fetchClusterSettings).mockResolvedValueOnce(answer([prod]));
     await clusterSettings.load(["aks-prod-01-emm"]);
@@ -171,7 +185,7 @@ describe("clusterSettings store", () => {
 
   it("setEnvironment failure is a toast", async () => {
     vi.mocked(setClusterEnvironment).mockRejectedValue("disk full");
-    await clusterSettings.setEnvironment("minikube", { source: "detected" });
+    expect(await clusterSettings.setEnvironment("minikube", { source: "detected" })).toBe(false);
     expect(toasts.items).toEqual([
       expect.objectContaining({ message: "Could not set the environment: disk full", tone: "err" }),
     ]);

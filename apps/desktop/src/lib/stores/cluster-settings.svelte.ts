@@ -50,28 +50,32 @@ class ClusterSettingsStore {
       // Labels are an aid: without them the app works as before.
       return;
     }
+    // The backend says it reset the file only once: told even when this
+    // answer is otherwise too old to use.
+    if (answer?.recovered) {
+      toasts.push("Cluster settings could not be read and were reset", "err");
+    }
     if (seq !== this.#seq || !Array.isArray(answer?.contexts)) return;
     this.byName = Object.fromEntries(answer.contexts.map((c) => [c.name, c]));
     this.variants = answer.variants;
-    if (answer.recovered) {
-      toasts.push("Cluster settings could not be read and were reset", "err");
-    }
   }
 
-  async setEnvironment(name: string, setting: EnvironmentSetting): Promise<void> {
+  /** Answers whether the backend saved it; on a refusal the stored label stays. */
+  async setEnvironment(name: string, setting: EnvironmentSetting): Promise<boolean> {
     const seq = ++this.#seq;
     let answer: ClusterSettings;
     try {
       answer = await setClusterEnvironment(name, setting);
     } catch (e) {
       toasts.push(`Could not set the environment: ${errorMessage(e)}`, "err");
-      return;
+      return false;
     }
-    if (seq !== this.#seq || !Array.isArray(answer?.contexts)) return;
+    if (seq !== this.#seq || !Array.isArray(answer?.contexts)) return true;
     const next = { ...this.byName };
     for (const c of answer.contexts) next[c.name] = c;
     this.byName = next;
     this.variants = answer.variants;
+    return true;
   }
 
   /** Saves the variants; answers the backend's reason when it refuses them. */

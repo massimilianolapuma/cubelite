@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, within, waitFor } from "@testing-library/svelte";
+import { tick } from "svelte";
 
 vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   ...(await importOriginal<typeof import("#lib/tauri.ts")>()),
@@ -115,6 +116,14 @@ describe("ClustersPreferences (#662)", () => {
     expect(setClusterEnvironment).toHaveBeenLastCalledWith("minikube", { source: "detected" });
   });
 
+  it("a choice the backend did not save goes back to the stored one", async () => {
+    vi.mocked(setClusterEnvironment).mockRejectedValue("disk full");
+    render(ClustersPreferences);
+    await fireEvent.change(selectOf("minikube"), { target: { value: "test" } });
+    expect(setClusterEnvironment).toHaveBeenCalled();
+    await waitFor(() => expect(selectOf("minikube").value).toBe("development"));
+  });
+
   it("drops the row of a context that left the kubeconfig (Review Focus 5)", async () => {
     render(ClustersPreferences);
     expect(rowNames()).toContain("aks-prod-01-emm");
@@ -203,6 +212,21 @@ describe("ClustersPreferences (#662)", () => {
     await openNames();
     await fireEvent.input(field("Test"), { target: { value: "test, qa, check" } });
     await fireEvent.blur(field("Test"));
+    expect(await screen.findByText("disk full")).toBeInTheDocument();
+    expect(field("Test").value).toBe("test, qa, check");
+  });
+
+  it("keeps the typed text while the save is pending and after the backend refuses it", async () => {
+    let refuse!: (reason: unknown) => void;
+    vi.mocked(setEnvironmentVariants).mockReturnValue(new Promise((_, reject) => (refuse = reject)));
+    render(ClustersPreferences);
+    await openNames();
+    await fireEvent.focus(field("Test"));
+    await fireEvent.input(field("Test"), { target: { value: "test, qa, check" } });
+    await fireEvent.blur(field("Test"));
+    await tick();
+    expect(field("Test").value).toBe("test, qa, check");
+    refuse("disk full");
     expect(await screen.findByText("disk full")).toBeInTheDocument();
     expect(field("Test").value).toBe("test, qa, check");
   });

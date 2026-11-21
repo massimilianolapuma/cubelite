@@ -47,6 +47,12 @@
 	const environment = $derived(environmentEntry?.environment ?? null);
 	const choices = $derived(environmentChoices(environmentEntry?.detected ?? null));
 
+	function chooseEnvironment(value: string) {
+		if (activeContext) {
+			void clusterSettings.setEnvironment(activeContext.name, settingOf(value as EnvironmentChoice));
+		}
+	}
+
 	// The connection state is a shape and a word, never a colour alone.
 	const connection: Record<ConnectionState, { glyph: GlyphState; tone: string; word: string }> = {
 		connected: { glyph: 'ok', tone: 'text-success', word: 'Connected' },
@@ -138,17 +144,9 @@
 							<ChevronRight class="h-4 w-4 shrink-0 text-text-subtle" aria-hidden="true" />
 						</DropdownMenu.SubTrigger>
 						<DropdownMenu.SubContent sideOffset={6} class="{MENU_CONTENT} min-w-60">
-							<DropdownMenu.RadioGroup
-								value={choiceOf(environmentEntry)}
-								onValueChange={(value) => {
-									if (activeContext) {
-										void clusterSettings.setEnvironment(
-											activeContext.name,
-											settingOf(value as EnvironmentChoice)
-										);
-									}
-								}}
-							>
+							<!-- Bound to the store: the checked item is the stored one, also after a
+							     choice the backend did not save. -->
+							<DropdownMenu.RadioGroup bind:value={() => choiceOf(environmentEntry), chooseEnvironment}>
 								{#each choices as choice (choice.value)}
 									<DropdownMenu.RadioItem value={choice.value} class={MENU_ITEM}>
 										{#snippet children({ checked })}

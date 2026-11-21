@@ -234,6 +234,22 @@ describe("TopBar", () => {
     expect(await screen.findByTestId("environment-tag")).toHaveTextContent("Test");
   });
 
+  it("after a choice the backend did not save, the menu checks the stored one again (#662)", async () => {
+    labelled([prodDetected]);
+    vi.mocked(setClusterEnvironment).mockRejectedValue("disk full");
+    render(TopBar);
+    await openEnvironmentMenu();
+    await fireEvent.click(screen.getByRole("menuitemradio", { name: "Test" }));
+    expect(setClusterEnvironment).toHaveBeenCalled();
+    await openEnvironmentMenu();
+    expect(screen.getByRole("menuitemradio", { name: "Detect from name (Production)" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("menuitemradio", { name: "Test" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByTestId("environment-tag")).toHaveTextContent("Production");
+  });
+
   it("goes back to detection and to Not set from the menu (#662)", async () => {
     labelled([{ ...prodDetected, environment: "test", source: "manual" }]);
     vi.mocked(setClusterEnvironment).mockResolvedValue({
