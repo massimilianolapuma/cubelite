@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Secret values stay in the backend until you ask for one (#661). Opening the Secrets view or the Overview no longer sends any value to the window: the list carries each key's name, the size of its value and whether it is binary. Each key has its own Reveal, which reads that one value from the API server at that moment; a shown value hides itself after the time set in Preferences → Secrets (15 s, 30 s, 1 min, 5 min or Never; 30 s by default), and also on Hide, when you leave the view, switch namespace or cluster, or when the Secret changes. A new time applies to the values already shown, counted from when each was shown, and a value whose time passed while the computer slept hides as soon as the window is back. A binary value reads "binary" and a text over 64 KiB "too large to show", with no Reveal; a Helm release Secret's key reads "Helm release payload, shown in Helm". A shown value takes a line of its own under its key, as wide as the row. The per-Secret Reveal column is gone.
 
+### Fixed
+
+- A scale made with the replica stepper goes to the cluster it was made on: switching cluster before it is sent drops it, where it used to scale the deployment of the same name on the new cluster (#682).
+
 ### Security
 
 - The YAML of a Secret is redacted in the backend: every value under `data` and `stringData` reads `REDACTED (n bytes)`, and the `kubectl.kubernetes.io/last-applied-configuration` annotation (which holds the whole Secret after a `kubectl apply`), like any annotation that holds one of the values, reads `REDACTED`. Whether YAML is a Secret is decided by what the API server answered, so a Secret or a list of Secrets is redacted in the YAML of the generic kind views too. Applying a Secret from YAML is refused (#661).

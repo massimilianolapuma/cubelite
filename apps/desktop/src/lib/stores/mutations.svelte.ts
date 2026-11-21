@@ -69,13 +69,18 @@ class MutationsStore {
   /**
    * Step the replica target by `delta`. Clicks are batched: the scale is
    * applied once, SCALE_DEBOUNCE_MS after the last step (spec: the value is
-   * shown in warn while the change is pending).
+   * shown in warn while the change is pending). The kubeconfig and context
+   * are taken at the step, so the scale goes to the cluster it was made on
+   * whatever is active when it is sent (#682).
    */
   nudgeScale(namespace: string, name: string, current: number, delta: number): void {
     const k = key(namespace, name);
     if (this.pendingScales[k] !== undefined) return;
+    const kc = app.kubeconfigPath;
+    const cluster = app.activeCluster;
+    if (!kc || !cluster) return;
     // A read-only cluster's stepper is off; nothing to hold either.
-    if (clusterSettings.lockReason(app.activeCluster) !== null) return;
+    if (clusterSettings.lockReason(cluster) !== null) return;
     const target = Math.max(0, (this.draftScales[k] ?? current) + delta);
     const existing = this.#draftTimers.get(k);
     if (existing) clearTimeout(existing);
@@ -95,9 +100,20 @@ class MutationsStore {
         const rest = { ...this.draftScales };
         delete rest[k];
         this.draftScales = rest;
-        void this.scaleDeployment(namespace, name, target);
+        void this.#scale(kc, cluster, namespace, name, target);
       }, SCALE_DEBOUNCE_MS),
     );
+  }
+
+  /**
+   * Drop every scale still held in the debounce: nothing is sent. Called when
+   * the active cluster changes, since a draft is keyed by namespace and name
+   * only and would show on the same-named deployment of the next cluster.
+   */
+  cancelDrafts(): void {
+    for (const timer of this.#draftTimers.values()) clearTimeout(timer);
+    this.#draftTimers.clear();
+    this.draftScales = {};
   }
 
   async deletePod(namespace: string, name: string): Promise<boolean> {
@@ -143,10 +159,15 @@ class MutationsStore {
   }
 
   async scaleDeployment(namespace: string, name: string, replicas: number): Promise<boolean> {
-    if (replicas < 0) return false;
     const kc = app.kubeconfigPath;
     const cluster = app.activeCluster;
-    if (!kc || !cluster || !writable(cluster, "Scale")) return false;
+    if (!kc || !cluster) return false;
+    return this.#scale(kc, cluster, namespace, name, replicas);
+  }
+
+  /** Scale on the given kubeconfig and context, which need not be the active ones. */
+  async #scale(kc: string, cluster: string, namespace: string, name: string, replicas: number): Promise<boolean> {
+    if (replicas < 0 || !writable(cluster, "Scale")) return false;
     const k = key(namespace, name);
     this.pendingScales = { ...this.pendingScales, [k]: replicas };
     try {

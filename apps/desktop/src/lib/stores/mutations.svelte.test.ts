@@ -35,7 +35,7 @@ beforeEach(() => {
   vi.useRealTimers();
   toasts.items = [];
   clusterSettings.reset();
-  mutations.draftScales = {};
+  mutations.cancelDrafts();
   mutations.pendingScales = {};
   app.kubeconfigPath = "/home/u/.kube/config";
   app.activeCluster = "prod";
@@ -83,6 +83,64 @@ describe("scaleDeployment", () => {
   it("rejects negative replica counts without calling the backend", async () => {
     expect(await mutations.scaleDeployment("default", "api", -1)).toBe(false);
     expect(scaleDeployment).not.toHaveBeenCalled();
+  });
+});
+
+describe("a held scale goes to the cluster it was made on (#682)", () => {
+  it("is sent with the kubeconfig and context of the step, whatever is active when it fires", async () => {
+    vi.useFakeTimers();
+    mutations.nudgeScale("default", "api", 3, 1);
+    // Not the switch path: only the active cluster and kubeconfig change.
+    app.activeCluster = "staging";
+    app.kubeconfigPath = "/other/kubeconfig";
+    await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS);
+    expect(scaleDeployment).toHaveBeenCalledOnce();
+    expect(scaleDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", 4, "prod");
+  });
+
+  it("checks the lock of the cluster it was made on, not of the active one", async () => {
+    vi.useFakeTimers();
+    const entry = setAccess("prod", "timed", 5);
+    setAccess("staging", "writable");
+    mutations.nudgeScale("default", "api", 3, 1);
+    app.activeCluster = "staging";
+    clock.now = (entry.writable_until ?? 0) + 1;
+    await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS);
+    expect(scaleDeployment).not.toHaveBeenCalled();
+    expect(toasts.items.at(-1)?.message).toBe(
+      "Scale failed: prod is read-only. Make it writable from the cluster menu.",
+    );
+  });
+
+  it("is sent even when the active cluster is read-only by then", async () => {
+    vi.useFakeTimers();
+    setAccess("staging", "read_only");
+    mutations.nudgeScale("default", "api", 3, 1);
+    app.activeCluster = "staging";
+    await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS);
+    expect(scaleDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", 4, "prod");
+  });
+
+  it("cancelDrafts drops every held scale and sends nothing", async () => {
+    vi.useFakeTimers();
+    mutations.nudgeScale("default", "api", 3, 1);
+    mutations.nudgeScale("default", "web", 1, -1);
+    mutations.cancelDrafts();
+    expect(mutations.draftScales).toEqual({});
+    expect(mutations.pendingScale("default", "api")).toBeNull();
+    await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS * 2);
+    expect(scaleDeployment).not.toHaveBeenCalled();
+  });
+
+  it("a step after cancelDrafts starts from the deployment's replicas", async () => {
+    vi.useFakeTimers();
+    mutations.nudgeScale("default", "api", 3, 1);
+    mutations.cancelDrafts();
+    mutations.nudgeScale("default", "api", 3, 1);
+    expect(mutations.pendingScale("default", "api")).toBe(4);
+    await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS);
+    expect(scaleDeployment).toHaveBeenCalledOnce();
+    expect(scaleDeployment).toHaveBeenCalledWith("/home/u/.kube/config", "default", "api", 4, "prod");
   });
 });
 
