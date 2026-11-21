@@ -8,7 +8,9 @@
 import { app } from "./app.svelte";
 
 export interface ClusterRef {
+  /** Where the request is sent from; not part of the cluster's identity. */
   kubeconfig: string;
+  /** The context: what identifies the cluster on screen and in what is in flight. */
   cluster: string;
 }
 
@@ -20,21 +22,19 @@ export function activeClusterRef(): ClusterRef | null {
 }
 
 /**
- * `ref` is the cluster on screen: the active one, with no switch to another
- * one running. A switch keeps the old cluster active until its context is
- * set, but its lists are being cleared and the user has moved on.
+ * `ref` is the cluster on screen: the active context, with no switch to
+ * another one running. A switch keeps the old cluster active until its
+ * context is set, but its lists are being cleared and the user has moved on.
+ * The kubeconfig list is not compared: adding a file in Preferences leaves
+ * the same cluster on screen.
  */
 export function onScreen(ref: ClusterRef): boolean {
-  return (
-    app.activeCluster === ref.cluster &&
-    app.kubeconfigPath === ref.kubeconfig &&
-    (app.connecting === null || app.connecting === ref.cluster)
-  );
+  return app.activeCluster === ref.cluster && (app.connecting === null || app.connecting === ref.cluster);
 }
 
-/** A key for `namespace/name` on `ref`: the same name on another cluster is another key. */
+/** A key for `namespace/name` on `ref`'s context: the same name on another cluster is another key. */
 export function refKey(ref: ClusterRef, namespace: string, name: string): string {
-  return JSON.stringify([ref.kubeconfig, ref.cluster, namespace, name]);
+  return JSON.stringify([ref.cluster, namespace, name]);
 }
 
 /** " on <cluster>" when `ref` is not on screen; empty when it is. */

@@ -7,7 +7,8 @@
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { errorMessage } from '#lib/errors.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
-	import { activeClusterRef } from '#lib/stores/cluster-ref.ts';
+	import { activeClusterRef, onScreen } from '#lib/stores/cluster-ref.ts';
+	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import { applyResourceYaml, getResourceYaml, type YamlResourceType } from '#lib/tauri.ts';
 
 	let {
@@ -80,13 +81,18 @@
 
 	async function apply() {
 		if (on === null || applying || lockReason !== null) return;
+		const target = name;
 		applying = true;
 		applyError = null;
 		try {
-			await applyResourceYaml(on.kubeconfig, resourceType, namespace, name, draft, on.cluster);
+			await applyResourceYaml(on.kubeconfig, resourceType, namespace, target, draft, on.cluster);
+			// A switch closed the panel, and this modal with it: the outcome goes
+			// to a toast that names the cluster (#685).
+			if (!onScreen(on)) toasts.push(`${target} applied on ${on.cluster}`, 'ok');
 			onClose();
 		} catch (e: unknown) {
 			applyError = errorMessage(e);
+			if (!onScreen(on)) toasts.push(`Apply on ${on.cluster} failed: ${applyError}`, 'err');
 		} finally {
 			applying = false;
 		}

@@ -11,6 +11,7 @@
 		onCancel,
 		onConfirm,
 		confirmDisabled = true,
+		pending = false,
 		blockedReason = null
 	}: {
 		pod: PodInfo;
@@ -19,6 +20,8 @@
 		onCancel: () => void;
 		onConfirm: () => void;
 		confirmDisabled?: boolean;
+		/** The delete runs: the button says so and takes no second click (#685). */
+		pending?: boolean;
 		/** Why the delete is off (a read-only cluster, #662): the button says so and does nothing. */
 		blockedReason?: string | null;
 	} = $props();
@@ -51,6 +54,7 @@
 			variant="danger-solid"
 			size="primary"
 			disabled={confirmDisabled}
+			{pending}
 			title={confirmDisabled ? 'Requires backend support' : undefined}
 			{blockedReason}
 			onclick={onConfirm}

@@ -315,6 +315,18 @@ describe("an action stays on the cluster it was started on (#685)", () => {
     expect(listPods).not.toHaveBeenCalled();
   });
 
+  it("a delete in flight stays shown, and its toast names no cluster, when only the kubeconfig list changes", async () => {
+    const request = deferred();
+    vi.mocked(deletePod).mockReturnValueOnce(request.promise);
+    const pending = mutations.deletePod("default", "api-0");
+    // Preferences: another kubeconfig file added; the context is the same.
+    app.kubeconfigPath = "/home/u/.kube/config:/home/u/.kube/extra.yaml";
+    expect(mutations.isDeleting("default", "api-0")).toBe(true);
+    request.resolve();
+    await pending;
+    expect(toasts.items.at(-1)?.message).toBe("Pod api-0 deleted");
+  });
+
   it("on the cluster still on screen, the toast names none and the lists reload", async () => {
     expect(await mutations.deletePod("default", "api-0")).toBe(true);
     expect(toasts.items.at(-1)?.message).toBe("Pod api-0 deleted");

@@ -56,9 +56,9 @@ class MutationsStore {
     return ref === null ? null : refKey(ref, namespace, name);
   }
 
-  isDeleting(namespace: string, name: string): boolean {
-    const k = this.#activeKey(namespace, name);
-    return k !== null && (this.pendingPodDeletes[k] ?? false);
+  /** A delete of `namespace/name` runs on `on`, the active cluster by default. */
+  isDeleting(namespace: string, name: string, on: ClusterRef | null = activeClusterRef()): boolean {
+    return on !== null && (this.pendingPodDeletes[refKey(on, namespace, name)] ?? false);
   }
 
   isRestarting(namespace: string, name: string): boolean {
