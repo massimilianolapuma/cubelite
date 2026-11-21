@@ -3,6 +3,7 @@
 	import DeletePodDialog from '#lib/components/DeletePodDialog.svelte';
 	import PodDrawer from '#lib/components/pods/PodDrawer.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
@@ -77,6 +78,7 @@
 	<DeletePodDialog
 		pod={deleteTarget}
 		confirmDisabled={false}
+		blockedReason={clusterSettings.lockReason(app.activeCluster)}
 		onCancel={() => (deleteTarget = null)}
 		onConfirm={() => void confirmDelete()}
 	/>

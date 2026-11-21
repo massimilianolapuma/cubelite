@@ -11,6 +11,7 @@ pub mod prometheus_cluster;
 pub mod secrets;
 mod vault;
 mod web_ui;
+pub mod write_guard;
 
 /// The label of the app's main window; the log pop-outs are `logs-…`.
 const MAIN_WINDOW: &str = "main";

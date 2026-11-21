@@ -19,6 +19,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
+use super::write_guard::ExecContexts;
+
 /// Monotonically increasing counter for generating unique watch IDs.
 static WATCH_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -193,14 +195,22 @@ pub async fn start_exec(
         }
         let _ = app_clone.emit(&format!("exec-end:{id}"), ());
         handle.abort();
-        app_clone
-            .state::<ExecState>()
-            .sessions
-            .lock()
-            .await
-            .remove(&id);
+        forget_session(
+            &app_clone.state::<ExecState>(),
+            &app_clone.state::<ExecContexts>(),
+            &id,
+        )
+        .await;
     });
 
+    // The write guard checks `exec_send` against this context (#662). The
+    // guard refused a start with no context, so there is always one. Put in
+    // before the session, under the same lock: no input can reach a session
+    // the guard has no context for.
+    if let Some(context) = context {
+        app.state::<ExecContexts>()
+            .insert(session_id.clone(), context);
+    }
     sessions.insert(
         session_id,
         ExecEntry {
@@ -232,17 +242,32 @@ pub async fn exec_send(app: AppHandle, session_id: String, data: String) -> Resu
 /// Ends a shell session. Silently succeeds when it already ended.
 #[tauri::command]
 pub async fn stop_exec(app: AppHandle, session_id: String) -> Result<(), String> {
-    if let Some(entry) = app
-        .state::<ExecState>()
-        .sessions
-        .lock()
-        .await
-        .remove(&session_id)
+    if let Some(entry) = forget_session(
+        &app.state::<ExecState>(),
+        &app.state::<ExecContexts>(),
+        &session_id,
+    )
+    .await
     {
         entry.session.abort();
         entry.forward.abort();
     }
     Ok(())
+}
+
+/// Forget shell session `id`, stopped or ended by itself (exit, pod gone):
+/// its entry, returned for the caller to abort, and the context the write
+/// guard kept for it. The session goes first: while the context is still
+/// kept, an input cannot pass the guard as one for an unknown session and
+/// still find the session live.
+async fn forget_session(
+    sessions: &ExecState,
+    contexts: &ExecContexts,
+    id: &str,
+) -> Option<ExecEntry> {
+    let entry = sessions.sessions.lock().await.remove(id);
+    contexts.remove(id);
+    entry
 }
 
 /// Tauri managed state holding all active watch task handles.
@@ -1368,5 +1393,23 @@ mod kubeconfig_origin_tests {
             serde_json::to_string(&KubeconfigOrigin::Env).unwrap(),
             "\"env\""
         );
+    }
+}
+
+#[cfg(test)]
+mod exec_session_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn exec_context_removed_when_session_ends() {
+        // Review Focus 5: a shell that ends by itself (exit, pod gone) or is
+        // stopped leaves no context behind for the write guard.
+        let sessions = ExecState::default();
+        let contexts = ExecContexts::default();
+        contexts.insert("s1".to_string(), "minikube".to_string());
+        assert!(forget_session(&sessions, &contexts, "s1").await.is_none());
+        assert_eq!(contexts.get("s1"), None);
+        // A session never started: nothing to forget, no error.
+        assert!(forget_session(&sessions, &contexts, "s2").await.is_none());
     }
 }

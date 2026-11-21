@@ -12,6 +12,7 @@
 	import ImageRef from '#lib/components/ui/ImageRef.svelte';
 	import YamlModal from '#lib/components/YamlModal.svelte';
 	import ShellModal from '#lib/components/pods/ShellModal.svelte';
+	import ReadOnlyNotice from '#lib/components/ReadOnlyNotice.svelte';
 	import MeterBar from '#lib/components/ui/MeterBar.svelte';
 	import ContainerResourceRows from '#lib/components/resources/ContainerResourceRows.svelte';
 	import { containerRows } from '#lib/container-usage.ts';
@@ -27,6 +28,7 @@
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import { resourceEditor } from '#lib/stores/resourceEditor.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { parsePort, resolveLocalPort } from '#lib/ports.ts';
 	import { formatBytes, formatCpu, percentOf } from '#lib/units.ts';
 	import type { PodInfo } from '#lib/tauri.ts';
@@ -39,6 +41,9 @@
 	}: { pod: PodInfo; onClose: () => void; onDelete?: (pod: PodInfo) => void } = $props();
 
 	const restarting = $derived(mutations.isDeleting(pod.namespace, pod.name));
+	// Shell, Restart, Delete and the resources editor are writes: off, with the
+	// reason, on a read-only cluster (#662). Logs, YAML and Forward stay.
+	const lockReason = $derived(clusterSettings.lockReason(app.activeCluster));
 	let yamlOpen = $state(false);
 	let shellOpen = $state(false);
 
@@ -171,7 +176,13 @@
 					{/each}
 				</div>
 				{#if ownerDeployment}
-					<Button variant="text" size="inline" class="mt-1.5" onclick={adjustOnDeployment}>
+					<Button
+						variant="text"
+						size="inline"
+						class="mt-1.5"
+						blockedReason={lockReason}
+						onclick={adjustOnDeployment}
+					>
 						<!-- One label: the button spaces its parts apart, the name is part of the sentence. -->
 						<span>Adjust on deployment <span class="type-data-sm">{ownerDeployment.name}</span></span>
 					</Button>
@@ -262,21 +273,32 @@
 	</div>
 
 	{#snippet footer()}
+		<!-- Says once why the write actions below are off, and the way out. -->
+		{#if app.activeCluster}
+			<ReadOnlyNotice name={app.activeCluster} />
+		{/if}
 		<Button variant="primary" size="primary" title="Open pod logs panel" onclick={openLogs}>
 			{#snippet icon()}<FileText class="h-4 w-4" aria-hidden="true" />{/snippet}
 			Open logs
 		</Button>
-		<Button variant="tonal" iconOnly label="Shell" title="Open a shell in this pod" onclick={() => (shellOpen = true)}>
+		<Button
+			variant="tonal"
+			iconOnly
+			label="Shell"
+			title="Open a shell in this pod"
+			blockedReason={lockReason}
+			onclick={() => (shellOpen = true)}
+		>
 			{#snippet icon()}<SquareTerminal class="h-4 w-4" aria-hidden="true" />{/snippet}
 		</Button>
 		<Button variant="tonal" iconOnly label="YAML" title="View YAML" onclick={() => (yamlOpen = true)}>
 			{#snippet icon()}<FileCode class="h-4 w-4" aria-hidden="true" />{/snippet}
 		</Button>
-		<Button variant="tonal" pending={restarting} onclick={() => void restart()}>
+		<Button variant="tonal" pending={restarting} blockedReason={lockReason} onclick={() => void restart()}>
 			{#snippet icon()}<RotateCw class="h-4 w-4" aria-hidden="true" />{/snippet}
 			Restart
 		</Button>
-		<Button variant="danger" onclick={() => onDelete?.(pod)}>
+		<Button variant="danger" blockedReason={lockReason} onclick={() => onDelete?.(pod)}>
 			{#snippet icon()}<Trash2 class="h-4 w-4" aria-hidden="true" />{/snippet}
 			Delete
 		</Button>

@@ -1272,13 +1272,33 @@ export interface ContextEnvironment {
   source: "detected" | "manual";
   /** What detection reads in the name, whatever the source. */
   detected: Environment | null;
+  /** The access in force when answered; a running timed unlock reads `writable`. */
+  access: "read_only" | "writable";
+  /** The end of a running timed unlock, in Unix milliseconds; `null` otherwise. */
+  writable_until: number | null;
 }
 export interface ClusterSettings {
-  /** In the order of the names asked for. */
+  /** In the order of the names asked for (none for a change of the preferences). */
   contexts: ContextEnvironment[];
   variants: EnvironmentVariants;
   /** True once, on the first answer after an unreadable settings file was reset. */
   recovered: boolean;
+  /** Ask before a context is made writable. */
+  confirm_unlock: boolean;
+  /** The environments whose contexts start read-only when first seen. */
+  read_only_from_start: Environment[];
+  /**
+   * Only on the answer of "make read-only" when the file could not be saved:
+   * why. The context is read-only for this session anyway.
+   */
+  save_error?: string;
+}
+/** How long a context is made writable: minutes, or until it is made read-only again. */
+export type UnlockFor = 5 | 15 | 60 | "always";
+/** A change of the access preferences; a value left out is kept. */
+export interface AccessPreferences {
+  confirmUnlock?: boolean;
+  readOnlyFromStart?: Environment[];
 }
 
 /** Tauri event emitted after any change of the cluster settings; payload `null`. */
@@ -1297,6 +1317,24 @@ export function setClusterEnvironment(context: string, setting: EnvironmentSetti
 /** Saves the variants (validated by the backend); rejects with the reason as text. */
 export function setEnvironmentVariants(variants: EnvironmentVariants): Promise<EnvironmentVariants> {
   return invoke<EnvironmentVariants>("set_environment_variants", { variants });
+}
+
+/** Writable for 5, 15 or 60 minutes (in memory), or always (saved); answers that context. */
+export function makeClusterWritable(context: string, duration: UnlockFor): Promise<ClusterSettings> {
+  return invoke<ClusterSettings>("make_cluster_writable", { context, duration });
+}
+
+/** Read-only (saved), ending a timed unlock; answers that context. */
+export function makeClusterReadOnly(context: string): Promise<ClusterSettings> {
+  return invoke<ClusterSettings>("make_cluster_read_only", { context });
+}
+
+/** Saves the access preferences; answers the settings with no contexts. */
+export function setClusterAccessPreferences(p: AccessPreferences): Promise<ClusterSettings> {
+  const args: Record<string, unknown> = {};
+  if (p.confirmUnlock !== undefined) args.confirmUnlock = p.confirmUnlock;
+  if (p.readOnlyFromStart !== undefined) args.readOnlyFromStart = p.readOnlyFromStart;
+  return invoke<ClusterSettings>("set_cluster_access_preferences", args);
 }
 
 /** Result of starting a port-forward session. */

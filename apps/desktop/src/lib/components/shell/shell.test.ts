@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, within } from "@testing-library/svelte";
+import { tick } from "svelte";
 
 vi.mock("#lib/tauri.ts", () => ({
   listContexts: vi.fn(),
@@ -22,6 +23,9 @@ vi.mock("#lib/tauri.ts", () => ({
   clusterSettings: vi.fn(),
   setClusterEnvironment: vi.fn(),
   setEnvironmentVariants: vi.fn(),
+  makeClusterWritable: vi.fn(),
+  makeClusterReadOnly: vi.fn(),
+  setClusterAccessPreferences: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -42,8 +46,10 @@ import { sidebar } from "#lib/stores/sidebar.svelte.ts";
 import { profiles } from "#lib/stores/profiles.svelte.ts";
 import { clusterSettings } from "#lib/stores/cluster-settings.svelte.ts";
 import { defaultVariants } from "#lib/environment.ts";
-import { discoverResourceKinds, setClusterEnvironment } from "#lib/tauri.ts";
-import type { ContextEnvironment, PodInfo } from "#lib/tauri.ts";
+import { clock } from "#lib/stores/clock.svelte.ts";
+import { toasts } from "#lib/stores/toasts.svelte.ts";
+import { discoverResourceKinds, makeClusterReadOnly, setClusterEnvironment } from "#lib/tauri.ts";
+import type { ClusterSettings, ContextEnvironment, PodInfo } from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
   return {
@@ -96,7 +102,23 @@ const prodDetected: ContextEnvironment = {
   environment: "production",
   source: "detected",
   detected: "production",
+  access: "writable",
+  writable_until: null,
 };
+
+const prodReadOnly: ContextEnvironment = { ...prodDetected, access: "read_only" };
+/**
+ * Unlocked until `minutes` from the app clock's now: saved read-only, writable
+ * in the view. From the clock, not Date.now(): a millisecond between the two
+ * would read "13 min".
+ */
+const prodTimed = (minutes: number): ContextEnvironment => ({
+  ...prodDetected,
+  writable_until: clock.now + minutes * 60_000,
+});
+
+/** What every answer of the backend carries besides the contexts. */
+const PREFS = { confirm_unlock: true, read_only_from_start: ["production"] } satisfies Partial<ClusterSettings>;
 
 const warning = {
   event_type: "Warning",
@@ -226,6 +248,7 @@ describe("TopBar", () => {
       contexts: [{ ...prodDetected, environment: "test", source: "manual" }],
       variants: defaultVariants(),
       recovered: false,
+      ...PREFS,
     });
     render(TopBar);
     await openEnvironmentMenu();
@@ -256,6 +279,7 @@ describe("TopBar", () => {
       contexts: [prodDetected],
       variants: defaultVariants(),
       recovered: false,
+      ...PREFS,
     });
     render(TopBar);
     await openEnvironmentMenu();
@@ -264,6 +288,183 @@ describe("TopBar", () => {
     await openEnvironmentMenu();
     await fireEvent.click(screen.getByRole("menuitemradio", { name: "Not set" }));
     expect(setClusterEnvironment).toHaveBeenLastCalledWith("prod-aks", { source: "manual", value: null });
+  });
+
+  describe("access (#662)", () => {
+    beforeEach(() => {
+      toasts.items = [];
+    });
+
+    afterEach(() => {
+      clock.run(false);
+      vi.useRealTimers();
+      toasts.items = [];
+    });
+
+    const accessState = () => screen.queryByTestId("access-state");
+
+    it("a read-only cluster says so after its environment, in the muted text with a lock", () => {
+      labelled([prodReadOnly]);
+      render(TopBar);
+      const access = accessState()!;
+      expect(access).toHaveTextContent("Read-only");
+      expect(access).toHaveAttribute("data-access", "read_only");
+      expect(access.className).toContain("text-text-muted");
+      expect(access.className).not.toMatch(/error|warning|success/);
+      expect(access.querySelector("svg")?.getAttribute("class")).toContain("lucide-lock");
+      // After the environment tag, inside the chip, and in its name.
+      const tag = screen.getByTestId("environment-tag");
+      expect(tag.compareDocumentPosition(access) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(screen.getByRole("button", { name: /prod-aks/ })).toHaveAccessibleName(/Read-only/);
+    });
+
+    it("a writable cluster adds nothing", () => {
+      labelled([prodDetected]);
+      render(TopBar);
+      expect(accessState()).toBeNull();
+    });
+
+    it("writable for a while counts down in minutes, then the last minute in seconds", async () => {
+      vi.useFakeTimers();
+      labelled([prodTimed(12)]);
+      clock.run(true);
+      render(TopBar);
+      const access = accessState()!;
+      expect(access).toHaveTextContent("Writable · 12 min");
+      expect(access).toHaveAttribute("data-access", "timed");
+      expect(access.className).toContain("bg-warning-container");
+      expect(access.className).toContain("text-on-warning-container");
+      expect(access.querySelector("svg")?.getAttribute("class")).toContain("lucide-timer");
+      vi.advanceTimersByTime(60_000);
+      await tick();
+      expect(accessState()).toHaveTextContent("Writable · 11 min");
+      vi.advanceTimersByTime(10 * 60_000 + 18_000);
+      await tick();
+      expect(accessState()).toHaveTextContent("Writable · 42 s");
+      // Past the end it reads read-only before the backend's event.
+      vi.advanceTimersByTime(42_000);
+      await tick();
+      expect(accessState()).toHaveTextContent("Read-only");
+    });
+
+    async function openMenu(): Promise<string[]> {
+      await fireEvent.click(screen.getByRole("button", { name: /prod-aks/ }));
+      return (await screen.findAllByRole("menuitem")).map((i) => i.textContent?.trim() ?? "");
+    }
+
+    it("a read-only cluster offers the four durations after Environment, and no Make read-only", async () => {
+      labelled([prodReadOnly]);
+      render(TopBar);
+      const items = await openMenu();
+      expect(items).not.toContain("Make read-only");
+      expect(items.indexOf("Make writable for")).toBeGreaterThan(items.indexOf("Environment"));
+      await fireEvent.click(screen.getByRole("menuitem", { name: "Make writable for" }));
+      await screen.findByRole("menuitem", { name: "15 minutes" });
+      const sub = screen.getAllByRole("menu").at(-1)!;
+      expect(within(sub).getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual([
+        "5 minutes",
+        "15 minutes",
+        "1 hour",
+        "Always",
+      ]);
+    });
+
+    it("choosing 15 minutes asks the store for that unlock", async () => {
+      labelled([prodReadOnly]);
+      const request = vi.spyOn(clusterSettings, "requestUnlock").mockResolvedValue();
+      render(TopBar);
+      await openMenu();
+      await fireEvent.click(screen.getByRole("menuitem", { name: "Make writable for" }));
+      await fireEvent.click(await screen.findByRole("menuitem", { name: "15 minutes" }));
+      expect(request).toHaveBeenCalledWith("prod-aks", 15);
+      request.mockRestore();
+    });
+
+    it("a writable cluster offers Make read-only only", async () => {
+      labelled([prodDetected]);
+      const readOnly = vi.spyOn(clusterSettings, "makeReadOnly").mockResolvedValue(true);
+      render(TopBar);
+      const items = await openMenu();
+      expect(items).toContain("Make read-only");
+      expect(items).not.toContain("Make writable for");
+      await fireEvent.click(screen.getByRole("menuitem", { name: "Make read-only" }));
+      expect(readOnly).toHaveBeenCalledWith("prod-aks");
+      readOnly.mockRestore();
+    });
+
+    it("writable for a while offers the durations again and Make read-only under them", async () => {
+      labelled([prodTimed(12)]);
+      render(TopBar);
+      const items = await openMenu();
+      expect(items.indexOf("Make read-only")).toBeGreaterThan(items.indexOf("Make writable for"));
+    });
+
+    it("Production by hand on a writable cluster offers to lock it in a toast", async () => {
+      labelled([{ ...prodDetected, environment: null, detected: null }]);
+      vi.mocked(setClusterEnvironment).mockResolvedValue({
+        contexts: [{ ...prodDetected, environment: "production", source: "manual", detected: null }],
+        variants: defaultVariants(),
+        recovered: false,
+        ...PREFS,
+      });
+      vi.mocked(makeClusterReadOnly).mockResolvedValue({
+        contexts: [{ ...prodDetected, access: "read_only" }],
+        variants: defaultVariants(),
+        recovered: false,
+        ...PREFS,
+      });
+      render(TopBar);
+      await openEnvironmentMenu();
+      await fireEvent.click(screen.getByRole("menuitemradio", { name: "Production" }));
+      await vi.waitFor(() =>
+        expect(toasts.items).toEqual([
+          expect.objectContaining({ message: "Production clusters are usually read-only", tone: "warn" }),
+        ]),
+      );
+      const action = toasts.items[0].action!;
+      expect(action.label).toBe("Make read-only");
+      action.run();
+      expect(makeClusterReadOnly).toHaveBeenCalledWith("prod-aks");
+      await vi.waitFor(() => expect(clusterSettings.accessOf("prod-aks")).toBe("read_only"));
+    });
+
+    it("Production by hand on a read-only cluster, or another label, offers nothing", async () => {
+      labelled([{ ...prodReadOnly, environment: null, detected: null }]);
+      vi.mocked(setClusterEnvironment).mockResolvedValue({
+        contexts: [{ ...prodReadOnly, environment: "production", source: "manual", detected: null }],
+        variants: defaultVariants(),
+        recovered: false,
+        ...PREFS,
+      });
+      render(TopBar);
+      await openEnvironmentMenu();
+      await fireEvent.click(screen.getByRole("menuitemradio", { name: "Production" }));
+      expect(setClusterEnvironment).toHaveBeenCalled();
+      await tick();
+      expect(toasts.items).toEqual([]);
+
+      labelled([prodDetected]);
+      vi.mocked(setClusterEnvironment).mockResolvedValue({
+        contexts: [{ ...prodDetected, environment: "test", source: "manual" }],
+        variants: defaultVariants(),
+        recovered: false,
+        ...PREFS,
+      });
+      await openEnvironmentMenu();
+      await fireEvent.click(screen.getByRole("menuitemradio", { name: "Test" }));
+      await tick();
+      expect(toasts.items).toEqual([]);
+    });
+
+    it("a choice the backend did not save offers nothing", async () => {
+      labelled([prodDetected]);
+      vi.mocked(setClusterEnvironment).mockRejectedValue("disk full");
+      render(TopBar);
+      await openEnvironmentMenu();
+      await fireEvent.click(screen.getByRole("menuitemradio", { name: "Production" }));
+      await vi.waitFor(() => expect(toasts.items).toHaveLength(1));
+      expect(toasts.items[0].message).toBe("Could not set the environment: disk full");
+    });
   });
 
   it("opens the command palette from the search button", async () => {
@@ -367,7 +568,7 @@ describe("ClusterRail", () => {
   });
 
   it("adds the environment to the tooltip, before the defining file (#662)", () => {
-    labelled([prodDetected, { name: "staging", environment: null, source: "detected", detected: null }]);
+    labelled([prodDetected, { name: "staging", environment: null, source: "detected", detected: null, access: "writable", writable_until: null }]);
     const { unmount } = render(ClusterRail);
     expect(screen.getByTitle("prod-aks · Production")).toBeInTheDocument();
     expect(screen.getByTitle("staging")).toBeInTheDocument();
@@ -380,6 +581,38 @@ describe("ClusterRail", () => {
     ];
     render(ClusterRail);
     expect(screen.getByTitle("prod-aks · Production (/home/u/.kube/prod-aks.yaml)")).toBeInTheDocument();
+  });
+
+  it("badges a read-only cluster with a lock and says it in the tooltip and the name (#662)", () => {
+    labelled([prodReadOnly, { name: "staging", environment: null, source: "detected", detected: null, access: "read_only", writable_until: null }]);
+    render(ClusterRail);
+    const badges = screen.getAllByTestId("access-badge");
+    expect(badges.map((b) => b.dataset.access)).toEqual(["read_only", "read_only"]);
+    expect(badges[0].querySelector("svg")?.getAttribute("class")).toContain("lucide-lock");
+    expect(badges[0].className).toContain("bg-surface-container-top");
+    expect(badges[0].className).toContain("text-text-muted");
+    expect(screen.getByTitle("prod-aks · Production · Read-only")).toBeInTheDocument();
+    // No label: the label part is left out.
+    expect(screen.getByTitle("staging · Read-only")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "prod-aks, connected, read-only" })).toBeInTheDocument();
+  });
+
+  it("badges writable for a while with a timer in the warning colour (#662)", () => {
+    labelled([prodTimed(12)]);
+    render(ClusterRail);
+    const badge = screen.getByTestId("access-badge");
+    expect(badge.dataset.access).toBe("timed");
+    expect(badge.querySelector("svg")?.getAttribute("class")).toContain("lucide-timer");
+    expect(badge.className).toContain("text-warning");
+    expect(screen.getByTitle("prod-aks · Production · Writable for 12 min")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "prod-aks, connected, writable for 12 min" })).toBeInTheDocument();
+  });
+
+  it("a writable cluster has no badge (#662)", () => {
+    labelled([prodDetected]);
+    render(ClusterRail);
+    expect(screen.queryByTestId("access-badge")).toBeNull();
+    expect(screen.getByTitle("prod-aks · Production")).toBeInTheDocument();
   });
 
   it("navigates to the dashboard from the home button", async () => {

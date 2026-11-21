@@ -50,18 +50,52 @@ test("the top bar stays on one row at the minimum window size", async ({ page })
 // A long name in one chip must not squeeze the other chip's value away.
 const LONG_CONTEXT = "arn:aws:eks:eu-west-1:123456789012:cluster/production-platform-main";
 const LONG_NAMESPACE = "payments-gateway-canary-eu-central-1-blue-green-a";
-for (const width of [800, 1000, 1280]) {
+
+/** The width of 14ch in the font of `el`. */
+const fourteenCh = (el: import("@playwright/test").Locator) =>
+  el.evaluate((n) => {
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;width:14ch";
+    n.append(probe);
+    const w = probe.getBoundingClientRect().width;
+    probe.remove();
+    return w;
+  });
+
+for (const width of [800, 1000, 1100, 1280, 1440]) {
   test(`a long context name leaves the namespace readable at ${width} px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 700 });
-    await boot(page, { contexts: [{ ...FIXTURES.contexts[0], name: LONG_CONTEXT }, ...FIXTURES.contexts.slice(1)] });
+    // First sight: "production" in the name makes it read-only (#662), so the
+    // chip carries the environment tag and the access word too.
+    await boot(page, {
+      contexts: [{ ...FIXTURES.contexts[0], name: LONG_CONTEXT }, ...FIXTURES.contexts.slice(1)],
+      clusterAccess: {},
+    });
     const header = page.locator("header").first();
+    await expect(header.getByTestId("access-state")).toHaveAttribute("data-access", "read_only");
     await header.getByRole("button", { name: /Namespace/ }).click();
     await page.getByRole("menuitemradio", { name: /kube-system/ }).click();
     const value = header.getByText("kube-system", { exact: true });
     await expect(value).toBeVisible();
-    // Whole, not cut to an ellipsis.
-    expect(await value.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-    expect((await header.getByText(LONG_CONTEXT).boundingBox())!.width).toBeGreaterThan(40);
+    if (width === 1100) {
+      // The namespace chip's own cap (26% of the row, with its "Namespace" label)
+      // cuts the value at this width whatever the cluster chip does: readable,
+      // not whole.
+      expect((await value.boundingBox())!.width).toBeGreaterThan(40);
+    } else {
+      // Whole, not cut to an ellipsis.
+      expect(await value.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    }
+    const name = header.getByText(LONG_CONTEXT);
+    await expect(name).toHaveAttribute("title", LONG_CONTEXT);
+    // The name wins: from 1100 px the extras give way before it goes under 14ch.
+    const least = width >= 1100 ? (await fourteenCh(name)) - 1 : 40;
+    expect((await name.boundingBox())!.width).toBeGreaterThan(least);
+    // The environment tag stays, and the access keeps its state for every reader.
+    await expect(header.getByTestId("environment-tag")).toBeVisible();
+    await expect(header.getByTestId("access-state")).toBeVisible();
+    await expect(header.getByTestId("access-state")).toHaveAttribute("title", "Read-only");
+    await expect(header.locator("[data-cluster-chip]")).toHaveAccessibleName(/Read-only/);
     expect(await header.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   });
 
@@ -77,6 +111,79 @@ for (const width of [800, 1000, 1280]) {
     expect(await header.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   });
 }
+
+/** Whether `el` takes room on screen (not hidden, not visually hidden). */
+const shown = (el: import("@playwright/test").Locator) =>
+  el.evaluate((n) => n.getBoundingClientRect().width > 1 && getComputedStyle(n).position !== "absolute");
+
+test("beside a long context name the connection word goes first, then the version", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 700 });
+  await boot(page, {
+    contexts: [{ ...FIXTURES.contexts[0], name: LONG_CONTEXT }, ...FIXTURES.contexts.slice(1)],
+    clusterAccess: {},
+  });
+  const header = page.locator("header").first();
+  const chip = header.locator("[data-cluster-chip]");
+  await header.getByRole("button", { name: /Namespace/ }).click();
+  await page.getByRole("menuitemradio", { name: /kube-system/ }).click();
+  await expect(header.getByText("kube-system", { exact: true })).toBeVisible();
+  // Gone from view, still read out: the connection keeps its glyph and title.
+  expect(await shown(header.getByTestId("connection-state").getByText("Connected"))).toBe(false);
+  await expect(header.getByTestId("connection-state")).toHaveAttribute("title", "Connected");
+  await expect(header.getByText("v1.30.2")).toBeHidden();
+  await expect(chip).toHaveAccessibleName(/Connected/);
+  // What gives way later is still there.
+  expect(await shown(header.getByTestId("access-state").getByText("Read-only"))).toBe(true);
+  await expect(header.getByText("AKS", { exact: true })).toBeVisible();
+  await expect(header.getByTestId("environment-tag")).toBeVisible();
+});
+
+test("then the access word goes, its icon keeping the state and the warning look", async ({ page }) => {
+  // A long namespace and a timed unlock leave the name the least room.
+  await page.setViewportSize({ width: 1024, height: 700 });
+  await boot(page, {
+    contexts: [{ ...FIXTURES.contexts[0], name: LONG_CONTEXT }, ...FIXTURES.contexts.slice(1)],
+    namespaces: [...FIXTURES.namespaces, { name: LONG_NAMESPACE, phase: "Active" }],
+    clusterAccess: {},
+  });
+  const header = page.locator("header").first();
+  const chip = header.locator("[data-cluster-chip]");
+  await header.getByRole("button", { name: /Namespace/ }).click();
+  await page.getByRole("menuitemradio", { name: new RegExp(LONG_NAMESPACE) }).click();
+  await chip.click();
+  await page.getByRole("menuitem", { name: "Make writable for" }).click();
+  await page.getByRole("menuitem", { name: "15 minutes", exact: true }).click();
+  await page.getByRole("button", { name: "Make writable" }).click();
+  const state = header.getByTestId("access-state");
+  await expect(state).toHaveAttribute("data-access", "timed");
+  await expect(state).toBeVisible();
+  // The words go, the timer stays.
+  expect(await shown(state.locator(":scope > span"))).toBe(false);
+  expect((await state.boundingBox())!.width).toBeLessThan(32);
+  await expect(state).toHaveAttribute("title", /^Writable · 1[45] min$/);
+  await expect(chip).toHaveAccessibleName(/Writable · 1[45] min/);
+  await expect(state).toHaveClass(/bg-warning-container/);
+  // The provider tag is the last to go: still there, as the environment tag.
+  await expect(header.getByText("AKS", { exact: true })).toBeVisible();
+  await expect(header.getByTestId("environment-tag")).toBeVisible();
+  const name = header.getByText(LONG_CONTEXT);
+  expect((await name.boundingBox())!.width).toBeGreaterThan((await fourteenCh(name)) - 1);
+});
+
+test("a short context name with room for it all keeps every extra", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await boot(page, {
+    contexts: [{ ...FIXTURES.contexts[0], name: "aks-prod-01-emm" }, ...FIXTURES.contexts.slice(1)],
+    clusterAccess: {},
+  });
+  const header = page.locator("header").first();
+  await expect(header.getByTestId("access-state")).toHaveText("Read-only");
+  const name = header.getByText("aks-prod-01-emm", { exact: true });
+  // Whole: nothing cut.
+  expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await shown(header.getByTestId("connection-state").getByText("Connected"))).toBe(true);
+  expect(await shown(header.getByText("v1.30.2"))).toBe(true);
+});
 
 test("the gutter above the top bar drags the window, as the title bar did", async ({ page }) => {
   await boot(page);

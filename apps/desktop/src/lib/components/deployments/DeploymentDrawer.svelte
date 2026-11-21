@@ -6,6 +6,7 @@
 	import { formatAge } from '#lib/age.ts';
 	import { matchesSelector } from '#lib/k8s-match.ts';
 	import ReplicaStepper from '#lib/components/deployments/ReplicaStepper.svelte';
+	import ReadOnlyNotice from '#lib/components/ReadOnlyNotice.svelte';
 	import OverrideBanner from '#lib/components/deployments/OverrideBanner.svelte';
 	import ContainerResourceRows from '#lib/components/resources/ContainerResourceRows.svelte';
 	import { containerRows } from '#lib/container-usage.ts';
@@ -21,6 +22,7 @@
 	import WorkloadLinks from '#lib/components/integrations/WorkloadLinks.svelte';
 	import { deploymentStatus, podGlyph, podStatusLabel } from '#lib/status.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { logs } from '#lib/stores/logs.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { resourceEditor } from '#lib/stores/resourceEditor.svelte.ts';
@@ -32,6 +34,8 @@
 	let { deployment, onClose }: { deployment: DeploymentInfo; onClose: () => void } = $props();
 
 	const status = $derived(deploymentStatus(deployment));
+	// Scale, Adjust and Rollout Restart are writes: off, with the reason, on a read-only cluster (#662).
+	const lockReason = $derived(clusterSettings.lockReason(app.activeCluster));
 	const restarting = $derived(mutations.isRestarting(deployment.namespace, deployment.name));
 	let yamlOpen = $state(false);
 	const selectorLabel = $derived(
@@ -131,7 +135,7 @@
 
 		<div>
 			<div class={PANEL_SECTION}>Replicas</div>
-			<ReplicaStepper {deployment} />
+			<ReplicaStepper {deployment} blockedReason={lockReason} />
 		</div>
 
 		{#if deployment.resources_override}
@@ -149,6 +153,7 @@
 						data-resource-adjust
 						title="Adjust requests and limits"
 						pending={resourceEditor.isApplying(deployment.namespace, deployment.name)}
+						blockedReason={lockReason}
 						onclick={() => void resourceEditor.open(deployment)}
 					>
 						Adjust
@@ -225,6 +230,10 @@
 	</div>
 
 	{#snippet footer()}
+		<!-- Says once why the write actions below are off, and the way out. -->
+		{#if app.activeCluster}
+			<ReadOnlyNotice name={app.activeCluster} />
+		{/if}
 		<Button variant="primary" size="primary" onclick={openLogs}>
 			{#snippet icon()}<FileText class="h-4 w-4" aria-hidden="true" />{/snippet}
 			Logs
@@ -235,6 +244,7 @@
 		<Button
 			variant="tonal"
 			pending={restarting}
+			blockedReason={lockReason}
 			onclick={() => void mutations.restartDeployment(deployment.namespace, deployment.name)}
 		>
 			{#snippet icon()}<RotateCw class="h-4 w-4" aria-hidden="true" />{/snippet}

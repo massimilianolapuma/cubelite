@@ -20,11 +20,11 @@ describe("configMapCommandError (#668 §6.3)", () => {
   });
 
   it("reads anything else as other, with its message", () => {
-    // A Secret's kind is not a ConfigMap's.
-    expect(configMapCommandError({ kind: "secret_missing", message: "m" })).toEqual({
-      kind: "other",
-      message: '{"kind":"secret_missing","message":"m"}',
-    });
+    // A Secret's kind is not a ConfigMap's; its message is still words, not JSON (#662).
+    expect(configMapCommandError({ kind: "secret_missing", message: "m" })).toEqual({ kind: "other", message: "m" });
+    expect(
+      configMapCommandError({ kind: "read_only", context: "p", message: "p is read-only. Make it writable from the cluster menu." }),
+    ).toEqual({ kind: "other", message: "p is read-only. Make it writable from the cluster menu." });
     expect(configMapCommandError(new Error("connection refused"))).toEqual({ kind: "other", message: "connection refused" });
     expect(configMapCommandError("plain")).toEqual({ kind: "other", message: "plain" });
   });

@@ -9,6 +9,7 @@
 	import CommandPalette from '#lib/components/CommandPalette.svelte';
 	import OnboardingModal from '#lib/components/OnboardingModal.svelte';
 	import PreferencesModal from '#lib/components/PreferencesModal.svelte';
+	import UnlockDialog from '#lib/components/UnlockDialog.svelte';
 	import IntegrationsBanner from '#lib/components/IntegrationsBanner.svelte';
 	import ConnectingOverlay from '#lib/components/ui/ConnectingOverlay.svelte';
 	import Toaster from '#lib/components/ui/Toaster.svelte';
@@ -239,6 +240,8 @@
 {#if app.onboardingOpen}
 	<OnboardingModal />
 {/if}
+<!-- After Preferences: an unlock asked for there opens above it. -->
+<UnlockDialog />
 <Toaster />
 <ConnectingOverlay />
 {/if}

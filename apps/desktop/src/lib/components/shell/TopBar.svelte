@@ -3,7 +3,10 @@
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Lock from '@lucide/svelte/icons/lock';
 	import Search from '@lucide/svelte/icons/search';
+	import Timer from '@lucide/svelte/icons/timer';
+	import AccessMenuItems from './AccessMenuItems.svelte';
 	import Kbd from '#lib/components/ui/Kbd.svelte';
 	import NamespaceDropdown from '#lib/components/ui/NamespaceDropdown.svelte';
 	import StatusGlyph, { type GlyphState } from '#lib/components/ui/StatusGlyph.svelte';
@@ -11,6 +14,8 @@
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusters, type ConnectionState } from '#lib/stores/clusters.svelte.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
+	import { clock } from '#lib/stores/clock.svelte.ts';
+	import { remainingText } from '#lib/access.ts';
 	import {
 		choiceOf,
 		environmentChoices,
@@ -47,9 +52,22 @@
 	const environment = $derived(environmentEntry?.environment ?? null);
 	const choices = $derived(environmentChoices(environmentEntry?.detected ?? null));
 
-	function chooseEnvironment(value: string) {
-		if (activeContext) {
-			void clusterSettings.setEnvironment(activeContext.name, settingOf(value as EnvironmentChoice));
+	// The access (#662): read-only and writable for a while are shown; writable,
+	// the normal state, is not.
+	const access = $derived(app.activeCluster ? clusterSettings.accessOf(app.activeCluster) : 'writable');
+	const writableUntil = $derived(app.activeCluster ? clusterSettings.writableUntil(app.activeCluster) : null);
+
+	async function chooseEnvironment(value: string) {
+		if (!activeContext) return;
+		const name = activeContext.name;
+		const saved = await clusterSettings.setEnvironment(name, settingOf(value as EnvironmentChoice));
+		// Production by hand on a writable cluster offers to lock it (spec §3.3);
+		// the menu has closed on the choice, so the offer is a toast.
+		if (saved && value === 'production' && clusterSettings.accessOf(name) === 'writable') {
+			toasts.push('Production clusters are usually read-only', 'warn', {
+				label: 'Make read-only',
+				run: () => void clusterSettings.makeReadOnly(name)
+			});
 		}
 	}
 
@@ -59,7 +77,7 @@
 		unreachable: { glyph: 'err', tone: 'text-error', word: 'Unreachable' },
 		unknown: { glyph: 'unknown', tone: 'text-text-subtle', word: 'Not connected' }
 	};
-	const state = $derived(connection[clusters.connectionState]);
+	const linkState = $derived(connection[clusters.connectionState]);
 
 	async function copyServer(server: string) {
 		try {
@@ -69,6 +87,69 @@
 			toasts.push('Could not copy the server address', 'err');
 		}
 	}
+
+	// The countdown of a timed unlock, as the chip shows it.
+	const countdown = $derived(
+		access === 'timed' && writableUntil !== null ? remainingText(writableUntil - clock.now) : ''
+	);
+	const accessWords = $derived(
+		access === 'read_only' ? 'Read-only' : access === 'timed' ? `Writable · ${countdown}` : ''
+	);
+
+	// The name wins (#662): it keeps about 14ch while what sits beside it gives way,
+	// in this order: the connection word (its glyph stays), the version, the access
+	// word (its icon stays, in the same container), the provider tag. The
+	// environment tag stays. What gives way depends on how long the name is, which
+	// no width query can see, so it is measured: from nothing dropped, one more
+	// thing at a time while the name is cut under its minimum. A word that goes is
+	// still read out (sr-only) and in the title.
+	const GIVE_WAY = ['connection', 'version', 'access', 'provider'] as const;
+	let header = $state<HTMLElement | null>(null);
+	let nameEl = $state<HTMLElement | null>(null);
+	/** 14ch in the name's font, measured once per font. */
+	let fourteenCh = { font: '', width: 0 };
+
+	function minimumOf(el: HTMLElement): number {
+		const font = getComputedStyle(el).font;
+		if (fourteenCh.font !== font) {
+			const probe = document.createElement('span');
+			probe.style.cssText = 'position:absolute;visibility:hidden;width:14ch';
+			el.append(probe);
+			fourteenCh = { font, width: probe.getBoundingClientRect().width };
+			probe.remove();
+		}
+		return fourteenCh.width;
+	}
+
+	function fit() {
+		const chipEl = header?.querySelector<HTMLElement>('[data-cluster-chip]');
+		const name = nameEl;
+		if (!chipEl || !name) return;
+		const least = minimumOf(name);
+		let dropped = 0;
+		const drop = (n: number) =>
+			GIVE_WAY.forEach((what, i) => chipEl.toggleAttribute(`data-drop-${what}`, i < n));
+		drop(0);
+		// Cut (it has more to show than it has room for) and under its minimum.
+		while (dropped < GIVE_WAY.length && name.clientWidth + 1 < Math.min(least, name.scrollWidth)) {
+			dropped += 1;
+			drop(dropped);
+		}
+	}
+
+	// Again whenever the room changes: the window, or what shares the row.
+	$effect(() => {
+		void [activeContext?.name, provider, version, environment, accessWords, linkState.word, app.namespace, warningCount];
+		fit();
+	});
+	$effect(() => {
+		const el = header;
+		if (el === null || typeof ResizeObserver === 'undefined') return;
+		const observer = new ResizeObserver(() => fit());
+		observer.observe(el);
+		void document.fonts?.ready.then(() => fit());
+		return () => observer.disconnect();
+	});
 
 	// Chips may shrink: a long context name truncates rather than pushing the bar
 	// out of the window. What follows the name never shrinks.
@@ -84,8 +165,10 @@
      version goes; below 44rem the provider tag and the words beside a glyph go too. What
      is hidden stays in the accessible name. The namespace chip never takes more than a
      quarter of the row (a third once the labels are gone), so a long namespace cannot squeeze the cluster's name away, and
-     the cluster chip is the one that gives way to a long context name. -->
+     the cluster chip is the one that gives way to a long context name. Inside it, what sits
+     beside the name gives way first, measured (see `fit`). -->
 <header
+	bind:this={header}
 	data-tauri-drag-region
 	onmousedown={beginWindowDrag}
 	class="@container -mt-3 flex min-w-0 shrink-0 items-center gap-2 pt-3"
@@ -93,16 +176,22 @@
 	{#if activeContext}
 		<DropdownMenu.Root>
 			<!-- The chip keeps its cluster's tint even where the window does not (dashboard). -->
-			<DropdownMenu.Trigger class={chip} data-tint style={tintStyle(identity)}>
+			<DropdownMenu.Trigger class="{chip} group/chip" data-tint data-cluster-chip style={tintStyle(identity)}>
 				<span class="h-2.5 w-2.5 shrink-0 rounded-[3px] bg-primary" data-testid="identity-dot"></span>
-				<span class="type-body truncate font-semibold text-text">{activeContext.name}</span>
+				<span bind:this={nameEl} class="type-body truncate font-semibold text-text" title={activeContext.name}
+					>{activeContext.name}</span
+				>
 				{#if provider}
-					<span class="type-micro shrink-0 rounded-xs bg-primary-container px-1.5 py-px font-mono text-on-primary-container @max-[44rem]:hidden">
+					<span
+						class="type-micro shrink-0 rounded-xs bg-primary-container px-1.5 py-px font-mono text-on-primary-container @max-[44rem]:hidden group-data-[drop-provider]/chip:hidden"
+					>
 						{provider}
 					</span>
 				{/if}
 				{#if version}
-					<span class="type-data-sm shrink-0 text-text-subtle @max-[60rem]:hidden">{version}</span>
+					<span class="type-data-sm shrink-0 text-text-subtle @max-[60rem]:hidden group-data-[drop-version]/chip:hidden"
+						>{version}</span
+					>
 				{/if}
 				<!-- One step above the chip's own surface, so the tag shows on it; it stays at
 				     any width: it is what tells production from test at a glance. -->
@@ -113,9 +202,38 @@
 						data-testid="environment-tag">{environmentLabel(environment)}</span
 					>
 				{/if}
-				<span class="flex shrink-0 items-center gap-1.5 {state.tone}" data-testid="connection-state">
-					<StatusGlyph state={state.glyph} size={8} />
-					<span class="type-body-sm text-text-muted @max-[44rem]:sr-only">{state.word}</span>
+				<!-- Read-only is a property the user chose: muted, with a lock. Writable for
+				     a while is a state to notice: the warning container, counting down. Below
+				     44rem the words go, as the connection's do; the lock and the time stay. -->
+				{#if access === 'read_only'}
+					<span
+						class="flex shrink-0 items-center gap-1 text-text-muted"
+						data-testid="access-state"
+						data-access="read_only"
+						title={accessWords}
+					>
+						<Lock class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+						<span class="type-body-sm @max-[44rem]:sr-only group-data-[drop-access]/chip:sr-only">Read-only</span>
+					</span>
+				{:else if access === 'timed' && writableUntil !== null}
+					<span
+						class="type-micro flex shrink-0 items-center gap-1 rounded-xs bg-warning-container px-1.5 py-px font-semibold text-on-warning-container"
+						data-badge
+						data-testid="access-state"
+						data-access="timed"
+						title={accessWords}
+					>
+						<Timer class="h-3 w-3 shrink-0" aria-hidden="true" />
+						<span class="group-data-[drop-access]/chip:sr-only"
+							><span class="@max-[44rem]:sr-only">Writable ·</span> {countdown}</span
+						>
+					</span>
+				{/if}
+				<span class="flex shrink-0 items-center gap-1.5 {linkState.tone}" data-testid="connection-state" title={linkState.word}>
+					<StatusGlyph state={linkState.glyph} size={8} />
+					<span class="type-body-sm text-text-muted @max-[44rem]:sr-only group-data-[drop-connection]/chip:sr-only"
+						>{linkState.word}</span
+					>
 				</span>
 				<ChevronDown class="h-3.5 w-3.5 shrink-0 text-text-subtle" aria-hidden="true" />
 			</DropdownMenu.Trigger>
@@ -146,7 +264,9 @@
 						<DropdownMenu.SubContent sideOffset={6} class="{MENU_CONTENT} min-w-60">
 							<!-- Bound to the store: the checked item is the stored one, also after a
 							     choice the backend did not save. -->
-							<DropdownMenu.RadioGroup bind:value={() => choiceOf(environmentEntry), chooseEnvironment}>
+							<DropdownMenu.RadioGroup
+								bind:value={() => choiceOf(environmentEntry), (v) => void chooseEnvironment(v)}
+							>
 								{#each choices as choice (choice.value)}
 									<DropdownMenu.RadioItem value={choice.value} class={MENU_ITEM}>
 										{#snippet children({ checked })}
@@ -161,6 +281,8 @@
 							</DropdownMenu.RadioGroup>
 						</DropdownMenu.SubContent>
 					</DropdownMenu.Sub>
+					<DropdownMenu.Separator class="mx-3 my-1.5 h-px bg-outline" />
+					<AccessMenuItems name={activeContext.name} />
 				</DropdownMenu.Content>
 			</DropdownMenu.Portal>
 		</DropdownMenu.Root>

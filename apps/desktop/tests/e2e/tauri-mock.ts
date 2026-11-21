@@ -555,6 +555,14 @@ export const FIXTURES = {
    * is `500m`, `1024Mi` is `1Gi`); otherwise texts, which is enough elsewhere.
    */
   compareAmounts: false,
+  /**
+   * The saved access of each context, as the settings file holds it (#662). A
+   * context not named here goes through first sight: read-only when its label
+   * is in "read-only from the start" (Production), writable otherwise. The
+   * default active context, prod-aks, is a Production name: recorded writable
+   * so the suites that write to it keep working.
+   */
+  clusterAccess: { "prod-aks": "writable" } as Record<string, "read_only" | "writable">,
 };
 
 /** Serializable init script installing the IPC mock; `overrides` replace fixtures by key. */
@@ -758,15 +766,115 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
   const settingsChanged = () =>
     setTimeout(() => window.__emitTauriEvent?.("cluster-settings-changed", null), 0);
 
+  // --- Read-only clusters (#662): the backend's access state and its write
+  // guard. Saved access per context, timed unlocks in memory (end in Unix ms),
+  // the access preferences, and each shell session's context.
+  const access = { ...fixtures.clusterAccess };
+  const unlocks = {};
+  const unlockTimers = {};
+  let confirmUnlock = true;
+  let readOnlyFromStart = ["production"];
+  const execContexts = {};
+  // First sight: a context never recorded starts as its label says.
+  const firstSight = (name) => {
+    if (access[name]) return;
+    const environment = environmentView(name).environment;
+    access[name] = environment !== null && readOnlyFromStart.includes(environment) ? "read_only" : "writable";
+  };
+  const unlockRunning = (name) => typeof unlocks[name] === "number" && unlocks[name] > Date.now();
+  const writeAllowed = (name) => {
+    firstSight(name);
+    if (access[name] === "writable") return true;
+    if (unlockRunning(name)) return true;
+    delete unlocks[name];
+    return false;
+  };
+  const contextView = (name) => {
+    firstSight(name);
+    const timed = unlockRunning(name);
+    return {
+      ...environmentView(name),
+      access: access[name] === "writable" || timed ? "writable" : "read_only",
+      writable_until: timed ? unlocks[name] : null,
+    };
+  };
+  const settingsAnswer = (contexts) => ({
+    contexts: contexts.map(contextView),
+    variants: envVariants,
+    recovered: false,
+    confirm_unlock: confirmUnlock,
+    read_only_from_start: readOnlyFromStart,
+  });
+  const endUnlock = (name) => {
+    clearTimeout(unlockTimers[name]);
+    delete unlockTimers[name];
+    delete unlocks[name];
+  };
+  // The commands blocked on a read-only context (spec §4.1); exec_send by its session's context.
+  const WRITES = [
+    "apply_resource_yaml",
+    "delete_pod",
+    "restart_deployment",
+    "scale_deployment",
+    "apply_resources",
+    "clear_resources_override",
+    "start_exec",
+    "exec_send",
+  ];
+  const guard = (cmd, args) => {
+    if (!WRITES.includes(cmd)) return;
+    let context = args.context;
+    if (cmd === "exec_send") {
+      context = execContexts[args.sessionId];
+      // An ended session: the command answers that itself.
+      if (context === undefined) return;
+    }
+    if (typeof context !== "string") {
+      throw { kind: "no_context", message: "No cluster was named for this change." };
+    }
+    if (!writeAllowed(context)) {
+      throw { kind: "read_only", context, message: context + " is read-only. Make it writable from the cluster menu." };
+    }
+  };
+
   const responses = (cmd, args) => {
     switch (cmd) {
       case "cluster_settings":
         for (const name of args.contexts) envSettings[name] ??= { source: "detected" };
-        return { contexts: args.contexts.map(environmentView), variants: envVariants, recovered: false };
+        return settingsAnswer(args.contexts);
       case "set_cluster_environment":
         envSettings[args.context] = args.setting;
         settingsChanged();
-        return { contexts: [environmentView(args.context)], variants: envVariants, recovered: false };
+        return settingsAnswer([args.context]);
+      case "make_cluster_writable": {
+        const name = args.context;
+        if (![5, 15, 60, "always"].includes(args.duration)) throw "5, 15 or 60 minutes, or always";
+        endUnlock(name);
+        if (args.duration === "always") {
+          access[name] = "writable";
+        } else {
+          access[name] = "read_only";
+          const ms = args.duration * 60_000;
+          unlocks[name] = Date.now() + ms;
+          // As the backend's ticker: the end of the unlock is told to every window.
+          unlockTimers[name] = setTimeout(() => {
+            endUnlock(name);
+            settingsChanged();
+          }, ms);
+        }
+        settingsChanged();
+        return settingsAnswer([name]);
+      }
+      case "make_cluster_read_only":
+        endUnlock(args.context);
+        access[args.context] = "read_only";
+        settingsChanged();
+        return settingsAnswer([args.context]);
+      case "set_cluster_access_preferences":
+        if (typeof args.confirmUnlock === "boolean") confirmUnlock = args.confirmUnlock;
+        if (Array.isArray(args.readOnlyFromStart)) readOnlyFromStart = args.readOnlyFromStart;
+        settingsChanged();
+        return settingsAnswer([]);
       case "set_environment_variants": {
         const seen = {};
         const next = {};
@@ -909,13 +1017,16 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
       case "get_resource_yaml": return "kind: Pod\\nmetadata:\\n  name: " + args.name + "\\n";
       case "start_exec": {
         window.__lastExec = args;
+        execContexts[args.sessionId] = args.context;
         return null;
       }
       case "exec_send": {
         window.__execSent = [...(window.__execSent ?? []), args.data];
         return null;
       }
-      case "stop_exec": return null;
+      case "stop_exec":
+        delete execContexts[args.sessionId];
+        return null;
       case "elastic_search": {
         window.__lastElasticSearch = args;
         return {
@@ -1073,6 +1184,7 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
         return null;
       }
       if (cmd.startsWith("plugin:event|")) return callbackId++;
+      guard(cmd, args ?? {});
       return responses(cmd, args ?? {});
     },
   };

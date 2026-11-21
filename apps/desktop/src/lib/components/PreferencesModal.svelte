@@ -170,7 +170,8 @@
 	const hint = 'type-body-sm mt-0.5 text-text-muted';
 </script>
 
-<Modal title="Preferences" onClose={close}>
+<!-- 640 px: the Clusters table holds a context, its environment and its access in one row. -->
+<Modal title="Preferences" width={640} onClose={close}>
 	<div bind:this={content} class="flex flex-col gap-6">
 		<section class={group} aria-labelledby="prefs-appearance">
 			<h3 id="prefs-appearance" class={groupHeading}>Appearance</h3>

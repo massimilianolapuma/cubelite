@@ -114,6 +114,50 @@ describe("Button", () => {
     expect(button.className).not.toContain("pointer-events-none");
   });
 
+  it("with blockedReason stays focusable, says why and ignores presses (#662)", async () => {
+    const onclick = vi.fn();
+    render(Button, {
+      props: { blockedReason: "aks-prod-01-emm is read-only", onclick, children: text("Restart") },
+    });
+    const button = screen.getByRole("button", { name: "Restart" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toBeDisabled();
+    expect(button).not.toHaveAttribute("aria-busy");
+    expect(button).toHaveAttribute("title", "aks-prod-01-emm is read-only");
+    expect(button).toHaveAccessibleDescription("aks-prod-01-emm is read-only");
+    const described = document.getElementById(button.getAttribute("aria-describedby")!.split(" ").at(-1)!);
+    expect(described).toHaveTextContent("aks-prod-01-emm is read-only");
+    // The reason is a description, not part of the name.
+    expect(button).toHaveAccessibleName("Restart");
+    // Drawn as a disabled button is, and without the hover of an enabled one.
+    expect(button.className).toContain("aria-disabled:opacity-45");
+    await fireEvent.click(button);
+    expect(onclick).not.toHaveBeenCalled();
+    // In the tab order, as any button (jsdom has no Tab: the e2e suite walks it).
+    expect(button.tabIndex).toBe(0);
+    button.focus();
+    expect(button).toHaveFocus();
+  });
+
+  it("keeps a caller's description beside the reason", () => {
+    render(Button, {
+      props: { blockedReason: "p is read-only", "aria-describedby": "elsewhere", children: text("Scale") },
+    });
+    const button = screen.getByRole("button", { name: "Scale" });
+    expect(button.getAttribute("aria-describedby")?.split(" ")[0]).toBe("elsewhere");
+  });
+
+  it("without blockedReason has no description and runs its handler", async () => {
+    const onclick = vi.fn();
+    render(Button, { props: { blockedReason: null, onclick, children: text("Delete") } });
+    const button = screen.getByRole("button", { name: "Delete" });
+    expect(button).not.toHaveAttribute("aria-disabled");
+    expect(button).not.toHaveAttribute("aria-describedby");
+    expect(button).not.toHaveAttribute("title");
+    await fireEvent.click(button);
+    expect(onclick).toHaveBeenCalledOnce();
+  });
+
   it("is disabled without being busy", () => {
     render(Button, { props: { disabled: true, children: text("Scale") } });
     const button = screen.getByRole("button", { name: "Scale" });
@@ -253,6 +297,39 @@ describe("Toaster", () => {
     render(Toaster);
     expect(glyphOf(screen.getByText("Pod deleted").closest("[data-tone]")!)).toBe("ok");
     expect(glyphOf(screen.getByText("Could not delete").closest("[data-tone]")!)).toBe("err");
+    toasts.items = [];
+  });
+
+  it("renders a toast's action as a text button that runs it and dismisses the toast (#662)", async () => {
+    toasts.items = [];
+    const run = vi.fn();
+    toasts.push("Production clusters are usually read-only", "warn", { label: "Make read-only", run });
+    render(Toaster);
+    const action = screen.getByRole("button", { name: "Make read-only" });
+    expect(action).toHaveAttribute("data-variant", "text");
+    await fireEvent.click(action);
+    expect(run).toHaveBeenCalledOnce();
+    expect(toasts.items).toHaveLength(0);
+    expect(screen.queryByText("Production clusters are usually read-only")).not.toBeInTheDocument();
+  });
+
+  it("keeps read-only on one line, read as the one word (#662)", () => {
+    toasts.items = [];
+    toasts.push("Production clusters are usually read-only", "warn", { label: "Make read-only", run: vi.fn() });
+    render(Toaster);
+    const toast = document.querySelector<HTMLElement>("[data-tone]")!;
+    const message = toast.querySelector<HTMLElement>(".type-body-sm")!;
+    // The same characters for a screen reader; "read-" never ends a line.
+    expect(message.textContent).toBe("Production clusters are usually read-only");
+    expect(message.querySelector(".whitespace-nowrap")).toHaveTextContent(/^read-only$/);
+    toasts.items = [];
+  });
+
+  it("a toast without an action has only its dismiss button", () => {
+    toasts.items = [];
+    toasts.push("Pod deleted", "ok");
+    render(Toaster);
+    expect(screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual(["Dismiss"]);
     toasts.items = [];
   });
 });

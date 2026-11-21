@@ -37,4 +37,20 @@ describe("toasts", () => {
     toasts.dismiss(id);
     expect(toasts.items.map((t) => t.message)).toEqual(["b"]);
   });
+
+  it("keeps an action with the toast (#662)", () => {
+    const run = vi.fn();
+    toasts.push("Production clusters are usually read-only", "warn", { label: "Make read-only", run });
+    expect(toasts.items[0]).toMatchObject({ tone: "warn", action: { label: "Make read-only", run } });
+  });
+
+  it("leaves a toast with an action up long enough to reach it (#662)", () => {
+    toasts.push("with action", "warn", { label: "Undo", run: () => {} });
+    vi.advanceTimersByTime(3_200);
+    expect(toasts.items).toHaveLength(1);
+    vi.advanceTimersByTime(4_799);
+    expect(toasts.items).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(toasts.items).toHaveLength(0);
+  });
 });

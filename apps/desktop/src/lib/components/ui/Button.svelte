@@ -17,6 +17,7 @@
 		iconOnly = false,
 		label,
 		disabled = false,
+		blockedReason = null,
 		icon,
 		children,
 		onclick,
@@ -34,6 +35,13 @@
 		iconOnly?: boolean;
 		label?: string;
 		disabled?: boolean;
+		/**
+		 * Why the action is off (a read-only cluster, #662). The button stays in
+		 * place and in the tab order, drawn as disabled: `aria-disabled`, the reason
+		 * as its tooltip and its accessible description, and a press does nothing.
+		 * Use it rather than `disabled` whenever the user can do something about it.
+		 */
+		blockedReason?: string | null;
 		/** Leading icon; replaced by the spinner while pending. */
 		icon?: Snippet;
 		children?: Snippet;
@@ -41,11 +49,25 @@
 		class?: string;
 	} & Omit<HTMLButtonAttributes, 'disabled' | 'children' | 'class' | 'onclick'> = $props();
 
-	// A busy or disabled button does nothing, however the click reaches it.
+	// A busy, blocked or disabled button does nothing, however the click reaches it.
+	// A blocked press does not reach what holds the button either (a list row
+	// would open its panel), as a natively disabled button's never does.
 	function click(event: MouseEvent) {
+		if (blocked) {
+			event.stopPropagation();
+			return;
+		}
 		if (pending || disabled) return;
 		onclick?.(event);
 	}
+
+	const blocked = $derived(typeof blockedReason === 'string' && blockedReason !== '');
+	const reasonId = $props.id();
+	const describedBy = $derived(
+		blocked
+			? [rest['aria-describedby'], reasonId].filter((id) => typeof id === 'string' && id !== '').join(' ')
+			: rest['aria-describedby']
+	);
 
 	const look: Record<ButtonVariant, string> = {
 		primary: 'bg-primary text-on-primary',
@@ -85,12 +107,17 @@
 	data-icon-only={iconOnly ? 'true' : undefined}
 	aria-label={iconOnly ? (label ?? rest['aria-label']) : rest['aria-label']}
 	aria-busy={pending ? 'true' : rest['aria-busy']}
-	aria-disabled={pending ? 'true' : rest['aria-disabled']}
+	aria-disabled={pending || blocked ? 'true' : rest['aria-disabled']}
+	aria-describedby={describedBy}
+	title={blocked ? blockedReason : rest.title}
+	data-blocked={blocked ? 'true' : undefined}
 	{disabled}
 	onclick={click}
 	class="focus-ring relative inline-flex shrink-0 items-center justify-center gap-2 rounded-full font-semibold disabled:cursor-default disabled:opacity-45 {pending
 		? 'cursor-progress'
-		: hover[variant]} {size === 'primary' ? 'type-title' : 'type-body'} {height[size]} {iconOnly
+		: blocked
+			? 'cursor-default aria-disabled:opacity-45'
+			: hover[variant]} {size === 'primary' ? 'type-title' : 'type-body'} {height[size]} {iconOnly
 		? width[size]
 		: padding[size]} {look[variant]} {klass}"
 >
@@ -115,3 +142,8 @@
 		<LoaderCircle class="absolute h-4 w-4 animate-spin motion-reduce:hidden" aria-hidden="true" />
 	{/if}
 </button>
+{#if blocked}
+	<!-- The reason as the button's description: hidden, read through aria-describedby
+	     (outside the button, so it is not part of its name). -->
+	<span id={reasonId} hidden>{blockedReason}</span>
+{/if}

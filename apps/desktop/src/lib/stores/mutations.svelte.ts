@@ -9,8 +9,10 @@ import {
   restartDeployment as restartDeploymentCmd,
   scaleDeployment as scaleDeploymentCmd,
 } from "#lib/tauri.ts";
+import { readOnlyRefusal } from "#lib/access.ts";
 import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
+import { clusterSettings } from "./cluster-settings.svelte";
 import { resources } from "./resources.svelte";
 import { toasts } from "./toasts.svelte";
 
@@ -19,6 +21,19 @@ export const SCALE_DEBOUNCE_MS = 800;
 
 function key(namespace: string, name: string): string {
   return `${namespace}/${name}`;
+}
+
+/**
+ * Whether `cluster` takes a write (#662). A read-only one takes none: no call
+ * goes to the backend, and the toast says why in the backend's words, the
+ * same error the user would see had the backend refused it (a scale whose
+ * debounce outlived the unlock).
+ */
+function writable(cluster: string, failed: string): boolean {
+  const reason = clusterSettings.lockReason(cluster);
+  if (reason === null) return true;
+  toasts.push(`${failed} failed: ${readOnlyRefusal(reason)}`, "err");
+  return false;
 }
 
 class MutationsStore {
@@ -59,6 +74,8 @@ class MutationsStore {
   nudgeScale(namespace: string, name: string, current: number, delta: number): void {
     const k = key(namespace, name);
     if (this.pendingScales[k] !== undefined) return;
+    // A read-only cluster's stepper is off; nothing to hold either.
+    if (clusterSettings.lockReason(app.activeCluster) !== null) return;
     const target = Math.max(0, (this.draftScales[k] ?? current) + delta);
     const existing = this.#draftTimers.get(k);
     if (existing) clearTimeout(existing);
@@ -86,7 +103,7 @@ class MutationsStore {
   async deletePod(namespace: string, name: string): Promise<boolean> {
     const kc = app.kubeconfigPath;
     const cluster = app.activeCluster;
-    if (!kc || !cluster) return false;
+    if (!kc || !cluster || !writable(cluster, "Delete")) return false;
     const k = key(namespace, name);
     this.pendingPodDeletes = { ...this.pendingPodDeletes, [k]: true };
     try {
@@ -107,7 +124,7 @@ class MutationsStore {
   async restartDeployment(namespace: string, name: string): Promise<boolean> {
     const kc = app.kubeconfigPath;
     const cluster = app.activeCluster;
-    if (!kc || !cluster) return false;
+    if (!kc || !cluster || !writable(cluster, "Restart")) return false;
     const k = key(namespace, name);
     this.pendingRestarts = { ...this.pendingRestarts, [k]: true };
     try {
@@ -129,7 +146,7 @@ class MutationsStore {
     if (replicas < 0) return false;
     const kc = app.kubeconfigPath;
     const cluster = app.activeCluster;
-    if (!kc || !cluster) return false;
+    if (!kc || !cluster || !writable(cluster, "Scale")) return false;
     const k = key(namespace, name);
     this.pendingScales = { ...this.pendingScales, [k]: replicas };
     try {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { render, screen, fireEvent, within, waitFor } from "@testing-library/svelte";
 import { tick } from "svelte";
@@ -8,16 +8,25 @@ vi.mock("#lib/tauri.ts", async (importOriginal) => ({
   clusterSettings: vi.fn(),
   setClusterEnvironment: vi.fn(),
   setEnvironmentVariants: vi.fn(),
+  makeClusterWritable: vi.fn(),
+  makeClusterReadOnly: vi.fn(),
+  setClusterAccessPreferences: vi.fn(),
 }));
 
 import ClustersPreferences from "./ClustersPreferences.svelte";
 import { clusters } from "#lib/stores/clusters.svelte.ts";
 import { clusterSettings } from "#lib/stores/cluster-settings.svelte.ts";
+import { clock } from "#lib/stores/clock.svelte.ts";
+
+/** The element whose whole text is `text`, read across the spans that keep "read-only" on one line. */
+const wholeText = (text: string) => (_: string, el: Element | null) =>
+  el?.textContent === text && !Array.from(el.children).some((c) => c.textContent === text);
 import { defaultVariants } from "#lib/environment.ts";
 import {
   clusterSettings as fetchClusterSettings,
   setClusterEnvironment,
   setEnvironmentVariants,
+  type ClusterSettings,
   type ContextEnvironment,
   type ContextInfo,
   type EnvironmentVariants,
@@ -30,11 +39,14 @@ const context = (name: string): ContextInfo => ({
   is_active: false,
 });
 
+const ro = { access: "read_only", writable_until: null } as const;
+const rw = { access: "writable", writable_until: null } as const;
 const entries: ContextEnvironment[] = [
-  { name: "aks-prod-01-emm", environment: "production", source: "detected", detected: "production" },
-  { name: "minikube", environment: "development", source: "manual", detected: null },
-  { name: "dol-lab-aks", environment: null, source: "detected", detected: null },
+  { name: "aks-prod-01-emm", environment: "production", source: "detected", detected: "production", ...ro },
+  { name: "minikube", environment: "development", source: "manual", detected: null, ...rw },
+  { name: "dol-lab-aks", environment: null, source: "detected", detected: null, ...rw },
 ];
+const PREFS = { confirm_unlock: true, read_only_from_start: ["production"] } satisfies Partial<ClusterSettings>;
 
 const table = () => screen.getByRole("table", { name: "Cluster environments" });
 const rowNames = () =>
@@ -69,6 +81,7 @@ beforeEach(() => {
     contexts: entries.filter((e) => names.includes(e.name)),
     variants: clusterSettings.variants,
     recovered: false,
+    ...PREFS,
   }));
 });
 
@@ -78,6 +91,7 @@ describe("ClustersPreferences (#662)", () => {
     expect(within(table()).getAllByRole("columnheader").map((h) => h.textContent?.trim())).toEqual([
       "Context",
       "Environment",
+      "Access",
     ]);
     expect(rowNames()).toEqual(["aks-prod-01-emm", "minikube", "dol-lab-aks"]);
   });
@@ -104,6 +118,7 @@ describe("ClustersPreferences (#662)", () => {
       contexts: [{ ...entries[0], environment: "test", source: "manual" }],
       variants: defaultVariants(),
       recovered: false,
+      ...PREFS,
     });
     render(ClustersPreferences);
     await fireEvent.change(selectOf("aks-prod-01-emm"), { target: { value: "test" } });
@@ -250,3 +265,132 @@ describe("ClustersPreferences (#662)", () => {
     await waitFor(() => expect(field("Production").value).toBe("prod, prd, production, produzione"));
   });
 });
+
+describe("ClustersPreferences access (#662, spec §6.1–6.3)", () => {
+  const rowOf = (name: string) => screen.getByRole("cell", { name }).closest("tr")!;
+  const accessCell = (name: string) => within(rowOf(name)).getAllByRole("cell")[2];
+
+  afterEach(() => {
+    clock.run(false);
+  });
+
+  it("shows each context's access as the chip does, with its button", () => {
+    clusterSettings.byName = {
+      ...clusterSettings.byName,
+      "dol-lab-aks": { ...entries[2], writable_until: Date.now() + 12 * 60_000 },
+    };
+    render(ClustersPreferences);
+    const prod = accessCell("aks-prod-01-emm");
+    expect(prod).toHaveTextContent("Read-only");
+    expect(prod.querySelector("svg")?.getAttribute("class")).toContain("lucide-lock");
+    expect(within(prod).getByRole("button", { name: "Make writable: aks-prod-01-emm" })).toBeInTheDocument();
+    expect(within(prod).queryByRole("button", { name: /Make read-only/ })).toBeNull();
+
+    const mini = accessCell("minikube");
+    expect(mini).toHaveTextContent("Writable");
+    expect(within(mini).getByRole("button", { name: "Make read-only: minikube" })).toBeInTheDocument();
+    expect(within(mini).queryByRole("button", { name: /Make writable/ })).toBeNull();
+
+    // Writable for a while: one button, the way back. Restarting the time is in
+    // the top bar menu; two buttons do not fit the row.
+    const lab = accessCell("dol-lab-aks");
+    expect(lab).toHaveTextContent("Writable · 12 min");
+    expect(lab.querySelector("svg")?.getAttribute("class")).toContain("lucide-timer");
+    expect(within(lab).getByRole("button", { name: "Make read-only: dol-lab-aks" })).toBeInTheDocument();
+    expect(within(lab).queryByRole("button", { name: /Make writable/ })).toBeNull();
+  });
+
+  it("Make writable opens the four durations; one asks the store for that unlock", async () => {
+    const request = vi.spyOn(clusterSettings, "requestUnlock").mockResolvedValue();
+    render(ClustersPreferences);
+    await fireEvent.click(screen.getByRole("button", { name: "Make writable: aks-prod-01-emm" }));
+    await screen.findByRole("menuitem", { name: "1 hour" });
+    expect(screen.getAllByRole("menuitem").map((i) => i.textContent?.trim())).toEqual([
+      "5 minutes",
+      "15 minutes",
+      "1 hour",
+      "Always",
+    ]);
+    await fireEvent.click(screen.getByRole("menuitem", { name: "1 hour" }));
+    expect(request).toHaveBeenCalledWith("aks-prod-01-emm", 60);
+    request.mockRestore();
+  });
+
+  it("Make read-only goes to the store, without asking", async () => {
+    const readOnly = vi.spyOn(clusterSettings, "makeReadOnly").mockResolvedValue(true);
+    render(ClustersPreferences);
+    await fireEvent.click(screen.getByRole("button", { name: "Make read-only: minikube" }));
+    expect(readOnly).toHaveBeenCalledWith("minikube");
+    readOnly.mockRestore();
+  });
+
+  it("under a writable context set to Production by hand, offers to lock it", async () => {
+    clusterSettings.byName = {
+      ...clusterSettings.byName,
+      minikube: { ...entries[1], environment: "production", source: "manual" },
+      // Production detected, or read-only: nothing to offer.
+      "dol-lab-aks": { ...entries[2], environment: "production", source: "manual", access: "read_only" },
+    };
+    const readOnly = vi.spyOn(clusterSettings, "makeReadOnly").mockResolvedValue(true);
+    render(ClustersPreferences);
+    const lines = screen.getAllByText(wholeText("Production clusters are usually read-only"));
+    expect(lines).toHaveLength(1);
+    const line = lines[0].closest("tr")!;
+    // The line follows the row it is about.
+    expect(line.previousElementSibling).toBe(rowOf("minikube"));
+    await fireEvent.click(within(line).getByRole("button", { name: "Make read-only: minikube" }));
+    expect(readOnly).toHaveBeenCalledWith("minikube");
+    readOnly.mockRestore();
+  });
+
+  it("the line goes once the context is read-only", async () => {
+    clusterSettings.byName = {
+      ...clusterSettings.byName,
+      minikube: { ...entries[1], environment: "production", source: "manual" },
+    };
+    render(ClustersPreferences);
+    expect(screen.getByText(wholeText("Production clusters are usually read-only"))).toBeInTheDocument();
+    clusterSettings.byName = { ...clusterSettings.byName, minikube: { ...clusterSettings.byName.minikube, access: "read_only" } };
+    await waitFor(() => expect(screen.queryByText(wholeText("Production clusters are usually read-only"))).toBeNull());
+  });
+
+  it("the switch asks before an unlock, and saves through the store", async () => {
+    const save = vi.spyOn(clusterSettings, "setAccessPreferences").mockResolvedValue(true);
+    render(ClustersPreferences);
+    const ask = screen.getByRole("switch", { name: "Ask before making a cluster writable" });
+    expect(ask).toHaveAttribute("aria-checked", "true");
+    await fireEvent.click(ask);
+    expect(save).toHaveBeenCalledWith({ confirmUnlock: false });
+    clusterSettings.confirmUnlock = false;
+    await waitFor(() => expect(ask).toHaveAttribute("aria-checked", "false"));
+    save.mockRestore();
+  });
+
+  it("read-only from the start is four checkboxes, Production checked by default", async () => {
+    const save = vi.spyOn(clusterSettings, "setAccessPreferences").mockResolvedValue(true);
+    render(ClustersPreferences);
+    const group = screen.getByRole("group", { name: "Read-only from the start" });
+    const boxes = within(group).getAllByRole("checkbox") as HTMLInputElement[];
+    expect(boxes.map((b) => [b.labels?.[0]?.textContent?.trim(), b.checked])).toEqual([
+      ["Development", false],
+      ["Test", false],
+      ["Staging", false],
+      ["Production", true],
+    ]);
+    await fireEvent.click(within(group).getByRole("checkbox", { name: "Test" }));
+    expect(save).toHaveBeenLastCalledWith({ readOnlyFromStart: ["test", "production"] });
+    await fireEvent.click(within(group).getByRole("checkbox", { name: "Production" }));
+    expect(save).toHaveBeenLastCalledWith({ readOnlyFromStart: [] });
+    save.mockRestore();
+  });
+
+  it("a checkbox follows the store after the answer, not the click", async () => {
+    vi.spyOn(clusterSettings, "setAccessPreferences").mockResolvedValue(false);
+    render(ClustersPreferences);
+    const test = screen.getByRole("checkbox", { name: "Test" }) as HTMLInputElement;
+    await fireEvent.click(test);
+    await waitFor(() => expect(test.checked).toBe(false));
+    vi.mocked(clusterSettings.setAccessPreferences).mockRestore();
+  });
+});
+

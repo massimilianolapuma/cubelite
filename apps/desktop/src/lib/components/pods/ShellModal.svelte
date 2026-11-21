@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 	import Modal from '#lib/components/ui/Modal.svelte';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
+	import { readOnlyRefusal } from '#lib/access.ts';
 	import { errorMessage } from '#lib/errors.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { execSend, startExec, stopExec, type ExecLine } from '#lib/tauri.ts';
 
 	/**
@@ -37,6 +39,13 @@
 	};
 
 	const sessionId = crypto.randomUUID();
+	// The shell's cluster is the one it started on, whatever is active later:
+	// its input follows that cluster's access (#662, spec §4.4).
+	const kubeconfig = app.kubeconfigPath;
+	const cluster = app.activeCluster;
+	const lockReason = $derived(clusterSettings.lockReason(cluster));
+	const reasonId = $props.id();
+	let connected = $state(false);
 	let rows = $state<Row[]>([]);
 	let nextId = 0;
 	let command = $state('');
@@ -65,10 +74,15 @@
 		};
 
 		void (async () => {
-			const kc = app.kubeconfigPath;
-			const cluster = app.activeCluster;
+			const kc = kubeconfig;
 			if (!kc || !cluster) {
 				sessionError = 'No active cluster.';
+				return;
+			}
+			// A shell is a write: none starts on a read-only cluster.
+			const locked = clusterSettings.lockReason(cluster);
+			if (locked !== null) {
+				sessionError = readOnlyRefusal(locked);
 				return;
 			}
 			try {
@@ -86,6 +100,7 @@
 				if (disposed) return;
 				await startExec(kc, sessionId, namespace, pod, cluster);
 				append('status', 'connected: line-based shell (/bin/sh, no TTY)');
+				connected = true;
 				input?.focus();
 			} catch (e: unknown) {
 				sessionError = errorMessage(e);
@@ -99,9 +114,22 @@
 		};
 	});
 
+	// The unlock ends with the shell open: it stays open, says so once in its
+	// own output, and takes no input until the cluster is writable again.
+	let saidLocked = false;
+	$effect(() => {
+		if (lockReason === null) {
+			saidLocked = false;
+			return;
+		}
+		if (!connected || ended || saidLocked) return;
+		saidLocked = true;
+		untrack(() => append('status', `${cluster} is read-only again. Input is off.`));
+	});
+
 	function send() {
 		const line = command;
-		if (!line || ended || sessionError) return;
+		if (!line || ended || sessionError || lockReason !== null) return;
 		command = '';
 		append('input', `$ ${line}`);
 		execSend(sessionId, `${line}\n`).catch((e: unknown) => {
@@ -146,8 +174,15 @@
 				autocomplete="off"
 				spellcheck="false"
 				disabled={ended || sessionError !== null}
-				class="focus-ring type-log h-(--control-h-compact) min-w-0 flex-1 rounded-md border border-outline-strong bg-surface-sunken px-3 text-text placeholder:text-text-muted disabled:opacity-45"
+				readonly={lockReason !== null}
+				aria-disabled={lockReason !== null ? 'true' : undefined}
+				aria-describedby={lockReason !== null ? reasonId : undefined}
+				title={lockReason ?? undefined}
+				class="focus-ring type-log h-(--control-h-compact) min-w-0 flex-1 rounded-md border border-outline-strong bg-surface-sunken px-3 text-text placeholder:text-text-muted disabled:opacity-45 aria-disabled:opacity-45"
 			/>
+			{#if lockReason !== null}
+				<span id={reasonId} hidden>{lockReason}</span>
+			{/if}
 		</form>
 	</div>
 </Modal>
