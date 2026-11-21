@@ -1,23 +1,27 @@
 <script lang="ts">
-	import { EMPTY } from '#lib/empty.ts';
 	import Button from '#lib/components/ui/Button.svelte';
 	import Modal from '#lib/components/ui/Modal.svelte';
-	import { app } from '#lib/stores/app.svelte.ts';
 	import type { PodInfo } from '#lib/tauri.ts';
 
 	// Destructive confirm for the pod drawer's Delete action (wired in PodsView).
 	// `confirmDisabled` defaults to true so a caller must opt in to enabling it.
 	let {
 		pod,
+		cluster,
 		onCancel,
 		onConfirm,
 		confirmDisabled = true,
+		pending = false,
 		blockedReason = null
 	}: {
 		pod: PodInfo;
+		/** The cluster the dialog was opened on, where the delete goes (#685): not the active one. */
+		cluster: string;
 		onCancel: () => void;
 		onConfirm: () => void;
 		confirmDisabled?: boolean;
+		/** The delete runs: the button says so and takes no second click (#685). */
+		pending?: boolean;
 		/** Why the delete is off (a read-only cluster, #662): the button says so and does nothing. */
 		blockedReason?: string | null;
 	} = $props();
@@ -27,7 +31,7 @@
 	const facts = $derived<[string, string][]>([
 		['Pod', pod.name],
 		['Namespace', pod.namespace],
-		['Cluster', app.activeCluster ?? EMPTY]
+		['Cluster', cluster]
 	]);
 </script>
 
@@ -50,6 +54,7 @@
 			variant="danger-solid"
 			size="primary"
 			disabled={confirmDisabled}
+			{pending}
 			title={confirmDisabled ? 'Requires backend support' : undefined}
 			{blockedReason}
 			onclick={onConfirm}

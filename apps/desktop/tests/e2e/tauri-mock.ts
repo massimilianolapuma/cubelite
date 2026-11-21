@@ -25,6 +25,8 @@ declare global {
     __lastPromMetrics?: Record<string, unknown>;
     __grafanaOpened?: Record<string, unknown>;
     __grafanaForwards?: Record<string, unknown>[];
+    /** Test hook: the arguments of every `delete_pod` call, in order (#685). */
+    __podDeletes?: Record<string, unknown>[];
     /** Test hook: arguments of the last `apply_resource_yaml` call. */
     __lastApply?: Record<string, unknown>;
     /** Test hook: arguments of the last `apply_resources` call, dry run or not. */
@@ -1125,6 +1127,9 @@ export function tauriMockScript(overrides: Partial<typeof FIXTURES> = {}): strin
         window.__lastApply = args;
         return null;
       }
+      case "delete_pod":
+        (window.__podDeletes ??= []).push(args);
+        return null;
       case "resource_facts":
         return JSON.parse(JSON.stringify(factsOf(args.namespace, args.name)));
       case "evaluate_resources":

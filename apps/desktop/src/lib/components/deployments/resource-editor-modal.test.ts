@@ -841,3 +841,29 @@ describe("ResourceEditor on a read-only cluster (#662, spec §4.4)", () => {
     expect(screen.getByRole("dialog", { name: "Review · api" })).toBeInTheDocument();
   });
 });
+
+describe("ResourceEditor: an apply that runs through a cluster switch (#685)", () => {
+  it("still names the cluster it was opened on and follows that cluster's lock", async () => {
+    await toReview();
+    let finish!: (answer: ResourceEvaluation) => void;
+    vi.mocked(applyResources).mockReturnValueOnce(new Promise((res) => (finish = res)));
+    await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    await settle();
+
+    // The switch lands on a read-only cluster while the apply runs: the editor stays.
+    setAccess("staging", "read_only");
+    app.activeCluster = "staging";
+    await settle();
+    try {
+      expect(screen.getByTestId("editor-context")).toHaveTextContent(/^default · prod-aks · 2 replicas$/);
+      const apply = screen.getByRole("button", { name: "Apply" });
+      // Pending, but not refused for staging's lock.
+      expect(apply).not.toHaveAccessibleDescription("staging is read-only");
+      expect(apply).not.toHaveAttribute("title", "staging is read-only");
+    } finally {
+      finish(reviewed());
+      await settle();
+    }
+    expect(dryRuns(false)[0][6]).toBe("prod-aks");
+  });
+});

@@ -29,6 +29,7 @@ import {
   type FieldKey,
 } from "#lib/resource-editor.ts";
 import { app } from "./app.svelte";
+import { activeClusterRef, elsewhere, onScreen, refKey, type ClusterRef } from "./cluster-ref";
 import { resources } from "./resources.svelte";
 import { toasts } from "./toasts.svelte";
 
@@ -37,10 +38,6 @@ export const EVALUATE_DEBOUNCE_MS = 300;
 
 export type EditorMode = "adjust" | "restore";
 export type EditorStep = "edit" | "review";
-
-function key(namespace: string, name: string): string {
-  return `${namespace}/${name}`;
-}
 
 class ResourceEditorStore {
   /** The deployment being edited; null when the editor is closed. */
@@ -62,11 +59,14 @@ class ResourceEditorStore {
   applying = $state(false);
   applyError = $state<string | null>(null);
 
-  /** Keys of deployments with an apply in flight. */
+  /**
+   * Keys (`refKey`) of deployments with an apply in flight, by cluster: an
+   * apply on one cluster never shows on the same-named deployment of another (#685).
+   */
   #pendingApplies = $state<Record<string, boolean>>({});
   /** Kubeconfig and cluster the facts were read from: every call of this editor goes there. */
   #kubeconfig: string | null = null;
-  #cluster: string | null = null;
+  #cluster = $state<string | null>(null);
   /** The proposal the dry run checked: the apply sends this one. */
   #proposal: ResourceProposal | null = null;
   /** Bumped by every open and close: an answer for an older editor is dropped. */
@@ -115,8 +115,25 @@ class ResourceEditorStore {
     );
   }
 
+  /**
+   * The cluster the editor was opened on, which its header names and whose
+   * lock its buttons follow: an apply that runs through a switch stays on it.
+   */
+  get cluster(): string | null {
+    return this.#cluster;
+  }
+
+  /** An apply runs on `namespace/name` of the active cluster. */
   isApplying(namespace: string, name: string): boolean {
-    return this.#pendingApplies[key(namespace, name)] ?? false;
+    const ref = activeClusterRef();
+    return ref !== null && (this.#pendingApplies[refKey(ref, namespace, name)] ?? false);
+  }
+
+  /** Where the editor's calls go; null when it is closed. */
+  #ref(): ClusterRef | null {
+    return this.#kubeconfig !== null && this.#cluster !== null
+      ? { kubeconfig: this.#kubeconfig, cluster: this.#cluster }
+      : null;
   }
 
   /** Open the editor on `deployment`; a restore opens on step 2. Ignored while an apply runs. */
@@ -223,30 +240,24 @@ class ResourceEditorStore {
     const facts = this.facts;
     const target = this.target;
     const proposal = this.#proposal;
-    if (facts === null || target === null || proposal === null) return false;
+    const on = this.#ref();
+    if (facts === null || target === null || proposal === null || on === null) return false;
     if (this.step !== "review" || this.dryRun !== "ok" || this.applying) return false;
-    const k = key(target.namespace, target.name);
+    const k = refKey(on, target.namespace, target.name);
     const restore = this.mode === "restore";
     this.applying = true;
     this.applyError = null;
     this.#pendingApplies = { ...this.#pendingApplies, [k]: true };
     try {
-      await applyResources(
-        this.#kubeconfig ?? "",
-        target.namespace,
-        target.name,
-        proposal,
-        facts.seen,
-        false,
-        this.#cluster ?? undefined,
-      );
+      await applyResources(on.kubeconfig, target.namespace, target.name, proposal, facts.seen, false, on.cluster);
       this.applying = false;
       this.close();
+      // After a switch the toast names the cluster, and the lists on screen are another cluster's.
       toasts.push(
-        `Resources of ${target.name} ${restore ? "restored" : "updated"}, rollout started`,
+        `Resources of ${target.name} ${restore ? "restored" : "updated"}${elsewhere(on)}, rollout started`,
         "ok",
       );
-      void resources.load();
+      if (onScreen(on)) void resources.load();
       return true;
     } catch (e) {
       this.applyError = errorMessage(e);
@@ -254,7 +265,7 @@ class ResourceEditorStore {
       // went meanwhile (#watch): the message would go with it.
       if (!this.#inPlace()) {
         toasts.push(
-          `Could not ${restore ? "restore" : "update"} the resources of ${target.name}: ${this.applyError}`,
+          `Could not ${restore ? "restore" : "update"} the resources of ${target.name}${elsewhere(on)}: ${this.applyError}`,
           "err",
         );
       }
@@ -269,16 +280,15 @@ class ResourceEditorStore {
 
   /** "Keep these values": remove the override mark, nothing else. */
   async keepValues(deployment: DeploymentInfo): Promise<boolean> {
-    const kc = app.kubeconfigPath;
-    const cluster = app.activeCluster;
-    if (!kc || !cluster) return false;
+    const on = activeClusterRef();
+    if (on === null) return false;
     try {
-      await clearResourcesOverride(kc, deployment.namespace, deployment.name, cluster);
-      toasts.push(`Override mark removed from ${deployment.name}`, "ok");
-      void resources.load();
+      await clearResourcesOverride(on.kubeconfig, deployment.namespace, deployment.name, on.cluster);
+      toasts.push(`Override mark removed from ${deployment.name}${elsewhere(on)}`, "ok");
+      if (onScreen(on)) void resources.load();
       return true;
     } catch (e) {
-      toasts.push(`Could not remove the mark: ${errorMessage(e)}`, "err");
+      toasts.push(`Could not remove the mark${elsewhere(on)}: ${errorMessage(e)}`, "err");
       return false;
     }
   }

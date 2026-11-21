@@ -6,8 +6,9 @@
 	import Button from '#lib/components/ui/Button.svelte';
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import { errorMessage } from '#lib/errors.ts';
-	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
+	import { activeClusterRef, onScreen } from '#lib/stores/cluster-ref.ts';
+	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import { applyResourceYaml, getResourceYaml, type YamlResourceType } from '#lib/tauri.ts';
 
 	let {
@@ -22,6 +23,11 @@
 		onClose: () => void;
 	} = $props();
 
+	// The cluster the modal opened on (#685): the YAML is read from it and the
+	// draft applied to it, whatever is active later. A switch must not swap in
+	// the same-named object of the next cluster under a draft, nor send it there.
+	const on = activeClusterRef();
+
 	let yaml = $state<string | null>(null);
 	let error = $state<string | null>(null);
 	let copied = $state(false);
@@ -33,7 +39,7 @@
 	let applyError = $state<string | null>(null);
 	// Edit and Apply are writes: off, with the reason, on a read-only cluster
 	// (#662). A draft stays when an unlock ends under it: it can be copied.
-	const lockReason = $derived(clusterSettings.lockReason(app.activeCluster));
+	const lockReason = $derived(on === null ? null : clusterSettings.lockReason(on.cluster));
 
 	// The object by value: a list reload hands the panel that opened this a new
 	// object with the same name, and that is no reason to fetch again (#659).
@@ -44,10 +50,8 @@
 	$effect(() => {
 		yaml = null;
 		error = null;
-		const kc = app.kubeconfigPath;
-		const cluster = app.activeCluster;
-		if (!kc || !cluster) return;
-		getResourceYaml(kc, targetType, targetNamespace, targetName, cluster)
+		if (on === null) return;
+		getResourceYaml(on.kubeconfig, targetType, targetNamespace, targetName, on.cluster)
 			.then((text) => (yaml = text))
 			.catch((e: unknown) => (error = errorMessage(e)));
 	});
@@ -76,16 +80,19 @@
 	}
 
 	async function apply() {
-		const kc = app.kubeconfigPath;
-		const cluster = app.activeCluster;
-		if (!kc || !cluster || applying || lockReason !== null) return;
+		if (on === null || applying || lockReason !== null) return;
+		const target = name;
 		applying = true;
 		applyError = null;
 		try {
-			await applyResourceYaml(kc, resourceType, namespace, name, draft, cluster);
+			await applyResourceYaml(on.kubeconfig, resourceType, namespace, target, draft, on.cluster);
+			// A switch closed the panel, and this modal with it: the outcome goes
+			// to a toast that names the cluster (#685).
+			if (!onScreen(on)) toasts.push(`${target} applied on ${on.cluster}`, 'ok');
 			onClose();
 		} catch (e: unknown) {
 			applyError = errorMessage(e);
+			if (!onScreen(on)) toasts.push(`Apply on ${on.cluster} failed: ${applyError}`, 'err');
 		} finally {
 			applying = false;
 		}
