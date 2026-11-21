@@ -3,7 +3,10 @@
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Lock from '@lucide/svelte/icons/lock';
 	import Search from '@lucide/svelte/icons/search';
+	import Timer from '@lucide/svelte/icons/timer';
+	import AccessMenuItems from './AccessMenuItems.svelte';
 	import Kbd from '#lib/components/ui/Kbd.svelte';
 	import NamespaceDropdown from '#lib/components/ui/NamespaceDropdown.svelte';
 	import StatusGlyph, { type GlyphState } from '#lib/components/ui/StatusGlyph.svelte';
@@ -11,6 +14,8 @@
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusters, type ConnectionState } from '#lib/stores/clusters.svelte.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
+	import { clock } from '#lib/stores/clock.svelte.ts';
+	import { remainingText } from '#lib/access.ts';
 	import {
 		choiceOf,
 		environmentChoices,
@@ -47,9 +52,22 @@
 	const environment = $derived(environmentEntry?.environment ?? null);
 	const choices = $derived(environmentChoices(environmentEntry?.detected ?? null));
 
-	function chooseEnvironment(value: string) {
-		if (activeContext) {
-			void clusterSettings.setEnvironment(activeContext.name, settingOf(value as EnvironmentChoice));
+	// The access (#662): read-only and writable for a while are shown; writable,
+	// the normal state, is not.
+	const access = $derived(app.activeCluster ? clusterSettings.accessOf(app.activeCluster) : 'writable');
+	const writableUntil = $derived(app.activeCluster ? clusterSettings.writableUntil(app.activeCluster) : null);
+
+	async function chooseEnvironment(value: string) {
+		if (!activeContext) return;
+		const name = activeContext.name;
+		const saved = await clusterSettings.setEnvironment(name, settingOf(value as EnvironmentChoice));
+		// Production by hand on a writable cluster offers to lock it (spec §3.3);
+		// the menu has closed on the choice, so the offer is a toast.
+		if (saved && value === 'production' && clusterSettings.accessOf(name) === 'writable') {
+			toasts.push('Production clusters are usually read-only', 'warn', {
+				label: 'Make read-only',
+				run: () => void clusterSettings.makeReadOnly(name)
+			});
 		}
 	}
 
@@ -113,6 +131,29 @@
 						data-testid="environment-tag">{environmentLabel(environment)}</span
 					>
 				{/if}
+				<!-- Read-only is a property the user chose: muted, with a lock. Writable for
+				     a while is a state to notice: the warning container, counting down. Below
+				     44rem the words go, as the connection's do; the lock and the time stay. -->
+				{#if access === 'read_only'}
+					<span
+						class="flex shrink-0 items-center gap-1 text-text-muted"
+						data-testid="access-state"
+						data-access="read_only"
+					>
+						<Lock class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+						<span class="type-body-sm @max-[44rem]:sr-only">Read-only</span>
+					</span>
+				{:else if access === 'timed' && writableUntil !== null}
+					<span
+						class="type-micro flex shrink-0 items-center gap-1 rounded-xs bg-warning-container px-1.5 py-px font-semibold text-on-warning-container"
+						data-badge
+						data-testid="access-state"
+						data-access="timed"
+					>
+						<Timer class="h-3 w-3 shrink-0" aria-hidden="true" />
+						<span><span class="@max-[44rem]:sr-only">Writable ·</span> {remainingText(writableUntil - clock.now)}</span>
+					</span>
+				{/if}
 				<span class="flex shrink-0 items-center gap-1.5 {state.tone}" data-testid="connection-state">
 					<StatusGlyph state={state.glyph} size={8} />
 					<span class="type-body-sm text-text-muted @max-[44rem]:sr-only">{state.word}</span>
@@ -146,7 +187,9 @@
 						<DropdownMenu.SubContent sideOffset={6} class="{MENU_CONTENT} min-w-60">
 							<!-- Bound to the store: the checked item is the stored one, also after a
 							     choice the backend did not save. -->
-							<DropdownMenu.RadioGroup bind:value={() => choiceOf(environmentEntry), chooseEnvironment}>
+							<DropdownMenu.RadioGroup
+								bind:value={() => choiceOf(environmentEntry), (v) => void chooseEnvironment(v)}
+							>
 								{#each choices as choice (choice.value)}
 									<DropdownMenu.RadioItem value={choice.value} class={MENU_ITEM}>
 										{#snippet children({ checked })}
@@ -161,6 +204,8 @@
 							</DropdownMenu.RadioGroup>
 						</DropdownMenu.SubContent>
 					</DropdownMenu.Sub>
+					<DropdownMenu.Separator class="mx-3 my-1.5 h-px bg-outline" />
+					<AccessMenuItems name={activeContext.name} />
 				</DropdownMenu.Content>
 			</DropdownMenu.Portal>
 		</DropdownMenu.Root>

@@ -114,6 +114,50 @@ describe("Button", () => {
     expect(button.className).not.toContain("pointer-events-none");
   });
 
+  it("with blockedReason stays focusable, says why and ignores presses (#662)", async () => {
+    const onclick = vi.fn();
+    render(Button, {
+      props: { blockedReason: "aks-prod-01-emm is read-only", onclick, children: text("Restart") },
+    });
+    const button = screen.getByRole("button", { name: "Restart" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toBeDisabled();
+    expect(button).not.toHaveAttribute("aria-busy");
+    expect(button).toHaveAttribute("title", "aks-prod-01-emm is read-only");
+    expect(button).toHaveAccessibleDescription("aks-prod-01-emm is read-only");
+    const described = document.getElementById(button.getAttribute("aria-describedby")!.split(" ").at(-1)!);
+    expect(described).toHaveTextContent("aks-prod-01-emm is read-only");
+    // The reason is a description, not part of the name.
+    expect(button).toHaveAccessibleName("Restart");
+    // Drawn as a disabled button is, and without the hover of an enabled one.
+    expect(button.className).toContain("aria-disabled:opacity-45");
+    await fireEvent.click(button);
+    expect(onclick).not.toHaveBeenCalled();
+    // In the tab order, as any button (jsdom has no Tab: the e2e suite walks it).
+    expect(button.tabIndex).toBe(0);
+    button.focus();
+    expect(button).toHaveFocus();
+  });
+
+  it("keeps a caller's description beside the reason", () => {
+    render(Button, {
+      props: { blockedReason: "p is read-only", "aria-describedby": "elsewhere", children: text("Scale") },
+    });
+    const button = screen.getByRole("button", { name: "Scale" });
+    expect(button.getAttribute("aria-describedby")?.split(" ")[0]).toBe("elsewhere");
+  });
+
+  it("without blockedReason has no description and runs its handler", async () => {
+    const onclick = vi.fn();
+    render(Button, { props: { blockedReason: null, onclick, children: text("Delete") } });
+    const button = screen.getByRole("button", { name: "Delete" });
+    expect(button).not.toHaveAttribute("aria-disabled");
+    expect(button).not.toHaveAttribute("aria-describedby");
+    expect(button).not.toHaveAttribute("title");
+    await fireEvent.click(button);
+    expect(onclick).toHaveBeenCalledOnce();
+  });
+
   it("is disabled without being busy", () => {
     render(Button, { props: { disabled: true, children: text("Scale") } });
     const button = screen.getByRole("button", { name: "Scale" });

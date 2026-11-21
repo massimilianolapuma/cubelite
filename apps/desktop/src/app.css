@@ -595,8 +595,9 @@
   :is([data-variant="primary"], [data-variant="danger-solid"]):focus-visible {
     outline-color: ButtonText;
   }
-  :is([data-variant="primary"], [data-variant="danger-solid"]):disabled,
-  :is([data-variant="primary"], [data-variant="danger-solid"]):disabled * {
+  /* Blocked (a read-only cluster, #662) is drawn as disabled. */
+  :is([data-variant="primary"], [data-variant="danger-solid"]):is(:disabled, [data-blocked]),
+  :is([data-variant="primary"], [data-variant="danger-solid"]):is(:disabled, [data-blocked]) * {
     border-color: GrayText;
     background-color: Canvas;
     color: GrayText;

@@ -1,5 +1,13 @@
 <script lang="ts">
+	import { DropdownMenu } from 'bits-ui';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Lock from '@lucide/svelte/icons/lock';
+	import Timer from '@lucide/svelte/icons/timer';
+	import AccessMenuItems from '#lib/components/shell/AccessMenuItems.svelte';
+	import Button from '#lib/components/ui/Button.svelte';
+	import Switch from '#lib/components/ui/Switch.svelte';
+	import { remainingText } from '#lib/access.ts';
 	import {
 		ENVIRONMENTS,
 		ENVIRONMENT_LABEL,
@@ -13,11 +21,30 @@
 	import { ACCENT_LINK_CLASS } from '#lib/integration.ts';
 	import { clusters } from '#lib/stores/clusters.svelte.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
+	import { clock } from '#lib/stores/clock.svelte.ts';
 	import type { Environment, EnvironmentVariants } from '#lib/tauri.ts';
-	import { FIELD, FIELD_BASE } from '#lib/ui-classes.ts';
+	import { CHECKBOX, FIELD, FIELD_BASE, MENU_CONTENT } from '#lib/ui-classes.ts';
 
-	// Preferences → Clusters (#662, spec §6): each context's environment, and the
-	// words that name each environment. The access column comes with read-only.
+	// Preferences → Clusters (#662, spec §6): each context's environment and
+	// access, the access preferences, and the words that name each environment.
+
+	/** Production set by hand on a writable context: offer to lock it (spec §3.3). */
+	function offersLock(name: string): boolean {
+		const entry = clusterSettings.byName[name];
+		return (
+			entry?.source === 'manual' &&
+			entry.environment === 'production' &&
+			clusterSettings.accessOf(name) === 'writable'
+		);
+	}
+
+	/** Toggle one environment of "Read-only from the start"; the box follows the saved list. */
+	async function toggleStart(env: Environment, box: HTMLInputElement) {
+		const current = clusterSettings.readOnlyFromStart;
+		const next = ENVIRONMENTS.filter((e) => (e === env ? box.checked : current.includes(e)));
+		const saved = await clusterSettings.setAccessPreferences({ readOnlyFromStart: next });
+		if (!saved) box.checked = clusterSettings.readOnlyFromStart.includes(env);
+	}
 
 	/** The options of a row: as the menu's, the detected one read as "<Label> (detected)". */
 	function options(name: string): { value: EnvironmentChoice; label: string }[] {
@@ -133,18 +160,22 @@
 	<table class="w-full border-collapse" aria-label="Cluster environments">
 		<thead>
 			<tr class="border-b border-outline">
-				<th scope="col" class="type-label pb-2 text-left text-text-muted">Context</th>
+				<th scope="col" class="type-label pr-4 pb-2 text-left text-text-muted">Context</th>
 				<th scope="col" class="type-label pb-2 text-left text-text-muted">Environment</th>
+				<th scope="col" class="type-label pb-2 pl-3 text-left text-text-muted">Access</th>
 			</tr>
 		</thead>
 		<tbody>
 			{#each clusters.contexts as ctx (ctx.name)}
-				<tr class="border-b border-outline last:border-b-0">
+				{@const access = clusterSettings.accessOf(ctx.name)}
+				{@const until = clusterSettings.writableUntil(ctx.name)}
+				{@const offer = offersLock(ctx.name)}
+				<tr class="border-outline {offer ? '' : 'border-b last:border-b-0'}">
 					<td class="type-data-sm max-w-0 truncate py-2 pr-4 text-text" title={ctx.name}>{ctx.name}</td>
 					<td class="w-1 py-2 whitespace-nowrap">
 						<select
 							aria-label="Environment of {ctx.name}"
-							class="{FIELD_BASE} w-56 max-w-full pr-2"
+							class="{FIELD_BASE} w-48 max-w-full pr-2"
 							value={choiceOf(clusterSettings.byName[ctx.name])}
 							onchange={(e) => void choose(ctx.name, e.currentTarget)}
 						>
@@ -153,11 +184,109 @@
 							{/each}
 						</select>
 					</td>
+					<td class="w-1 py-2 pl-3 whitespace-nowrap">
+						<div class="flex items-center justify-end gap-2">
+							<!-- The state as the top bar chip says it, then the way to change it. -->
+							<span class="mr-auto flex items-center" data-testid="access-state" data-access={access}>
+								{#if access === 'read_only'}
+									<span class="type-body-sm flex items-center gap-1 text-text-muted">
+										<Lock class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Read-only
+									</span>
+								{:else if access === 'timed' && until !== null}
+									<span
+										class="type-micro flex items-center gap-1 rounded-xs bg-warning-container px-1.5 py-px font-semibold text-on-warning-container"
+										data-badge
+									>
+										<Timer class="h-3 w-3 shrink-0" aria-hidden="true" />Writable · {remainingText(until - clock.now)}
+									</span>
+								{:else}
+									<span class="type-body-sm text-text-muted">Writable</span>
+								{/if}
+							</span>
+							<!-- One button per row: two do not fit beside the state. Writable for a
+							     while offers the way back; restarting its time is in the top bar menu. -->
+							{#if access === 'read_only'}
+								<DropdownMenu.Root>
+									<DropdownMenu.Trigger>
+										{#snippet child({ props })}
+											<Button {...props} variant="text" size="inline" aria-label="Make writable: {ctx.name}">
+												Make writable
+												<ChevronDown class="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+											</Button>
+										{/snippet}
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Portal>
+										<DropdownMenu.Content align="end" sideOffset={6} class="{MENU_CONTENT} min-w-44">
+											<AccessMenuItems name={ctx.name} durations />
+										</DropdownMenu.Content>
+									</DropdownMenu.Portal>
+								</DropdownMenu.Root>
+							{/if}
+							{#if access !== 'read_only'}
+								<Button
+									variant="text"
+									size="inline"
+									aria-label="Make read-only: {ctx.name}"
+									onclick={() => void clusterSettings.makeReadOnly(ctx.name)}
+								>
+									Make read-only
+								</Button>
+							{/if}
+						</div>
+					</td>
 				</tr>
+				{#if offer}
+					<tr class="border-b border-outline last:border-b-0">
+						<td colspan="3" class="pb-2">
+							<p class="type-body-sm flex items-center gap-1.5 text-text-muted">
+								<span>Production clusters are usually read-only</span>
+								<span aria-hidden="true">·</span>
+								<button
+									type="button"
+									class={ACCENT_LINK_CLASS}
+									aria-label="Make read-only: {ctx.name}"
+									onclick={() => void clusterSettings.makeReadOnly(ctx.name)}
+								>
+									Make read-only
+								</button>
+							</p>
+						</td>
+					</tr>
+				{/if}
 			{/each}
 		</tbody>
 	</table>
 {/if}
+
+<div class="flex items-center justify-between gap-4">
+	<div class="min-w-0 flex-1">
+		<div class="type-body text-text">Ask before making a cluster writable</div>
+		<p class={hint}>A confirmation names the cluster and how long it stays writable.</p>
+	</div>
+	<Switch
+		checked={clusterSettings.confirmUnlock}
+		label="Ask before making a cluster writable"
+		onChange={(v) => void clusterSettings.setAccessPreferences({ confirmUnlock: v })}
+	/>
+</div>
+
+<fieldset class="min-w-0">
+	<legend class="type-body text-text">Read-only from the start</legend>
+	<p class={hint}>A cluster with one of these environments is read-only the first time CubeLite sees it.</p>
+	<div class="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+		{#each ENVIRONMENTS as env (env)}
+			<label class="type-body-sm flex items-center gap-2 text-text">
+				<input
+					type="checkbox"
+					class={CHECKBOX}
+					checked={clusterSettings.readOnlyFromStart.includes(env)}
+					onchange={(e) => void toggleStart(env, e.currentTarget)}
+				/>
+				{ENVIRONMENT_LABEL[env]}
+			</label>
+		{/each}
+	</div>
+</fieldset>
 
 <div>
 	<div class="flex items-center justify-between gap-3">
