@@ -6,11 +6,11 @@
  * (the button reads "Copied" for 2 seconds), or why it failed.
  *
  * It lives for one view and is never persisted. A copy goes to the cluster
- * active at the click (#690). An answer that arrives after its row is gone
- * (the view was left, the namespace or the cluster changed) or once its
- * cluster is no longer on screen is not put in a row: the clipboard was
- * written all the same, so a toast tells it, naming the cluster when it is
- * not the one on screen.
+ * active at the click (#690). Its answer goes in its row, except in two
+ * cases: the row was dropped by `reset` (the namespace or the cluster
+ * changed) or `destroy` (the view was left), or its cluster is no longer on
+ * screen. The clipboard was written all the same, so a toast tells it then,
+ * naming the cluster when it is not the one on screen.
  */
 import { activeClusterRef, elsewhere, onScreen, type ClusterRef } from "#lib/stores/cluster-ref.ts";
 import type { ToastTone } from "#lib/stores/toasts.svelte.ts";
@@ -123,9 +123,13 @@ export class ValueCopy<E extends ValueCommandError> {
     this.#timers[id] = setTimeout(() => this.#drop(id), COPIED_MS);
   }
 
-  /** Drop a key's state (its error, when the key is shown instead). */
+  /**
+   * Drop a key's error, when the key is shown instead. A copy running or
+   * just done stays in its row: its answer still lands there.
+   */
   dismiss(namespace: string, name: string, key: string): void {
-    this.#drop(idOf(namespace, name, key));
+    const id = idOf(namespace, name, key);
+    if (this.#entries[id]?.status === "error") this.#drop(id);
   }
 
   /** The namespace or the cluster changed: drop everything, answers in flight too. */
@@ -141,8 +145,8 @@ export class ValueCopy<E extends ValueCommandError> {
   }
 
   /**
-   * The answer of `request` has no row to go in: the row was dropped (a
-   * reset, the view left) or its cluster is no longer on screen, in which
+   * The answer of `request` has no row to go in: the row was dropped by
+   * `reset` or `destroy`, or its cluster is no longer on screen, in which
    * case its row is dropped now.
    */
   #orphaned(id: string, request: number, on: ClusterRef): boolean {

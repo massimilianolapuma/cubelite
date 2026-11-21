@@ -96,15 +96,29 @@ const keys = () => screen.getByRole("group", { name: "Keys of api-credentials" }
 const row = (key: string) => keys().querySelector(`[data-key-row="${key}"]`) as HTMLElement;
 const status = () => screen.getByTestId("secret-status");
 
-/** A cluster switch as `switchCluster` makes it: lists emptied, then the new context, then its list. */
-async function switchTo(cluster: string, rows: SecretInfo[]) {
+/**
+ * A cluster switch, in the steps of `switchCluster` (stores/clusters.svelte.ts):
+ * `startSwitch` marks the switch running, the old cluster still active and its
+ * list still there (the window while the watchers stop); `landSwitch` empties
+ * the lists, makes the new context active, waits for its list, and only then
+ * ends the switch.
+ */
+function startSwitch(cluster: string) {
   app.connecting = cluster;
+}
+
+async function landSwitch(cluster: string, rows: SecretInfo[]) {
   resources.clear();
   serve(rows);
   app.activeCluster = cluster;
-  app.connecting = null;
   await vi.waitFor(() => expect(vi.mocked(tauri.listSecrets)).toHaveBeenCalledTimes(2));
   await screen.findByRole("group", { name: "Keys of api-credentials" });
+  app.connecting = null;
+}
+
+async function switchTo(cluster: string, rows: SecretInfo[]) {
+  startSwitch(cluster);
+  await landSwitch(cluster, rows);
 }
 
 beforeEach(() => {
@@ -282,14 +296,32 @@ describe("SecretsView (#661)", () => {
   });
 
   describe("bound to the cluster it was clicked on (#690)", () => {
-    it("a value read on prod never shows on staging's Secret of the same name", async () => {
+    it("a value read on prod that lands while the switch to staging runs is not shown, then or after", async () => {
       await renderView();
       const late = deferred<RevealedSecretValue>();
       reveal().mockReturnValueOnce(late.promise);
       await fireEvent.click(within(row("API_KEY")).getByRole("button", { name: "Reveal API_KEY" }));
       expect(reveal()).toHaveBeenCalledExactlyOnceWith("/home/u/.kube/config", "shop", "api-credentials", "API_KEY", "prod");
 
-      app.kubeconfigPath = "/home/u/.kube/other";
+      // The window before the lists are emptied: prod is still the active
+      // context and its Secret still listed; only the switch running says prod is left.
+      startSwitch("staging");
+      late.resolve({ value: VALUES.API_KEY, resource_version: "41" });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(document.body).not.toHaveTextContent(VALUES.API_KEY);
+      expect(status()).not.toHaveTextContent("API_KEY shown");
+
+      await landSwitch("staging", [apiCredentials()]);
+      expect(document.body).not.toHaveTextContent(VALUES.API_KEY);
+      expect(within(row("API_KEY")).getByRole("button", { name: "Reveal API_KEY" })).toBeInTheDocument();
+    });
+
+    it("a value read on prod that lands after the switch never shows on staging's Secret of the same name", async () => {
+      await renderView();
+      const late = deferred<RevealedSecretValue>();
+      reveal().mockReturnValueOnce(late.promise);
+      await fireEvent.click(within(row("API_KEY")).getByRole("button", { name: "Reveal API_KEY" }));
+      // Characterisation: the emptied list drops the read already, as before #690.
       await switchTo("staging", [apiCredentials()]);
       late.resolve({ value: VALUES.API_KEY, resource_version: "41" });
       await new Promise((r) => setTimeout(r, 0));

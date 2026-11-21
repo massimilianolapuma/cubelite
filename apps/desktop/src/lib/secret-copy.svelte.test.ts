@@ -187,6 +187,24 @@ describe("SecretCopy (#661 §3.1)", () => {
       expect(notify).toHaveBeenCalledExactlyOnceWith("Could not copy API_KEY of db-creds on prod: No longer exists", "err");
     });
 
+    it("dismiss leaves a running copy and a done one in their row: it drops only an error", async () => {
+      const answer = deferred<CopyFormat>();
+      copy.mockReturnValueOnce(answer.promise);
+      void copies.copy("shop", "api", "K");
+      // Reveal pressed on the same key while its copy runs.
+      copies.dismiss("shop", "api", "K");
+      expect(copies.entry("shop", "api", "K")).toEqual({ status: "copying" });
+      void copies.copy("shop", "api", "K");
+      expect(copy).toHaveBeenCalledTimes(1);
+      answer.resolve("text");
+      await flush();
+      expect(copies.entry("shop", "api", "K")).toEqual({ status: "copied" });
+      expect(announce).toHaveBeenLastCalledWith("K copied, the clipboard is cleared in 30 seconds");
+      copies.dismiss("shop", "api", "K");
+      expect(copies.entry("shop", "api", "K")).toEqual({ status: "copied" });
+      expect(notify).not.toHaveBeenCalled();
+    });
+
     it("a second press while the first runs still sends one copy and tells one outcome", async () => {
       const answer = deferred<CopyFormat>();
       copy.mockReturnValueOnce(answer.promise);

@@ -98,15 +98,29 @@ const row = (key: string) => keys().querySelector(`[data-key-row="${key}"]`) as 
 const status = () => screen.getByTestId("configmap-status");
 const show = (key: string) => within(row(key)).getByRole("button", { name: `Show ${key}` });
 
-/** A cluster switch as `switchCluster` makes it: lists emptied, then the new context, then its list. */
-async function switchTo(cluster: string, rows: ConfigMapInfo[]) {
+/**
+ * A cluster switch, in the steps of `switchCluster` (stores/clusters.svelte.ts):
+ * `startSwitch` marks the switch running, the old cluster still active and its
+ * list still there (the window while the watchers stop); `landSwitch` empties
+ * the lists, makes the new context active, waits for its list, and only then
+ * ends the switch.
+ */
+function startSwitch(cluster: string) {
   app.connecting = cluster;
+}
+
+async function landSwitch(cluster: string, rows: ConfigMapInfo[]) {
   resources.clear();
   serve(rows);
   app.activeCluster = cluster;
-  app.connecting = null;
   await vi.waitFor(() => expect(vi.mocked(tauri.listConfigMaps)).toHaveBeenCalledTimes(2));
   await screen.findByRole("group", { name: "Keys of app-config" });
+  app.connecting = null;
+}
+
+async function switchTo(cluster: string, rows: ConfigMapInfo[]) {
+  startSwitch(cluster);
+  await landSwitch(cluster, rows);
 }
 
 beforeEach(() => {
@@ -290,14 +304,32 @@ describe("ConfigMapsView (#668)", () => {
   });
 
   describe("bound to the cluster it was clicked on (#690)", () => {
-    it("a value read on prod never shows on staging's ConfigMap of the same name", async () => {
+    it("a value read on prod that lands while the switch to staging runs is not shown, then or after", async () => {
       await renderView();
       const late = deferred<RevealedSecretValue>();
       read().mockReturnValueOnce(late.promise);
       await fireEvent.click(show("LOG_LEVEL"));
       expect(read()).toHaveBeenCalledExactlyOnceWith("/home/u/.kube/config", "shop", "app-config", "LOG_LEVEL", "prod");
 
-      app.kubeconfigPath = "/home/u/.kube/other";
+      // The window before the lists are emptied: prod is still the active
+      // context and its ConfigMap still listed; only the switch running says prod is left.
+      startSwitch("staging");
+      late.resolve({ value: VALUES.LOG_LEVEL, resource_version: "77" });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(document.body).not.toHaveTextContent(VALUES.LOG_LEVEL);
+      expect(status()).not.toHaveTextContent("LOG_LEVEL shown");
+
+      await landSwitch("staging", [appConfig()]);
+      expect(document.body).not.toHaveTextContent(VALUES.LOG_LEVEL);
+      expect(show("LOG_LEVEL")).toBeInTheDocument();
+    });
+
+    it("a value read on prod that lands after the switch never shows on staging's ConfigMap of the same name", async () => {
+      await renderView();
+      const late = deferred<RevealedSecretValue>();
+      read().mockReturnValueOnce(late.promise);
+      await fireEvent.click(show("LOG_LEVEL"));
+      // Characterisation: the emptied list drops the read already, as before #690.
       await switchTo("staging", [appConfig()]);
       late.resolve({ value: VALUES.LOG_LEVEL, resource_version: "77" });
       await new Promise((r) => setTimeout(r, 0));
