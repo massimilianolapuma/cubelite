@@ -15,14 +15,19 @@
 //! Several instances of the app may run at once: before each change, before
 //! each write check and before answering, the file is read again when it
 //! changed on disk (its modification time or length), and the one change is
-//! applied to what was read. Writes are atomic: a temp file of a unique name,
-//! synced, renamed over the old one. A file that cannot be read is set aside
+//! applied to what was read. A change holds an exclusive lock across
+//! processes (`cluster-access.json.lock`) from that read to its write, so two
+//! instances changing at once never overwrite each other; a lock that cannot
+//! be taken is logged and the change goes ahead without it. Writes are
+//! atomic: a temp file of a unique name, synced, renamed over the old one.
+//! "Make read-only" holds for the session even when it cannot be saved; "make
+//! writable" fails then. A file that cannot be read is set aside
 //! as `cluster-access.json.bad` (a later one gets a timestamp, never
 //! overwriting an earlier one) and replaced by defaults; the next answer says
 //! so once. A file deleted or broken while the app runs leaves the settings in
 //! memory as they were, so a read-only context stays read-only.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -303,6 +308,10 @@ pub struct ClusterSettingsView {
     pub confirm_unlock: bool,
     /// The environments whose contexts start read-only, in the app's order.
     pub read_only_from_start: Vec<Environment>,
+    /// Why a change kept for this session could not be saved (only "make
+    /// read-only" is kept so); absent when it was saved.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub save_error: Option<String>,
 }
 
 /// Where the state reads the time: the wall clock, injected in tests.
@@ -312,9 +321,11 @@ type Clock = Arc<dyn Fn() -> SystemTime + Send + Sync>;
 type Stamp = (Option<SystemTime>, u64);
 
 fn stamp_of(path: &Path) -> Option<Stamp> {
-    fs::metadata(path)
-        .ok()
-        .map(|meta| (meta.modified().ok(), meta.len()))
+    fs::metadata(path).ok().map(|meta| stamp_of_meta(&meta))
+}
+
+fn stamp_of_meta(meta: &fs::Metadata) -> Stamp {
+    (meta.modified().ok(), meta.len())
 }
 
 struct Inner {
@@ -326,6 +337,12 @@ struct Inner {
     stamp: Option<Stamp>,
     /// The end of each running timed unlock, by the wall clock. Never saved.
     unlocks: HashMap<String, SystemTime>,
+    /// The settings were read again from a file another instance wrote, and
+    /// [`ClusterAccessState::tick`] has not told the webview yet.
+    reloaded_from_disk: bool,
+    /// Contexts made read-only whose save failed: read-only for the life of
+    /// this process whatever the file says, until made writable here.
+    session_read_only: HashSet<String>,
 }
 
 /// The managed state: the settings in memory, where they are saved, and the
@@ -371,6 +388,8 @@ impl ClusterAccessState {
                 recovered_pending,
                 stamp: None,
                 unlocks: HashMap::new(),
+                reloaded_from_disk: false,
+                session_read_only: HashSet::new(),
             }),
             clock: Arc::new(SystemTime::now),
         }
@@ -415,13 +434,13 @@ impl ClusterAccessState {
         let now = self.now();
         let mut inner = self.lock();
         inner.refresh();
-        let mut next = inner.file.clone();
-        let mut added = false;
-        for name in names {
-            added |= first_sight(&mut next, name);
-        }
-        if added {
-            if let Err(e) = inner.save(&next) {
+        if names.iter().any(|name| unseen(&inner.file, name)) {
+            let (next, saved) = inner.change(|file| {
+                for name in names {
+                    first_sight(file, name);
+                }
+            });
+            if let Err(e) = saved {
                 eprintln!("cluster settings: could not save: {e}");
             }
             inner.file = next;
@@ -440,15 +459,15 @@ impl ClusterAccessState {
     ) -> Result<ClusterSettingsView, String> {
         let now = self.now();
         let mut inner = self.lock();
-        inner.refresh();
-        let mut next = inner.file.clone();
-        first_sight(&mut next, context);
-        // Only the environment: the rest of the record is kept.
-        next.contexts
-            .entry(context.to_string())
-            .or_default()
-            .environment = setting;
-        inner.save(&next).map_err(|e| e.to_string())?;
+        let (next, saved) = inner.change(|file| {
+            first_sight(file, context);
+            // Only the environment: the rest of the record is kept.
+            file.contexts
+                .entry(context.to_string())
+                .or_default()
+                .environment = setting;
+        });
+        saved.map_err(|e| e.to_string())?;
         inner.file = next;
         Ok(inner.view(&[context.to_string()], false, now))
     }
@@ -462,9 +481,11 @@ impl ClusterAccessState {
         let now = self.now();
         let mut inner = self.lock();
         inner.refresh();
-        let mut next = inner.file.clone();
-        if first_sight(&mut next, context) {
-            if let Err(e) = inner.save(&next) {
+        if unseen(&inner.file, context) {
+            let (next, saved) = inner.change(|file| {
+                first_sight(file, context);
+            });
+            if let Err(e) = saved {
                 // Kept in memory: the decision holds for this run.
                 eprintln!("cluster settings: could not save: {e}");
             }
@@ -475,7 +496,8 @@ impl ClusterAccessState {
 
     /// Make `context` writable: `Always` saves it writable; a number of
     /// minutes saves it read-only and unlocks it in memory until now plus
-    /// that time (choosing again restarts the time from now).
+    /// that time (choosing again restarts the time from now). Nothing
+    /// changes when the file cannot be saved: the safe side.
     pub fn make_writable(
         &self,
         context: &str,
@@ -490,15 +512,20 @@ impl ClusterAccessState {
         };
         let now = self.now();
         let mut inner = self.lock();
-        inner.refresh();
         let saved = match until {
             None => Access::Writable,
             Some(_) => Access::ReadOnly,
         };
-        inner.set_access(context, saved)?;
+        // Read-only for this session only: the file may already say what
+        // is asked, but nothing is unlocked until a save succeeds.
+        let force = inner.session_read_only.contains(context);
+        let (next, result) = inner.change_with(force, |file| set_access(file, context, saved));
+        result.map_err(|e| e.to_string())?;
+        inner.file = next;
         match until {
             None => {
                 inner.unlocks.remove(context);
+                inner.session_read_only.remove(context);
             }
             Some(duration) => {
                 // An end past what the clock can hold is no unlock at all.
@@ -510,13 +537,33 @@ impl ClusterAccessState {
     }
 
     /// Make `context` read-only (saved), ending any timed unlock.
+    ///
+    /// When the file cannot be saved the context is still read-only, for the
+    /// life of this process, even if another instance saves it writable
+    /// meanwhile: the answer then carries the reason in `save_error`, so the
+    /// webview can say it was not saved.
     pub fn make_read_only(&self, context: &str) -> Result<ClusterSettingsView, String> {
         let now = self.now();
         let mut inner = self.lock();
-        inner.refresh();
-        inner.set_access(context, Access::ReadOnly)?;
+        let (next, saved) = inner.change(|file| set_access(file, context, Access::ReadOnly));
         inner.unlocks.remove(context);
-        Ok(inner.view(&[context.to_string()], false, now))
+        let save_error = match saved {
+            Ok(()) => {
+                inner.file = next;
+                inner.session_read_only.remove(context);
+                None
+            }
+            // Memory keeps what is on disk, so the next "make read-only"
+            // tries the save again.
+            Err(e) => {
+                eprintln!("cluster settings: could not save {context} read-only: {e}");
+                inner.session_read_only.insert(context.to_string());
+                Some(e.to_string())
+            }
+        };
+        let mut view = inner.view(&[context.to_string()], false, now);
+        view.save_error = save_error;
+        Ok(view)
     }
 
     /// Change the access preferences; `None` keeps a value. Answers the view
@@ -528,43 +575,40 @@ impl ClusterAccessState {
     ) -> Result<ClusterSettingsView, String> {
         let now = self.now();
         let mut inner = self.lock();
-        inner.refresh();
-        let mut next = inner.file.clone();
-        if let Some(confirm) = confirm_unlock {
-            next.confirm_unlock = confirm;
-        }
-        if let Some(environments) = read_only_from_start {
-            next.read_only_from_start = environments.into_iter().collect();
-        }
-        if next != inner.file {
-            inner.save(&next).map_err(|e| e.to_string())?;
-            inner.file = next;
-        }
+        let (next, saved) = inner.change(|file| {
+            if let Some(confirm) = confirm_unlock {
+                file.confirm_unlock = confirm;
+            }
+            if let Some(environments) = read_only_from_start {
+                file.read_only_from_start = environments.into_iter().collect();
+            }
+        });
+        saved.map_err(|e| e.to_string())?;
+        inner.file = next;
         Ok(inner.view(&[], false, now))
     }
 
     /// Called every second: ends the timed unlocks whose time has come and
-    /// reads the file again when another instance changed it. True when
-    /// either happened, so the webview is told.
+    /// notices a file another instance changed, whether this tick read it or
+    /// an earlier read did (a write check, an answer). True when either
+    /// happened, so the webview is told.
     pub fn tick(&self) -> bool {
         let now = self.now();
         let mut inner = self.lock();
         let running = inner.unlocks.len();
         inner.unlocks.retain(|_, end| *end > now);
         let ended = inner.unlocks.len() != running;
-        let stamp = inner.stamp;
         inner.refresh();
-        ended || inner.stamp != stamp
+        let reloaded = std::mem::take(&mut inner.reloaded_from_disk);
+        ended || reloaded
     }
 
     /// Replace the variants after validating them; answers what was saved.
     pub fn set_variants(&self, variants: &Variants) -> Result<Variants, String> {
         let valid = validate_variants(variants).map_err(|e| e.to_string())?;
         let mut inner = self.lock();
-        inner.refresh();
-        let mut next = inner.file.clone();
-        next.variants = valid.clone();
-        inner.save(&next).map_err(|e| e.to_string())?;
+        let (next, saved) = inner.change(|file| file.variants = valid.clone());
+        saved.map_err(|e| e.to_string())?;
         inner.file = next;
         Ok(valid)
     }
@@ -573,7 +617,8 @@ impl ClusterAccessState {
 impl Inner {
     /// Read the file again if it changed on disk since it was last read or
     /// written. A file that vanished leaves the settings in memory as they
-    /// are; one that became unreadable is set aside, memory kept.
+    /// are; one that became unreadable is set aside, memory kept. Either
+    /// change is noted for the next [`ClusterAccessState::tick`].
     fn refresh(&mut self) {
         let Some(path) = self.path.clone() else {
             return;
@@ -586,45 +631,66 @@ impl Inner {
             Ok(Some((file, stamp))) => {
                 self.file = file;
                 self.stamp = stamp;
+                self.reloaded_from_disk = true;
             }
             Ok(None) => self.stamp = None,
             Err(reason) => {
                 set_aside(&path, &reason);
                 self.recovered_pending = true;
                 self.stamp = None;
+                self.reloaded_from_disk = true;
             }
         }
     }
 
-    fn save(&mut self, file: &SettingsFile) -> io::Result<()> {
-        if let Some(path) = &self.path {
-            save(path, file)?;
-            self.stamp = stamp_of(path);
-        }
-        Ok(())
+    /// One change: `edit` applied to the settings as they are on disk now,
+    /// then saved, the whole under the lock across instances (when it can be
+    /// taken), so a change another instance saves meanwhile is never
+    /// overwritten. Nothing is written when `edit` changes nothing, unless
+    /// `force`. Answers the settings changed and how the save went; memory
+    /// is left to the caller, which keeps the change or not.
+    fn change_with(
+        &mut self,
+        force: bool,
+        edit: impl FnOnce(&mut SettingsFile),
+    ) -> (SettingsFile, io::Result<()>) {
+        let _held = self.path.as_deref().and_then(lock_across_instances);
+        self.refresh();
+        let mut next = self.file.clone();
+        edit(&mut next);
+        let saved = if next == self.file && !force {
+            Ok(())
+        } else {
+            self.save(&next)
+        };
+        (next, saved)
     }
 
-    /// Save `access` for `context`; nothing is written when it is already so.
-    fn set_access(&mut self, context: &str, access: Access) -> Result<(), String> {
-        let mut next = self.file.clone();
-        next.contexts.entry(context.to_string()).or_default().access = Some(access);
-        if next != self.file {
-            self.save(&next).map_err(|e| e.to_string())?;
-            self.file = next;
+    /// [`Self::change_with`], writing only a change.
+    fn change(&mut self, edit: impl FnOnce(&mut SettingsFile)) -> (SettingsFile, io::Result<()>) {
+        self.change_with(false, edit)
+    }
+
+    fn save(&mut self, file: &SettingsFile) -> io::Result<()> {
+        if let Some(path) = &self.path {
+            self.stamp = Some(save(path, file)?);
         }
         Ok(())
     }
 
     /// The access of `name` in force at `now`, and the end of its unlock
     /// while one runs. A context without a decided access reads as first
-    /// sight would decide it.
+    /// sight would decide it; one made read-only but not saved is read-only.
     fn effective(&self, name: &str, now: SystemTime) -> (Access, Option<SystemTime>) {
-        let saved = self
-            .file
-            .contexts
-            .get(name)
-            .and_then(|r| r.access)
-            .unwrap_or_else(|| initial_access(&self.file, name));
+        let saved = if self.session_read_only.contains(name) {
+            Access::ReadOnly
+        } else {
+            self.file
+                .contexts
+                .get(name)
+                .and_then(|r| r.access)
+                .unwrap_or_else(|| initial_access(&self.file, name))
+        };
         match (saved, self.unlocks.get(name)) {
             (Access::ReadOnly, Some(end)) if *end > now => (Access::Writable, Some(*end)),
             (Access::ReadOnly, _) => (Access::ReadOnly, None),
@@ -651,6 +717,42 @@ impl Inner {
             recovered,
             confirm_unlock: self.file.confirm_unlock,
             read_only_from_start: self.file.read_only_from_start.iter().copied().collect(),
+            save_error: None,
+        }
+    }
+}
+
+/// Save `access` for `context`.
+fn set_access(file: &mut SettingsFile, context: &str, access: Access) {
+    file.contexts.entry(context.to_string()).or_default().access = Some(access);
+}
+
+/// The lock that keeps two instances' changes apart: an exclusive advisory
+/// lock on `cluster-access.json.lock` beside the file, held from the read
+/// to the write and let go when the handle drops. When it cannot be taken
+/// (a directory that cannot be written, a file system without locks) the
+/// change goes ahead without it, logged: a lock must never stop a change.
+///
+/// `File::lock` is newer (Rust 1.89) than the `msrv` in `.clippy.toml`
+/// (1.82). This crate does not take the workspace's `rust-version` and is
+/// built with the stable toolchain only; std's lock spares a locking crate.
+#[allow(clippy::incompatible_msrv)]
+fn lock_across_instances(path: &Path) -> Option<fs::File> {
+    let lock = path.with_file_name(format!("{FILE_NAME}.lock"));
+    let taken = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock)
+        .and_then(|handle| handle.lock().map(|()| handle));
+    match taken {
+        Ok(handle) => Some(handle),
+        Err(e) => {
+            eprintln!(
+                "cluster settings: could not lock {} ({e}); changing without it",
+                lock.display()
+            );
+            None
         }
     }
 }
@@ -677,11 +779,16 @@ fn initial_access(file: &SettingsFile, name: &str) -> Access {
     }
 }
 
+/// Whether `name` has no access decided yet (first sight would record it).
+fn unseen(file: &SettingsFile, name: &str) -> bool {
+    file.contexts.get(name).is_none_or(|r| r.access.is_none())
+}
+
 /// Record `name` with its first-sight access when it has none yet (no
 /// record, a record of the first part, or an access this version cannot
 /// read). True when `file` changed.
 fn first_sight(file: &mut SettingsFile, name: &str) -> bool {
-    if file.contexts.get(name).is_some_and(|r| r.access.is_some()) {
+    if !unseen(file, name) {
         return false;
     }
     let access = initial_access(file, name);
@@ -746,7 +853,10 @@ static SAVES: AtomicU64 = AtomicU64::new(0);
 
 /// Write `file` to `path` atomically: a temp file of a name no other save
 /// uses (process id and a counter), synced to disk, renamed over the old one.
-fn save(path: &Path, file: &SettingsFile) -> io::Result<()> {
+/// Answers the stamp of the file written, taken from the temp file before
+/// the rename (which keeps it): a stamp read from `path` after the rename
+/// could be another instance's, renamed in between.
+fn save(path: &Path, file: &SettingsFile) -> io::Result<Stamp> {
     let text = serde_json::to_vec_pretty(file).map_err(io::Error::other)?;
     let n = SAVES.fetch_add(1, Ordering::Relaxed);
     let tmp = path.with_file_name(format!("{FILE_NAME}.{}.{n}.tmp", std::process::id()));
@@ -757,7 +867,9 @@ fn save(path: &Path, file: &SettingsFile) -> io::Result<()> {
             .open(&tmp)?;
         out.write_all(&text)?;
         out.sync_all()?;
-        fs::rename(&tmp, path)
+        let stamp = stamp_of_meta(&out.metadata()?);
+        fs::rename(&tmp, path)?;
+        Ok(stamp)
     })();
     if written.is_err() {
         let _ = fs::remove_file(&tmp);
@@ -1061,11 +1173,19 @@ mod tests {
         state
             .set_environment("minikube", manual(Some(Development)))
             .expect("set");
-        let leftovers: Vec<_> = fs::read_dir(dir.path())
+        let mut leftovers: Vec<_> = fs::read_dir(dir.path())
             .expect("read dir")
             .map(|e| e.expect("entry").file_name())
             .collect();
-        assert_eq!(leftovers, vec![std::ffi::OsString::from(FILE_NAME)]);
+        leftovers.sort();
+        // The file and the lock kept beside it, no temp file.
+        assert_eq!(
+            leftovers,
+            vec![
+                std::ffi::OsString::from(FILE_NAME),
+                std::ffi::OsString::from(format!("{FILE_NAME}.lock"))
+            ]
+        );
         let text = fs::read_to_string(&path).expect("read");
         let parsed: SettingsFile = serde_json::from_str(&text).expect("parses");
         assert_eq!(parsed, state.lock().file);
@@ -1759,6 +1879,136 @@ mod tests {
         c.make_writable("x", UnlockFor::Always).expect("c unlocks");
         assert!(a.tick(), "A notices the file changed");
         assert!(!a.tick(), "once");
+    }
+
+    #[test]
+    fn a_change_read_by_a_write_check_is_still_told() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (a, _) = ClusterAccessState::load(file_in(&dir));
+        let (b, _) = ClusterAccessState::load(file_in(&dir));
+        a.settings(&names(&["x"]));
+        assert!(!a.tick(), "its own save is not a change");
+        b.make_read_only("x").expect("b locks");
+        // A guarded write reads B's change before the ticker does.
+        assert!(!a.write_allowed("x"), "A reads B's change");
+        assert!(a.tick(), "the webview is still told");
+        assert!(!a.tick(), "once");
+    }
+
+    #[test]
+    fn two_instances_changing_at_once_lose_nothing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (a, _) = ClusterAccessState::load(file_in(&dir));
+        let (b, _) = ClusterAccessState::load(file_in(&dir));
+        const EACH: usize = 60;
+        std::thread::scope(|scope| {
+            for (state, prefix) in [(&a, "a"), (&b, "b")] {
+                scope.spawn(move || {
+                    for i in 0..EACH {
+                        let name = format!("{prefix}-{i}");
+                        match i % 3 {
+                            0 => {
+                                state.make_read_only(&name).expect("read-only");
+                            }
+                            1 => {
+                                state
+                                    .make_writable(&name, UnlockFor::Always)
+                                    .expect("writable");
+                            }
+                            _ => {
+                                state
+                                    .set_environment(&name, manual(Some(Development)))
+                                    .expect("environment");
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        let (reloaded, _) = ClusterAccessState::load(file_in(&dir));
+        let file = reloaded.lock().file.clone();
+        let lost: Vec<_> = ["a", "b"]
+            .iter()
+            .flat_map(|prefix| (0..EACH).map(move |i| format!("{prefix}-{i}")))
+            .filter(|name| !file.contexts.contains_key(name))
+            .collect();
+        assert!(lost.is_empty(), "changes lost: {lost:?}");
+    }
+
+    /// A state whose file cannot be saved any more: its directory is gone.
+    fn unsaveable(dir: &tempfile::TempDir) -> (ClusterAccessState, PathBuf) {
+        let sub = dir.path().join("config");
+        fs::create_dir(&sub).expect("dir");
+        let path = sub.join(FILE_NAME);
+        let (state, _) = ClusterAccessState::load(path.clone());
+        state.settings(&names(&["minikube"]));
+        assert!(state.write_allowed("minikube"));
+        fs::remove_dir_all(&sub).expect("remove");
+        (state, path)
+    }
+
+    #[test]
+    fn make_read_only_holds_when_the_file_cannot_be_saved() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, _) = unsaveable(&dir);
+        let view = state
+            .make_read_only("minikube")
+            .expect("applied for this session");
+        assert_eq!(access(&view, "minikube"), ("read_only", None));
+        let json = serde_json::to_value(&view).expect("json");
+        assert!(
+            json["save_error"].as_str().is_some_and(|e| !e.is_empty()),
+            "the failure is told: {json}"
+        );
+        assert!(!state.write_allowed("minikube"));
+    }
+
+    #[test]
+    fn make_writable_fails_when_the_file_cannot_be_saved() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, _) = unsaveable(&dir);
+        state.make_read_only("minikube").expect("for this session");
+        assert!(state.make_writable("minikube", UnlockFor::Always).is_err());
+        assert!(!state.write_allowed("minikube"), "still read-only");
+    }
+
+    #[test]
+    fn make_read_only_again_saves_once_it_can() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, path) = unsaveable(&dir);
+        state.make_read_only("minikube").expect("for this session");
+        fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+        let view = state.make_read_only("minikube").expect("saved now");
+        assert_eq!(view.save_error, None);
+        assert_eq!(
+            saved_access(&path, "minikube"),
+            serde_json::json!("read_only")
+        );
+    }
+
+    #[test]
+    fn read_only_for_this_session_outlasts_another_instances_save() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (state, path) = unsaveable(&dir);
+        state.make_read_only("minikube").expect("for this session");
+        // The directory comes back and another instance saves a file in
+        // which minikube is still writable.
+        fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+        let (other, _) = ClusterAccessState::load(path.clone());
+        other
+            .make_writable("minikube", UnlockFor::Always)
+            .expect("other saves");
+        assert!(
+            !state.write_allowed("minikube"),
+            "read-only for this session"
+        );
+        let view = state.settings(&names(&["minikube"]));
+        assert_eq!(access(&view, "minikube"), ("read_only", None));
+        // Made writable here, it is writable again.
+        state
+            .make_writable("minikube", UnlockFor::Always)
+            .expect("saved now");
+        assert!(state.write_allowed("minikube"));
     }
 
     #[test]
