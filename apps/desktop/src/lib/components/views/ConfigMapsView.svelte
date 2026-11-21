@@ -7,6 +7,7 @@
 	import { CONFIGMAP_ERRORS, configMapErrorText } from '#lib/configmap-values.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import {
 		copyConfigMapValue,
 		readConfigMapValue,
@@ -30,20 +31,22 @@
 	// Shown values live for this view only (#668 §3.2), as a Secret's without
 	// the timer: each is read when its key is shown, and dropped on Hide, on
 	// leaving the view, on a namespace or cluster change, and when a reload
-	// shows its ConfigMap changed or the key gone.
+	// shows its ConfigMap changed or the key gone. A value is read on the
+	// cluster active at the click, and shown only there (#690).
 	const reveal = new ValueReveal<ConfigMapCommandError>({
-		read: (namespace, name, key) =>
-			readConfigMapValue(app.kubeconfigPath, namespace, name, key, app.activeCluster ?? undefined),
+		read: (namespace, name, key, on) => readConfigMapValue(on.kubeconfig, namespace, name, key, on.cluster),
 		announce,
 		reload: () => void resources.loadKind('configmaps'),
 		errors: CONFIGMAP_ERRORS
 	});
 	// A copy goes through the backend, which writes the clipboard plain (#668
-	// §6.2): no value here, nothing cleared.
+	// §6.2): no value here, nothing cleared. A copy that ends once its row is
+	// gone is told in a toast, naming its cluster when that is no longer on
+	// screen (#690).
 	const copies = new ValueCopy<ConfigMapCommandError>({
-		copy: (namespace, name, key) =>
-			copyConfigMapValue(app.kubeconfigPath, namespace, name, key, app.activeCluster ?? undefined),
+		copy: (namespace, name, key, _seconds, on) => copyConfigMapValue(on.kubeconfig, namespace, name, key, on.cluster),
 		announce,
+		notify: (message, tone) => toasts.push(message, tone),
 		reload: () => void resources.loadKind('configmaps'),
 		errors: CONFIGMAP_ERRORS
 	});

@@ -36,20 +36,23 @@
 	// Shown values live for this view only (#661 §3.2): each is read when its key
 	// is revealed, and dropped on its timer, on Hide, on leaving the view, on a
 	// namespace or cluster change, and when a reload shows its Secret changed.
+	// A value is read on the cluster active at the click, and shown only there (#690).
 	const reveal = new SecretReveal({
-		read: (namespace, name, key) =>
-			revealSecretValue(app.kubeconfigPath, namespace, name, key, app.activeCluster ?? undefined),
+		read: (namespace, name, key, on) => revealSecretValue(on.kubeconfig, namespace, name, key, on.cluster),
 		hideAfter: () => settings.secretHideAfter.value,
 		announce,
 		reload: () => void resources.loadKind('secrets')
 	});
 	// A copy goes through the backend, which writes the clipboard and clears it
 	// after the same time if it still holds the value (#661 §6.2): no value here.
+	// A copy that ends once its row is gone is told in a toast, naming its
+	// cluster when that is no longer on screen (#690).
 	const copies = new SecretCopy({
-		copy: (namespace, name, key, seconds) =>
-			copySecretValue(app.kubeconfigPath, namespace, name, key, seconds, app.activeCluster ?? undefined),
+		copy: (namespace, name, key, seconds, on) =>
+			copySecretValue(on.kubeconfig, namespace, name, key, seconds, on.cluster),
 		clearAfter: () => settings.secretHideAfter.value,
 		announce,
+		notify: (message, tone) => toasts.push(message, tone),
 		reload: () => void resources.loadKind('secrets')
 	});
 	onDestroy(() => {

@@ -39,7 +39,7 @@ import { settings } from "#lib/stores/settings.svelte.ts";
 import { toasts } from "#lib/stores/toasts.svelte.ts";
 import { installLocalStorageMock } from "#lib/stores/storage-mock.ts";
 import * as tauri from "#lib/tauri.ts";
-import type { RevealedSecretValue, SecretInfo } from "#lib/tauri.ts";
+import type { CopyFormat, RevealedSecretValue, SecretInfo } from "#lib/tauri.ts";
 
 /** Values the backend holds; only the one asked for may reach the DOM. */
 const VALUES: Record<string, string> = {
@@ -96,6 +96,17 @@ const keys = () => screen.getByRole("group", { name: "Keys of api-credentials" }
 const row = (key: string) => keys().querySelector(`[data-key-row="${key}"]`) as HTMLElement;
 const status = () => screen.getByTestId("secret-status");
 
+/** A cluster switch as `switchCluster` makes it: lists emptied, then the new context, then its list. */
+async function switchTo(cluster: string, rows: SecretInfo[]) {
+  app.connecting = cluster;
+  resources.clear();
+  serve(rows);
+  app.activeCluster = cluster;
+  app.connecting = null;
+  await vi.waitFor(() => expect(vi.mocked(tauri.listSecrets)).toHaveBeenCalledTimes(2));
+  await screen.findByRole("group", { name: "Keys of api-credentials" });
+}
+
 beforeEach(() => {
   installLocalStorageMock();
   vi.mocked(tauri.listSecrets).mockReset().mockResolvedValue([]);
@@ -109,6 +120,7 @@ beforeEach(() => {
   app.view = "secrets";
   app.activeCluster = "prod";
   app.kubeconfigPath = "/home/u/.kube/config";
+  app.connecting = null;
   app.namespace = null;
   resources.clear();
   lists.resetSession();
@@ -267,6 +279,51 @@ describe("SecretsView (#661)", () => {
     await renderView();
     expect(document.body).not.toHaveTextContent(VALUES.DB_PASSWORD);
     expect(within(row("DB_PASSWORD")).getByRole("button", { name: "Reveal DB_PASSWORD" })).toBeInTheDocument();
+  });
+
+  describe("bound to the cluster it was clicked on (#690)", () => {
+    it("a value read on prod never shows on staging's Secret of the same name", async () => {
+      await renderView();
+      const late = deferred<RevealedSecretValue>();
+      reveal().mockReturnValueOnce(late.promise);
+      await fireEvent.click(within(row("API_KEY")).getByRole("button", { name: "Reveal API_KEY" }));
+      expect(reveal()).toHaveBeenCalledExactlyOnceWith("/home/u/.kube/config", "shop", "api-credentials", "API_KEY", "prod");
+
+      app.kubeconfigPath = "/home/u/.kube/other";
+      await switchTo("staging", [apiCredentials()]);
+      late.resolve({ value: VALUES.API_KEY, resource_version: "41" });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(document.body).not.toHaveTextContent(VALUES.API_KEY);
+      expect(within(row("API_KEY")).getByRole("button", { name: "Reveal API_KEY" })).toBeInTheDocument();
+      expect(status()).not.toHaveTextContent("API_KEY shown");
+    });
+
+    it("a copy that ends after a switch is told in a toast naming prod, and staging's row stays at rest", async () => {
+      await renderView();
+      const late = deferred<CopyFormat>();
+      copy().mockReturnValueOnce(late.promise);
+      await fireEvent.click(within(row("API_KEY")).getByRole("button", { name: "Copy API_KEY" }));
+      expect(copy()).toHaveBeenCalledExactlyOnceWith("/home/u/.kube/config", "shop", "api-credentials", "API_KEY", 30, "prod");
+
+      app.kubeconfigPath = "/home/u/.kube/other";
+      await switchTo("staging", [apiCredentials()]);
+      late.resolve("text");
+      await vi.waitFor(() =>
+        expect(toasts.items.map((t) => [t.message, t.tone])).toEqual([
+          ["API_KEY of api-credentials copied on prod, the clipboard is cleared in 30 seconds", "ok"],
+        ]),
+      );
+      expect(within(row("API_KEY")).getByRole("button", { name: "Copy API_KEY" })).toHaveTextContent("Copy");
+      expect(status()).not.toHaveTextContent("API_KEY copied");
+      for (const value of Object.values(VALUES)) expect(document.body).not.toHaveTextContent(value);
+    });
+
+    it("a copy that ends on the cluster on screen says so in its row, with no toast", async () => {
+      await renderView();
+      await fireEvent.click(within(row("API_KEY")).getByRole("button", { name: "Copy API_KEY" }));
+      expect(await within(row("API_KEY")).findByRole("button", { name: "Copied API_KEY" })).toBeInTheDocument();
+      expect(toasts.items).toEqual([]);
+    });
   });
 
   it("announces the same words again for another Secret's key of the same name", async () => {

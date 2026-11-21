@@ -34,9 +34,10 @@ import ConfigMapsView from "./ConfigMapsView.svelte";
 import { app } from "#lib/stores/app.svelte.ts";
 import { lists } from "#lib/stores/lists.svelte.ts";
 import { resources } from "#lib/stores/resources.svelte.ts";
+import { toasts } from "#lib/stores/toasts.svelte.ts";
 import { installLocalStorageMock } from "#lib/stores/storage-mock.ts";
 import * as tauri from "#lib/tauri.ts";
-import type { ConfigMapInfo, RevealedSecretValue } from "#lib/tauri.ts";
+import type { ConfigMapInfo, CopyFormat, RevealedSecretValue } from "#lib/tauri.ts";
 
 /** Values the backend holds; only the one asked for may reach the DOM. */
 const VALUES: Record<string, string> = {
@@ -97,6 +98,17 @@ const row = (key: string) => keys().querySelector(`[data-key-row="${key}"]`) as 
 const status = () => screen.getByTestId("configmap-status");
 const show = (key: string) => within(row(key)).getByRole("button", { name: `Show ${key}` });
 
+/** A cluster switch as `switchCluster` makes it: lists emptied, then the new context, then its list. */
+async function switchTo(cluster: string, rows: ConfigMapInfo[]) {
+  app.connecting = cluster;
+  resources.clear();
+  serve(rows);
+  app.activeCluster = cluster;
+  app.connecting = null;
+  await vi.waitFor(() => expect(vi.mocked(tauri.listConfigMaps)).toHaveBeenCalledTimes(2));
+  await screen.findByRole("group", { name: "Keys of app-config" });
+}
+
 beforeEach(() => {
   installLocalStorageMock();
   vi.mocked(tauri.listConfigMaps).mockReset().mockResolvedValue([]);
@@ -107,6 +119,8 @@ beforeEach(() => {
   app.view = "configmaps";
   app.activeCluster = "prod";
   app.kubeconfigPath = "/home/u/.kube/config";
+  app.connecting = null;
+  toasts.items = [];
   app.namespace = null;
   resources.clear();
   lists.resetSession();
@@ -273,6 +287,49 @@ describe("ConfigMapsView (#668)", () => {
     await new Promise((r) => setTimeout(r, 0));
     await screen.findByRole("group", { name: "Keys of app-config" });
     expect(document.body).not.toHaveTextContent(VALUES.LOG_LEVEL);
+  });
+
+  describe("bound to the cluster it was clicked on (#690)", () => {
+    it("a value read on prod never shows on staging's ConfigMap of the same name", async () => {
+      await renderView();
+      const late = deferred<RevealedSecretValue>();
+      read().mockReturnValueOnce(late.promise);
+      await fireEvent.click(show("LOG_LEVEL"));
+      expect(read()).toHaveBeenCalledExactlyOnceWith("/home/u/.kube/config", "shop", "app-config", "LOG_LEVEL", "prod");
+
+      app.kubeconfigPath = "/home/u/.kube/other";
+      await switchTo("staging", [appConfig()]);
+      late.resolve({ value: VALUES.LOG_LEVEL, resource_version: "77" });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(document.body).not.toHaveTextContent(VALUES.LOG_LEVEL);
+      expect(show("LOG_LEVEL")).toBeInTheDocument();
+      expect(status()).not.toHaveTextContent("LOG_LEVEL shown");
+    });
+
+    it("a copy that ends after a switch is told in a toast naming prod, and staging's row stays at rest", async () => {
+      await renderView();
+      const late = deferred<CopyFormat>();
+      copy().mockReturnValueOnce(late.promise);
+      await fireEvent.click(within(row("LOG_LEVEL")).getByRole("button", { name: "Copy LOG_LEVEL" }));
+      expect(copy()).toHaveBeenCalledExactlyOnceWith("/home/u/.kube/config", "shop", "app-config", "LOG_LEVEL", "prod");
+
+      app.kubeconfigPath = "/home/u/.kube/other";
+      await switchTo("staging", [appConfig()]);
+      late.resolve("text");
+      await vi.waitFor(() =>
+        expect(toasts.items.map((t) => [t.message, t.tone])).toEqual([["LOG_LEVEL of app-config copied on prod", "ok"]]),
+      );
+      expect(within(row("LOG_LEVEL")).getByRole("button", { name: "Copy LOG_LEVEL" })).toHaveTextContent("Copy");
+      expect(status()).not.toHaveTextContent("LOG_LEVEL copied");
+      for (const value of Object.values(VALUES)) expect(document.body).not.toHaveTextContent(value);
+    });
+
+    it("a copy that ends on the cluster on screen says so in its row, with no toast", async () => {
+      await renderView();
+      await fireEvent.click(within(row("LOG_LEVEL")).getByRole("button", { name: "Copy LOG_LEVEL" }));
+      expect(await within(row("LOG_LEVEL")).findByRole("button", { name: "Copied LOG_LEVEL" })).toBeInTheDocument();
+      expect(toasts.items).toEqual([]);
+    });
   });
 
   describe("row errors (§3.3)", () => {
