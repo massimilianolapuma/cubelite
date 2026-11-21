@@ -1,10 +1,10 @@
 //! The environment of a kubeconfig context (#662): Development, Test, Staging
 //! or Production, read from the words of the context name.
 //!
-//! A context name is split into words on every character that is not an
-//! ASCII letter or digit. A word matches a variant when, ignoring case, it
-//! equals the variant or the variant followed only by digits (`prod01`,
-//! `svil2`). The first matching word, left to right, decides. Only the
+//! A context name is split into words on every character that is not a
+//! letter or a digit, in any script. A word matches a variant when, ignoring
+//! case, it equals the variant or the variant followed only by ASCII digits
+//! (`prod01`, `svil2`). The first matching word, left to right, decides. Only the
 //! context name is read: not the cluster, the server or the namespace.
 
 use std::collections::BTreeMap;
@@ -67,16 +67,31 @@ impl fmt::Display for Environment {
 /// The words that name each environment in a context name.
 ///
 /// Read leniently: a key this version does not know (an environment added by
-/// a newer version) is ignored rather than failing the whole settings file.
+/// a newer version), a value that is not a list and an item that is not a
+/// string are skipped rather than failing the whole settings file.
 #[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub struct Variants(pub BTreeMap<Environment, Vec<String>>);
 
 impl<'de> Deserialize<'de> for Variants {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let raw = BTreeMap::<String, Vec<String>>::deserialize(deserializer)?;
+        let raw = BTreeMap::<String, serde_json::Value>::deserialize(deserializer)?;
         Ok(Variants(
             raw.into_iter()
-                .filter_map(|(key, words)| Environment::parse(&key).map(|env| (env, words)))
+                .filter_map(|(key, words)| {
+                    let env = Environment::parse(&key)?;
+                    // A list is read word by word: anything but a string is skipped.
+                    let serde_json::Value::Array(items) = words else {
+                        return None;
+                    };
+                    let words = items
+                        .into_iter()
+                        .filter_map(|item| match item {
+                            serde_json::Value::String(word) => Some(word),
+                            _ => None,
+                        })
+                        .collect();
+                    Some((env, words))
+                })
                 .collect(),
         ))
     }
@@ -138,10 +153,10 @@ pub enum VariantsError {
 /// The environment `context_name` names, if any of its words matches a variant.
 pub fn detect(context_name: &str, variants: &Variants) -> Option<Environment> {
     context_name
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|word| word.bytes().any(|b| b.is_ascii_alphabetic()))
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| word.chars().any(char::is_alphabetic))
         .find_map(|word| {
-            let word = word.to_ascii_lowercase();
+            let word = word.to_lowercase();
             Environment::ALL.into_iter().find(|env| {
                 variants
                     .of(*env)
@@ -265,7 +280,16 @@ mod tests {
         assert_eq!(d("---"), None);
         assert_eq!(d("prod-"), Some(Production));
         assert_eq!(d("é-prod"), Some(Production));
-        assert_eq!(d("prodé"), Some(Production));
+    }
+
+    #[test]
+    fn any_letter_or_digit_belongs_to_the_word() {
+        // Spec §3.2: words split on what is not a letter or a digit, in any script.
+        assert_eq!(d("prodé"), None);
+        assert_eq!(d("ünprod-x"), None);
+        assert_eq!(d("προd-test"), Some(Test));
+        assert_eq!(d("ПРОД prod"), Some(Production));
+        assert_eq!(d("prod٣"), None);
     }
 
     #[test]
@@ -351,6 +375,20 @@ mod tests {
             word: "pre-prod".to_string(),
         };
         assert_eq!(bad.to_string(), "\"pre-prod\" is not a single word");
+    }
+
+    #[test]
+    fn variants_read_a_list_leniently() {
+        let read: Variants = serde_json::from_str(
+            r#"{"production":["prod",1,null,"live"],"test":"qa","staging":null}"#,
+        )
+        .expect("parse");
+        assert_eq!(
+            read.of(Production),
+            ["prod".to_string(), "live".to_string()]
+        );
+        assert!(read.of(Test).is_empty(), "not a list: skipped");
+        assert!(read.of(Staging).is_empty());
     }
 
     #[test]
