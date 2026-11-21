@@ -77,15 +77,8 @@ for (const width of [800, 1000, 1100, 1280, 1440]) {
     await page.getByRole("menuitemradio", { name: /kube-system/ }).click();
     const value = header.getByText("kube-system", { exact: true });
     await expect(value).toBeVisible();
-    if (width === 1100) {
-      // The namespace chip's own cap (26% of the row, with its "Namespace" label)
-      // cuts the value at this width whatever the cluster chip does: readable,
-      // not whole.
-      expect((await value.boundingBox())!.width).toBeGreaterThan(40);
-    } else {
-      // Whole, not cut to an ellipsis.
-      expect(await value.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-    }
+    // Whole, not cut to an ellipsis.
+    expect(await value.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     const name = header.getByText(LONG_CONTEXT);
     await expect(name).toHaveAttribute("title", LONG_CONTEXT);
     // The name wins: from 1100 px the extras give way before it goes under 14ch.
@@ -115,6 +108,66 @@ for (const width of [800, 1000, 1100, 1280, 1440]) {
 /** Whether `el` takes room on screen (not hidden, not visually hidden). */
 const shown = (el: import("@playwright/test").Locator) =>
   el.evaluate((n) => n.getBoundingClientRect().width > 1 && getComputedStyle(n).position !== "absolute");
+
+// The namespace chip (#683): its "Namespace" label gives way before the value is cut.
+const SIXTEEN = "payments-gateway";
+for (const compact of [false, true]) {
+  const density = compact ? "compact" : "default";
+  test(`1100 px, ${density}: a 16-character namespace is shown whole, the label giving way first`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1100, height: 700 });
+    if (compact) await page.addInitScript(() => window.localStorage.setItem("cubelite.density", '"compact"'));
+    await boot(page, {
+      contexts: [{ ...FIXTURES.contexts[0], name: LONG_CONTEXT }, ...FIXTURES.contexts.slice(1)],
+      namespaces: [...FIXTURES.namespaces, { name: SIXTEEN, phase: "Active" }],
+      clusterAccess: {},
+    });
+    const header = page.locator("header").first();
+    const chip = header.getByRole("button", { name: /Namespace/ });
+    await chip.click();
+    await page.getByRole("menuitemradio", { name: new RegExp(SIXTEEN) }).click();
+    const value = header.getByText(SIXTEEN, { exact: true });
+    await expect(value).toBeVisible();
+    expect(await value.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    // The label is gone from view, still in the chip's name.
+    expect(await shown(chip.getByText("Namespace", { exact: true }))).toBe(false);
+    await expect(chip).toHaveAccessibleName(/Namespace/);
+    // The cluster's name keeps its minimum.
+    const name = header.getByText(LONG_CONTEXT);
+    expect((await name.boundingBox())!.width).toBeGreaterThan((await fourteenCh(name)) - 1);
+    expect(await header.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  });
+}
+
+test("with room for it, the namespace chip keeps its label", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await boot(page);
+  const header = page.locator("header").first();
+  const chip = header.getByRole("button", { name: /Namespace/ });
+  await chip.click();
+  await page.getByRole("menuitemradio", { name: /kube-system/ }).click();
+  await expect(header.getByText("kube-system", { exact: true })).toBeVisible();
+  expect(await shown(chip.getByText("Namespace", { exact: true }))).toBe(true);
+});
+
+test("a namespace too long for the chip drops the label, then truncates", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await boot(page, { namespaces: [...FIXTURES.namespaces, { name: LONG_NAMESPACE, phase: "Active" }] });
+  const header = page.locator("header").first();
+  const chip = header.getByRole("button", { name: /Namespace/ });
+  await chip.click();
+  await page.getByRole("menuitemradio", { name: new RegExp(LONG_NAMESPACE) }).click();
+  const value = header.getByText(LONG_NAMESPACE, { exact: true });
+  await expect(value).toBeVisible();
+  expect(await shown(chip.getByText("Namespace", { exact: true }))).toBe(false);
+  expect(await value.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  // Back to a short one: the label comes back.
+  await chip.click();
+  await page.getByRole("menuitemradio", { name: /kube-system/ }).click();
+  await expect(header.getByText("kube-system", { exact: true })).toBeVisible();
+  await expect.poll(() => shown(chip.getByText("Namespace", { exact: true }))).toBe(true);
+});
 
 test("beside a long context name the connection word goes first, then the version", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 700 });

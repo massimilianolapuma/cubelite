@@ -16,14 +16,31 @@
 		await resources.load();
 		await resources.startWatching();
 	}
+
+	// The value wins (#683): the "Namespace" label gives way (still read out,
+	// sr-only) before the value is cut. Whether the value fits depends on its
+	// length, which no width query can see, so it is measured: label shown first,
+	// dropped if the value is then cut. The top bar calls this whenever the room
+	// changes, before it fits the cluster chip, which takes what this one leaves.
+	let valueEl = $state<HTMLElement | null>(null);
+
+	export function fit() {
+		const value = valueEl;
+		const trigger = value?.parentElement;
+		if (!value || !trigger) return;
+		trigger.removeAttribute('data-drop-label');
+		trigger.toggleAttribute('data-drop-label', value.clientWidth + 1 < value.scrollWidth);
+	}
 </script>
 
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
-		class="focus-ring forced-edge flex h-(--chip-h) max-w-[26%] min-w-0 shrink-0 @max-[44rem]:max-w-[34%] items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110"
+		class="group/ns focus-ring forced-edge flex h-(--chip-h) max-w-[26%] min-w-0 shrink-0 @max-[44rem]:max-w-[34%] items-center gap-2 rounded-full bg-surface-container-high px-4 hover:brightness-110"
 	>
-		<span class="type-body-sm shrink-0 text-text-subtle @max-[44rem]:sr-only">Namespace</span>
-		<span class="type-data truncate text-text">{app.namespace ?? 'all'}</span>
+		<span class="type-body-sm shrink-0 text-text-subtle @max-[44rem]:sr-only group-data-[drop-label]/ns:sr-only"
+			>Namespace</span
+		>
+		<span bind:this={valueEl} class="type-data truncate text-text">{app.namespace ?? 'all'}</span>
 		<ChevronDown class="h-3.5 w-3.5 shrink-0 text-text-subtle" aria-hidden="true" />
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Portal>

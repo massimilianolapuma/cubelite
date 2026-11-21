@@ -26,6 +26,7 @@
 	import { health } from '#lib/stores/health.svelte.ts';
 	import { lists } from '#lib/stores/lists.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
+	import { settings } from '#lib/stores/settings.svelte.ts';
 	import { toasts } from '#lib/stores/toasts.svelte.ts';
 	import { modLabel } from '#lib/platform.ts';
 	import { providerOf } from '#lib/provider.ts';
@@ -106,6 +107,7 @@
 	const GIVE_WAY = ['connection', 'version', 'access', 'provider'] as const;
 	let header = $state<HTMLElement | null>(null);
 	let nameEl = $state<HTMLElement | null>(null);
+	let namespaceChip = $state<ReturnType<typeof NamespaceDropdown> | null>(null);
 	/** 14ch in the name's font, measured once per font. */
 	let fourteenCh = { font: '', width: 0 };
 
@@ -122,6 +124,8 @@
 	}
 
 	function fit() {
+		// The namespace chip first: what it leaves is the cluster chip's room.
+		namespaceChip?.fit();
 		const chipEl = header?.querySelector<HTMLElement>('[data-cluster-chip]');
 		const name = nameEl;
 		if (!chipEl || !name) return;
@@ -137,9 +141,20 @@
 		}
 	}
 
-	// Again whenever the room changes: the window, or what shares the row.
+	// Again whenever the room changes: the window, what shares the row, the
+	// density (the observer sees it too: it changes the row's height).
 	$effect(() => {
-		void [activeContext?.name, provider, version, environment, accessWords, linkState.word, app.namespace, warningCount];
+		void [
+			activeContext?.name,
+			provider,
+			version,
+			environment,
+			accessWords,
+			linkState.word,
+			app.namespace,
+			warningCount,
+			settings.density.value
+		];
 		fit();
 	});
 	$effect(() => {
@@ -164,9 +179,10 @@
 <!-- One row at any width (@container): below 60rem the search field is its icon and the
      version goes; below 44rem the provider tag and the words beside a glyph go too. What
      is hidden stays in the accessible name. The namespace chip never takes more than a
-     quarter of the row (a third once the labels are gone), so a long namespace cannot squeeze the cluster's name away, and
-     the cluster chip is the one that gives way to a long context name. Inside it, what sits
-     beside the name gives way first, measured (see `fit`). -->
+     quarter of the row (a third below 44rem), so a long namespace cannot squeeze the
+     cluster's name away; inside it the "Namespace" label gives way before the value is
+     cut, measured. The cluster chip is the one that gives way to a long context name.
+     Inside it, what sits beside the name gives way first, measured (see `fit`). -->
 <header
 	bind:this={header}
 	data-tauri-drag-region
@@ -288,7 +304,7 @@
 		</DropdownMenu.Root>
 	{/if}
 
-	<NamespaceDropdown />
+	<NamespaceDropdown bind:this={namespaceChip} />
 
 	<div class="h-(--chip-h) min-w-4 flex-1" data-tauri-drag-region></div>
 

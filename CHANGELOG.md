@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A scale made with the replica stepper goes to the cluster it was made on: switching cluster before it is sent drops it, where it used to scale the deployment of the same name on the new cluster (#682).
+- The namespace chip in the top bar shows a namespace of up to about 16 characters whole from a 1100 px window, in both densities: its "Namespace" label gives way first (still read out by a screen reader), where the value used to be cut, `kube-system` reading "kube-sy…" (#683).
 
 ### Security
 
