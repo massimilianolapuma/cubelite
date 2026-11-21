@@ -260,7 +260,9 @@ describe("PreferencesModal", () => {
     app.preferencesOpen = true;
     render(PreferencesModal);
     const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
-    expect(headings.indexOf("Secrets")).toBe(headings.indexOf("Connection") + 1);
+    // Clusters (#662) sits right after Connection, Secrets right after it.
+    expect(headings.indexOf("Secrets")).toBe(headings.indexOf("Connection") + 2);
+    expect(headings.indexOf("Secrets")).toBe(headings.indexOf("Clusters") + 1);
     expect(screen.getByText("Hide a shown value, and clear a copied one, after")).toBeInTheDocument();
     expect(screen.getByText("Counted from the reveal or the copy.")).toBeInTheDocument();
     const group = screen.getByRole("radiogroup", { name: "Hide a shown value, and clear a copied one, after" });
@@ -365,6 +367,28 @@ describe("PreferencesModal", () => {
     expect(within(scrolled[0] as HTMLElement).getByRole("list", { name: "Kubeconfig files" })).toBeInTheDocument();
     unmount();
     delete (Element.prototype as Partial<Element>).scrollIntoView;
+  });
+
+  it("has a Clusters section after Connection, reachable as a scroll target (#662)", async () => {
+    clusters.contexts = [
+      { name: "aks-prod-01-emm", cluster_server: "https://p:6443", namespace: "default", is_active: true },
+    ];
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    try {
+      app.openPreferences("clusters");
+      render(PreferencesModal);
+      await tick();
+      const section = screen.getByRole("region", { name: "Clusters" });
+      expect(scrolled).toEqual([section]);
+      const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent?.trim());
+      expect(headings.indexOf("Clusters")).toBe(headings.indexOf("Connection") + 1);
+      expect(within(section).getByRole("combobox", { name: "Environment of aks-prod-01-emm" })).toBeInTheDocument();
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    }
   });
 
   it("persists density and applies it to the document", async () => {

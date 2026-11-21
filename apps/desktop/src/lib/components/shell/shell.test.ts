@@ -18,6 +18,10 @@ vi.mock("#lib/tauri.ts", () => ({
   unwatchResources: vi.fn(),
   discoverResourceKinds: vi.fn(async () => []),
   listResourceTable: vi.fn(async () => ({ columns: [], rows: [{ name: "a", namespace: "x", creation_timestamp: null, cells: [] }, { name: "b", namespace: "y", creation_timestamp: null, cells: [] }] })),
+  CLUSTER_SETTINGS_CHANGED: "cluster-settings-changed",
+  clusterSettings: vi.fn(),
+  setClusterEnvironment: vi.fn(),
+  setEnvironmentVariants: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
@@ -36,8 +40,10 @@ import { resources } from "#lib/stores/resources.svelte.ts";
 import { dynamic } from "#lib/stores/dynamic.svelte.ts";
 import { sidebar } from "#lib/stores/sidebar.svelte.ts";
 import { profiles } from "#lib/stores/profiles.svelte.ts";
-import { discoverResourceKinds } from "#lib/tauri.ts";
-import type { PodInfo } from "#lib/tauri.ts";
+import { clusterSettings } from "#lib/stores/cluster-settings.svelte.ts";
+import { defaultVariants } from "#lib/environment.ts";
+import { discoverResourceKinds, setClusterEnvironment } from "#lib/tauri.ts";
+import type { ContextEnvironment, PodInfo } from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
   return {
@@ -77,7 +83,20 @@ beforeEach(() => {
   resources.deployments = [];
   resources.events = [];
   health.byContext = {};
+  clusterSettings.reset();
 });
+
+/** The backend's label of a context, as the store holds it. */
+function labelled(entries: ContextEnvironment[]): void {
+  clusterSettings.byName = Object.fromEntries(entries.map((e) => [e.name, e]));
+}
+
+const prodDetected: ContextEnvironment = {
+  name: "prod-aks",
+  environment: "production",
+  source: "detected",
+  detected: "production",
+};
 
 const warning = {
   event_type: "Warning",
@@ -139,6 +158,112 @@ describe("TopBar", () => {
     expect(retry).toHaveBeenCalled();
     retry.mockRestore();
     vi.unstubAllGlobals();
+  });
+
+  it("shows the environment of the active cluster in a neutral tag (#662)", () => {
+    labelled([prodDetected]);
+    render(TopBar);
+    const tag = screen.getByTestId("environment-tag");
+    expect(tag).toHaveTextContent("Production");
+    // A property of the cluster, not a state: no state colour.
+    expect(tag.className).toContain("text-text-muted");
+    expect(tag.className).not.toMatch(/error|warning|success/);
+    expect(screen.getByRole("button", { name: /prod-aks/ })).toHaveAccessibleName(/Production/);
+  });
+
+  it("shows no tag when the environment is not set (#662)", () => {
+    labelled([{ ...prodDetected, environment: null, detected: null }]);
+    render(TopBar);
+    expect(screen.queryByTestId("environment-tag")).not.toBeInTheDocument();
+  });
+
+  async function openEnvironmentMenu(): Promise<HTMLElement> {
+    await fireEvent.click(screen.getByRole("button", { name: /prod-aks/ }));
+    await fireEvent.click(await screen.findByRole("menuitem", { name: "Environment" }));
+    return screen.findByRole("menuitemradio", { name: /Detect from name/ }).then(() =>
+      screen.getAllByRole("menu").at(-1)!,
+    );
+  }
+
+  it("lists the six environment choices after Reconnect, the current one checked (#662)", async () => {
+    labelled([prodDetected]);
+    render(TopBar);
+    await fireEvent.click(screen.getByRole("button", { name: /prod-aks/ }));
+    const items = (await screen.findAllByRole("menuitem")).map((i) => i.textContent?.trim());
+    expect(items.indexOf("Environment")).toBeGreaterThan(items.indexOf("Reconnect"));
+    await fireEvent.click(screen.getByRole("menuitem", { name: "Environment" }));
+    await screen.findByRole("menuitemradio", { name: /Detect from name/ });
+    const radios = screen.getAllByRole("menuitemradio");
+    expect(radios.map((r) => r.textContent?.trim())).toEqual([
+      "Detect from name (Production)",
+      "Development",
+      "Test",
+      "Staging",
+      "Production",
+      "Not set",
+    ]);
+    expect(screen.getByRole("menuitemradio", { name: "Detect from name (Production)" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("menuitemradio", { name: "Production" })).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("checks the value set by hand, with detection still naming what it reads (#662)", async () => {
+    labelled([{ ...prodDetected, environment: "test", source: "manual" }]);
+    render(TopBar);
+    await openEnvironmentMenu();
+    expect(screen.getByRole("menuitemradio", { name: "Test" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemradio", { name: "Detect from name (Production)" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  it("sets the environment by hand from the menu (#662)", async () => {
+    labelled([prodDetected]);
+    vi.mocked(setClusterEnvironment).mockResolvedValue({
+      contexts: [{ ...prodDetected, environment: "test", source: "manual" }],
+      variants: defaultVariants(),
+      recovered: false,
+    });
+    render(TopBar);
+    await openEnvironmentMenu();
+    await fireEvent.click(screen.getByRole("menuitemradio", { name: "Test" }));
+    expect(setClusterEnvironment).toHaveBeenCalledWith("prod-aks", { source: "manual", value: "test" });
+    expect(await screen.findByTestId("environment-tag")).toHaveTextContent("Test");
+  });
+
+  it("after a choice the backend did not save, the menu checks the stored one again (#662)", async () => {
+    labelled([prodDetected]);
+    vi.mocked(setClusterEnvironment).mockRejectedValue("disk full");
+    render(TopBar);
+    await openEnvironmentMenu();
+    await fireEvent.click(screen.getByRole("menuitemradio", { name: "Test" }));
+    expect(setClusterEnvironment).toHaveBeenCalled();
+    await openEnvironmentMenu();
+    expect(screen.getByRole("menuitemradio", { name: "Detect from name (Production)" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("menuitemradio", { name: "Test" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByTestId("environment-tag")).toHaveTextContent("Production");
+  });
+
+  it("goes back to detection and to Not set from the menu (#662)", async () => {
+    labelled([{ ...prodDetected, environment: "test", source: "manual" }]);
+    vi.mocked(setClusterEnvironment).mockResolvedValue({
+      contexts: [prodDetected],
+      variants: defaultVariants(),
+      recovered: false,
+    });
+    render(TopBar);
+    await openEnvironmentMenu();
+    await fireEvent.click(screen.getByRole("menuitemradio", { name: /Detect from name/ }));
+    expect(setClusterEnvironment).toHaveBeenLastCalledWith("prod-aks", { source: "detected" });
+    await openEnvironmentMenu();
+    await fireEvent.click(screen.getByRole("menuitemradio", { name: "Not set" }));
+    expect(setClusterEnvironment).toHaveBeenLastCalledWith("prod-aks", { source: "manual", value: null });
   });
 
   it("opens the command palette from the search button", async () => {
@@ -239,6 +364,22 @@ describe("ClusterRail", () => {
     ];
     render(ClusterRail);
     expect(screen.getByTitle("staging (/home/u/.kube/team.yaml)")).toBeInTheDocument();
+  });
+
+  it("adds the environment to the tooltip, before the defining file (#662)", () => {
+    labelled([prodDetected, { name: "staging", environment: null, source: "detected", detected: null }]);
+    const { unmount } = render(ClusterRail);
+    expect(screen.getByTitle("prod-aks · Production")).toBeInTheDocument();
+    expect(screen.getByTitle("staging")).toBeInTheDocument();
+    unmount();
+
+    clusters.contexts = clusters.contexts.map((c) => ({ ...c, source: `/home/u/.kube/${c.name}.yaml` }));
+    app.kubeconfigSources = [
+      { path: "/home/u/.kube/prod-aks.yaml", exists: true, contexts: 1, shadowed: [] },
+      { path: "/home/u/.kube/staging.yaml", exists: true, contexts: 1, shadowed: [] },
+    ];
+    render(ClusterRail);
+    expect(screen.getByTitle("prod-aks · Production (/home/u/.kube/prod-aks.yaml)")).toBeInTheDocument();
   });
 
   it("navigates to the dashboard from the home button", async () => {

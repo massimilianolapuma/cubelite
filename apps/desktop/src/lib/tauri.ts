@@ -1260,6 +1260,45 @@ export function unwatchKubeconfig(watchId: string): Promise<void> {
   return invoke("unwatch_kubeconfig", { watchId });
 }
 
+// --- Cluster settings (#662): each context's environment label ---
+
+export type Environment = "development" | "test" | "staging" | "production";
+/** Detected from the context name, or chosen by hand (`value: null` is "Not set"). */
+export type EnvironmentSetting = { source: "detected" } | { source: "manual"; value: Environment | null };
+export type EnvironmentVariants = Record<Environment, string[]>;
+export interface ContextEnvironment {
+  name: string;
+  environment: Environment | null;
+  source: "detected" | "manual";
+  /** What detection reads in the name, whatever the source. */
+  detected: Environment | null;
+}
+export interface ClusterSettings {
+  /** In the order of the names asked for. */
+  contexts: ContextEnvironment[];
+  variants: EnvironmentVariants;
+  /** True once, on the first answer after an unreadable settings file was reset. */
+  recovered: boolean;
+}
+
+/** Tauri event emitted after any change of the cluster settings; payload `null`. */
+export const CLUSTER_SETTINGS_CHANGED = "cluster-settings-changed";
+
+/** The environment of each context; records the names seen for the first time. */
+export function clusterSettings(contexts: string[]): Promise<ClusterSettings> {
+  return invoke<ClusterSettings>("cluster_settings", { contexts });
+}
+
+/** Answers the settings of that one context and the variants. */
+export function setClusterEnvironment(context: string, setting: EnvironmentSetting): Promise<ClusterSettings> {
+  return invoke<ClusterSettings>("set_cluster_environment", { context, setting });
+}
+
+/** Saves the variants (validated by the backend); rejects with the reason as text. */
+export function setEnvironmentVariants(variants: EnvironmentVariants): Promise<EnvironmentVariants> {
+  return invoke<EnvironmentVariants>("set_environment_variants", { variants });
+}
+
 /** Result of starting a port-forward session. */
 export interface ForwardStartResult {
   id: string;

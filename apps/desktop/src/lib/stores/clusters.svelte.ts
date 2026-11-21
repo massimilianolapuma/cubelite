@@ -17,6 +17,7 @@ import {
 import { assignIdentityColors, type IdentityColor } from "#lib/cluster-identity.ts";
 import { errorMessage } from "#lib/errors.ts";
 import { app } from "./app.svelte";
+import { clusterSettings } from "./cluster-settings.svelte";
 import { integrations } from "./integrations.svelte";
 import { dynamic } from "./dynamic.svelte";
 import { logPanel } from "./logPanel.svelte";
@@ -65,6 +66,8 @@ class ClustersStore {
         settings.identityColors.value,
       );
       settings.identityColors.value = this.identityColors;
+      // The labels of the contexts now loaded (#662); a vanished one drops out.
+      await clusterSettings.load(this.contexts.map((c) => c.name));
     } catch (e) {
       this.error = errorMessage(e);
     } finally {

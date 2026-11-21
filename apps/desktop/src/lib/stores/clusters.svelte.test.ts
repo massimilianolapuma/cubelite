@@ -25,6 +25,10 @@ vi.mock("#lib/tauri.ts", () => ({
 
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: vi.fn(async () => "/home/u") }));
 
+vi.mock("./cluster-settings.svelte", () => ({
+  clusterSettings: { load: vi.fn(async () => undefined) },
+}));
+
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
@@ -46,6 +50,7 @@ import {
   type ContextInfo,
 } from "#lib/tauri.ts";
 import { clusters } from "./clusters.svelte";
+import { clusterSettings } from "./cluster-settings.svelte";
 import { resources } from "./resources.svelte";
 import { app } from "./app.svelte";
 import { settings } from "./settings.svelte";
@@ -103,6 +108,13 @@ describe("refresh", () => {
     vi.mocked(listContexts).mockRejectedValue(new Error("no kubeconfig"));
     await clusters.refresh();
     expect(clusters.error).toBe("no kubeconfig");
+    expect(clusterSettings.load).not.toHaveBeenCalled();
+  });
+
+  it("loads the environment of every context, in rail order (#662)", async () => {
+    vi.mocked(listContexts).mockResolvedValue(contexts);
+    await clusters.refresh();
+    expect(clusterSettings.load).toHaveBeenCalledWith(["prod", "staging"]);
   });
 });
 

@@ -19,6 +19,7 @@
 	import StatusGlyph from '#lib/components/ui/StatusGlyph.svelte';
 	import SegmentedControl from '#lib/components/ui/SegmentedControl.svelte';
 	import NavigationPreferences from '#lib/components/NavigationPreferences.svelte';
+	import ClustersPreferences from '#lib/components/ClustersPreferences.svelte';
 	import ElasticPreferences from '#lib/components/ElasticPreferences.svelte';
 	import PrometheusPreferences from '#lib/components/PrometheusPreferences.svelte';
 	import { errorMessage } from '#lib/errors.ts';
@@ -45,6 +46,7 @@
 	// "Set up" in a panel opens Preferences on an integration (#526).
 	const sections = $state<Record<PreferencesSection, HTMLElement | null>>({
 		kubeconfig: null,
+		clusters: null,
 		navigation: null,
 		integrations: null,
 		elasticsearch: null,
@@ -265,6 +267,11 @@
 					onChange={(v) => (settings.skipTls.value = v)}
 				/>
 			</div>
+		</section>
+
+		<section bind:this={sections.clusters} class={group} aria-labelledby="prefs-clusters">
+			<h3 id="prefs-clusters" class={groupHeading}>Clusters</h3>
+			<ClustersPreferences />
 		</section>
 
 		<section class={group} aria-labelledby="prefs-secrets">

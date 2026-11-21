@@ -26,6 +26,7 @@
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { layout } from '#lib/stores/layout.svelte.ts';
 	import { clusters } from '#lib/stores/clusters.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
 	import { health } from '#lib/stores/health.svelte.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { logWindows } from '#lib/stores/logWindows.svelte.ts';
@@ -79,6 +80,8 @@
 		let unKubeconfigChanged: (() => void) | null = null;
 		void (async () => {
 			try {
+				// Before the first load, so a change made meanwhile is not missed.
+				await clusterSettings.start();
 				await clusters.reloadKubeconfig('startup');
 				unKubeconfigChanged = await listen(KUBECONFIG_CHANGED, () => {
 					void clusters.reloadKubeconfig('file-change');

@@ -1,4 +1,5 @@
 mod cache;
+pub mod cluster_access;
 pub mod configmaps;
 pub mod elastic;
 pub mod integrations;

@@ -5,6 +5,9 @@ pub mod env;
 use tauri::Manager;
 
 use clipboard::{ClearAtExit, ClipboardState, EXIT_WAIT};
+use commands::cluster_access::{
+    cluster_settings, set_cluster_environment, set_environment_variants, ClusterAccessState,
+};
 use commands::configmaps::{copy_configmap_value, read_configmap_value};
 use commands::elastic::{
     elastic_auth_method, elastic_close_cursor, elastic_detect, elastic_disconnect,
@@ -38,6 +41,29 @@ use commands::prometheus_cluster::{
 };
 use commands::secrets::{copy_secret_value, export_secret_env, reveal_secret_value};
 
+/// The cluster settings (#662), read from the app config directory. Without
+/// one they are kept in memory only, never a reason not to start.
+fn cluster_access_state(config_dir: tauri::Result<std::path::PathBuf>) -> ClusterAccessState {
+    let dir = match config_dir {
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("cluster settings: no app config directory ({e}); kept in memory");
+            return ClusterAccessState::in_memory();
+        }
+    };
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!(
+            "cluster settings: cannot create {} ({e}); kept in memory",
+            dir.display()
+        );
+        return ClusterAccessState::in_memory();
+    }
+    // An unreadable file is set aside and logged by `load`; the webview is
+    // told with its first answer.
+    let (state, _) = ClusterAccessState::load(dir.join(commands::cluster_access::FILE_NAME));
+    state
+}
+
 /// Entry point for the Tauri application.
 pub fn run() {
     // Must run before anything can spawn kubeconfig exec plugins.
@@ -63,6 +89,7 @@ pub fn run() {
             // resources but sends no exit event: the drop runs the clear.
             let clipboard = app.state::<ClipboardState>().inner().clone();
             app.resources_table().add(ClearAtExit(clipboard));
+            app.manage(cluster_access_state(app.path().app_config_dir()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -148,6 +175,9 @@ pub fn run() {
             start_port_forward,
             stop_port_forward,
             export_log,
+            cluster_settings,
+            set_cluster_environment,
+            set_environment_variants,
         ])
         .build(tauri::generate_context!());
     match app {

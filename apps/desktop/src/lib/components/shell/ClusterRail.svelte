@@ -4,6 +4,8 @@
 	import IdentityAvatar from '#lib/components/ui/IdentityAvatar.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusters } from '#lib/stores/clusters.svelte.ts';
+	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
+	import { environmentLabel } from '#lib/environment.ts';
 	import { health } from '#lib/stores/health.svelte.ts';
 
 	// With several kubeconfig files, the tooltip also names the defining file.
@@ -15,6 +17,13 @@
 			return;
 		}
 		void clusters.switchCluster(name);
+	}
+
+	/** "<name> · <Environment>" when the label is set (#662), then the defining file. */
+	function tooltip(name: string, source: string | null | undefined): string {
+		const environment = clusterSettings.environmentOf(name);
+		const label = environment ? `${name} · ${environmentLabel(environment)}` : name;
+		return multiFile && source ? `${label} (${source})` : label;
 	}
 
 	const healthWord = { connected: 'connected', unreachable: 'unreachable', unknown: 'not connected' } as const;
@@ -51,7 +60,7 @@
 				<button
 					type="button"
 					aria-label="{ctx.name}, {healthWord[state]}"
-					title={multiFile && ctx.source ? `${ctx.name} (${ctx.source})` : ctx.name}
+					title={tooltip(ctx.name, ctx.source)}
 					aria-current={isActive ? 'true' : undefined}
 					class="focus-ring block rounded-md hover:brightness-110"
 					onclick={() => clickCluster(ctx.name)}
