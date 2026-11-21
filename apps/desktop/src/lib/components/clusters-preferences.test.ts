@@ -275,9 +275,12 @@ describe("ClustersPreferences access (#662, spec §6.1–6.3)", () => {
   });
 
   it("shows each context's access as the chip does, with its button", () => {
+    // The countdown reads `clock.now`, and rounds up: the end is set from that
+    // same instant, or a few ms of lag between two reads make it 13 min (#691).
+    clock.run(false);
     clusterSettings.byName = {
       ...clusterSettings.byName,
-      "dol-lab-aks": { ...entries[2], writable_until: Date.now() + 12 * 60_000 },
+      "dol-lab-aks": { ...entries[2], writable_until: clock.now + 12 * 60_000 },
     };
     render(ClustersPreferences);
     const prod = accessCell("aks-prod-01-emm");
