@@ -34,6 +34,9 @@ import {
   revealSecretValue,
   copySecretValue,
   exportSecretEnv,
+  clusterSettings,
+  setClusterEnvironment,
+  setEnvironmentVariants,
 } from "#lib/tauri.ts";
 import type {
   EsEndpoint,
@@ -412,6 +415,30 @@ describe("kubeconfig wrapper arguments", () => {
     expect(mockedInvoke).toHaveBeenCalledWith("unwatch_kubeconfig", {
       watchId: "kw1",
     });
+  });
+});
+
+describe("cluster settings bindings (#662)", () => {
+  it("clusterSettings passes the context names", async () => {
+    mockedInvoke.mockResolvedValueOnce({ contexts: [], variants: {}, recovered: false });
+    await clusterSettings(["a", "b"]);
+    expect(mockedInvoke).toHaveBeenCalledWith("cluster_settings", { contexts: ["a", "b"] });
+  });
+
+  it("setClusterEnvironment passes the context and the setting as the backend reads it", async () => {
+    mockedInvoke.mockResolvedValueOnce({ contexts: [], variants: {}, recovered: false });
+    await setClusterEnvironment("a", { source: "manual", value: "test" });
+    expect(mockedInvoke).toHaveBeenCalledWith("set_cluster_environment", {
+      context: "a",
+      setting: { source: "manual", value: "test" },
+    });
+  });
+
+  it("setEnvironmentVariants passes the variants", async () => {
+    const variants = { development: ["dev"], test: [], staging: [], production: ["prod"] };
+    mockedInvoke.mockResolvedValueOnce(variants);
+    await setEnvironmentVariants(variants);
+    expect(mockedInvoke).toHaveBeenCalledWith("set_environment_variants", { variants });
   });
 });
 
