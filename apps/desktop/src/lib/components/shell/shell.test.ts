@@ -107,10 +107,14 @@ const prodDetected: ContextEnvironment = {
 };
 
 const prodReadOnly: ContextEnvironment = { ...prodDetected, access: "read_only" };
-/** Unlocked until `minutes` from now: saved read-only, writable in the view. */
+/**
+ * Unlocked until `minutes` from the app clock's now: saved read-only, writable
+ * in the view. From the clock, not Date.now(): a millisecond between the two
+ * would read "13 min".
+ */
 const prodTimed = (minutes: number): ContextEnvironment => ({
   ...prodDetected,
-  writable_until: Date.now() + minutes * 60_000,
+  writable_until: clock.now + minutes * 60_000,
 });
 
 /** What every answer of the backend carries besides the contexts. */

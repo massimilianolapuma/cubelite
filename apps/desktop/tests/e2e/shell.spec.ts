@@ -53,7 +53,12 @@ const LONG_NAMESPACE = "payments-gateway-canary-eu-central-1-blue-green-a";
 for (const width of [800, 1000, 1280]) {
   test(`a long context name leaves the namespace readable at ${width} px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 700 });
-    await boot(page, { contexts: [{ ...FIXTURES.contexts[0], name: LONG_CONTEXT }, ...FIXTURES.contexts.slice(1)] });
+    // Recorded writable: "production" in the name would make it read-only at first
+    // sight (#662), and this test is about the namespace, not the access word.
+    await boot(page, {
+      contexts: [{ ...FIXTURES.contexts[0], name: LONG_CONTEXT }, ...FIXTURES.contexts.slice(1)],
+      clusterAccess: { [LONG_CONTEXT]: "writable" },
+    });
     const header = page.locator("header").first();
     await header.getByRole("button", { name: /Namespace/ }).click();
     await page.getByRole("menuitemradio", { name: /kube-system/ }).click();
