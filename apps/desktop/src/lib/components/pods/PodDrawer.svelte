@@ -29,6 +29,7 @@
 	import { resourceEditor } from '#lib/stores/resourceEditor.svelte.ts';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
+	import { activeClusterRef, onScreen } from '#lib/stores/cluster-ref.ts';
 	import { parsePort, resolveLocalPort } from '#lib/ports.ts';
 	import { formatBytes, formatCpu, percentOf } from '#lib/units.ts';
 	import type { PodInfo } from '#lib/tauri.ts';
@@ -69,9 +70,14 @@
 	}
 
 	async function restart() {
-		// A pod "restart" is a delete; the owning controller recreates it.
-		const ok = await mutations.deletePod(pod.namespace, pod.name);
-		if (ok) onClose();
+		// A pod "restart" is a delete; the owning controller recreates it. It
+		// goes to the cluster of the click (#685), and closes the panel only if
+		// the panel is still this pod's: after a switch it is another cluster's.
+		const on = activeClusterRef();
+		const { namespace, name } = pod;
+		const ok = await mutations.deletePod(namespace, name, on);
+		const sel = app.selectedPod;
+		if (ok && on !== null && onScreen(on) && sel?.namespace === namespace && sel.name === name) onClose();
 	}
 
 	function openLogs() {

@@ -6,6 +6,7 @@ import { app } from "#lib/stores/app.svelte.ts";
 import { layout } from "#lib/stores/layout.svelte.ts";
 import { lists } from "#lib/stores/lists.svelte.ts";
 import { mutations } from "#lib/stores/mutations.svelte.ts";
+import { refKey } from "#lib/stores/cluster-ref.ts";
 import type { PodInfo } from "#lib/tauri.ts";
 
 function pod(overrides: Partial<PodInfo> = {}): PodInfo {
@@ -157,7 +158,10 @@ describe("PodTable", () => {
   });
 
   it("shows an inline spinner while the pod is being terminated", () => {
-    mutations.pendingPodDeletes = { "default/api-0": true };
+    // A delete in flight is keyed by its cluster (#685): this one runs on the active cluster.
+    app.kubeconfigPath = "/home/u/.kube/config";
+    app.activeCluster = "prod";
+    mutations.pendingPodDeletes = { [refKey({ kubeconfig: "/home/u/.kube/config", cluster: "prod" }, "default", "api-0")]: true };
     try {
       render(PodTable, { props: { pods: [pod()] } });
       expect(screen.getByText("Terminating…")).toBeInTheDocument();

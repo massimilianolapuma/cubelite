@@ -22,7 +22,7 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => {}),
 }));
 
-import { deletePod, restartDeployment, scaleDeployment } from "#lib/tauri.ts";
+import { deletePod, listPods, restartDeployment, scaleDeployment } from "#lib/tauri.ts";
 import { mutations, SCALE_DEBOUNCE_MS } from "./mutations.svelte";
 import { app } from "./app.svelte";
 import { clock } from "./clock.svelte";
@@ -39,6 +39,7 @@ beforeEach(() => {
   mutations.pendingScales = {};
   app.kubeconfigPath = "/home/u/.kube/config";
   app.activeCluster = "prod";
+  app.connecting = null;
 });
 
 describe("deletePod", () => {
@@ -194,5 +195,142 @@ describe("on a read-only cluster (#662)", () => {
     expect(message).not.toContain("{");
     expect(mutations.pendingScale("default", "api")).toBeNull();
     expect(mutations.isApplyingScale("default", "api")).toBe(false);
+  });
+});
+
+describe("an action stays on the cluster it was started on (#685)", () => {
+  const KC = "/home/u/.kube/config";
+  const PROD = { kubeconfig: KC, cluster: "prod" };
+
+  function deferred() {
+    let resolve!: () => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<undefined>((res, rej) => {
+      resolve = () => res(undefined);
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
+  /** Lets every settled promise run its continuation. */
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  }
+
+  it("a delete confirmed after a switch goes to the cluster its dialog was opened on, and says where", async () => {
+    app.activeCluster = "staging";
+    expect(await mutations.deletePod("default", "api-0", PROD)).toBe(true);
+    expect(deletePod).toHaveBeenCalledWith(KC, "default", "api-0", "prod");
+    expect(toasts.items.at(-1)).toMatchObject({ message: "Pod api-0 deleted on prod", tone: "ok" });
+    await settle();
+    // The list on screen is staging's: nothing of prod to reload.
+    expect(listPods).not.toHaveBeenCalled();
+  });
+
+  it("checks the lock of the cluster the delete was opened on, not of the active one", async () => {
+    setAccess("prod", "read_only");
+    setAccess("staging", "writable");
+    app.activeCluster = "staging";
+    expect(await mutations.deletePod("default", "api-0", PROD)).toBe(false);
+    expect(deletePod).not.toHaveBeenCalled();
+    expect(toasts.items.at(-1)?.message).toBe(
+      "Delete failed: prod is read-only. Make it writable from the cluster menu.",
+    );
+  });
+
+  it("a delete in flight on prod does not show on staging's pod of the same name", async () => {
+    const request = deferred();
+    vi.mocked(deletePod).mockReturnValueOnce(request.promise);
+    const pending = mutations.deletePod("default", "api-0");
+    expect(mutations.isDeleting("default", "api-0")).toBe(true);
+    app.activeCluster = "staging";
+    expect(mutations.isDeleting("default", "api-0")).toBe(false);
+    app.activeCluster = "prod";
+    expect(mutations.isDeleting("default", "api-0")).toBe(true);
+    app.activeCluster = "staging";
+    request.reject(new Error("forbidden"));
+    expect(await pending).toBe(false);
+    expect(toasts.items.at(-1)).toMatchObject({ message: "Delete on prod failed: forbidden", tone: "err" });
+  });
+
+  it("a restart in flight on prod does not show on staging, and its toast names prod", async () => {
+    const request = deferred();
+    vi.mocked(restartDeployment).mockReturnValueOnce(request.promise);
+    const pending = mutations.restartDeployment("default", "api");
+    expect(mutations.isRestarting("default", "api")).toBe(true);
+    app.activeCluster = "staging";
+    expect(mutations.isRestarting("default", "api")).toBe(false);
+    request.resolve();
+    expect(await pending).toBe(true);
+    expect(restartDeployment).toHaveBeenCalledWith(KC, "default", "api", "prod");
+    expect(toasts.items.at(-1)).toMatchObject({ message: "Rollout restart of api triggered on prod", tone: "ok" });
+    await settle();
+    expect(listPods).not.toHaveBeenCalled();
+  });
+
+  it("a scale in flight on prod neither shows on staging nor locks its stepper", async () => {
+    vi.useFakeTimers();
+    const request = deferred();
+    vi.mocked(scaleDeployment).mockReturnValueOnce(request.promise);
+    mutations.nudgeScale("default", "api", 3, 1);
+    await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS);
+    expect(mutations.isApplyingScale("default", "api")).toBe(true);
+    expect(mutations.pendingScale("default", "api")).toBe(4);
+
+    // A switch: the debounce is over, the request is on its way to prod.
+    mutations.cancelDrafts();
+    app.activeCluster = "staging";
+    expect(mutations.isApplyingScale("default", "api")).toBe(false);
+    expect(mutations.pendingScale("default", "api")).toBeNull();
+    // staging's api has its own stepper, free.
+    mutations.nudgeScale("default", "api", 1, 1);
+    expect(mutations.pendingScale("default", "api")).toBe(2);
+    mutations.cancelDrafts();
+
+    request.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(scaleDeployment).toHaveBeenCalledWith(KC, "default", "api", 4, "prod");
+    expect(toasts.items.at(-1)).toMatchObject({ message: "api scaled to 4 on prod", tone: "ok" });
+    expect(listPods).not.toHaveBeenCalled();
+  });
+
+  it("an explicit scale goes to the cluster it is given", async () => {
+    app.activeCluster = "staging";
+    expect(await mutations.scaleDeployment("default", "api", 2, PROD)).toBe(true);
+    expect(scaleDeployment).toHaveBeenCalledWith(KC, "default", "api", 2, "prod");
+    expect(toasts.items.at(-1)?.message).toBe("api scaled to 2 on prod");
+  });
+
+  it("an action that ends while a switch to another cluster runs names its cluster and reloads nothing", async () => {
+    const request = deferred();
+    vi.mocked(deletePod).mockReturnValueOnce(request.promise);
+    const pending = mutations.deletePod("default", "api-0");
+    // The switch has started; the active cluster changes once the context is set.
+    app.connecting = "staging";
+    request.resolve();
+    await pending;
+    app.connecting = null;
+    expect(toasts.items.at(-1)?.message).toBe("Pod api-0 deleted on prod");
+    await settle();
+    expect(listPods).not.toHaveBeenCalled();
+  });
+
+  it("a delete in flight stays shown, and its toast names no cluster, when only the kubeconfig list changes", async () => {
+    const request = deferred();
+    vi.mocked(deletePod).mockReturnValueOnce(request.promise);
+    const pending = mutations.deletePod("default", "api-0");
+    // Preferences: another kubeconfig file added; the context is the same.
+    app.kubeconfigPath = "/home/u/.kube/config:/home/u/.kube/extra.yaml";
+    expect(mutations.isDeleting("default", "api-0")).toBe(true);
+    request.resolve();
+    await pending;
+    expect(toasts.items.at(-1)?.message).toBe("Pod api-0 deleted");
+  });
+
+  it("on the cluster still on screen, the toast names none and the lists reload", async () => {
+    expect(await mutations.deletePod("default", "api-0")).toBe(true);
+    expect(toasts.items.at(-1)?.message).toBe("Pod api-0 deleted");
+    await settle();
+    expect(listPods).toHaveBeenCalled();
   });
 });

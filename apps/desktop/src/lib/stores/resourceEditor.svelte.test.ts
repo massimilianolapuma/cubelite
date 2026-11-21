@@ -522,7 +522,7 @@ describe("apply", () => {
     flushSync();
     expect(resourceEditor.target).toBeNull();
     expect(toasts.items.at(-1)).toMatchObject({
-      message: "Could not update the resources of api: The deployment is changing too fast to update. Try again.",
+      message: "Could not update the resources of api on prod: The deployment is changing too fast to update. Try again.",
       tone: "err",
     });
   });
@@ -546,6 +546,62 @@ describe("apply", () => {
     expect(resourceEditor.step).toBe("review");
     expect(resourceEditor.applying).toBe(false);
     expect(resourceEditor.applyError).toBe("The deployment is changing too fast to update. Try again.");
+  });
+});
+
+describe("an apply stays on the cluster the editor was opened on (#685)", () => {
+  async function applyingThenSwitched() {
+    await openApi();
+    await type("api", "memory.limit", "768Mi");
+    await resourceEditor.review();
+    const real = deferred<ResourceEvaluation>();
+    vi.mocked(applyResources).mockReturnValueOnce(real.promise);
+    const pending = resourceEditor.apply();
+    app.activeCluster = "staging";
+    flushSync();
+    return { real, pending };
+  }
+
+  it("does not show as applying on staging's deployment of the same name, and keeps its cluster", async () => {
+    const { real, pending } = await applyingThenSwitched();
+    try {
+      expect(resourceEditor.isApplying("default", "api")).toBe(false);
+      expect(resourceEditor.cluster).toBe("prod");
+      app.activeCluster = "prod";
+      expect(resourceEditor.isApplying("default", "api")).toBe(true);
+    } finally {
+      real.resolve(evaluation());
+      await pending;
+    }
+  });
+
+  it("goes to prod, and its toast names prod; staging's lists are not reloaded", async () => {
+    const { real, pending } = await applyingThenSwitched();
+    vi.mocked(listDeployments).mockClear();
+    real.resolve(evaluation());
+    expect(await pending).toBe(true);
+    expect(applyCalls(false)[0][0]).toBe(KC);
+    expect(applyCalls(false)[0][6]).toBe("prod");
+    expect(toasts.items.at(-1)).toMatchObject({
+      message: "Resources of api updated on prod, rollout started",
+      tone: "ok",
+    });
+    await settle();
+    expect(listDeployments).not.toHaveBeenCalled();
+  });
+
+  it("Keep these values ended after a switch names its cluster and reloads nothing", async () => {
+    const request = deferred<undefined>();
+    vi.mocked(clearResourcesOverride).mockReturnValueOnce(request.promise);
+    vi.mocked(listDeployments).mockClear();
+    const pending = resourceEditor.keepValues(DEPLOYMENT);
+    app.activeCluster = "staging";
+    request.resolve(undefined);
+    expect(await pending).toBe(true);
+    expect(clearResourcesOverride).toHaveBeenCalledWith(KC, "default", "api", "prod");
+    expect(toasts.items.at(-1)).toMatchObject({ message: "Override mark removed from api on prod", tone: "ok" });
+    await settle();
+    expect(listDeployments).not.toHaveBeenCalled();
   });
 });
 

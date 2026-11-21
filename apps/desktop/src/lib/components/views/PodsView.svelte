@@ -4,21 +4,44 @@
 	import PodDrawer from '#lib/components/pods/PodDrawer.svelte';
 	import { app } from '#lib/stores/app.svelte.ts';
 	import { clusterSettings } from '#lib/stores/cluster-settings.svelte.ts';
+	import { activeClusterRef, onScreen, type ClusterRef } from '#lib/stores/cluster-ref.ts';
 	import { logPanel } from '#lib/stores/logPanel.svelte.ts';
 	import { mutations } from '#lib/stores/mutations.svelte.ts';
 	import { resources } from '#lib/stores/resources.svelte.ts';
 	import type { PodInfo } from '#lib/tauri.ts';
 	import { SEARCH_FIELD } from '#lib/ui-classes.ts';
 
-	let deleteTarget = $state<PodInfo | null>(null);
+	// The pod to delete and the cluster the dialog was opened on (#685). The
+	// dialog closes as soon as a switch to another cluster starts; a delete
+	// already confirmed still goes to the cluster it was opened on, never to the
+	// pod of the same name on the cluster switched to.
+	let deleteTarget = $state.raw<{ pod: PodInfo; on: ClusterRef } | null>(null);
+	const deleting = $derived(
+		deleteTarget !== null &&
+			mutations.isDeleting(deleteTarget.pod.namespace, deleteTarget.pod.name, deleteTarget.on)
+	);
+
+	$effect(() => {
+		if (deleteTarget !== null && !onScreen(deleteTarget.on)) deleteTarget = null;
+	});
+
+	function askDelete(pod: PodInfo) {
+		const on = activeClusterRef();
+		if (on !== null) deleteTarget = { pod, on };
+	}
 
 	async function confirmDelete() {
-		if (!deleteTarget) return;
-		const ok = await mutations.deletePod(deleteTarget.namespace, deleteTarget.name);
-		if (ok) {
-			deleteTarget = null;
-			app.selectedPod = null;
-		}
+		const target = deleteTarget;
+		// One delete at a time: a second click while it runs sends nothing.
+		if (target === null || mutations.isDeleting(target.pod.namespace, target.pod.name, target.on)) return;
+		const { pod, on } = target;
+		const ok = await mutations.deletePod(pod.namespace, pod.name, on);
+		if (!ok) return;
+		if (deleteTarget === target) deleteTarget = null;
+		// The panel open now is the deleted pod's only on its cluster: after a
+		// switch it is another cluster's, even under the same name.
+		const sel = app.selectedPod;
+		if (onScreen(on) && sel?.namespace === pod.namespace && sel.name === pod.name) app.selectedPod = null;
 	}
 
 	// The panel and the selected row show the pod as it is now, not as it was
@@ -70,15 +93,17 @@
 	<PodDrawer
 		pod={current}
 		onClose={() => (app.selectedPod = null)}
-		onDelete={(pod) => (deleteTarget = pod)}
+		onDelete={askDelete}
 	/>
 {/if}
 
 {#if deleteTarget}
 	<DeletePodDialog
-		pod={deleteTarget}
+		pod={deleteTarget.pod}
+		cluster={deleteTarget.on.cluster}
 		confirmDisabled={false}
-		blockedReason={clusterSettings.lockReason(app.activeCluster)}
+		pending={deleting}
+		blockedReason={clusterSettings.lockReason(deleteTarget.on.cluster)}
 		onCancel={() => (deleteTarget = null)}
 		onConfirm={() => void confirmDelete()}
 	/>
