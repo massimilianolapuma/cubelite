@@ -21,6 +21,7 @@ import { clusterSettings } from "./cluster-settings.svelte";
 import { integrations } from "./integrations.svelte";
 import { dynamic } from "./dynamic.svelte";
 import { logPanel } from "./logPanel.svelte";
+import { mutations } from "./mutations.svelte";
 import { portforward } from "./portforward.svelte";
 import { resources } from "./resources.svelte";
 import { settings } from "./settings.svelte";
@@ -94,6 +95,9 @@ class ClustersStore {
     if (app.connecting === name) return;
     const epoch = ++this.#switchEpoch;
     app.connecting = name;
+    // A scale still held in the debounce was made on the cluster being left:
+    // drop it at the click, before any await lets its timer fire (#682).
+    mutations.cancelDrafts();
     try {
       await resources.stopWatching();
       if (epoch !== this.#switchEpoch) return;
@@ -202,6 +206,7 @@ class ClustersStore {
           toasts.push(`Failed to switch context: ${errorMessage(e)}`, "err");
         }
       } else {
+        mutations.cancelDrafts();
         app.activeCluster = null;
         this.connectionState = "unknown";
         this.unreachableReason = null;

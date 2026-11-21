@@ -26,7 +26,7 @@ vi.mock("#lib/tauri.ts", () => ({
 vi.mock("@tauri-apps/api/path", () => ({ homeDir: vi.fn(async () => "/home/u") }));
 
 vi.mock("./cluster-settings.svelte", () => ({
-  clusterSettings: { load: vi.fn(async () => undefined) },
+  clusterSettings: { load: vi.fn(async () => undefined), lockReason: vi.fn(() => null) },
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -43,6 +43,7 @@ import {
   listNamespaces,
   listPods,
   probeCluster,
+  scaleDeployment,
   setContext,
   unwatchKubeconfig,
   watchKubeconfig,
@@ -51,6 +52,7 @@ import {
 } from "#lib/tauri.ts";
 import { clusters } from "./clusters.svelte";
 import { clusterSettings } from "./cluster-settings.svelte";
+import { mutations, SCALE_DEBOUNCE_MS } from "./mutations.svelte";
 import { resources } from "./resources.svelte";
 import { app } from "./app.svelte";
 import { settings } from "./settings.svelte";
@@ -64,6 +66,7 @@ const contexts: ContextInfo[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
   installLocalStorageMock();
   vi.mocked(probeCluster).mockResolvedValue({
     context: "staging",
@@ -283,6 +286,55 @@ describe("switchCluster", () => {
     // The stale unreachable result was discarded.
     expect(clusters.connectionState).toBe("unknown");
     expect(app.connecting).toBeNull();
+  });
+});
+
+describe("a scale held in the debounce on a cluster switch (#682)", () => {
+  beforeEach(() => {
+    mutations.cancelDrafts();
+  });
+
+  function connectMocks(): void {
+    vi.mocked(setContext).mockResolvedValue(undefined);
+    vi.mocked(listPods).mockResolvedValue([]);
+    vi.mocked(listNamespaces).mockResolvedValue([]);
+    vi.mocked(listDeployments).mockResolvedValue([]);
+    vi.mocked(watchResources).mockResolvedValue("w1");
+  }
+
+  it("is dropped by a switch within the debounce: nothing goes to the new cluster or the old", async () => {
+    vi.useFakeTimers();
+    connectMocks();
+    clusters.contexts = [...contexts];
+    mutations.nudgeScale("default", "api", 2, 1);
+    expect(mutations.pendingScale("default", "api")).toBe(3);
+
+    const switching = clusters.switchCluster("staging");
+    // Gone at the click, before the switch has awaited anything.
+    expect(mutations.draftScales).toEqual({});
+    await switching;
+    expect(app.activeCluster).toBe("staging");
+    await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS * 2);
+
+    expect(scaleDeployment).not.toHaveBeenCalled();
+    expect(mutations.pendingScale("default", "api")).toBeNull();
+  });
+
+  it("is dropped by a kubeconfig reload that leaves no context to switch to", async () => {
+    vi.useFakeTimers();
+    vi.mocked(kubeconfigSources).mockResolvedValue({
+      spec: "/home/u/.kube/config",
+      sources: [{ path: "/home/u/.kube/config", exists: true, contexts: 0, shadowed: [] }],
+      origin: "default",
+    });
+    vi.mocked(listContexts).mockResolvedValue([]);
+    mutations.nudgeScale("default", "api", 2, 1);
+
+    await clusters.reloadKubeconfig("file-change");
+    expect(app.activeCluster).toBeNull();
+    expect(mutations.draftScales).toEqual({});
+    await vi.advanceTimersByTimeAsync(SCALE_DEBOUNCE_MS * 2);
+    expect(scaleDeployment).not.toHaveBeenCalled();
   });
 });
 
