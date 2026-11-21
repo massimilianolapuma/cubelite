@@ -9,6 +9,7 @@
  * this is them with a Secret's timer and errors.
  */
 import { errorMessage } from "#lib/errors.ts";
+import type { ClusterRef } from "#lib/stores/cluster-ref.ts";
 import type { RevealedSecretValue, SecretCommandError, SecretErrorKind } from "#lib/tauri.ts";
 import { ValueReveal, type RevealEntry as ValueRevealEntry, type ValueErrors } from "#lib/value-reveal.svelte.ts";
 
@@ -57,8 +58,8 @@ export const SECRET_ERRORS: ValueErrors<SecretCommandError> = {
 };
 
 export type SecretRevealOptions = {
-  /** Reads one value from the backend, at this moment. */
-  read: (namespace: string, name: string, key: string) => Promise<RevealedSecretValue>;
+  /** Reads one value from the backend, at this moment, on `on`: the cluster active at the click. */
+  read: (namespace: string, name: string, key: string, on: ClusterRef) => Promise<RevealedSecretValue>;
   /** Seconds a value stays shown, counted from when it was shown; 0 is Never. */
   hideAfter: () => number;
   /** A message for the view's polite status region. Never a value. */

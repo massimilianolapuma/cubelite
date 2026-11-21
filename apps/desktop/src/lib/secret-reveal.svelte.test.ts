@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { SecretReveal, errorText, secretCommandError } from "#lib/secret-reveal.svelte.ts";
+import { app } from "#lib/stores/app.svelte.ts";
+import type { ClusterRef } from "#lib/stores/cluster-ref.ts";
 import type { RevealedSecretValue, SecretInfo } from "#lib/tauri.ts";
 
 /** A promise the test settles when it wants. */
@@ -23,7 +25,11 @@ const secret = (rv: string | null, keys = ["DB_PASSWORD", "DB_USER"]): SecretInf
   creation_timestamp: null,
 });
 
-let read: ReturnType<typeof vi.fn<(ns: string, name: string, key: string) => Promise<RevealedSecretValue>>>;
+const PROD: ClusterRef = { kubeconfig: "/home/u/.kube/config", cluster: "prod" };
+
+let read: ReturnType<
+  typeof vi.fn<(ns: string, name: string, key: string, on: ClusterRef) => Promise<RevealedSecretValue>>
+>;
 let announce: ReturnType<typeof vi.fn<(m: string) => void>>;
 let reload: ReturnType<typeof vi.fn<() => void>>;
 let hideAfter: number;
@@ -31,6 +37,9 @@ let reveal: SecretReveal;
 
 beforeEach(() => {
   vi.useFakeTimers();
+  app.kubeconfigPath = PROD.kubeconfig;
+  app.activeCluster = PROD.cluster;
+  app.connecting = null;
   hideAfter = 30;
   read = vi.fn(async (_ns: string, _name: string, key: string) => ({ value: `value-of-${key}`, resource_version: "41" }));
   announce = vi.fn();
@@ -56,7 +65,7 @@ describe("SecretReveal (#661 §3.2)", () => {
     expect(reveal.entry("shop", "api", "DB_PASSWORD")).toEqual({ status: "shown", value: "s3cr3t", resourceVersion: "41" });
     expect(reveal.entry("shop", "api", "DB_USER")).toBeUndefined();
     expect(read).toHaveBeenCalledTimes(1);
-    expect(read).toHaveBeenCalledWith("shop", "api", "DB_PASSWORD");
+    expect(read).toHaveBeenCalledWith("shop", "api", "DB_PASSWORD", PROD);
     expect(announce).toHaveBeenLastCalledWith("DB_PASSWORD shown");
   });
 
@@ -146,6 +155,63 @@ describe("SecretReveal (#661 §3.2)", () => {
     await reveal.reveal("shop", "api", "DB_PASSWORD");
     reveal.destroy();
     expect(reveal.snapshot()).toEqual({});
+  });
+
+  describe("bound to the cluster it was read on (#690)", () => {
+    it("reads on the kubeconfig and context active at the click, whatever is active later", async () => {
+      const answer = deferred<RevealedSecretValue>();
+      read.mockReturnValueOnce(answer.promise);
+      void reveal.reveal("shop", "api", "DB_PASSWORD");
+      app.kubeconfigPath = "/other/config";
+      app.activeCluster = "staging";
+      expect(read).toHaveBeenCalledWith("shop", "api", "DB_PASSWORD", PROD);
+      answer.resolve({ value: "s3cr3t", resource_version: "41" });
+      await flush();
+    });
+
+    it("reads nothing without an active cluster", async () => {
+      app.activeCluster = null;
+      await reveal.reveal("shop", "api", "DB_PASSWORD");
+      expect(read).not.toHaveBeenCalled();
+      expect(reveal.snapshot()).toEqual({});
+    });
+
+    it("drops a value that arrives while a switch to another cluster runs", async () => {
+      const answer = deferred<RevealedSecretValue>();
+      read.mockReturnValueOnce(answer.promise);
+      void reveal.reveal("shop", "api", "DB_PASSWORD");
+      app.connecting = "staging";
+      answer.resolve({ value: "s3cr3t", resource_version: "41" });
+      await flush();
+      expect(reveal.snapshot()).toEqual({});
+      expect(announce).not.toHaveBeenCalled();
+    });
+
+    it("drops a value or an error that arrives after the active cluster changed", async () => {
+      const value = deferred<RevealedSecretValue>();
+      const failure = deferred<RevealedSecretValue>();
+      read.mockReturnValueOnce(value.promise).mockReturnValueOnce(failure.promise);
+      void reveal.reveal("shop", "api", "DB_PASSWORD");
+      void reveal.reveal("shop", "api", "DB_USER");
+      app.activeCluster = "staging";
+      value.resolve({ value: "s3cr3t", resource_version: "41" });
+      failure.reject({ kind: "secret_missing", message: "m" });
+      await flush();
+      expect(reveal.snapshot()).toEqual({});
+      expect(announce).not.toHaveBeenCalled();
+      expect(reload).not.toHaveBeenCalled();
+    });
+
+    it("does not show a held answer once its cluster is left", async () => {
+      reveal.reconcile([secret("40")]);
+      read.mockResolvedValueOnce({ value: "new-value", resource_version: "41" });
+      await reveal.reveal("shop", "api", "DB_PASSWORD");
+      expect(reveal.entry("shop", "api", "DB_PASSWORD")?.status).toBe("reading");
+      app.connecting = "staging";
+      reveal.reconcile([secret("41")]);
+      expect(reveal.snapshot()).toEqual({});
+      expect(announce).not.toHaveBeenCalledWith("DB_PASSWORD shown");
+    });
   });
 
   describe("a reload of the list", () => {

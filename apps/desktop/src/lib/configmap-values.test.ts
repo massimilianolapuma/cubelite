@@ -1,8 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { CONFIGMAP_ERRORS, configMapCommandError, configMapErrorText } from "#lib/configmap-values.ts";
+import { app } from "#lib/stores/app.svelte.ts";
+import type { ClusterRef } from "#lib/stores/cluster-ref.ts";
 import { ValueCopy } from "#lib/value-copy.svelte.ts";
 import { ValueReveal } from "#lib/value-reveal.svelte.ts";
 import type { ConfigMapCommandError, ConfigMapInfo, RevealedSecretValue } from "#lib/tauri.ts";
+
+const PROD: ClusterRef = { kubeconfig: "/home/u/.kube/config", cluster: "prod" };
+
+// Values are read and copied on the active cluster (#690).
+beforeEach(() => {
+  app.kubeconfigPath = PROD.kubeconfig;
+  app.activeCluster = PROD.cluster;
+  app.connecting = null;
+});
 
 const configmap = (rv: string | null, keys = ["LOG_LEVEL", "application.yaml"]): ConfigMapInfo => ({
   name: "app-config",
@@ -50,7 +61,9 @@ describe("configMapErrorText (#668 §3.3)", () => {
 });
 
 describe("ValueReveal without a timer, for ConfigMaps (#668 §3.2)", () => {
-  let read: ReturnType<typeof vi.fn<(ns: string, name: string, key: string) => Promise<RevealedSecretValue>>>;
+  let read: ReturnType<
+    typeof vi.fn<(ns: string, name: string, key: string, on: ClusterRef) => Promise<RevealedSecretValue>>
+  >;
   let announce: ReturnType<typeof vi.fn<(m: string) => void>>;
   let reload: ReturnType<typeof vi.fn<() => void>>;
   let reveal: ValueReveal<ConfigMapCommandError>;
@@ -120,9 +133,10 @@ describe("ValueCopy without a clearing time, for ConfigMaps (#668 §3.1)", () =>
     const copy = vi.fn(async () => "text" as const);
     const announce = vi.fn();
     const reload = vi.fn();
-    const copies = new ValueCopy({ copy, announce, reload, errors: CONFIGMAP_ERRORS });
+    const notify = vi.fn();
+    const copies = new ValueCopy({ copy, announce, notify, reload, errors: CONFIGMAP_ERRORS });
     await copies.copy("shop", "app-config", "application.yaml");
-    expect(copy).toHaveBeenCalledWith("shop", "app-config", "application.yaml", 0);
+    expect(copy).toHaveBeenCalledWith("shop", "app-config", "application.yaml", 0, PROD);
     expect(copies.entry("shop", "app-config", "application.yaml")).toEqual({ status: "copied" });
     expect(announce).toHaveBeenLastCalledWith("application.yaml copied");
     await vi.advanceTimersByTimeAsync(2000);
@@ -132,6 +146,7 @@ describe("ValueCopy without a clearing time, for ConfigMaps (#668 §3.1)", () =>
     await copies.copy("shop", "app-config", "K");
     expect(announce).toHaveBeenLastCalledWith("K: No longer exists");
     expect(reload).toHaveBeenCalledTimes(1);
+    expect(notify).not.toHaveBeenCalled();
     copies.destroy();
     vi.useRealTimers();
   });

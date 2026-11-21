@@ -7,8 +7,11 @@
  * and, with a `hideAfter`, when its timer ends.
  *
  * It lives for one view and is never persisted. An answer that arrives after
- * its cause is gone is thrown away, never shown and never stored.
+ * its cause is gone is thrown away, never shown and never stored; so is one
+ * whose cluster is no longer on screen (#690): a value is read on the cluster
+ * active at the click, and shown only on that cluster.
  */
+import { activeClusterRef, onScreen, type ClusterRef } from "#lib/stores/cluster-ref.ts";
 import type { RevealedSecretValue } from "#lib/tauri.ts";
 
 /** A command's error, as the backend answers it: a kind the view switches on, a message. */
@@ -39,8 +42,8 @@ export type ValueHolder = {
 };
 
 export type ValueRevealOptions<E extends ValueCommandError> = {
-  /** Reads one value from the backend, at this moment. */
-  read: (namespace: string, name: string, key: string) => Promise<RevealedSecretValue>;
+  /** Reads one value from the backend, at this moment, on `on`: the cluster active at the click. */
+  read: (namespace: string, name: string, key: string, on: ClusterRef) => Promise<RevealedSecretValue>;
   /**
    * Seconds a value stays shown, counted from when it was shown; 0 is Never.
    * Without it there is no timer (a ConfigMap's value).
@@ -76,8 +79,8 @@ export class ValueReveal<E extends ValueCommandError> {
   #shownAt: Record<string, number> = {};
   /** The request each key waits for: an answer of any other is thrown away. */
   #awaiting: Record<string, number> = {};
-  /** An answer read at another version than the list's, until the list reloads. */
-  #held: Record<string, RevealedSecretValue> = {};
+  /** An answer read at another version than the list's, until the list reloads, with its cluster. */
+  #held: Record<string, { answer: RevealedSecretValue; on: ClusterRef }> = {};
   /** `namespace/name` → resource version, as the last list showed them. */
   #versions: Record<string, string | null> | null = null;
   #requests = 0;
@@ -100,6 +103,8 @@ export class ValueReveal<E extends ValueCommandError> {
   /** Read the value of one key and show it (with a timer of its own, when there is one). */
   async reveal(namespace: string, name: string, key: string): Promise<void> {
     if (this.#closed) return;
+    const on = activeClusterRef();
+    if (on === null) return;
     const id = idOf(namespace, name, key);
     if (this.#entries[id]?.status === "reading") return;
     this.#drop(id);
@@ -108,9 +113,13 @@ export class ValueReveal<E extends ValueCommandError> {
     this.#entries[id] = { status: "reading" };
     let answer: RevealedSecretValue;
     try {
-      answer = await this.#options.read(namespace, name, key);
+      answer = await this.#options.read(namespace, name, key, on);
     } catch (e) {
       if (this.#awaiting[id] !== request) return;
+      if (!onScreen(on)) {
+        this.#drop(id);
+        return;
+      }
       delete this.#awaiting[id];
       const error = this.#options.errors.parse(e);
       this.#entries[id] = { status: "error", error };
@@ -119,12 +128,16 @@ export class ValueReveal<E extends ValueCommandError> {
       return;
     }
     if (this.#awaiting[id] !== request) return;
+    if (!onScreen(on)) {
+      this.#drop(id);
+      return;
+    }
     delete this.#awaiting[id];
     // Read at another version than the list shows: not shown until a reload
     // of the list agrees with it (`reconcile` decides).
     const listed = this.#versions?.[`${namespace}/${name}`];
     if (listed !== undefined && listed !== answer.resource_version) {
-      this.#held[id] = answer;
+      this.#held[id] = { answer, on };
       // A reload that never lands (the list failed) must not leave it reading.
       this.#timers[id] = setTimeout(() => this.#drop(id), HELD_MS);
       this.#options.reload?.();
@@ -148,7 +161,8 @@ export class ValueReveal<E extends ValueCommandError> {
    * After a reload of the list: drop what belongs to an object or a key that
    * is gone, and a shown value whose object has another resource version. An
    * unchanged object keeps its value, with its timer running. A held answer
-   * is shown if the list is now at its version, else dropped.
+   * is shown if the list is now at its version and its cluster still on
+   * screen, else dropped.
    */
   reconcile(objects: readonly ValueHolder[]): void {
     const byId: Record<string, ValueHolder> = {};
@@ -165,8 +179,11 @@ export class ValueReveal<E extends ValueCommandError> {
       const held = this.#held[id];
       if (held && !gone) {
         delete this.#held[id];
-        if (held.resource_version === object.resource_version) this.#show(id, held);
-        else this.#drop(id);
+        if (held.answer.resource_version === object.resource_version && onScreen(held.on)) {
+          this.#show(id, held.answer);
+        } else {
+          this.#drop(id);
+        }
         continue;
       }
       const changed = entry.status === "shown" && object?.resource_version !== entry.resourceVersion;
