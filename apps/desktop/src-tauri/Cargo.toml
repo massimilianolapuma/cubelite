@@ -31,7 +31,7 @@ keyring = { version = "3.6", features = ["apple-native", "windows-native", "sync
 # data-control protocol. No clipboard permission is given to the webview.
 arboard = { version = "3.7", default-features = false, features = ["wayland-data-control"] }
 # The digest of a copied value, kept to tell whether the clipboard still holds it.
-sha2 = "0.10"
+sha2 = "0.11"
 # A binary Secret value is copied as base64 (the core's version).
 base64 = "0.23"
 
